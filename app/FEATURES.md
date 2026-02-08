@@ -68,34 +68,36 @@
 
 ## Phase 3: Q&A Forms
 
-- [ ] Rust: Clarification markdown parser (Q&A format → structured data)
-- [ ] Rust: Clarification serializer (structured data → markdown)
-- [ ] Rust: Parse command (parse_clarifications) returning structured questions
-- [ ] Rust: Save command (save_clarification_answers) writing markdown back
-- [ ] Frontend: Q&A form component (radio buttons from choices, text answer field)
-- [ ] Frontend: Question list renderer (parsed from markdown, with recommendations)
-- [ ] Frontend: Raw markdown fallback for unparseable questions
-- [ ] Frontend: Form submission → serialize back to exact markdown format
-- [ ] Step 2 end-to-end: view questions as form → answer → save to file
-- [ ] Step 5 end-to-end: view merged questions as form → answer → save
+- [x] Rust: Clarification markdown parser (Q&A format → structured data)
+- [x] Rust: Clarification serializer (structured data → markdown)
+- [x] Rust: Parse command (parse_clarifications) returning structured questions
+- [x] Rust: Save command (save_clarification_answers) writing markdown back
+- [x] Rust: Save raw file fallback (save_raw_file)
+- [x] Frontend: Q&A form component (radio buttons from choices, text answer field)
+- [x] Frontend: Question list renderer (parsed from markdown, with recommendations)
+- [x] Frontend: Raw markdown fallback for unparseable questions
+- [x] Frontend: Form submission → serialize back to exact markdown format
+- [x] Step 2 end-to-end: view questions as form → answer → save to file
+- [x] Step 5 end-to-end: view merged questions as form → answer → save
+- [x] Tests: 10 clarification form component tests + 7 Rust parser unit tests
 
 ## Phase 4: Full Workflow
 
-- [ ] Rust: Workflow state machine (step ordering, transitions, gates)
-- [ ] Rust: Step 3 — parallel agents (spawn two sidecar processes concurrently)
-- [ ] Rust: Step 4 — merge agent execution
-- [ ] Rust: Step 6 — reasoning agent (multi-turn conversation loop)
+- [x] Rust: Workflow state machine (step ordering, transitions, gates)
+- [x] Rust: Step 3 — parallel agents (spawn two sidecar processes concurrently)
+- [x] Rust: Step 4 — merge agent execution
+- [x] Rust: Step 6 — reasoning agent (single-turn; multi-turn chat UI deferred)
 - [ ] Rust: Step 6 — follow-up question detection + append to clarifications
-- [ ] Rust: Step 7 — build agent execution
-- [ ] Rust: Step 8 — validator agent execution
-- [ ] Rust: Step 9 — tester agent execution
-- [ ] Rust: Step 10 — package skill as .skill zip archive
-- [ ] Frontend: Step 3 — dual streaming panels (parallel agent output)
+- [x] Rust: Step 7 — build agent execution
+- [x] Rust: Step 8 — validator agent execution
+- [x] Rust: Step 9 — tester agent execution
+- [x] Rust: Step 10 — package skill as .skill zip archive
+- [x] Frontend: Step 3 — dual streaming panels (parallel agent output)
 - [ ] Frontend: Step 6 — chat-like view for multi-turn reasoning
 - [ ] Frontend: Step 6 — follow-up question prompt + re-run
-- [ ] Frontend: Step 7-9 — agent output + summary display
-- [ ] Frontend: Step 10 — package confirmation
-- [ ] Frontend: Workflow resume (load state, skip completed steps)
+- [x] Frontend: Step 7-9 — agent output + summary display
+- [x] Frontend: Step 10 — package confirmation
+- [x] Frontend: Workflow resume (load state, skip completed steps)
 - [ ] Full 10-step workflow end-to-end
 
 ## Phase 5: Git Integration
@@ -105,16 +107,17 @@
 - [x] Rust: git2 — push to remote
 - [x] Rust: git2 — seed README.md + .gitignore on empty repos
 - [x] Rust: Clone/init on first setup after repo selection
-- [ ] Rust: git2 — pull from remote
-- [ ] Rust: git2 — diff (file-level + line-level)
-- [ ] Rust: git2 — log (commit history)
-- [ ] Rust: git2 — file status (modified, untracked)
+- [x] Rust: git2 — pull from remote
+- [x] Rust: git2 — diff (file-level + line-level)
+- [x] Rust: git2 — log (commit history)
+- [x] Rust: git2 — file status (modified, untracked)
+- [x] Rust: git2 — commit without push (git_commit)
 - [ ] Rust: Auto-commit after each workflow step (configurable)
 - [ ] Rust: Auto-push after commit (optional)
-- [ ] Frontend: Push/pull toolbar buttons
-- [ ] Frontend: Diff viewer for file history (react-diff-viewer-continued)
-- [ ] Frontend: Git status indicators per file
-- [ ] Frontend: `use-git-status` hook
+- [x] Frontend: Push/pull toolbar buttons
+- [x] Frontend: Diff viewer for file history (react-diff-viewer-continued)
+- [x] Frontend: Git status indicators per file (GitStatusBadge)
+- [x] Frontend: `use-git-status` hook
 
 ## Phase 6: Editor
 

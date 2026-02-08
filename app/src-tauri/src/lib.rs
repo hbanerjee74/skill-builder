@@ -36,6 +36,8 @@ pub fn run() {
             commands::clarification::parse_clarifications,
             commands::clarification::save_clarification_answers,
             commands::clarification::save_raw_file,
+            commands::files::list_skill_files,
+            commands::files::read_file,
             commands::workflow::run_workflow_step,
             commands::workflow::run_parallel_agents,
             commands::workflow::package_skill,

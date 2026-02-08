@@ -133,3 +133,13 @@ pub struct GitFileStatusEntry {
     pub path: String,
     pub status: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileEntry {
+    pub name: String,
+    pub relative_path: String,
+    pub absolute_path: String,
+    pub is_directory: bool,
+    pub is_readonly: bool,
+    pub size_bytes: u64,
+}

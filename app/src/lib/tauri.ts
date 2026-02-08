@@ -251,3 +251,20 @@ export const saveClarificationAnswers = (
 
 export const saveRawFile = (filePath: string, content: string) =>
   invoke("save_raw_file", { filePath, content });
+
+// --- Files ---
+
+export interface FileEntry {
+  name: string;
+  relative_path: string;
+  absolute_path: string;
+  is_directory: boolean;
+  is_readonly: boolean;
+  size_bytes: number;
+}
+
+export const listSkillFiles = (workspacePath: string, skillName: string) =>
+  invoke<FileEntry[]>("list_skill_files", { workspacePath, skillName });
+
+export const readFile = (filePath: string) =>
+  invoke<string>("read_file", { filePath });
