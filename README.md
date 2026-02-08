@@ -4,7 +4,16 @@ A multi-agent workflow for creating Anthropic Claude skills. Domain-agnostic —
 
 ## How It Works
 
-Say **"start"**, **"run the workflow"**, or **"build the skill"** in Claude Code. The coordinator (defined in `CLAUDE.md`) handles everything: creating a team, spawning agents, tracking state, and walking you through each step.
+Say **"start"**, **"run the workflow"**, or **"build the skill"** to begin. The coordinator (defined in `CLAUDE.md`) handles everything: spawning agents, tracking state, and walking you through each step.
+
+### Supported Platforms
+
+| Platform | How to run | Details |
+|---|---|---|
+| **Claude Code** (CLI) | Say "start" in the terminal | Uses TeamCreate, TaskCreate, and SendMessage for agent coordination |
+| **Claude Desktop** (Cowork mode) | Say "start" in a Cowork session | Uses Task tool and TodoWrite instead of teams — see `cowork/cowork.md` |
+
+Both platforms run the same workflow and prompts. The only difference is how agents are spawned and tracked.
 
 ## Workflow Overview
 
@@ -27,6 +36,8 @@ Say **"start"**, **"run the workflow"**, or **"build the skill"** in Claude Code
 ```
 skill-builder/
 ├── CLAUDE.md                  # Coordinator instructions (read by Claude Code)
+├── cowork/
+│   └── cowork.md              # Cowork mode adaptation (Claude Desktop)
 ├── prompts/
 │   ├── shared-context.md      # Skill builder purpose + file format definitions
 │   ├── 01-research-domain-concepts.md
@@ -66,5 +77,5 @@ The workflow supports resuming from any step. State is tracked in `skills/<skill
 
 ## Prerequisites
 
-- Claude Code with access to sonnet, haiku, and opus models
+- **Claude Code** or **Claude Desktop** (Cowork mode) with access to sonnet, haiku, and opus models
 - All files in this project folder
