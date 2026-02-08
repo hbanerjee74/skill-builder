@@ -1,25 +1,99 @@
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "@tanstack/react-router";
-import { Loader2, Play } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  Package,
+  MessageSquare,
+  SkipForward,
+  FileText,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
+import { ParallelAgentPanel } from "@/components/parallel-agent-panel";
+import { WorkflowStepComplete } from "@/components/workflow-step-complete";
+import { ClarificationForm } from "@/components/clarification-form";
+import { ClarificationRaw } from "@/components/clarification-raw";
 import { useAgentStream } from "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { startAgent } from "@/lib/tauri";
+import {
+  runWorkflowStep,
+  runParallelAgents,
+  packageSkill,
+  parseClarifications,
+  saveClarificationAnswers,
+  type ClarificationFile,
+  type PackageResult,
+} from "@/lib/tauri";
 
-const STEP_AGENT_CONFIG: Record<
-  number,
-  { model: string; buildPrompt: (domain: string, skillName: string) => string }
-> = {
+// --- Step config ---
+
+interface StepConfig {
+  type: "agent" | "parallel" | "human" | "package";
+  model?: string;
+  outputFiles?: string[];
+}
+
+const STEP_CONFIGS: Record<number, StepConfig> = {
   0: {
+    type: "agent",
     model: "sonnet",
-    buildPrompt: (domain, skillName) =>
-      `Read prompts/shared-context.md and prompts/01-research-domain-concepts.md and follow the instructions. The domain is: ${domain}. Write output to skills/${skillName}/context/clarifications-concepts.md`,
+    outputFiles: ["context/clarifications-concepts.md"],
+  },
+  1: { type: "human" },
+  2: {
+    type: "parallel",
+    model: "sonnet",
+    outputFiles: [
+      "context/clarifications-patterns.md",
+      "context/clarifications-data.md",
+    ],
+  },
+  3: {
+    type: "agent",
+    model: "haiku",
+    outputFiles: ["context/clarifications.md"],
+  },
+  4: { type: "human" },
+  5: {
+    type: "agent",
+    model: "opus",
+    outputFiles: ["context/decisions.md"],
+  },
+  6: {
+    type: "agent",
+    model: "sonnet",
+    outputFiles: ["SKILL.md", "references/"],
+  },
+  7: {
+    type: "agent",
+    model: "sonnet",
+    outputFiles: ["context/agent-validation-log.md"],
+  },
+  8: {
+    type: "agent",
+    model: "sonnet",
+    outputFiles: ["context/test-skill.md"],
+  },
+  9: { type: "package" },
+};
+
+// Human review steps: step id -> clarification file path builder
+const HUMAN_REVIEW_STEPS: Record<
+  number,
+  { getFilePath: (workspacePath: string, skillName: string) => string }
+> = {
+  1: {
+    getFilePath: (wp, name) =>
+      `${wp}/${name}/context/clarifications-concepts.md`,
+  },
+  4: {
+    getFilePath: (wp, name) => `${wp}/${name}/context/clarifications.md`,
   },
 };
 
@@ -39,43 +113,85 @@ export default function WorkflowPage() {
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
+  const parallelAgentIds = useAgentStore((s) => s.parallelAgentIds);
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
+  const setParallelAgents = useAgentStore((s) => s.setParallelAgents);
 
   useAgentStream();
+
+  // Q&A form state
+  const [clarificationFile, setClarificationFile] =
+    useState<ClarificationFile | null>(null);
+  const [rawContent, setRawContent] = useState<string | null>(null);
+  const [clarificationFilePath, setClarificationFilePath] = useState("");
+  const [loadingClarifications, setLoadingClarifications] = useState(false);
+  const [savingClarifications, setSavingClarifications] = useState(false);
+
+  // Package result state
+  const [packageResult, setPackageResult] = useState<PackageResult | null>(
+    null
+  );
+
+  const stepConfig = STEP_CONFIGS[currentStep];
+  const isHumanReviewStep = stepConfig?.type === "human";
+  const isParallelStep = stepConfig?.type === "parallel";
+  const isPackageStep = stepConfig?.type === "package";
 
   // Initialize workflow if not already set
   useEffect(() => {
     if (!useWorkflowStore.getState().skillName) {
-      // Use skillName from route as both name and domain placeholder
       initWorkflow(skillName, skillName.replace(/-/g, " "));
     }
   }, [skillName, initWorkflow]);
 
-  // Watch for agent completion to advance steps
+  // Load clarification file when entering a human review step
+  useEffect(() => {
+    if (!isHumanReviewStep || !workspacePath) {
+      setClarificationFile(null);
+      setRawContent(null);
+      return;
+    }
+
+    const config = HUMAN_REVIEW_STEPS[currentStep];
+    if (!config) return;
+    const filePath = config.getFilePath(workspacePath, skillName);
+    setClarificationFilePath(filePath);
+    setLoadingClarifications(true);
+
+    parseClarifications(filePath)
+      .then((file) => {
+        setClarificationFile(file);
+        setRawContent(null);
+      })
+      .catch(() => {
+        setClarificationFile(null);
+        setRawContent(null);
+      })
+      .finally(() => setLoadingClarifications(false));
+  }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
+
+  // Advance to next step helper
+  const advanceToNextStep = useCallback(() => {
+    if (currentStep < steps.length - 1) {
+      const nextStep = currentStep + 1;
+      setCurrentStep(nextStep);
+      const nextConfig = STEP_CONFIGS[nextStep];
+      if (nextConfig?.type === "human") {
+        updateStepStatus(nextStep, "waiting_for_user");
+      }
+    }
+  }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
+
+  // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const handleAgentComplete = useCallback(() => {
-    if (!activeRun) return;
+    if (!activeRun || isParallelStep) return;
     if (activeRun.status === "completed") {
       updateStepStatus(currentStep, "completed");
       setRunning(false);
       toast.success(`Step ${currentStep + 1} completed`);
-
-      // Auto-advance to next step
-      if (currentStep < steps.length - 1) {
-        const nextStep = currentStep + 1;
-        setCurrentStep(nextStep);
-
-        // If next step is a human review step, mark as waiting
-        const nextStepDef = steps[nextStep];
-        if (
-          nextStepDef &&
-          (nextStepDef.name === "Domain Concepts Review" ||
-            nextStepDef.name === "Human Review")
-        ) {
-          updateStepStatus(nextStep, "waiting_for_user");
-        }
-      }
+      advanceToNextStep();
     } else if (activeRun.status === "error") {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -84,11 +200,10 @@ export default function WorkflowPage() {
   }, [
     activeRun?.status,
     currentStep,
-    steps.length,
+    isParallelStep,
     updateStepStatus,
     setRunning,
-    setCurrentStep,
-    steps,
+    advanceToNextStep,
     activeRun,
   ]);
 
@@ -96,26 +211,72 @@ export default function WorkflowPage() {
     handleAgentComplete();
   }, [handleAgentComplete]);
 
-  const handleStartStep = async () => {
-    const config = STEP_AGENT_CONFIG[currentStep];
-    if (!config || !domain || !workspacePath) {
-      toast.error("Cannot start step: missing configuration or workspace path");
+  // Watch for parallel agents completion (Step 2)
+  const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
+  const parallelRunB = parallelAgentIds ? runs[parallelAgentIds[1]] : null;
+  const handleParallelComplete = useCallback(() => {
+    if (!parallelAgentIds || !isParallelStep) return;
+    if (!parallelRunA || !parallelRunB) return;
+
+    const aFinished =
+      parallelRunA.status === "completed" || parallelRunA.status === "error";
+    const bFinished =
+      parallelRunB.status === "completed" || parallelRunB.status === "error";
+
+    if (!aFinished || !bFinished) return;
+
+    const aOk = parallelRunA.status === "completed";
+    const bOk = parallelRunB.status === "completed";
+
+    if (aOk && bOk) {
+      updateStepStatus(currentStep, "completed");
+      setRunning(false);
+      setParallelAgents(null);
+      toast.success(`Step ${currentStep + 1} completed`);
+      advanceToNextStep();
+    } else {
+      updateStepStatus(currentStep, "error");
+      setRunning(false);
+      setParallelAgents(null);
+      toast.error(`Step ${currentStep + 1} failed`);
+    }
+  }, [
+    parallelAgentIds,
+    isParallelStep,
+    parallelRunA?.status,
+    parallelRunB?.status,
+    currentStep,
+    updateStepStatus,
+    setRunning,
+    setParallelAgents,
+    advanceToNextStep,
+    parallelRunA,
+    parallelRunB,
+  ]);
+
+  useEffect(() => {
+    handleParallelComplete();
+  }, [handleParallelComplete]);
+
+  // --- Step handlers ---
+
+  const handleStartAgentStep = async () => {
+    if (!domain || !workspacePath) {
+      toast.error("Missing domain or workspace path");
       return;
     }
 
-    const agentId = `${skillName}-step${currentStep}-${Date.now()}`;
-
     try {
-      agentStartRun(agentId, config.model);
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
 
-      await startAgent(
-        agentId,
-        config.buildPrompt(domain, skillName),
-        config.model,
+      const agentId = await runWorkflowStep(
+        skillName,
+        currentStep,
+        domain,
         workspacePath
       );
+      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -125,9 +286,247 @@ export default function WorkflowPage() {
     }
   };
 
+  const handleStartParallelStep = async () => {
+    if (!domain || !workspacePath) {
+      toast.error("Missing domain or workspace path");
+      return;
+    }
+
+    try {
+      updateStepStatus(currentStep, "in_progress");
+      setRunning(true);
+
+      const result = await runParallelAgents(skillName, domain, workspacePath);
+      agentStartRun(result.agent_id_a, "sonnet");
+      agentStartRun(result.agent_id_b, "sonnet");
+      setParallelAgents([result.agent_id_a, result.agent_id_b]);
+    } catch (err) {
+      updateStepStatus(currentStep, "error");
+      setRunning(false);
+      toast.error(
+        `Failed to start parallel agents: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+
+  const handleSkipHumanStep = () => {
+    updateStepStatus(currentStep, "completed");
+    advanceToNextStep();
+    toast.success(`Step ${currentStep + 1} skipped`);
+  };
+
+  const handlePackageStep = async () => {
+    if (!workspacePath) {
+      toast.error("Missing workspace path");
+      return;
+    }
+
+    try {
+      updateStepStatus(currentStep, "in_progress");
+      setRunning(true);
+
+      const result = await packageSkill(skillName, workspacePath);
+      setPackageResult(result);
+      updateStepStatus(currentStep, "completed");
+      setRunning(false);
+      toast.success("Skill packaged successfully");
+    } catch (err) {
+      updateStepStatus(currentStep, "error");
+      setRunning(false);
+      toast.error(
+        `Failed to package skill: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+
+  const handleStartStep = async () => {
+    if (!stepConfig) return;
+
+    switch (stepConfig.type) {
+      case "agent":
+        return handleStartAgentStep();
+      case "parallel":
+        return handleStartParallelStep();
+      case "package":
+        return handlePackageStep();
+      case "human":
+        // Human steps don't have a "start" — they just show the form
+        break;
+    }
+  };
+
+  const handleClarificationSave = async (file: ClarificationFile) => {
+    setSavingClarifications(true);
+    try {
+      await saveClarificationAnswers(clarificationFilePath, file);
+      setClarificationFile(file);
+      toast.success("Answers saved");
+
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    } catch (err) {
+      toast.error(
+        `Failed to save: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setSavingClarifications(false);
+    }
+  };
+
+  const handleRawSaved = () => {
+    if (clarificationFilePath) {
+      parseClarifications(clarificationFilePath)
+        .then((file) => {
+          setClarificationFile(file);
+          setRawContent(null);
+        })
+        .catch(() => {
+          updateStepStatus(currentStep, "completed");
+          advanceToNextStep();
+        });
+    }
+  };
+
   const currentStepDef = steps[currentStep];
-  const hasAgentConfig = currentStep in STEP_AGENT_CONFIG;
-  const canStart = hasAgentConfig && !isRunning && workspacePath;
+  const canStart =
+    stepConfig &&
+    stepConfig.type !== "human" &&
+    !isRunning &&
+    workspacePath &&
+    currentStepDef?.status !== "completed";
+
+  // --- Render content ---
+
+  const renderContent = () => {
+    // Completed step with output files
+    if (
+      currentStepDef?.status === "completed" &&
+      !activeAgentId &&
+      !parallelAgentIds
+    ) {
+      if (isPackageStep && packageResult) {
+        return (
+          <WorkflowStepComplete
+            stepName={currentStepDef.name}
+            outputFiles={[packageResult.file_path]}
+          />
+        );
+      }
+      if (stepConfig?.outputFiles) {
+        return (
+          <WorkflowStepComplete
+            stepName={currentStepDef.name}
+            outputFiles={stepConfig.outputFiles}
+          />
+        );
+      }
+    }
+
+    // Human review step with Q&A form
+    if (isHumanReviewStep) {
+      if (loadingClarifications) {
+        return (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        );
+      }
+
+      if (clarificationFile) {
+        return (
+          <ClarificationForm
+            file={clarificationFile}
+            onSave={handleClarificationSave}
+            saving={savingClarifications}
+          />
+        );
+      }
+
+      if (rawContent !== null) {
+        return (
+          <ClarificationRaw
+            filePath={clarificationFilePath}
+            initialContent={rawContent}
+            onSaved={handleRawSaved}
+          />
+        );
+      }
+
+      // File not available yet
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+          <MessageSquare className="size-8 text-muted-foreground/50" />
+          <p className="text-sm">
+            Waiting for the previous step to generate clarification questions.
+          </p>
+          <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
+            <SkipForward className="size-3.5" />
+            Skip (Q&A not yet available)
+          </Button>
+        </div>
+      );
+    }
+
+    // Parallel agents (Step 2)
+    if (isParallelStep && parallelAgentIds) {
+      return (
+        <ParallelAgentPanel
+          agentIdA={parallelAgentIds[0]}
+          agentIdB={parallelAgentIds[1]}
+        />
+      );
+    }
+
+    // Single agent with output
+    if (activeAgentId) {
+      return <AgentOutputPanel agentId={activeAgentId} />;
+    }
+
+    // Package step empty state
+    if (isPackageStep) {
+      return (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <div className="flex flex-col items-center gap-2">
+            <Package className="size-8 text-muted-foreground/50" />
+            <p className="text-sm">
+              Press "Package" to create a .skill file
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Default empty state
+    return (
+      <div className="flex flex-1 items-center justify-center text-muted-foreground">
+        <div className="flex flex-col items-center gap-2">
+          <Play className="size-8 text-muted-foreground/50" />
+          <p className="text-sm">Press "Start Step" to begin</p>
+        </div>
+      </div>
+    );
+  };
+
+  // --- Start button label ---
+
+  const getStartButtonLabel = () => {
+    if (!stepConfig) return "Start Step";
+    switch (stepConfig.type) {
+      case "package":
+        return "Package";
+      case "parallel":
+        return "Start Parallel Agents";
+      default:
+        return "Start Step";
+    }
+  };
+
+  const getStartButtonIcon = () => {
+    if (stepConfig?.type === "package") {
+      return <Package className="size-3.5" />;
+    }
+    return <Play className="size-3.5" />;
+  };
 
   return (
     <div className="flex h-full -m-6">
@@ -162,34 +561,24 @@ export default function WorkflowPage() {
                 Running
               </Badge>
             )}
-            {canStart && currentStepDef?.status !== "completed" && (
+            {canStart && (
               <Button onClick={handleStartStep} size="sm">
-                <Play className="size-3.5" />
-                Start Step
+                {getStartButtonIcon()}
+                {getStartButtonLabel()}
               </Button>
             )}
-            {!hasAgentConfig && !isRunning && (
-              <Badge variant="outline">Coming soon</Badge>
+            {isHumanReviewStep && currentStepDef?.status !== "completed" && (
+              <Badge variant="outline" className="gap-1">
+                <FileText className="size-3" />
+                Q&A Review
+              </Badge>
             )}
           </div>
         </div>
 
-        {/* Agent output area */}
+        {/* Content area */}
         <div className="flex flex-1 flex-col overflow-hidden p-4">
-          {activeAgentId ? (
-            <AgentOutputPanel agentId={activeAgentId} />
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-muted-foreground">
-              <div className="flex flex-col items-center gap-2">
-                <Play className="size-8 text-muted-foreground/50" />
-                <p className="text-sm">
-                  {hasAgentConfig
-                    ? "Press \"Start Step\" to begin"
-                    : "This step is not yet wired up"}
-                </p>
-              </div>
-            </div>
-          )}
+          {renderContent()}
         </div>
       </div>
     </div>

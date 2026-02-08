@@ -40,6 +40,29 @@ const mockResponses: Record<string, unknown> = {
   ],
   clone_repo: { path: "/tmp/test", created_readme: true, created_gitignore: true },
   commit_and_push: "Committed and pushed",
+  parse_clarifications: {
+    sections: [
+      {
+        heading: "Domain Concepts",
+        questions: [
+          {
+            id: "Q1",
+            title: "Primary focus",
+            question: "What is the primary focus area for this skill?",
+            choices: [
+              { letter: "a", text: "Sales forecasting", rationale: "predict future revenue" },
+              { letter: "b", text: "Pipeline management", rationale: "track deal progression" },
+              { letter: "c", text: "Other (please specify)", rationale: "" },
+            ],
+            recommendation: "b — most actionable for day-to-day work",
+            answer: null,
+          },
+        ],
+      },
+    ],
+  },
+  save_clarification_answers: undefined,
+  save_raw_file: undefined,
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

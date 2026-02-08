@@ -19,6 +19,7 @@ interface WorkflowState {
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
+  loadWorkflowState: (completedStepIds: number[]) => void;
   reset: () => void;
 }
 
@@ -118,6 +119,18 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     })),
 
   setRunning: (running) => set({ isRunning: running }),
+
+  loadWorkflowState: (completedStepIds) =>
+    set((state) => {
+      const steps = state.steps.map((s) =>
+        completedStepIds.includes(s.id) ? { ...s, status: "completed" as const } : s
+      );
+      const firstIncomplete = steps.find((s) => s.status !== "completed");
+      return {
+        steps,
+        currentStep: firstIncomplete ? firstIncomplete.id : state.steps.length - 1,
+      };
+    }),
 
   reset: () =>
     set({

@@ -21,6 +21,11 @@ pub fn run() {
             commands::auth::list_github_repos,
             commands::git::clone_repo,
             commands::git::commit_and_push,
+            commands::git::git_pull,
+            commands::git::git_commit,
+            commands::git::git_diff,
+            commands::git::git_log,
+            commands::git::git_file_status,
             commands::node::check_node,
             commands::settings::get_settings,
             commands::settings::save_settings,
@@ -28,6 +33,12 @@ pub fn run() {
             commands::skill::list_skills,
             commands::skill::create_skill,
             commands::skill::delete_skill,
+            commands::clarification::parse_clarifications,
+            commands::clarification::save_clarification_answers,
+            commands::clarification::save_raw_file,
+            commands::workflow::run_workflow_step,
+            commands::workflow::run_parallel_agents,
+            commands::workflow::package_skill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
