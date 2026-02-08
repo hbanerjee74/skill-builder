@@ -4,8 +4,6 @@
 # Skill build artifacts
 *.skill
 
-# Skill working directories (context files, workflow state)
-skills/
-
-# Claude Code
-.claude/
+# Claude Code (track .claude/settings.json for shared hooks, ignore the rest)
+.claude/*
+!.claude/settings.json
