@@ -2,6 +2,10 @@
 
 When asked to "run the workflow", "build the skill", or "start", first check for a previous session (see **Session Resume** below), then follow the workflow below. You are the team lead — create a team and delegate work to teammates.
 
+## Cowork Mode
+
+If running in **Cowork mode** (Claude desktop app) instead of Claude Code, read `cowork/cowork.md` for platform-specific substitutions before proceeding. That file overrides the team management mechanics below (TeamCreate, TaskCreate, SendMessage, etc.) with Cowork equivalents. Everything else in this file applies as-is.
+
 ## Session Resume
 
 `workflow-state.md` lives inside each skill's folder at `skills/<skillname>/workflow-state.md`. It is the **single source of truth** for that skill's session state. Do not infer state from any other files.
