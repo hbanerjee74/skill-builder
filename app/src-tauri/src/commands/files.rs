@@ -42,7 +42,7 @@ fn collect_entries(
 
         let name = entry.file_name().to_string_lossy().to_string();
         let is_directory = metadata.is_dir();
-        let is_readonly = relative.starts_with("context/") || relative == "context";
+        let is_readonly = relative == "workflow.md";
         let size_bytes = if is_directory { 0 } else { metadata.len() };
 
         entries.push(SkillFileEntry {
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn test_context_files_are_readonly() {
+    fn test_only_workflow_md_is_readonly() {
         let dir = tempdir().unwrap();
         setup_skill_dir(dir.path());
 
@@ -139,16 +139,15 @@ mod tests {
         .unwrap();
 
         for entry in &entries {
-            if entry.relative_path.starts_with("context") {
+            if entry.relative_path == "workflow.md" {
                 assert!(
                     entry.is_readonly,
-                    "{} should be readonly",
-                    entry.relative_path
+                    "workflow.md should be readonly",
                 );
             } else {
                 assert!(
                     !entry.is_readonly,
-                    "{} should not be readonly",
+                    "{} should be editable",
                     entry.relative_path
                 );
             }
