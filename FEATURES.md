@@ -61,5 +61,5 @@
 ## Distribution (Future)
 
 - [ ] **F44: Marketplace listing** — Publish to a plugin marketplace
-- [ ] **F45: Version tagging** — Semantic versioning for plugin updates
-- [ ] **F46: GitHub source install** — `claude plugin install owner/skill-builder`
+- [x] **F45: Version tagging** — Semantic versioning for plugin updates
+- [x] **F46: GitHub source install** — `claude plugin install owner/skill-builder`
