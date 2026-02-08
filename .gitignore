@@ -4,5 +4,6 @@
 # Skill build artifacts
 *.skill
 
-# Claude Code
-.claude/
+# Claude Code (track .claude/settings.json for shared hooks, ignore the rest)
+.claude/*
+!.claude/settings.json
