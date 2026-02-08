@@ -10,7 +10,7 @@ A multi-agent workflow for creating Anthropic Claude skills — domain knowledge
 | **CLI** (Claude Desktop Cowork) | Production | Say "start" in a Cowork session — see `cowork/cowork.md` |
 | **Desktop App** (Tauri) | In development (`feature/desktop-ui`) | See [Desktop App](#desktop-app) below |
 
-Both CLI platforms run the same 10-step workflow orchestrated by the coordinator in `CLAUDE.md`. The desktop app replaces the CLI with a GUI — workflow dashboard, form-based Q&A, streaming agent output, a chat interface for post-build editing, and git-backed versioning.
+Both CLI platforms run the same 10-step workflow orchestrated by the coordinator in `CLAUDE.md`. The desktop app replaces the CLI with a GUI — workflow dashboard, form-based Q&A, streaming agent output, and a chat interface for post-build editing.
 
 ## Workflow Overview
 
@@ -92,7 +92,7 @@ The desktop app (`app/`) is a **Tauri v2** application that provides a GUI for t
 ### Why Tauri
 
 - ~10MB binary vs 150MB+ Electron
-- Rust backend for fast file I/O, native git operations, secure API key storage
+- Rust backend for fast file I/O, SQLite persistence, secure API key storage
 - Tauri events for streaming Claude API responses to the UI
 - API keys stay in the Rust backend, never in the webview
 
@@ -110,18 +110,15 @@ The desktop app (`app/`) is a **Tauri v2** application that provides a GUI for t
 | Data fetching | TanStack Query |
 | Forms | React Hook Form + Zod |
 | Markdown | react-markdown + remark-gfm + rehype-highlight |
-| Diff viewer | react-diff-viewer-continued |
 
 **Backend** (Rust / Tauri):
 
 | Module | Choice |
 | --- | --- |
 | HTTP | reqwest (streaming SSE for Claude API) |
-| Git | git2 (libgit2 bindings) |
 | File watching | notify |
 | Markdown parsing | pulldown-cmark |
-| Settings | tauri-plugin-store (encrypted) |
-| Auth | GitHub Device Flow via tauri-plugin-shell |
+| Settings | rusqlite (SQLite) |
 
 ### Key UI Views
 
@@ -129,11 +126,7 @@ The desktop app (`app/`) is a **Tauri v2** application that provides a GUI for t
 2. **Workflow Wizard** — Step progression sidebar, streaming agent output, form-based Q&A for review steps
 3. **Chat Interface** — Conversational editing and review+suggest modes for post-build refinement
 4. **Skill Editor** — Three-pane layout: file tree, CodeMirror source editor, live markdown preview
-5. **Settings** — Anthropic API key, GitHub repo picker, model overrides
-
-### Authentication
-
-GitHub OAuth Device Flow — no localhost redirect needed. The GitHub token handles both git operations (push/pull via HTTPS) and user identity. Stored encrypted via `tauri-plugin-store`.
+5. **Settings** — Anthropic API key, workspace folder, Node.js status
 
 ### Development
 
@@ -166,11 +159,11 @@ See `CLAUDE.md` for full testing documentation including mock strategies and the
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 1. Foundation | Tauri scaffold, OAuth login, settings, dashboard | Scaffolded |
-| 2. Core Agent Loop | Agent runner with streaming, tool execution, Step 1 E2E | Not started |
-| 3. Q&A Forms | Markdown parser, form components, Steps 2 and 5 | Not started |
-| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Not started |
-| 5. Git | Auto-commit, push/pull, diff viewer, file history | Not started |
-| 6. Editor | CodeMirror editor, split pane, file tree, auto-save | Not started |
+| 1. Foundation | Tauri scaffold, settings, dashboard, skill CRUD | Done |
+| 2. Core Agent Loop | Sidecar + SDK, agent commands, streaming UI, Step 1 E2E | Done |
+| 3. Q&A Forms | Markdown parser, form components, Steps 2 and 5 | Done |
+| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Done |
+| 5. SQLite Migration | Replace plugin-store with rusqlite, remove GitHub/git | Done |
+| 6. Editor | CodeMirror editor, split pane, file tree, auto-save | Done |
 | 7. Chat | Conversational edit + review/suggest modes | Not started |
 | 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Not started |

@@ -10,22 +10,22 @@ Full architecture, data model, and UI specs: `app/PLAN.md`
 
 ```
 ┌──────────────────── Frontend (WebView) ──────────────────────┐
-│  Login │ Dashboard │ Workflow Wizard │ Chat │ Editor         │
+│  Dashboard │ Workflow Wizard │ Chat │ Editor │ Settings      │
 │                        │                                     │
-│              Zustand Store (auth, skills, workflow, agents)  │
+│              Zustand Store (skills, workflow, agents)         │
 │                        │ Tauri IPC (invoke / events)         │
 └────────────────────────┼─────────────────────────────────────┘
                          │
 ┌────────────────────────┼──── Backend (Rust) ─────────────────┐
 │  ┌─────────────┐ ┌─────────────┐ ┌───────────┐               │
-│  │ Agent       │ │ File System │ │ Git       │               │
-│  │ Orchestrator│ │ Manager     │ │ Manager   │               │
-│  │ (spawns     │ │ (CRUD, MD   │ │ (commit,  │               │
-│  │  Node.js    │ │  parsing,   │ │  diff,    │               │
-│  │  sidecar)   │ │  watching)  │ │  push/pull│               │
+│  │ Agent       │ │ File System │ │ SQLite    │               │
+│  │ Orchestrator│ │ Manager     │ │ (rusqlite)│               │
+│  │ (spawns     │ │ (CRUD, MD   │ │ settings  │               │
+│  │  Node.js    │ │  parsing,   │ │ storage   │               │
+│  │  sidecar)   │ │  watching)  │ │           │               │
 │  └──────┬──────┘ └─────────────┘ └───────────┘               │
 │         │                                                    │
-│  GitHub Auth │ Workflow State Machine │ Settings             │
+│  Workflow State Machine │ Settings │ Lifecycle               │
 └─────────┼────────────────────────────────────────────────────┘
           │
 ┌─────────┼──── Node.js Sidecar ───────────────────────────────┐
@@ -39,9 +39,9 @@ Full architecture, data model, and UI specs: `app/PLAN.md`
 
 ## Tech Stack
 
-**Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router + Query, React Hook Form + Zod, react-markdown, react-diff-viewer-continued
+**Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router + Query, React Hook Form + Zod, react-markdown
 
-**Backend:** Tauri 2, git2, notify, pulldown-cmark, tauri-plugin-store/shell, tokio
+**Backend:** Tauri 2, rusqlite, notify, pulldown-cmark, tauri-plugin-shell, tokio
 
 **Agent Runtime:** Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar process)
 
@@ -55,50 +55,62 @@ app/
 │   ├── main.tsx                      # Entry (providers + router)
 │   ├── router.tsx                    # TanStack Router routes
 │   ├── pages/                        # Page components
-│   │   ├── login.tsx                 # GitHub Device Flow login
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   └── settings.tsx              # API key + repo config
+│   │   ├── workflow.tsx              # Workflow wizard (10-step)
+│   │   ├── editor.tsx                # Skill file editor
+│   │   └── settings.tsx              # API key + workspace config
 │   ├── components/
 │   │   ├── ui/                       # shadcn/ui primitives (16 components)
 │   │   ├── layout/                   # App shell (app-layout, sidebar, header)
+│   │   ├── editor/                   # CodeMirror editor, file tree, preview
 │   │   ├── theme-provider.tsx        # Dark mode (next-themes)
 │   │   ├── skill-card.tsx            # Dashboard skill card
 │   │   ├── new-skill-dialog.tsx      # Create skill dialog
-│   │   └── delete-skill-dialog.tsx   # Delete confirmation
+│   │   ├── delete-skill-dialog.tsx   # Delete confirmation
+│   │   ├── close-guard.tsx           # Block close while agents running
+│   │   ├── clarification-form.tsx    # Q&A form (Steps 2, 5)
+│   │   ├── clarification-raw.tsx     # Raw markdown fallback
+│   │   ├── agent-output-panel.tsx    # Streaming agent output
+│   │   ├── parallel-agent-panel.tsx  # Dual-panel (Step 3)
+│   │   ├── reasoning-chat.tsx        # Step 6 chat interface
+│   │   └── workflow-sidebar.tsx      # Step progression sidebar
 │   ├── stores/                       # Zustand state
-│   │   ├── auth-store.ts
 │   │   ├── skill-store.ts
-│   │   └── settings-store.ts
+│   │   ├── settings-store.ts
+│   │   ├── workflow-store.ts
+│   │   └── agent-store.ts
 │   ├── hooks/
-│   │   └── use-auth.ts              # Auth convenience hook
+│   │   ├── use-agent-stream.ts      # Subscribe to Tauri agent events
+│   │   └── use-skill-files.ts       # Read skill files
 │   ├── lib/
 │   │   ├── utils.ts                 # cn() helper
 │   │   ├── tauri.ts                 # Typed Tauri invoke wrappers
 │   │   └── types.ts                 # Shared TypeScript interfaces
 │   └── styles/globals.css           # Tailwind + dark mode tokens
 ├── sidecar/                          # Node.js agent runner
-│   ├── package.json                  # @anthropic-ai/claude-agent-sdk dep
+│   ├── package.json                  # @anthropic-ai/claude-code SDK dep
 │   ├── agent-runner.ts               # Entry — reads config from stdin, streams JSON to stdout
 │   ├── tsconfig.json
-│   └── build.ts                      # esbuild bundle → single agent-runner.js
+│   └── build.js                      # esbuild bundle → single agent-runner.js
 ├── src-tauri/                        # Rust backend
 │   ├── src/
 │   │   ├── lib.rs                   # Plugin + command registration
 │   │   ├── main.rs                  # Entry point
-│   │   ├── types.rs                 # Shared types
+│   │   ├── types.rs                 # Shared types (AppSettings, etc.)
+│   │   ├── db.rs                    # SQLite init, migrations, settings read/write
 │   │   ├── commands/                # Tauri IPC handlers
-│   │   │   ├── auth.rs              # start_login, poll_login, get_current_user, logout
 │   │   │   ├── settings.rs          # get_settings, save_settings, test_api_key
 │   │   │   ├── skill.rs             # list_skills, create_skill, delete_skill
-│   │   │   └── agent.rs             # start_agent, cancel_agent (spawns sidecar)
+│   │   │   ├── workflow.rs          # run_workflow_step, run_parallel_agents, package_skill
+│   │   │   ├── agent.rs             # start_agent, cancel_agent (spawns sidecar)
+│   │   │   ├── node.rs              # check_node (Node.js version check)
+│   │   │   └── lifecycle.rs         # check_workspace_path, has_running_agents
 │   │   ├── agents/                  # Sidecar management
 │   │   │   ├── mod.rs
 │   │   │   ├── sidecar.rs           # Spawn Node.js process, pipe stdin/stdout
 │   │   │   └── events.rs            # Parse JSON lines → Tauri events
-│   │   ├── auth/                    # GitHub authentication
-│   │   │   ├── device_flow.rs       # Device Flow implementation
-│   │   │   └── token.rs             # Token storage (tauri-plugin-store)
 │   │   └── markdown/                # Markdown parsing
+│   │       ├── clarifications.rs    # Q&A format parser/serializer
 │   │       └── workflow_state.rs    # Parse workflow state files
 │   ├── Cargo.toml
 │   └── tauri.conf.json              # bundles sidecar/dist/agent-runner.js
@@ -204,18 +216,6 @@ The app replicates the CLI workflow. Each step is a state in the workflow state 
       test-skill.md
 ```
 
-## Authentication
-
-GitHub OAuth Device Flow. Token stored encrypted via `tauri-plugin-store`. Used for both git operations (HTTPS credentials) and user identity. Requires a GitHub OAuth App registration — `client_id` is bundled (public), no secret needed.
-
-## Git Integration
-
-- User selects a GitHub repo in Settings → app clones locally to `~/skill-builder-workspace/<repo-name>/`
-- Auto-commit after each workflow step (configurable)
-- Auto-push (optional, off by default)
-- Manual push/pull toolbar buttons
-- Diff viewer for file history
-
 ## Key Reference Files
 
 - `prompts/shared-context.md` — markdown formats (used as-is by agents via SDK)
@@ -249,12 +249,12 @@ npm run tauri build                          # Production build
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 1. Foundation | Login, settings, dashboard, skill CRUD | Done |
-| 2. Core Agent Loop | Sidecar + SDK, agent commands, streaming UI, Step 1 E2E | Next |
-| 3. Q&A Forms | Markdown parser, form components, Steps 2 + 5 | Pending |
-| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Pending |
-| 5. Git | Auto-commit, push/pull, diff viewer, file history | Pending |
-| 6. Editor | CodeMirror, split pane, file tree, auto-save | Pending |
+| 1. Foundation | Settings, dashboard, skill CRUD | Done |
+| 2. Core Agent Loop | Sidecar + SDK, agent commands, streaming UI, Step 1 E2E | Done |
+| 3. Q&A Forms | Markdown parser, form components, Steps 2 + 5 | Done |
+| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Done |
+| 5. SQLite Migration | Replace plugin-store with rusqlite, remove GitHub/git | Done |
+| 6. Editor | CodeMirror, split pane, file tree, auto-save | Done |
 | 7. Chat | Conversational edit + review/suggest modes | Pending |
 | 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Pending |
 
@@ -309,11 +309,10 @@ Integration: register new commands in `lib.rs`, add workflow route to `router.ts
 | `frontend-workflow` | Step UI components, chat view | Step 3 dual panel, Step 6 chat view, Step 10 packaging UI |
 | `frontend-reasoning` (optional) | Step 6 reasoning UI if complex | Multi-turn chat component, follow-up detection |
 
-**Phase 5 — Git (2 agents)**
+**Phase 5 — SQLite Migration (1 agent)**
 | Agent | Scope | Files |
 |-------|-------|-------|
-| `rust-git` | git2 operations | `git/mod.rs`, `git/operations.rs`, `commands/git.rs` |
-| `frontend-git` | Push/pull UI, diff viewer, status | `components/diff-viewer.tsx`, `hooks/use-git-status.ts`, toolbar buttons |
+| `sqlite-migration` | Replace plugin-store with rusqlite, remove git/auth | `db.rs`, `commands/settings.rs`, `commands/workflow.rs`, `lib.rs`, `types.rs`, frontend cleanup |
 
 **Phase 6 — Editor (2 agents)**
 | Agent | Scope | Files |
@@ -382,10 +381,11 @@ app/
 ├── vitest.config.ts
 ├── playwright.config.ts
 └── src-tauri/src/                # Rust tests (inline #[cfg(test)] modules)
+    ├── db.rs
     ├── markdown/workflow_state.rs
+    ├── markdown/clarifications.rs
     ├── commands/node.rs
-    ├── commands/skill.rs
-    └── commands/git.rs
+    └── commands/skill.rs
 ```
 
 ### Mocking Tauri APIs

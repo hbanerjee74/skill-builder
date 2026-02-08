@@ -1,5 +1,7 @@
 # Plan: Skill Builder Desktop UI Application
 
+> **Note:** This document is the original architecture plan. Some sections are outdated — in particular, **GitHub OAuth, git2, and tauri-plugin-store have been removed** and replaced with rusqlite (SQLite) for local settings persistence. There is no login page or git integration. See `FEATURES.md` for the current feature checklist and `TESTS.md` for the current test plan.
+
 ## Context
 
 The skill-builder is currently a CLI-only multi-agent workflow (orchestrated by Claude Code) that builds structured knowledge packages ("skills") for data engineers. Users interact by chatting in a terminal and manually editing markdown files. The goal is to create a **desktop UI application** that replaces the CLI workflow with a proper GUI — featuring a workflow dashboard, form-based Q&A, streaming agent output, a chat interface for post-build editing, and git-backed versioning.
