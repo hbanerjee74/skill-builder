@@ -145,17 +145,21 @@ export default function WorkflowPage() {
 
   // Initialize workflow and restore state from workflow.md
   useEffect(() => {
+    let cancelled = false;
     const store = useWorkflowStore.getState();
-    if (store.skillName === skillName) return; // already loaded for this skill
 
-    if (!workspacePath) {
-      initWorkflow(skillName, skillName.replace(/-/g, " "));
-      return;
-    }
+    // Already loaded for this skill — skip
+    if (store.skillName === skillName) return;
+
+    // Reset immediately so stale state from another skill doesn't linger
+    initWorkflow(skillName, skillName.replace(/-/g, " "));
+
+    if (!workspacePath) return;
 
     // Read workflow.md to get domain and completed steps
     getWorkflowState(workspacePath, skillName)
       .then((state) => {
+        if (cancelled) return; // navigated away before resolve
         const domainName = state.domain ?? skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName);
 
@@ -174,22 +178,26 @@ export default function WorkflowPage() {
         }
       })
       .catch(() => {
-        // No workflow.md yet — fresh skill
-        initWorkflow(skillName, skillName.replace(/-/g, " "));
+        // No workflow.md yet — fresh skill (initWorkflow already called above)
       });
+
+    return () => { cancelled = true; };
   }, [skillName, workspacePath, initWorkflow, loadWorkflowState]);
 
   // Persist workflow state to workflow.md when steps change
   useEffect(() => {
     if (!workspacePath || !domain) return;
-    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
-    const completedIds = currentSteps
+    // Only save when the store's skill matches the URL skill
+    const store = useWorkflowStore.getState();
+    if (store.skillName !== skillName) return;
+
+    const completedIds = store.steps
       .filter((s) => s.status === "completed")
       .map((s) => s.id);
 
-    const status = currentSteps[step]?.status === "in_progress"
+    const status = store.steps[store.currentStep]?.status === "in_progress"
       ? "in_progress"
-      : completedIds.length === currentSteps.length
+      : completedIds.length === store.steps.length
         ? "completed"
         : "pending";
 
