@@ -20,27 +20,34 @@ You create the actual skill based on confirmed decisions. You handle folder stru
   - The **domain name**
 - Read `decisions.md` from the context directory — this is your primary input
 
-## Phase 1: Skill Folder Structure
+## Phase 1: Skill Folder Structure (Progressive Disclosure)
 
-Generate the skill folder structure inside the skill directory provided by the coordinator. The structure **must** use folders to support progressive discovery by Claude — never dump all files flat in the root.
+The skill **must** be structured for progressive disclosure — Claude reads only `SKILL.md` initially and loads reference files on demand. This keeps context small for simple questions and scales up for complex ones.
 
 Required layout:
 
 ```
 skill/
-├── SKILL.md                  # Entry point — overview, when to use, pointers to references (<500 lines)
-└── references/               # Deep-dive content loaded on demand
+├── SKILL.md                  # Layer 1: Entry point — overview, quick reference, pointers (<500 lines)
+└── references/               # Layer 2: Deep-dive content loaded only when needed
     ├── <topic-a>.md
     ├── <topic-b>.md
     └── ...
 ```
 
-**Rules:**
-- `SKILL.md` sits at the root of the skill directory. It is the only file Claude reads initially.
-- All reference files go in a `references/` subfolder. SKILL.md points to them by relative path (e.g., `See references/entity-model.md for details`).
+### How progressive disclosure works
+
+1. **Layer 1 — SKILL.md** (always loaded): Contains enough to answer simple, common questions without touching any reference file. Includes explicit pointers like "For detailed stage modeling patterns, see `references/stage-modeling.md`".
+2. **Layer 2 — references/*.md** (loaded on demand): Each file covers one topic in depth. Claude loads a reference file only when the user's question requires that depth.
+
+### Rules
+
+- `SKILL.md` sits at the root of the skill directory. It is the **only** file Claude reads initially.
+- All reference files go in a `references/` subfolder. SKILL.md points to them by relative path.
 - Name reference files by topic using kebab-case (e.g., `pipeline-metrics.md`, `source-field-checklist.md`, `stage-modeling.md`).
-- Each reference file should be self-contained for its topic — a reader should understand it without reading other reference files.
+- Each reference file must be **self-contained** for its topic — a reader should understand it without reading other reference files.
 - No files outside of `SKILL.md` and `references/`. No README, CHANGELOG, INSTALLATION_GUIDE, or other auxiliary docs.
+- **Test**: For any question a user might ask, there should be a clear path: either SKILL.md answers it directly, or SKILL.md points to the right reference file. No dead ends, no orphan files.
 
 Decide how many reference files are needed and what topics they cover based on the decisions in `decisions.md`. Present the proposed folder structure (with file names and a one-line description of each) to the PM. Proceed only after explicit confirmation.
 

@@ -156,6 +156,30 @@ if [ -f "skills/start/SKILL.md" ]; then
       fail "coordinator missing reference to $keyword"
     fi
   done
+  # Start modes
+  for mode in "Mode A" "Mode B" "Mode C"; do
+    if echo "$content" | grep -q "$mode"; then
+      pass "coordinator has $mode"
+    else
+      fail "coordinator missing $mode (start modes)"
+    fi
+  done
+fi
+
+# ---------- Build agent: progressive disclosure ----------
+echo "=== Build Agent ==="
+if [ -f "agents/build.md" ]; then
+  build_content=$(cat "agents/build.md")
+  if echo "$build_content" | grep -q "progressive disclosure"; then
+    pass "build agent references progressive disclosure"
+  else
+    fail "build agent missing progressive disclosure guidance"
+  fi
+  if echo "$build_content" | grep -q "references/"; then
+    pass "build agent references references/ subfolder"
+  else
+    fail "build agent missing references/ subfolder structure"
+  fi
 fi
 
 # ---------- Summary ----------

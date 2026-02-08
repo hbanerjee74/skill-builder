@@ -25,6 +25,10 @@ Output files go to the user's CWD: ./skills/<skillname>/
 3. Summaries only flow up. Each Task prompt ends with "Return a 5-10 bullet summary." You use that summary for progress updates and to inform the next step's prompt.
 4. Parallel where independent. Steps that don't depend on each other are dispatched as parallel Task calls in a single message.
 
+## Single-Skill Mode
+
+Only one skill is active at a time. The coordinator works on the skill the user names and does not switch between skills mid-session.
+
 ## Workflow
 
 ### Step 0: Initialization
@@ -32,9 +36,25 @@ Output files go to the user's CWD: ./skills/<skillname>/
 1. Ask the user: "What functional domain should this skill cover? (e.g., sales pipeline, supply chain, HR analytics, financial planning)"
 2. Derive the skill name from the domain (lowercase, kebab-case, e.g., "sales-pipeline")
 3. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
-4. **Session Resume**: Check if `./skills/<skillname>/workflow-state.md` exists.
-   - If yes: Read it, show the last completed step, ask "Continue from step N or start fresh?"
-   - If no: Create the directory structure:
+4. **Detect start mode** by checking the filesystem:
+
+   **Mode A — Resume** (`./skills/<skillname>/workflow-state.md` exists):
+   The user is continuing a previous session.
+   - Read `workflow-state.md`, show the last completed step.
+   - Ask: "Continue from step N, or start fresh (this deletes all progress)?"
+   - If continue: skip to the recorded step + 1.
+   - If start fresh: delete the entire `./skills/<skillname>/` directory and fall through to Mode C.
+
+   **Mode B — Modify existing skill** (`./skills/<skillname>/skill/SKILL.md` exists but `workflow-state.md` does NOT):
+   The user has a finished skill and wants to improve it.
+   - Tell the user: "Found an existing skill at `./skills/<skillname>/skill/`. I'll start from the reasoning step so you can refine it."
+   - Create `./skills/<skillname>/context/` if it doesn't exist.
+   - Create `workflow-state.md` at Step 6.
+   - Skip to Step 6 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
+
+   **Mode C — Scratch** (no `./skills/<skillname>/` directory, or it was just deleted):
+   Fresh start — full workflow.
+   - Create the directory structure:
      ```
      ./skills/<skillname>/
      ├── workflow-state.md
@@ -42,14 +62,15 @@ Output files go to the user's CWD: ./skills/<skillname>/
      └── skill/
          └── references/
      ```
-5. Write initial `workflow-state.md`:
-   ```
-   # Workflow State: <skillname>
-   ## Current Step: 0 (Initialization)
-   ## Domain: <domain>
-   ## Status: In Progress
-   ```
-6. Create the agent team:
+   - Write initial `workflow-state.md`:
+     ```
+     # Workflow State: <skillname>
+     ## Current Step: 0 (Initialization)
+     ## Domain: <domain>
+     ## Status: In Progress
+     ```
+
+5. Create the agent team:
    ```
    TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
    ```

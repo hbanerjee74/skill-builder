@@ -119,11 +119,21 @@ For parallel agents (Step 3): spawn both teammates in a single message — they 
 | validate | **sonnet** | Checking against best practices |
 | test | **sonnet** | Test generation and evaluation |
 
+## Start Modes
+
+Only one skill is active at a time. The coordinator detects which mode to use based on the filesystem:
+
+| Mode | Condition | Behavior |
+|---|---|---|
+| **A — Resume** | `workflow-state.md` exists | Continue from last completed step, or start fresh |
+| **B — Modify existing** | `skill/SKILL.md` exists but no `workflow-state.md` | Skip to Step 6 (reasoning) to refine the existing skill |
+| **C — Scratch** | No skill directory | Full workflow from Step 0 |
+
 ## Workflow (10 Steps)
 
 | Step | Agent | What Happens | Human Gate? |
 |---|---|---|---|
-| Init | — | User provides domain, coordinator creates dirs | Yes (confirm name) |
+| Init | — | User provides domain, coordinator detects start mode | Yes (confirm name) |
 | 1 | research-concepts | Research key entities, metrics, KPIs | No |
 | 2 | — | User answers domain concept questions | **Yes** |
 | 3 | research-patterns + research-data | Parallel: business patterns + data modeling | No |
