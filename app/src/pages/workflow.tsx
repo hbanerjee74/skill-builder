@@ -202,84 +202,59 @@ export default function WorkflowPage() {
 
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
-  const handleAgentComplete = useCallback(() => {
-    if (!activeRun || isParallelStep) return;
-    if (activeRun.status === "completed") {
-      updateStepStatus(currentStep, "completed");
-      setRunning(false);
-      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
-      toast.success(`Step ${currentStep + 1} completed`);
-      advanceToNextStep();
-    } else if (activeRun.status === "error") {
-      updateStepStatus(currentStep, "error");
-      setRunning(false);
-      toast.error(`Step ${currentStep + 1} failed`);
-    }
-  }, [
-    activeRun?.status,
-    currentStep,
-    isParallelStep,
-    updateStepStatus,
-    setRunning,
-    advanceToNextStep,
-    handleStepAutoCommit,
-    steps,
-    activeRun,
-  ]);
+  const activeRunStatus = activeRun?.status;
 
   useEffect(() => {
-    handleAgentComplete();
-  }, [handleAgentComplete]);
+    if (!activeRunStatus || isParallelStep) return;
+    // Guard: read current step status directly from store to avoid re-triggering
+    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
+    if (currentSteps[step]?.status === "completed" || currentSteps[step]?.status === "error") return;
+
+    if (activeRunStatus === "completed") {
+      updateStepStatus(step, "completed");
+      setRunning(false);
+      handleStepAutoCommit(currentSteps[step]?.name ?? `Step ${step + 1}`);
+      toast.success(`Step ${step + 1} completed`);
+      advanceToNextStep();
+    } else if (activeRunStatus === "error") {
+      updateStepStatus(step, "error");
+      setRunning(false);
+      toast.error(`Step ${step + 1} failed`);
+    }
+  }, [activeRunStatus, isParallelStep, updateStepStatus, setRunning, advanceToNextStep, handleStepAutoCommit]);
 
   // Watch for parallel agents completion (Step 2)
   const parallelRunA = parallelAgentIds ? runs[parallelAgentIds[0]] : null;
   const parallelRunB = parallelAgentIds ? runs[parallelAgentIds[1]] : null;
-  const handleParallelComplete = useCallback(() => {
-    if (!parallelAgentIds || !isParallelStep) return;
-    if (!parallelRunA || !parallelRunB) return;
-
-    const aFinished =
-      parallelRunA.status === "completed" || parallelRunA.status === "error";
-    const bFinished =
-      parallelRunB.status === "completed" || parallelRunB.status === "error";
-
-    if (!aFinished || !bFinished) return;
-
-    const aOk = parallelRunA.status === "completed";
-    const bOk = parallelRunB.status === "completed";
-
-    if (aOk && bOk) {
-      updateStepStatus(currentStep, "completed");
-      setRunning(false);
-      setParallelAgents(null);
-      handleStepAutoCommit(steps[currentStep]?.name ?? `Step ${currentStep + 1}`);
-      toast.success(`Step ${currentStep + 1} completed`);
-      advanceToNextStep();
-    } else {
-      updateStepStatus(currentStep, "error");
-      setRunning(false);
-      setParallelAgents(null);
-      toast.error(`Step ${currentStep + 1} failed`);
-    }
-  }, [
-    parallelAgentIds,
-    isParallelStep,
-    parallelRunA?.status,
-    parallelRunB?.status,
-    currentStep,
-    updateStepStatus,
-    setRunning,
-    setParallelAgents,
-    advanceToNextStep,
-    handleStepAutoCommit,
-    steps,
-    parallelRunA,
-    parallelRunB,
-  ]);
+  const parallelStatusA = parallelRunA?.status;
+  const parallelStatusB = parallelRunB?.status;
 
   useEffect(() => {
-    handleParallelComplete();
-  }, [handleParallelComplete]);
+    if (!parallelAgentIds || !isParallelStep) return;
+    if (!parallelStatusA || !parallelStatusB) return;
+
+    const aFinished = parallelStatusA === "completed" || parallelStatusA === "error";
+    const bFinished = parallelStatusB === "completed" || parallelStatusB === "error";
+    if (!aFinished || !bFinished) return;
+
+    // Guard: read current step status directly from store
+    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
+    if (currentSteps[step]?.status === "completed" || currentSteps[step]?.status === "error") return;
+
+    if (parallelStatusA === "completed" && parallelStatusB === "completed") {
+      updateStepStatus(step, "completed");
+      setRunning(false);
+      setParallelAgents(null);
+      handleStepAutoCommit(currentSteps[step]?.name ?? `Step ${step + 1}`);
+      toast.success(`Step ${step + 1} completed`);
+      advanceToNextStep();
+    } else {
+      updateStepStatus(step, "error");
+      setRunning(false);
+      setParallelAgents(null);
+      toast.error(`Step ${step + 1} failed`);
+    }
+  }, [parallelAgentIds, isParallelStep, parallelStatusA, parallelStatusB, updateStepStatus, setRunning, setParallelAgents, advanceToNextStep, handleStepAutoCommit]);
 
   // --- Step handlers ---
 
