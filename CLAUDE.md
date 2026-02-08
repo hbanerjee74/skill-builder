@@ -108,7 +108,7 @@ app/
 
 ## Agent Orchestration (Claude Agent SDK)
 
-Instead of calling the Claude API directly, agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives us all Claude Code tools for free.
+Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives us all Claude Code tools for free.
 
 ### How it works
 
@@ -259,11 +259,80 @@ npm run tauri build                          # Production build
 
 ## Build Approach
 
-Use **agent teams** for parallel development. Pattern:
-1. `TeamCreate` with phase name
-2. `TaskCreate` for each work stream
-3. Spawn teammates via `Task` tool (`subagent_type: "general-purpose"`, `mode: "bypassPermissions"`, `run_in_background: true`)
-4. Parallelize: frontend and backend agents work simultaneously on independent code
-5. Integrate: wire components together after agents complete
-6. Verify: `tsc --noEmit` (frontend) + `cargo check` (backend)
-7. Shut down teammates + `TeamDelete`
+Use **Claude Code agent teams** to parallelize development across frontend, backend, and sidecar work streams. Every phase should use teams unless the work is trivially small.
+
+### Team workflow
+
+1. **`TeamCreate`** with a descriptive name (e.g., `desktop-ui-phase2`)
+2. **`TaskCreate`** for each independent work stream — include file paths, acceptance criteria, and what NOT to touch
+3. **Spawn teammates** via `Task` tool:
+   - `subagent_type: "general-purpose"` (needs file read/write/bash access)
+   - `mode: "bypassPermissions"` (no interactive prompts)
+   - `run_in_background: true` (parallel execution)
+   - `model: "sonnet"` (fast, cost-effective for code generation)
+   - `team_name: "<team-name>"` (joins the team)
+4. **Wait for all teammates** to complete their tasks
+5. **Integrate**: wire cross-cutting concerns (imports, registrations, type sharing)
+6. **Verify**: `cd app && npx tsc --noEmit` (frontend) + `$HOME/.cargo/bin/cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+7. **Shut down** teammates via `SendMessage` (`type: "shutdown_request"`) + `TeamDelete`
+
+### Agent splitting guidelines
+
+- **Frontend vs Backend vs Sidecar** — these are always independent and can run in parallel
+- **Within frontend**: split by feature area (pages, stores/hooks, components) when there are 6+ files to create
+- **Within backend**: split by module (commands, agents, markdown) when there are 6+ files to create
+- **Shared types**: define types in one agent's scope, other agents use placeholder types and the integrator fixes imports after
+- **Never split a single file** across agents — one agent owns each file
+
+### Phase-specific team plans
+
+**Phase 2 — Core Agent Loop (3 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `sidecar` | Node.js agent runner + build | `sidecar/package.json`, `agent-runner.ts`, `tsconfig.json`, `build.ts` |
+| `rust-agents` | Rust sidecar management | `commands/agent.rs`, `agents/mod.rs`, `agents/sidecar.rs`, `agents/events.rs`, `commands/node.rs` |
+| `frontend-streaming` | Streaming UI + workflow | `stores/workflow-store.ts`, `stores/agent-store.ts`, `hooks/use-agent-stream.ts`, `pages/workflow.tsx`, `components/agent-output-panel.tsx`, `components/workflow-sidebar.tsx` |
+
+Integration: register new commands in `lib.rs`, add workflow route to `router.tsx`, wire Tauri event types between backend and frontend.
+
+**Phase 3 — Q&A Forms (2 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `rust-clarifications` | Markdown parser + serializer | `markdown/clarifications.rs`, `commands/clarifications.rs` |
+| `frontend-forms` | Q&A form components | `components/clarification-form.tsx`, `components/question-card.tsx`, workflow step 2/5 UI |
+
+**Phase 4 — Full Workflow (2-3 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `rust-workflow` | State machine, all step handlers | `workflow/mod.rs`, `workflow/steps.rs`, `commands/workflow.rs` |
+| `frontend-workflow` | Step UI components, chat view | Step 3 dual panel, Step 6 chat view, Step 10 packaging UI |
+| `frontend-reasoning` (optional) | Step 6 reasoning UI if complex | Multi-turn chat component, follow-up detection |
+
+**Phase 5 — Git (2 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `rust-git` | git2 operations | `git/mod.rs`, `git/operations.rs`, `commands/git.rs` |
+| `frontend-git` | Push/pull UI, diff viewer, status | `components/diff-viewer.tsx`, `hooks/use-git-status.ts`, toolbar buttons |
+
+**Phase 6 — Editor (2 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `frontend-editor` | CodeMirror + file tree | `components/editor/code-editor.tsx`, `components/editor/file-tree.tsx`, `components/editor/preview-pane.tsx` |
+| `frontend-layout` | Three-pane layout + auto-save | `pages/editor.tsx`, `hooks/use-skill-files.ts`, `hooks/use-auto-save.ts` |
+
+**Phase 7 — Chat (2 agents)**
+| Agent | Scope | Files |
+|-------|-------|-------|
+| `rust-chat` | Chat session management, diff gen | `chat/mod.rs`, `commands/chat.rs` |
+| `frontend-chat` | Chat UI, suggestions, accept/reject | `components/chat/chat-panel.tsx`, `components/chat/suggestion-card.tsx`, `stores/chat-store.ts` |
+
+**Phase 8 — Polish (1-2 agents)**
+Single pass or split into `frontend-polish` (error boundaries, loading states, empty states) and `ux-polish` (keyboard shortcuts, toasts, responsive layout).
+
+### Proven patterns from Phase 1
+
+- 3 parallel agents completed all of Phase 1 (Rust backend, frontend core, frontend pages) with zero merge conflicts
+- Each agent was given explicit file paths and told what NOT to modify
+- Types were defined by the backend agent; frontend agents used compatible interfaces
+- Integration step took ~5 minutes (wiring imports in router.tsx, lib.rs)
+- Verification caught 0 TypeScript errors and 0 Rust compilation errors
