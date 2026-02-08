@@ -1,4 +1,69 @@
-# Skill Builder — Coordinator Instructions
+# Skill Builder
+
+This project has two modes: a **CLI workflow** (orchestrated by Claude Code / Claude Desktop) and a **desktop application** (Tauri + React + Rust). The active branch determines which mode is relevant.
+
+## Desktop App (`feature/desktop-ui` branch)
+
+The `app/` directory contains a Tauri v2 desktop application. The design plan is at `.claude/plans/distributed-giggling-crab.md`.
+
+### Architecture
+
+```
+app/
+├── src/                          # React 19 frontend
+│   ├── main.tsx                  # Entry point
+│   ├── App.tsx                   # Root component (currently boilerplate)
+│   ├── components/ui/            # shadcn/ui components (16 installed)
+│   ├── styles/globals.css        # Tailwind CSS 4 + dark mode tokens
+│   └── lib/utils.ts              # cn() helper
+├── src-tauri/                    # Rust backend
+│   ├── src/lib.rs                # Tauri app setup (currently demo only)
+│   ├── src/main.rs               # Entry point
+│   ├── Cargo.toml                # Dependencies (reqwest, git2, notify, etc.)
+│   └── tauri.conf.json           # App config (1280x800, bundles prompts/*)
+├── package.json                  # Frontend deps
+└── vite.config.ts                # Vite + Tailwind + Tauri dev server
+```
+
+### Current State
+
+**Done:** Tauri scaffold, all frontend/backend dependencies installed, 16 shadcn/ui components, Tailwind CSS 4 with dark mode, Vite build config.
+
+**Not started:** Routing (TanStack Router), state management (Zustand stores), Rust backend commands, agent orchestration, GitHub OAuth, git integration, all UI views.
+
+### Tech Stack
+
+- **Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router + Query, React Hook Form + Zod, react-markdown, react-diff-viewer-continued
+- **Backend:** Tauri 2, reqwest (streaming), git2, notify, pulldown-cmark, tauri-plugin-store/shell, tokio
+
+### Implementation Phases
+
+1. **Foundation** — GitHub OAuth login, settings, clone/init repo, dashboard (scaffolded)
+2. **Core Agent Loop** — Agent runner with streaming, tool execution loop, Step 1 E2E
+3. **Q&A Forms** — Markdown parser for clarifications, form components, Steps 2 and 5
+4. **Full Workflow** — All 10 steps, parallel agents (Step 3), reasoning loop (Step 6), packaging
+5. **Git** — Auto-commit after steps, push/pull to GitHub, diff viewer, file history
+6. **Editor** — CodeMirror editor, split pane, file tree, auto-save
+7. **Chat** — Conversational edit mode, review + suggest mode
+8. **Polish** — Error states, retry UX, loading states, keyboard shortcuts
+
+### Development
+
+```bash
+cd app && npm install && npm run tauri dev
+```
+
+### Key Files to Reference
+
+- `prompts/shared-context.md` — markdown formats the Rust parser must handle
+- `CLAUDE.md` (this file, CLI section below) — workflow state machine to replicate in Rust
+- `prompts/06-reasoning-agent.md` — most complex agent (multi-turn with follow-ups)
+- `prompts/07-build-agent.md` — skill output structure (SKILL.md + references/)
+- `.claude/plans/distributed-giggling-crab.md` — full design plan
+
+---
+
+## CLI Workflow — Coordinator Instructions
 
 When asked to "run the workflow", "build the skill", or "start", first check for a previous session (see **Session Resume** below), then follow the workflow below. You are the team lead — create a team and delegate work to teammates.
 
