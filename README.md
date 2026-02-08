@@ -114,6 +114,35 @@ A `.skill` zip archive is also created at the project root after Step 10.
 
 The workflow supports resuming from any step. State is tracked in `skills/<skillname>/workflow-state.md`. On restart, you'll be asked whether to continue or start fresh.
 
+## Development
+
+### Validate plugin structure
+
+```bash
+# Run automated checks (manifest, agents, frontmatter, coordinator, etc.)
+./scripts/validate.sh
+```
+
+This also runs automatically after every Edit/Write via the Claude Code hook in `.claude/settings.json`.
+
+### Test the plugin locally
+
+```bash
+# Start Claude Code with the plugin loaded
+claude --plugin-dir .
+
+# Then invoke the workflow
+/skill-builder:start
+```
+
+### Validate the manifest
+
+```bash
+claude plugin validate .
+```
+
+See `CLAUDE.md` for the full development guide, `TESTS.md` for the test plan, and `FEATURES.md` for the feature checklist.
+
 ## Prerequisites
 
 - Claude Code with access to sonnet, haiku, and opus models
