@@ -1,275 +1,222 @@
-# Skill Builder — Coordinator Instructions
+# Skill Builder — Claude Code Plugin
 
-When asked to "run the workflow", "build the skill", or "start", first check for a previous session (see **Session Resume** below), then follow the workflow below. You are the team lead — create a team and delegate work to teammates.
+A Claude Code plugin that provides a multi-agent workflow for creating domain-specific Claude skills. Targets data/analytics engineers who need functional context for silver and gold table modeling.
 
-## Cowork Mode
+## Project Tracking
 
-If running in **Cowork mode** (Claude desktop app) instead of Claude Code, read `cowork/cowork.md` for platform-specific substitutions before proceeding. That file overrides the team management mechanics below (TeamCreate, TaskCreate, SendMessage, etc.) with Cowork equivalents. Everything else in this file applies as-is.
+- **`PLAN.md`** — Conversion plan (CLI → plugin): architecture mapping, implementation steps, path resolution, verification checklist
+- **`FEATURES.md`** — Feature checklist with status checkboxes (F1–F46). Update as features are completed.
+- **`TESTS.md`** — Test plan (T1–T7): structure validation, plugin loading, coordinator behavior, agent execution, human gates, E2E workflow, regression
 
-## Session Resume
+## Quick Start (Development)
 
-`workflow-state.md` lives inside each skill's folder at `skills/<skillname>/workflow-state.md`. It is the **single source of truth** for that skill's session state. Do not infer state from any other files.
+```bash
+# Test locally from any directory
+claude --plugin-dir /path/to/this/repo
 
-**On every startup or when the user says "start", "run the workflow", or "build the skill":**
-
-1. **If the user specifies a skill name** (e.g., "work on skill technology-services-pipeline", "continue technology-services-pipeline"):
-   - Check if `skills/<skillname>/workflow-state.md` exists.
-   - If it **exists** → read it and ask:
-     > "I found a previous session for **[skill name]** ([domain]) at **[step name]**. Would you like to:
-     > 1. **Continue** from where you left off
-     > 2. **Reset** and start fresh (this will delete all working files for this skill)"
-   - If it **does not exist** but the folder exists → the skill has no tracked state. Delete the `skills/<skillname>/` folder and `<skillname>.skill` (if it exists), then proceed to Initialization with that name.
-   - If the folder doesn't exist → proceed to Initialization with that name (skip domain/name questions, just confirm).
-
-2. **If the user does NOT specify a skill name** (e.g., just "start" or "build a skill"):
-   - Proceed directly to Initialization (ask for domain, derive name, etc.).
-
-**Handling Continue vs Reset (for path 1 above):**
-- If **Continue**: skip completed steps and resume from the recorded step. Use `workflow-state.md` to determine **which step** to resume — do not infer the step from any other source. **Do not read context files into the coordinator on resume** — teammates read their own inputs.
-
-  To resume: tell the user which step you're picking up, then follow that step's normal instructions (which already include the file paths teammates need). Teammates will read the existing files on disk from completed earlier steps — no special handling required.
-
-  Exception: if resuming at a **human review step** (Step 2 or Step 5), tell the user which file to open and review — do not read it into context yourself.
-
-- If **Reset**: delete the entire `skills/<skillname>/` folder (including `workflow-state.md`) and `<skillname>.skill` (if it exists in project root). Then proceed to Initialization.
-
-**Updating state:** Write or update `skills/<skillname>/workflow-state.md` at the START of each step, BEFORE spawning any agents. Use this format:
-
-```
-## Workflow State
-- **Skill name**: [kebab-case skill name]
-- **Domain**: [the functional domain]
-- **Current step**: [step number and name]
-- **Status**: [in_progress | waiting_for_user | completed]
-- **Completed steps**: [comma-separated list]
-- **Timestamp**: [current date/time]
-- **Notes**: [any context needed to resume]
+# Then invoke the skill
+/skill-builder:start
 ```
 
-## Model Selection
+## Plugin Structure
 
-Use the right model tier for each agent to balance cost and quality:
+```
+skill-builder/
+├── .claude-plugin/
+│   └── plugin.json                  # Plugin manifest
+├── .claude/
+│   └── settings.json                # Dev hooks (runs validate.sh after Edit/Write)
+├── scripts/
+│   └── validate.sh                  # Automated structural validation (T1 checks)
+├── skills/
+│   └── start/
+│       └── SKILL.md                 # Entry point: /skill-builder:start (coordinator)
+├── agents/
+│   ├── research-concepts.md         # Step 1 — domain concepts researcher
+│   ├── research-patterns.md         # Step 3a — business patterns researcher
+│   ├── research-data.md             # Step 3b — data modeling researcher
+│   ├── merge.md                     # Step 4 — question deduplicator
+│   ├── reasoning.md                 # Step 6 — reasoning + decision engine
+│   ├── build.md                     # Step 7 — skill file creator
+│   ├── validate.md                  # Step 8 — best practices validator
+│   └── test.md                      # Step 9 — test generator + evaluator
+├── references/
+│   └── shared-context.md            # Shared context read by all agents at runtime
+├── CLAUDE.md                        # This file (plugin dev instructions)
+├── PLAN.md                          # Conversion plan (from CLI → plugin)
+├── FEATURES.md                      # Feature checklist with status
+├── TESTS.md                         # Test plan and cases
+├── README.md                        # User-facing plugin docs
+├── LICENSE
+└── .gitignore
+```
+
+## Architecture
+
+The plugin has three layers:
+
+1. **Coordinator skill** (`skills/start/SKILL.md`) — invoked via `/skill-builder:start`. Contains the full 10-step workflow orchestration. Uses `!`echo $CLAUDE_PLUGIN_ROOT`` to resolve paths to plugin files at runtime.
+
+2. **Subagents** (`agents/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Spawned by the coordinator via `Task(subagent_type: "skill-builder:<agent-name>")`.
+
+3. **Shared reference** (`references/shared-context.md`) — domain definitions, file formats, content principles. Read by agents at the path the coordinator passes in the Task prompt.
+
+### Context Conservation Principle
+
+The coordinator's context window is the scarcest resource in the workflow. **All heavy work — research, analysis, generation, validation — must be delegated to subagents via Task calls.** The coordinator exists only to orchestrate, pass parameters, and relay short summaries to the user.
+
+Rules:
+1. **Never read agent output files into the coordinator context.** Agents write to disk; the coordinator tells the user where to find the files and relays the summary the agent returned.
+2. **Prefer subagents over inline work.** If a step involves reading multiple files, reasoning over content, or producing output longer than a few lines, it belongs in a subagent — not in the coordinator.
+3. **Summaries only flow up.** Each Task prompt must end with an instruction like "Return a 5–10 bullet summary." The coordinator uses that summary for progress updates and to inform the next step's prompt — nothing more.
+4. **Parallel where independent.** Steps that don't depend on each other (e.g., Step 3a and 3b) must be dispatched as parallel Task calls in a single message to reduce wall-clock time without expanding coordinator context.
+
+### Path Resolution
+
+- Plugin files: `${CLAUDE_PLUGIN_ROOT}/references/shared-context.md` (resolved by coordinator skill via shell injection)
+- Output files: `./skills/<skillname>/` in the user's current working directory (not the plugin directory)
+- Coordinator passes both paths to agents when spawning them
+
+### Agent Orchestration
+
+The coordinator uses **agent teams** (TeamCreate / Task with team_name / SendMessage / TeamDelete) to orchestrate the workflow. This gives the coordinator visibility into agent progress, enables inter-agent communication, and supports parallel execution with shared task lists.
+
+```
+# 1. Create the team at workflow start
+TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
+
+# 2. Create tasks for the team's shared task list
+TaskCreate(subject: "Research domain concepts", description: "...")
+
+# 3. Spawn agents as teammates
+Task(
+  subagent_type: "skill-builder:research-concepts",
+  team_name: "skill-builder-<skillname>",
+  name: "research-concepts",
+  model: "sonnet",
+  prompt: "Domain: <domain>. Shared context: <plugin_root>/references/shared-context.md. Write to ./skills/<name>/context/clarifications-concepts.md. Claim your task from the task list, mark it complete when done, and return a 5-10 bullet summary."
+)
+
+# 4. Coordinate via messages
+SendMessage(type: "message", recipient: "research-concepts", content: "...", summary: "...")
+
+# 5. Clean up when workflow completes
+TeamDelete()
+```
+
+For parallel agents (Step 3): spawn both teammates in a single message — they share the task list and work concurrently.
+
+### Model Selection
 
 | Agent | Model | Rationale |
 |---|---|---|
-| researcher | **sonnet** | Structured research — capable enough, and they run in parallel so cost matters |
-| merger | **haiku** | Mechanical deduplication and reformatting — cheapest tier is sufficient |
-| reasoner | **opus** | Deep analytical reasoning — cross-referencing, contradiction detection, gap analysis |
-| builder | **sonnet** | Content generation and structured writing — good quality without heavy reasoning |
-| validator | **sonnet** | Checking against best practices and fixing — similar to build work |
-| tester | **sonnet** | Generating and evaluating test prompts — similar to build work |
+| research-concepts | **sonnet** | Structured research, runs in parallel |
+| research-patterns | **sonnet** | Structured research, runs in parallel |
+| research-data | **sonnet** | Structured research, runs in parallel |
+| merge | **haiku** | Mechanical deduplication — cheapest tier sufficient |
+| reasoning | **opus** | Deep analytical reasoning, contradiction detection |
+| build | **sonnet** | Content generation and structured writing |
+| validate | **sonnet** | Checking against best practices |
+| test | **sonnet** | Test generation and evaluation |
 
-## Team Setup
+## Workflow (10 Steps)
 
-You (the coordinator) are the **team lead**. At the start of each workflow run, create a team using **TeamCreate** with the skill name (e.g., `team_name: "skill-<skillname>"`). This gives you a shared task list for tracking progress.
+| Step | Agent | What Happens | Human Gate? |
+|---|---|---|---|
+| Init | — | User provides domain, coordinator creates dirs | Yes (confirm name) |
+| 1 | research-concepts | Research key entities, metrics, KPIs | No |
+| 2 | — | User answers domain concept questions | **Yes** |
+| 3 | research-patterns + research-data | Parallel: business patterns + data modeling | No |
+| 4 | merge | Deduplicate questions | No |
+| 5 | — | User answers merged questions | **Yes** |
+| 6 | reasoning | Analyze answers, find gaps, update decisions | **Yes** (confirm reasoning) |
+| 7 | build | Create SKILL.md + reference files | Yes (confirm structure) |
+| 8 | validate | Check against best practices | Yes (review log) |
+| 9 | test | Generate + evaluate test prompts | Yes (review results) |
+| 10 | — | Package into .skill zip | No |
 
-### Spawning teammates
+## Output Data Model (in user's CWD)
 
-Use the **Task tool** to spawn teammates as needed. For every teammate:
-- `subagent_type: "general-purpose"` (they need file read/write access)
-- `team_name: "skill-<skillname>"` (joins the team)
-- `model`: per the Model Selection table above
-- `name`: a descriptive name (e.g., `"researcher-concepts"`, `"merger"`, `"reasoner"`)
+```
+skills/<skillname>/
+├── workflow-state.md                    # Session resume checkpoint
+├── context/                             # Working files
+│   ├── clarifications-concepts.md       # Step 1 output
+│   ├── clarifications-patterns.md       # Step 3a output
+│   ├── clarifications-data.md           # Step 3b output
+│   ├── clarifications.md               # Step 4 merged output
+│   ├── decisions.md                     # Step 6 output
+│   ├── agent-validation-log.md          # Step 8 output
+│   └── test-skill.md                    # Step 9 output
+└── skill/                               # Deployable skill
+    ├── SKILL.md                         # Entry point (<500 lines)
+    └── references/                      # Deep-dive files
+```
 
-**For single agents** (Steps 1, 4, 6, 7, 8, 9): spawn one teammate per step.
+## Development Guide
 
-**For parallel agents** (Step 3): spawn **two teammates in a single message** so they run concurrently.
+### Adding/modifying an agent
 
-### Task tracking
+1. Edit the agent file in `agents/` — frontmatter controls model, tools, permissions
+2. The markdown body IS the agent's system prompt
+3. Agents receive runtime parameters (domain, paths) from the coordinator's Task prompt
+4. Agents read `references/shared-context.md` at the path provided by the coordinator
 
-Before spawning a teammate, create a task with **TaskCreate** describing the work. Assign it to the teammate with **TaskUpdate** (`owner: "<teammate-name>"`). The teammate marks it completed when done. This gives you and the user visibility into progress.
+### Modifying the workflow
 
-### Teammate lifecycle
+Edit `skills/start/SKILL.md`. This contains the full coordinator logic:
+- Session resume
+- All 10 steps with agent spawning instructions
+- Human review gates
+- Error recovery
+- Context conservation rules
 
-Each teammate does its work and goes idle. You do **not** need to keep teammates alive between steps — spawn fresh ones as needed. When the workflow completes (or the user resets), shut down any remaining teammates with **SendMessage** (`type: "shutdown_request"`) and clean up the team with **TeamDelete**.
+### Testing changes
 
-### Prompt content
+**Automated validation** runs automatically after every Edit/Write via a Claude Code hook (configured in `.claude/settings.json`). It checks:
+- Manifest validity (JSON, required fields)
+- All 8 agent files exist with valid frontmatter (name, description, model, tools as comma-separated string)
+- Model tiers match the spec (sonnet/haiku/opus)
+- Coordinator skill exists with frontmatter and references TeamCreate, TeamDelete, CLAUDE_PLUGIN_ROOT, etc.
+- Shared context exists, old files removed, .gitignore correct
 
-Each teammate's Task `prompt` must include:
-1. Tell it to read its prompt file (e.g., "Read `prompts/01-research-domain-concepts.md` and follow its instructions")
-2. The domain name
-3. The full paths to input/output files (context dir, skill dir, specific files)
-4. Any additional context (e.g., "Read `prompts/shared-context.md` first")
-5. **Return a brief summary** (5–10 bullet points max) of what was produced — not the full content. The coordinator will relay this summary to the user.
+Run manually: `./scripts/validate.sh`
 
-### Context conservation
+**Live testing** (requires interactive session):
+```bash
+# Load plugin from local directory
+claude --plugin-dir .
 
-**Do not read teammate output files into the coordinator's context.** Teammates write files to disk and return a short summary. The coordinator:
-1. Shows the user the **summary** the teammate returned
-2. Tells the user the **file path** so they can review the full content externally (in their editor, terminal, etc.)
-3. Asks the user to **confirm** they've reviewed it before proceeding
+# Invoke the workflow
+/skill-builder:start
 
-This keeps the coordinator's context window lean across all 10 steps. The only files the coordinator should read are `workflow-state.md` (for resume) and `prompts/shared-context.md` (for initialization). Everything else stays on disk.
+# Or test a specific agent directly
+# (from within a Claude Code session with the plugin loaded)
+```
 
-## Workflow
+### When adding a new feature
 
-### Initialization: Domain & Skill Name
-> **State**: Write `skills/<skillname>/workflow-state.md` with current step = "Initialization", status = "in_progress".
+Before implementing, reason about what tests are needed:
 
-1. Read `prompts/shared-context.md` to understand the skill builder's purpose.
-2. **If the user already provided a skill name** (from Session Resume path 1): use that name. Ask them to confirm or provide the functional domain.
-3. **If no skill name was provided**: Ask the user: **"What functional domain is this skill for?"** (e.g., sales pipeline, supply chain, HR analytics, financial planning, customer success). Derive a kebab-case skill name from their answer (e.g., "sales pipeline analysis" → `sales-pipeline-analysis`). Present the derived name to the user for confirmation or editing.
-4. Create the directory structure:
-   - `skills/<skillname>/context/`
-   - `skills/<skillname>/skill/`
-5. **Create the team**: `TeamCreate(team_name: "skill-<skillname>")`.
-6. Write `skills/<skillname>/workflow-state.md` with the confirmed skill name and domain.
+1. **Does the change affect plugin structure?** (new files, renamed agents, changed frontmatter) → Add checks to `scripts/validate.sh` and update `TESTS.md` under T1.
+2. **Does the change affect coordinator behavior?** (new steps, changed orchestration, modified gates) → Add a test case to `TESTS.md` under T3 and verify the coordinator content check in `scripts/validate.sh` covers any new keywords.
+3. **Does the change affect an agent's output format or behavior?** → Add a test case to `TESTS.md` under T4 and consider adding a live test via `claude -p --plugin-dir .`.
+4. **Does the change affect the workflow end-to-end?** → Add a test case to `TESTS.md` under T6.
+5. **Not sure what tests to add?** → Propose 2-3 options with tradeoffs (automated vs. manual, structural vs. behavioral) and decide before implementing.
 
-### Step 1: Research Domain Concepts (model: sonnet)
-> **State**: Update `workflow-state.md` with current step = "Step 1: Research Domain Concepts", status = "in_progress".
+The goal: every feature change has a corresponding test — either an automated check in `scripts/validate.sh` or a documented manual test in `TESTS.md`. If you can't determine the right test, stop and propose options before writing code.
 
-Spawn teammate `researcher-concepts` (`model: "sonnet"`, `team_name: "skill-<skillname>"`):
-- Reads `prompts/shared-context.md` and `prompts/01-research-domain-concepts.md`
-- Writes `skills/<skillname>/context/clarifications-concepts.md`
+### Key constraints
 
-In the prompt, tell it:
-- The functional domain the user specified
-- The full path to its output file: `skills/<skillname>/context/clarifications-concepts.md`
-- To read `prompts/shared-context.md` first for context
+- **`skills/start/SKILL.md`**: The coordinator. Must not read agent output files into its own context (context conservation). Only relays summaries.
+- **Agent definitions**: Must specify `model` in frontmatter. The coordinator does NOT override models — it uses whatever the agent definition specifies.
+- **`references/shared-context.md`**: Read by every agent. Changes here affect all agents.
+- **Plugin caching**: Plugins are copied to a cache dir on install. All references must be within the plugin directory or in the user's CWD.
 
-### Step 2: Domain Concepts Review — STOP AND WAIT
-> **State**: Update `workflow-state.md` with current step = "Step 2: Domain Concepts Review", status = "waiting_for_user", completed = "Initialization, Step 1".
+## Key Reference
 
-Show the user the **summary** returned by the researcher, then tell them the file path:
-
-> The researcher produced domain concept questions at `skills/<skillname>/context/clarifications-concepts.md`. Please open this file, answer each question inline (fill in the **Answer** field), and let me know when you're done.
-
-Do not read the file into context. Do not proceed until the user confirms every question has an **Answer** filled in. These answers narrow the domain scope so downstream agents only research what's relevant.
-
-### Step 3: Research Patterns & Data Modeling (parallel, model: sonnet)
-> **State**: Update `workflow-state.md` with current step = "Step 3: Research Patterns & Data Modeling", status = "in_progress", completed = "Initialization, Step 1, Step 2".
-
-Spawn **two teammates in a single message** so they run in parallel (both `model: "sonnet"`, `team_name: "skill-<skillname>"`):
-- **`researcher-patterns`** → reads `prompts/shared-context.md` and `prompts/03a-research-business-patterns.md`, writes `skills/<skillname>/context/clarifications-patterns.md`
-- **`researcher-data`** → reads `prompts/shared-context.md` and `prompts/03b-research-data-modeling.md`, writes `skills/<skillname>/context/clarifications-data.md`
-
-**In each teammate's prompt, tell it:**
-- The functional domain the user specified
-- The full path to its output file
-- The full path to `skills/<skillname>/context/clarifications-concepts.md` — they must read this file including the PM's answers, so they only research patterns and modeling for concepts the PM confirmed are in scope
-
-Wait for both teammates to complete before proceeding to Step 4.
-
-### Step 4: Merge (after both agents complete, model: haiku)
-> **State**: Update `workflow-state.md` with current step = "Step 4: Merge", completed = "Initialization, Step 1, Step 2, Step 3".
-
-Spawn teammate `merger` (`model: "haiku"`, `team_name: "skill-<skillname>"`). It follows `prompts/04-merge-clarifications.md`. Tell it:
-- The context directory path: `skills/<skillname>/context/`
-- It reads `clarifications-patterns.md` and `clarifications-data.md` from that directory, deduplicates, and writes a merged `clarifications.md` in the same directory.
-- Note: `clarifications-concepts.md` is already answered and should NOT be re-merged — it is preserved as-is for reference.
-
-### Step 5: Human review — STOP AND WAIT
-> **State**: Update `workflow-state.md` with current step = "Step 5: Human review", status = "waiting_for_user", completed = "Initialization, Step 1, Step 2, Step 3, Step 4".
-
-Show the user the **summary** returned by the merger, then tell them the file path:
-
-> The merged clarification questions are at `skills/<skillname>/context/clarifications.md`. Please open this file, answer each question inline (fill in the **Answer** field), and let me know when you're done.
-
-Do not read the file into context. Do not proceed until the user confirms every question has an **Answer** filled in.
-
-### Step 6: Reasoning (model: opus)
-> **State**: Update `workflow-state.md` with current step = "Step 6: Reasoning", completed = "Initialization, Step 1, Step 2, Step 3, Step 4, Step 5".
-
-Spawn teammate `reasoner` (`model: "opus"`, `team_name: "skill-<skillname>"`). It follows `prompts/06-reasoning-agent.md`. Tell it the context directory path (`skills/<skillname>/context/`). It will:
-1. Read the answered `clarifications-concepts.md`, `clarifications.md`, and existing `decisions.md` from the context directory
-2. Analyze responses for implications, gaps, and contradictions
-3. Return a **reasoning summary** (key findings, contradictions, gaps) — show this summary to the user and wait for confirmation
-4. If follow-up questions emerge, the reasoner appends them to `clarifications.md` under `## Follow-up Questions — Round N`. Tell the user to open the file and answer the new questions, then re-run the reasoning loop.
-5. Once the user confirms the reasoning summary with no remaining questions, the reasoner **rewrites** `decisions.md` as a clean merged snapshot — combining existing decisions with new ones, replacing any that were superseded or refined. The result is a single coherent file, not a cumulative log.
-
-Do not read `clarifications.md` or `decisions.md` into coordinator context — the reasoner handles all analysis. Only relay the reasoner's returned summary. Repeat the question-answer-reason loop until the reasoner confirms all clarifications are resolved and `decisions.md` is finalized.
-
-### Step 7: Build (after user confirms decisions are final, model: sonnet)
-> **State**: Update `workflow-state.md` with current step = "Step 7: Build", completed = "Initialization, Step 1, Step 2, Step 3, Step 4, Step 5, Step 6".
-
-Spawn teammate `builder` (`model: "sonnet"`, `team_name: "skill-<skillname>"`). It follows `prompts/07-build-agent.md` (Phase 1 and Phase 2 only — folder structure and drafting). Tell it:
-- The context directory: `skills/<skillname>/context/` (for reading `decisions.md`)
-- The skill directory: `skills/<skillname>/skill/` (for writing SKILL.md and reference files)
-- The domain name
-
-It reads `decisions.md` and `prompts/shared-context.md`, then creates the skill files in the skill directory. Show the **summary** returned by the builder (file list, structure, key topics covered) and tell the user the skill directory path so they can review the files. Do not read skill files into coordinator context. Wait for user confirmation before proceeding.
-
-### Step 8: Validate (after build completes, model: sonnet)
-> **State**: Update `workflow-state.md` with current step = "Step 8: Validate", completed = "Initialization, Step 1, Step 2, Step 3, Step 4, Step 5, Step 6, Step 7".
-
-Spawn teammate `validator` (`model: "sonnet"`, `team_name: "skill-<skillname>"`). It follows `prompts/08-validate-agent.md`. Tell it:
-- The skill directory: `skills/<skillname>/skill/`
-- The context directory: `skills/<skillname>/context/` (for writing `agent-validation-log.md`)
-
-Show the **summary** returned by the validator (pass/fail counts, fixes applied). Tell the user the full log is at `skills/<skillname>/context/agent-validation-log.md` if they want details. Do not read the log into coordinator context. Do not proceed until the user confirms.
-
-### Step 9: Test (after validation passes, model: sonnet)
-> **State**: Update `workflow-state.md` with current step = "Step 9: Test", completed = "Initialization, Step 1, Step 2, Step 3, Step 4, Step 5, Step 6, Step 7, Step 8".
-
-Spawn teammate `tester` (`model: "sonnet"`, `team_name: "skill-<skillname>"`). It follows `prompts/09-test-agent.md`. Tell it:
-- The skill directory: `skills/<skillname>/skill/`
-- The context directory: `skills/<skillname>/context/` (for writing `test-skill.md`)
-- The domain name
-
-Show the **summary** returned by the tester (pass/partial/fail counts, key gaps found). Tell the user the full report is at `skills/<skillname>/context/test-skill.md` if they want details. Do not read the report into coordinator context. If any skill content issues were found, offer to re-run the builder to fix them (loop back to Step 7). Do not proceed until the user confirms tests are acceptable.
-
-### Step 10: Package (after validation and tests pass)
-> **State**: Update `workflow-state.md` with current step = "Step 10: Package", completed = "Initialization, Step 1, Step 2, Step 3, Step 4, Step 5, Step 6, Step 7, Step 8, Step 9".
-
-1. Create a zip archive of the skill directory contents:
-   ```
-   cd skills/<skillname>/skill && zip -r ../../../<skillname>.skill .
-   ```
-2. Confirm to the user: "Created `<skillname>.skill` in the project root — ready to deploy."
-3. Update `skills/<skillname>/workflow-state.md` with status = "completed" and all steps in the completed list.
-4. Shut down any remaining teammates (`SendMessage` with `type: "shutdown_request"`) and clean up the team (`TeamDelete`).
-
-## Coordinator Role
-
-**You are the team lead.** You stay in the conversation with the user at all times. You do NOT do research, merging, reasoning, or building yourself — you delegate all heavy work to teammates.
-
-Your job is to:
-- **Talk to the user**: answer questions, show outputs, collect answers, ask for confirmations
-- **Delegate work**: spawn the right teammate for each step and assign them tasks via TaskCreate/TaskUpdate
-- **Manage state**: update `workflow-state.md`, track which step we're on, handle resume
-- **Stay responsive**: while a teammate is working, you remain available to the user. If they ask a question or want to discuss something, respond immediately — don't wait for the teammate to finish first.
-- **Track progress**: use the team's task list (TaskList) to monitor what's done and what's pending
-
-You should never block the user's ability to interact with you. If a teammate is working, tell the user what's happening and be ready to chat.
-
-## Rules
-- Always wait for explicit user confirmation before moving between steps
-- Show agent outputs at each checkpoint for review
-- If any agent fails, report the failure and offer to retry just that agent
-- Never skip the human review steps (Step 2, Step 5, and Step 6 confirmations)
-- Working files are written to `skills/<skillname>/context/`, not the project root
-- Skill files are written to `skills/<skillname>/skill/`
-- Always use the model specified for each agent — do not default everything to the same model
-- Always update `skills/<skillname>/workflow-state.md` before starting each step — this is the resume checkpoint
-- **When spawning any agent, always tell it the domain, the context directory path, and (for the builder) the skill directory path** — agents cannot determine these on their own
-
-## Error Recovery
-
-### A research agent fails or produces no output
-- Check if the agent's output file exists in `skills/<skillname>/context/`. If missing, relaunch that single agent.
-- If the file exists but is malformed (no questions, wrong format), delete it and relaunch that agent.
-- The other agents' output is unaffected — you do not need to relaunch them.
-
-### A research agent produces duplicate/overlapping questions with another
-- This is expected. The merge agent (Step 4) handles deduplication automatically.
-
-### The merge agent misidentifies duplicates or drops a question
-- The original `clarifications-*.md` files are preserved in the context directory. Cross-reference them against the merged `clarifications.md`.
-- Manually add back any dropped questions, or relaunch the merge agent after deleting `clarifications.md`.
-
-### The reasoning agent finds unresolvable contradictions
-- The reasoning agent will flag these in its summary. Resolve them by answering the follow-up questions it adds to `clarifications.md`.
-- If the user changes a previous answer, tell the reasoning agent explicitly so it can update `decisions.md` (remove the old decision, add the corrected one).
-
-### The validator cannot fetch the best practices URL
-- The validator will stop and notify you. Check the internet connection and relaunch.
-- If the URL is permanently unavailable, skip validation (Step 8) and note that manual validation is needed.
-
-### Tests find skill content issues
-- Review the test results in `test-skill.md`. If skill content needs fixing, loop back to Step 7 (Build) with notes on what to fix.
-- The validator and tester can be re-run independently without re-building.
-
-### Restarting from a midpoint
-- **After Step 1**: The `clarifications-*.md` files in the context directory are the checkpoint. You can re-merge and continue from Step 4.
-- **After Step 6**: `decisions.md` in the context directory is the checkpoint. You can launch the build agent directly from Step 7.
-- **After Step 7**: The skill directory is the output. You can re-run validation (Step 8) or testing (Step 9) independently.
+- [Claude Code Plugin docs](https://code.claude.com/docs/en/plugins)
+- [Plugin reference](https://code.claude.com/docs/en/plugins-reference)
+- [Subagent docs](https://code.claude.com/docs/en/sub-agents)
+- [Hooks reference](https://code.claude.com/docs/en/hooks)
+- [Skills docs](https://code.claude.com/docs/en/skills)

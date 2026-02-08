@@ -4,8 +4,5 @@
 # Skill build artifacts
 *.skill
 
-# Skill working directories (context files, workflow state)
-skills/
-
 # Claude Code
 .claude/
