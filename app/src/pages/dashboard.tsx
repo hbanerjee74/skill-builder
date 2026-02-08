@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react"
+import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { Loader2, FolderOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
+  const navigate = useNavigate()
 
   const loadSettings = useCallback(async () => {
     try {
@@ -56,8 +58,8 @@ export default function DashboardPage() {
     loadSkills()
   }, [loadSkills])
 
-  const handleContinue = (_skill: SkillSummary) => {
-    // Navigation will be wired in by the router/stores later
+  const handleContinue = (skill: SkillSummary) => {
+    navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
   return (
