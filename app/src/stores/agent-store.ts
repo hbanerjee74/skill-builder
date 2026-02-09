@@ -1,6 +1,4 @@
 import { create } from "zustand";
-import { useSettingsStore } from "./settings-store";
-
 /** Map model IDs and shorthands to human-readable display names. */
 export function formatModelName(model: string): string {
   const lower = model.toLowerCase();
@@ -85,25 +83,22 @@ export const useAgentStore = create<AgentState>((set) => ({
   parallelAgentIds: null,
 
   startRun: (agentId, model) =>
-    set((state) => {
-      const extendedContext = useSettingsStore.getState().extendedContext;
-      return {
-        runs: {
-          ...state.runs,
-          [agentId]: {
-            agentId,
-            model,
-            status: "running",
-            messages: [],
-            startTime: Date.now(),
-            contextHistory: [],
-            contextWindow: extendedContext ? 1_000_000 : 200_000,
-            compactionEvents: [],
-          },
+    set((state) => ({
+      runs: {
+        ...state.runs,
+        [agentId]: {
+          agentId,
+          model,
+          status: "running",
+          messages: [],
+          startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: 200_000,
+          compactionEvents: [],
         },
-        activeAgentId: agentId,
-      };
-    }),
+      },
+      activeAgentId: agentId,
+    })),
 
   addMessage: (agentId, message) =>
     set((state) => {
@@ -139,7 +134,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         if (modelUsage) {
           for (const mu of Object.values(modelUsage)) {
             if (mu.contextWindow && mu.contextWindow > 0) {
-              contextWindow = mu.contextWindow;
+              contextWindow = Math.max(contextWindow, mu.contextWindow);
               break;
             }
           }
