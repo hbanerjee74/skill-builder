@@ -88,7 +88,7 @@ app/
 │   │   └── types.ts                 # Shared TypeScript interfaces
 │   └── styles/globals.css           # Tailwind + dark mode tokens
 ├── sidecar/                          # Node.js agent runner
-│   ├── package.json                  # @anthropic-ai/claude-code SDK dep
+│   ├── package.json                  # @anthropic-ai/claude-agent-sdk dep
 │   ├── agent-runner.ts               # Entry — reads config from stdin, streams JSON to stdout
 │   ├── tsconfig.json
 │   └── build.js                      # esbuild bundle → single agent-runner.js
