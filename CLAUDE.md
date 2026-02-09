@@ -245,26 +245,46 @@ npm run tauri build                          # Production build
 - Auto-update: `tauri-plugin-updater` checks GitHub Releases
 - **Requires Node.js 18+** on user's machine (checked at startup)
 
-## Implementation Phases
+## Parallel Development with Git Worktrees
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| 1. Foundation | Settings, dashboard, skill CRUD | Done |
-| 2. Core Agent Loop | Sidecar + SDK, agent commands, streaming UI, Step 1 E2E | Done |
-| 3. Q&A Forms | Markdown parser, form components, Steps 2 + 5 | Done |
-| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Done |
-| 5. SQLite Migration | Replace plugin-store with rusqlite, remove GitHub/git | Done |
-| 6. Editor | CodeMirror, split pane, file tree, auto-save | Done |
-| 7. Chat | Conversational edit + review/suggest modes | Pending |
-| 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Pending |
+The user runs **multiple Claude Code instances in parallel**, each in its own git worktree. This is the primary way work is parallelized — not agent teams within a single instance.
 
-## Build Approach
+### Worktree workflow
 
-Use **Claude Code agent teams** to parallelize development across frontend, backend, and sidecar work streams. Every phase should use teams unless the work is trivially small.
+When starting work on a task, **always create a new worktree** branching from `feature/desktop-ui`:
 
-### Team workflow
+```bash
+# Create worktree with a descriptive branch name
+git worktree add ~/src/skill-builder-<task-name> -b <task-name> feature/desktop-ui
 
-1. **`TeamCreate`** with a descriptive name (e.g., `desktop-ui-phase2`)
+# Install dependencies in the new worktree
+cd ~/src/skill-builder-<task-name>/app && npm install
+cd sidecar && npm install && npm run build && cd ..
+```
+
+When done, the user will merge the branch back into `feature/desktop-ui` and clean up:
+
+```bash
+# From the main repo
+git merge <task-name>
+git worktree remove ~/src/skill-builder-<task-name>
+git branch -d <task-name>
+```
+
+### Rules for worktree branches
+
+- **Keep branches focused** — one feature, one fix, or one refactor per branch
+- **Avoid overlapping file edits** across concurrent branches to minimize merge conflicts
+- **Frontend, backend, and sidecar are independent** — safe to work on in parallel branches
+- **Verify before committing**: `cd app && npx tsc --noEmit` (frontend) + `$HOME/.cargo/bin/cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+
+### When to also use agent teams within a single instance
+
+Use Claude Code agent teams (`TeamCreate` + `Task` tool) **in addition to worktrees** when a single task itself has parallelizable sub-tasks (e.g., a feature that needs both new Rust commands and new React components simultaneously). See the Team workflow below.
+
+#### Team workflow (within a single Claude Code instance)
+
+1. **`TeamCreate`** with a descriptive name
 2. **`TaskCreate`** for each independent work stream — include file paths, acceptance criteria, and what NOT to touch
 3. **Spawn teammates** via `Task` tool:
    - `subagent_type: "general-purpose"` (needs file read/write/bash access)
@@ -274,68 +294,44 @@ Use **Claude Code agent teams** to parallelize development across frontend, back
    - `team_name: "<team-name>"` (joins the team)
 4. **Wait for all teammates** to complete their tasks
 5. **Integrate**: wire cross-cutting concerns (imports, registrations, type sharing)
-6. **Verify**: `cd app && npx tsc --noEmit` (frontend) + `$HOME/.cargo/bin/cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+6. **Verify**: `npx tsc --noEmit` + `cargo check`
 7. **Shut down** teammates via `SendMessage` (`type: "shutdown_request"`) + `TeamDelete`
 
-### Agent splitting guidelines
+#### Splitting rules
 
-- **Frontend vs Backend vs Sidecar** — these are always independent and can run in parallel
-- **Within frontend**: split by feature area (pages, stores/hooks, components) when there are 6+ files to create
-- **Within backend**: split by module (commands, agents, markdown) when there are 6+ files to create
-- **Shared types**: define types in one agent's scope, other agents use placeholder types and the integrator fixes imports after
 - **Never split a single file** across agents — one agent owns each file
+- **Shared types**: define in one agent's scope, other agents use placeholder types, integrator fixes imports after
 
-### Phase-specific team plans
+## Commits
 
-**Phase 2 — Core Agent Loop (3 agents)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `sidecar` | Node.js agent runner + build | `sidecar/package.json`, `agent-runner.ts`, `tsconfig.json`, `build.ts` |
-| `rust-agents` | Rust sidecar management | `commands/agent.rs`, `agents/mod.rs`, `agents/sidecar.rs`, `agents/events.rs`, `commands/node.rs` |
-| `frontend-streaming` | Streaming UI + workflow | `stores/workflow-store.ts`, `stores/agent-store.ts`, `hooks/use-agent-stream.ts`, `pages/workflow.tsx`, `components/agent-output-panel.tsx`, `components/workflow-sidebar.tsx` |
+**Make granular commits.** Each commit should be a single logical change that compiles and passes tests independently.
 
-Integration: register new commands in `lib.rs`, add workflow route to `router.tsx`, wire Tauri event types between backend and frontend.
+### Guidelines
 
-**Phase 3 — Q&A Forms (2 agents)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `rust-clarifications` | Markdown parser + serializer | `markdown/clarifications.rs`, `commands/clarifications.rs` |
-| `frontend-forms` | Q&A form components | `components/clarification-form.tsx`, `components/question-card.tsx`, workflow step 2/5 UI |
+- **One concern per commit** — don't mix a bug fix with a refactor, or a new feature with a cleanup
+- **Commit as you go** — don't accumulate a large diff and commit everything at the end
+- **Commit messages** should be concise and describe the *what* and *why*, not the *how*
+- **Run tests before each commit**: `cd app && npm test` (frontend) + `cd app/src-tauri && cargo test` (backend)
+- **Stage specific files** — use `git add <file>` not `git add .` to avoid accidentally including unrelated changes
 
-**Phase 4 — Full Workflow (2-3 agents)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `rust-workflow` | State machine, all step handlers | `workflow/mod.rs`, `workflow/steps.rs`, `commands/workflow.rs` |
-| `frontend-workflow` | Step UI components, chat view | Step 3 dual panel, Step 6 chat view, Step 10 packaging UI |
-| `frontend-reasoning` (optional) | Step 6 reasoning UI if complex | Multi-turn chat component, follow-up detection |
+### Examples of good granular commits
 
-**Phase 5 — SQLite Migration (1 agent)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `sqlite-migration` | Replace plugin-store with rusqlite, remove git/auth | `db.rs`, `commands/settings.rs`, `commands/workflow.rs`, `lib.rs`, `types.rs`, frontend cleanup |
+```
+Add chat session SQLite schema and CRUD functions
+Add chat store with session and message state
+Add chat page with message bubbles and input
+Wire chat route into TanStack Router
+Add chat-store unit tests
+```
 
-**Phase 6 — Editor (2 agents)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `frontend-editor` | CodeMirror + file tree | `components/editor/code-editor.tsx`, `components/editor/file-tree.tsx`, `components/editor/preview-pane.tsx` |
-| `frontend-layout` | Three-pane layout + auto-save | `pages/editor.tsx`, `hooks/use-skill-files.ts`, `hooks/use-auto-save.ts` |
+### Examples of bad commits
 
-**Phase 7 — Chat (2 agents)**
-| Agent | Scope | Files |
-|-------|-------|-------|
-| `rust-chat` | Chat session management, diff gen | `chat/mod.rs`, `commands/chat.rs` |
-| `frontend-chat` | Chat UI, suggestions, accept/reject | `components/chat/chat-panel.tsx`, `components/chat/suggestion-card.tsx`, `stores/chat-store.ts` |
-
-**Phase 8 — Polish (1-2 agents)**
-Single pass or split into `frontend-polish` (error boundaries, loading states, empty states) and `ux-polish` (keyboard shortcuts, toasts, responsive layout).
-
-### Proven patterns from Phase 1
-
-- 3 parallel agents completed all of Phase 1 (Rust backend, frontend core, frontend pages) with zero merge conflicts
-- Each agent was given explicit file paths and told what NOT to modify
-- Types were defined by the backend agent; frontend agents used compatible interfaces
-- Integration step took ~5 minutes (wiring imports in router.tsx, lib.rs)
-- Verification caught 0 TypeScript errors and 0 Rust compilation errors
+```
+Add chat feature                    # Too broad — mixes backend + frontend + tests
+Fix stuff                           # No context
+Update files                        # Meaningless
+Add chat and also fix sidebar bug   # Two unrelated changes
+```
 
 ## Testing
 
