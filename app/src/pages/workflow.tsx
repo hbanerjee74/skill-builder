@@ -673,12 +673,6 @@ export default function WorkflowPage() {
                 Debug
               </Badge>
             )}
-            {isRunning && (
-              <Badge variant="outline" className="gap-1">
-                <Loader2 className="size-3 animate-spin" />
-                Running
-              </Badge>
-            )}
             {canStart && (
               <Button onClick={handleStartStep} size="sm">
                 {getStartButtonIcon()}
