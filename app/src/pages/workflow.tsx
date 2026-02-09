@@ -116,8 +116,11 @@ export default function WorkflowPage() {
     let cancelled = false;
     const store = useWorkflowStore.getState();
 
-    // Already loaded for this skill — skip
-    if (store.skillName === skillName) return;
+    // Already fully hydrated for this skill — skip.
+    // Must check hydrated too: React StrictMode unmounts/remounts effects,
+    // so skillName can match from the first (cancelled) run while hydration
+    // never completed.
+    if (store.skillName === skillName && store.hydrated) return;
 
     // Reset immediately so stale state from another skill doesn't linger
     initWorkflow(skillName, skillName.replace(/-/g, " "));
@@ -150,7 +153,7 @@ export default function WorkflowPage() {
       });
 
     return () => { cancelled = true; };
-  }, [skillName, initWorkflow, loadWorkflowState]);
+  }, [skillName, initWorkflow, loadWorkflowState, setHydrated]);
 
   // Reset state when moving to a new step
   useEffect(() => {
@@ -175,7 +178,7 @@ export default function WorkflowPage() {
         : "pending";
 
     saveWorkflowState(skillName, domain, currentStep, status, stepStatuses).catch(
-      () => {} // silent — best-effort persistence
+      (err) => console.warn("Failed to persist workflow state:", err)
     );
   }, [steps, currentStep, skillName, domain, hydrated]);
 
