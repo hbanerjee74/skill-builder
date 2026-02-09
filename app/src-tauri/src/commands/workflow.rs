@@ -26,7 +26,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         0 => Ok(StepConfig {
             step_id: 0,
             name: "Research Domain Concepts".to_string(),
-            prompt_template: "01-research-domain-concepts.md".to_string(),
+            prompt_template: "research-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
@@ -34,7 +34,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         2 => Ok(StepConfig {
             step_id: 2,
             name: "Research Domain".to_string(),
-            prompt_template: "02-research-patterns-and-merge.md".to_string(),
+            prompt_template: "research-patterns-and-merge.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
@@ -42,7 +42,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         4 => Ok(StepConfig {
             step_id: 4,
             name: "Reasoning".to_string(),
-            prompt_template: "06-reasoning-agent.md".to_string(),
+            prompt_template: "reasoning.md".to_string(),
             output_file: "context/decisions.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
@@ -50,7 +50,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         5 => Ok(StepConfig {
             step_id: 5,
             name: "Build Skill".to_string(),
-            prompt_template: "07-build-agent.md".to_string(),
+            prompt_template: "build.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
@@ -58,7 +58,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         6 => Ok(StepConfig {
             step_id: 6,
             name: "Validate".to_string(),
-            prompt_template: "08-validate-agent.md".to_string(),
+            prompt_template: "validate.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
@@ -66,7 +66,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         7 => Ok(StepConfig {
             step_id: 7,
             name: "Test".to_string(),
-            prompt_template: "09-test-agent.md".to_string(),
+            prompt_template: "test.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
@@ -841,13 +841,13 @@ mod tests {
     #[test]
     fn test_build_prompt() {
         let prompt = build_prompt(
-            "01-research-domain-concepts.md",
+            "research-concepts.md",
             "context/clarifications-concepts.md",
             "my-skill",
             "e-commerce",
         );
         assert!(prompt.contains("references/shared-context.md"));
-        assert!(prompt.contains("agents/01-research-domain-concepts.md"));
+        assert!(prompt.contains("agents/research-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
@@ -948,63 +948,59 @@ mod tests {
     }
 
     #[test]
-    fn test_copy_prompts_creates_dir_and_copies_md_files() {
+    fn test_copy_directory_to_copies_md_files() {
         let src = tempfile::tempdir().unwrap();
         let dest = tempfile::tempdir().unwrap();
 
         // Create source .md files
         std::fs::write(src.path().join("shared-context.md"), "# Shared").unwrap();
-        std::fs::write(src.path().join("01-research.md"), "# Research").unwrap();
+        std::fs::write(src.path().join("research-concepts.md"), "# Research").unwrap();
         // Non-.md file should be ignored
         std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
 
         let workspace = dest.path().to_str().unwrap();
-        copy_prompts_from(src.path(), workspace).unwrap();
+        copy_directory_to(src.path(), workspace, "agents").unwrap();
 
-        let prompts_dir = dest.path().join("prompts");
-        assert!(prompts_dir.is_dir());
-        assert!(prompts_dir.join("shared-context.md").exists());
-        assert!(prompts_dir.join("01-research.md").exists());
-        assert!(!prompts_dir.join("README.txt").exists());
+        let agents_dir = dest.path().join("agents");
+        assert!(agents_dir.is_dir());
+        assert!(agents_dir.join("shared-context.md").exists());
+        assert!(agents_dir.join("research-concepts.md").exists());
+        assert!(!agents_dir.join("README.txt").exists());
 
         // Verify content
-        let content = std::fs::read_to_string(prompts_dir.join("shared-context.md")).unwrap();
+        let content = std::fs::read_to_string(agents_dir.join("shared-context.md")).unwrap();
         assert_eq!(content, "# Shared");
     }
 
     #[test]
-    fn test_copy_prompts_is_idempotent() {
+    fn test_copy_directory_to_is_idempotent() {
         let src = tempfile::tempdir().unwrap();
         let dest = tempfile::tempdir().unwrap();
 
         std::fs::write(src.path().join("test.md"), "v1").unwrap();
 
         let workspace = dest.path().to_str().unwrap();
-        copy_prompts_from(src.path(), workspace).unwrap();
+        copy_directory_to(src.path(), workspace, "agents").unwrap();
 
         // Update source and copy again — should overwrite
         std::fs::write(src.path().join("test.md"), "v2").unwrap();
-        copy_prompts_from(src.path(), workspace).unwrap();
+        copy_directory_to(src.path(), workspace, "agents").unwrap();
 
         let content =
-            std::fs::read_to_string(dest.path().join("prompts").join("test.md")).unwrap();
+            std::fs::read_to_string(dest.path().join("agents").join("test.md")).unwrap();
         assert_eq!(content, "v2");
     }
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
-        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has prompts/
+        // In dev/test mode, CARGO_MANIFEST_DIR is set and the repo root has agents/
         let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())
-            .map(|p| p.join("prompts"));
+            .map(|p| p.join("agents"));
         assert!(dev_path.is_some());
-        let prompts_dir = dev_path.unwrap();
-        assert!(prompts_dir.is_dir(), "Repo root prompts/ should exist");
-        assert!(
-            prompts_dir.join("shared-context.md").exists(),
-            "shared-context.md should exist in repo prompts/"
-        );
+        let agents_dir = dev_path.unwrap();
+        assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
     }
 
     #[test]

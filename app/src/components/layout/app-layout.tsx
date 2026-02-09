@@ -5,13 +5,13 @@ import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings, saveSettings } from "@/lib/tauri";
+import { getSettings } from "@/lib/tauri";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
-  const splashShown = useSettingsStore((s) => s.splashShown);
   const navigate = useNavigate();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -22,7 +22,6 @@ export function AppLayout() {
         preferredModel: s.preferred_model,
         debugMode: s.debug_mode,
         extendedContext: s.extended_context,
-        splashShown: s.splash_shown,
       });
       setSettingsLoaded(true);
     }).catch(() => {
@@ -50,14 +49,8 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
-  const handleSplashDismiss = async () => {
-    setSettings({ splashShown: true });
-    try {
-      const current = await getSettings();
-      await saveSettings({ ...current, splash_shown: true });
-    } catch {
-      // Best effort — splash won't show again this session regardless
-    }
+  const handleSplashDismiss = () => {
+    setSplashDismissed(true);
   };
 
   return (
@@ -70,7 +63,7 @@ export function AppLayout() {
         </main>
       </div>
       <CloseGuard />
-      {settingsLoaded && !splashShown && (
+      {settingsLoaded && !splashDismissed && (
         <SplashScreen onDismiss={handleSplashDismiss} />
       )}
     </div>

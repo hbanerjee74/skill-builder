@@ -360,7 +360,7 @@ export function ReasoningChat({
       setPhase("agent_running");
 
       // Use runWorkflowStep which stages artifacts, copies prompts,
-      // and builds the proper prompt from 06-reasoning-agent.md
+      // and builds the proper prompt from agents/reasoning.md
       const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath);
       agentStartRun(agentId, "opus");
       setCurrentAgentId(agentId);

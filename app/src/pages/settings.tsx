@@ -93,7 +93,7 @@ export default function SettingsPage() {
           preferred_model: preferredModel,
           debug_mode: debugMode,
           extended_context: extendedContext,
-          splash_shown: true,
+          splash_shown: false,
         },
       })
       setSaved(true)

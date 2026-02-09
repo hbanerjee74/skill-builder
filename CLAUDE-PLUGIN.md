@@ -32,14 +32,15 @@ skill-builder/
 │   └── start/
 │       └── SKILL.md                 # Entry point: /skill-builder:start (coordinator)
 ├── agents/
-│   ├── research-concepts.md         # Step 1 — domain concepts researcher
-│   ├── research-patterns.md         # Step 3a — business patterns researcher
-│   ├── research-data.md             # Step 3b — data modeling researcher
-│   ├── merge.md                     # Step 4 — question deduplicator
-│   ├── reasoning.md                 # Step 6 — reasoning + decision engine
-│   ├── build.md                     # Step 7 — skill file creator
-│   ├── validate.md                  # Step 8 — best practices validator
-│   └── test.md                      # Step 9 — test generator + evaluator
+│   ├── research-concepts.md                # Domain concepts orchestrator (spawns entity + metrics researchers)
+│   ├── research-patterns-and-merge.md      # Patterns + data + merge orchestrator (spawns 3 sub-agents)
+│   ├── research-patterns.md                # Business patterns researcher (sub-agent)
+│   ├── research-data.md                    # Data modeling researcher (sub-agent)
+│   ├── merge.md                            # Question deduplicator (sub-agent)
+│   ├── reasoning.md                        # Reasoning + decision engine
+│   ├── build.md                            # Skill file creator (spawns reference writers)
+│   ├── validate.md                         # Best practices validator (spawns parallel validators)
+│   └── test.md                             # Test generator + evaluator (spawns parallel testers)
 ├── references/
 │   └── shared-context.md            # Shared context read by all agents at runtime
 ├── CLAUDE.md                        # This file (plugin dev instructions)

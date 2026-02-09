@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 
 interface SplashScreenProps {
   onDismiss: () => void;
@@ -8,10 +7,13 @@ interface SplashScreenProps {
 export function SplashScreen({ onDismiss }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
 
-  const handleDismiss = () => {
-    setFading(true);
-    setTimeout(onDismiss, 400);
-  };
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setFading(true);
+      setTimeout(onDismiss, 400);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
 
   return (
     <div
@@ -43,10 +45,6 @@ export function SplashScreen({ onDismiss }: SplashScreenProps) {
             without notice. Use at your own risk.
           </p>
         </div>
-
-        <Button size="lg" onClick={handleDismiss} className="w-full">
-          Get Started
-        </Button>
       </div>
     </div>
   );

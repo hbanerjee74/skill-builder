@@ -50,8 +50,7 @@ Backend (Rust) → Agent Orchestrator → Node.js Sidecar
 - `app/src/` - React frontend
 - `app/src-tauri/` - Rust backend
 - `app/sidecar/` - Node.js agent runner
-- `prompts/` - Agent prompt files (CLI)
-- `agents/` - Agent prompt files (plugin)
+- `agents/` - Agent prompt files (both platforms)
 - `references/` - Shared context files
 
 ## Runtime Dependency
