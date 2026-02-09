@@ -5,7 +5,6 @@ export interface WorkflowStep {
   name: string;
   description: string;
   status: "pending" | "in_progress" | "waiting_for_user" | "completed" | "error";
-  agentModel?: string;
 }
 
 interface WorkflowState {
@@ -30,7 +29,7 @@ const defaultSteps: WorkflowStep[] = [
     name: "Research Domain Concepts",
     description: "Research key concepts, terminology, and frameworks for the domain",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 1,
@@ -43,21 +42,21 @@ const defaultSteps: WorkflowStep[] = [
     name: "Research Patterns",
     description: "Research business patterns and workflows for the domain",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 3,
     name: "Research Data Modeling",
     description: "Research data structures, relationships, and modeling for the domain",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 4,
     name: "Merge Clarifications",
     description: "Deduplicate and merge clarification questions",
     status: "pending",
-    agentModel: "haiku",
+
   },
   {
     id: 5,
@@ -70,28 +69,28 @@ const defaultSteps: WorkflowStep[] = [
     name: "Reasoning",
     description: "Analyze responses for implications, gaps, and contradictions",
     status: "pending",
-    agentModel: "opus",
+
   },
   {
     id: 7,
     name: "Build Skill",
     description: "Generate skill files from decisions",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 8,
     name: "Validate",
     description: "Validate skill against best practices",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 9,
     name: "Test",
     description: "Generate and evaluate test prompts",
     status: "pending",
-    agentModel: "sonnet",
+
   },
   {
     id: 10,

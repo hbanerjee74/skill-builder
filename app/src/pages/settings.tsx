@@ -90,7 +90,7 @@ export default function SettingsPage() {
       })
       setSaved(true)
       setSaving(false)
-      setTimeout(() => setSaved(false), 3000)
+      setTimeout(() => setSaved(false), 1000)
 
       // Sync Zustand store so other pages see updated settings
       setStoreSettings({
