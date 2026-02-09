@@ -90,11 +90,26 @@ Keep SKILL.md under 500 lines. If a section grows past a few paragraphs, it belo
 
 ## Phase 4: Review and Fix Gaps
 
-After all reference files are written:
-1. Read each reference file
-2. Cross-check against `decisions.md` to ensure every decision is addressed somewhere in the skill files
-3. Fix any gaps, inconsistencies, or missing content
-4. Ensure SKILL.md's pointers accurately describe each reference file
+Spawn a fresh **reviewer** teammate to do the review with a clean context (the leader's context is bloated from orchestration). Use the **Task tool**:
+
+```
+Task tool parameters:
+  name: "reviewer"
+  team_name: "skill-build"
+  subagent_type: "general-purpose"
+  mode: "bypassPermissions"
+  model: "sonnet"
+```
+
+The reviewer's prompt should instruct it to:
+1. Read `decisions.md` from the context directory
+2. Read `SKILL.md` and every file in `references/`
+3. Cross-check against `decisions.md` to ensure every decision is addressed somewhere
+4. Fix any gaps, inconsistencies, or missing content directly in the files
+5. Ensure SKILL.md's pointers accurately describe each reference file
+6. Use TaskUpdate to mark its task as completed when done
+
+Wait for the reviewer to finish, then proceed to cleanup.
 
 ## Phase 5: Clean Up
 

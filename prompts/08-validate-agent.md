@@ -62,17 +62,31 @@ You lead a validation team that checks a completed skill against best practices 
 
 4. After all teammates finish, check the task list with **TaskList** to confirm all tasks are completed.
 
-## Phase 3: Consolidate and Fix
+## Phase 3: Consolidate, Fix, and Write Report
 
-1. Read all three validation reports from the context directory.
-2. For each FAIL or MISSING finding:
-   - If the fix is straightforward (trimming line count, adding missing metadata, removing unnecessary files, adding missing coverage), fix it directly.
-   - If a fix requires judgment calls that could change the skill's content significantly, flag it for manual review.
-3. Re-check fixed items to confirm they now pass.
+Spawn a fresh **reporter** teammate to consolidate the three reports, fix issues, and write the final log. This keeps the context clean (the leader's context is bloated from orchestration). Use the **Task tool**:
 
-## Phase 4: Write Validation Log
+```
+Task tool parameters:
+  name: "reporter"
+  team_name: "skill-validate"
+  subagent_type: "general-purpose"
+  mode: "bypassPermissions"
+  model: "sonnet"
+```
 
-Write `agent-validation-log.md` to the context directory:
+The reporter's prompt should instruct it to:
+
+1. Read the three validation reports:
+   - `context/validation-coverage.md`
+   - `context/validation-structural.md`
+   - `context/validation-content.md`
+2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
+3. For each FAIL or MISSING finding:
+   - If the fix is straightforward (trimming line count, adding missing metadata, removing unnecessary files, adding missing coverage), fix it directly in the skill files
+   - If a fix requires judgment calls that could change content significantly, flag it for manual review
+4. Re-check fixed items to confirm they now pass
+5. Write `agent-validation-log.md` to the context directory with this format:
 
 ```
 # Validation Log
@@ -113,11 +127,14 @@ Write `agent-validation-log.md` to the context directory:
 [List anything that couldn't be auto-fixed with suggestions]
 ```
 
-## Phase 5: Clean Up
+6. Delete the three temporary validation report files when done
+7. Use TaskUpdate to mark its task as completed
 
-1. Delete the temporary validation report files (`context/validation-coverage.md`, `context/validation-structural.md`, `context/validation-content.md`).
-2. Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`).
-3. Clean up with **TeamDelete**.
+Wait for the reporter to finish, then proceed to cleanup.
+
+## Phase 4: Clean Up
+
+Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`), then clean up with **TeamDelete**.
 
 ## Output Files
 - `agent-validation-log.md` in the context directory

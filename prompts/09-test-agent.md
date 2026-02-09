@@ -91,23 +91,29 @@ You lead a testing team that generates realistic test prompts for a completed sk
 
 4. After all teammates finish, check the task list with **TaskList** to confirm all tasks are completed.
 
-## Phase 3: Consolidate Results
+## Phase 3: Consolidate and Write Report
 
-1. Read all test result files from the context directory (`context/test-result-1.md` through `context/test-result-N.md`).
+Spawn a fresh **reporter** teammate to consolidate results and write the final report. This keeps the context clean (the leader's context is bloated from orchestration). Use the **Task tool**:
 
-2. Identify patterns in the test results:
+```
+Task tool parameters:
+  name: "reporter"
+  team_name: "skill-test"
+  subagent_type: "general-purpose"
+  mode: "bypassPermissions"
+  model: "sonnet"
+```
+
+The reporter's prompt should instruct it to:
+
+1. Read all test result files from the context directory (`context/test-result-1.md` through `context/test-result-N.md`)
+2. Read the skill files (`SKILL.md` and `references/`) to understand context
+3. Identify patterns in the test results:
    - Are there entire topic areas the skill doesn't cover?
    - Are there areas where the skill is too vague to be actionable?
    - Are there areas where content exists in reference files but SKILL.md doesn't point to them?
-
-3. Suggest 5–8 additional prompt categories the PM should write based on their domain expertise — things that require insider knowledge the research agents wouldn't have. Format as:
-   - **Category**: [what area]
-   - **Why the PM should write this**: [what insider knowledge is needed]
-   - **Example prompt**: [a sample]
-
-## Phase 4: Write Test Report
-
-Write `test-skill.md` to the context directory:
+4. Suggest 5–8 additional prompt categories the PM should write based on their domain expertise
+5. Write `test-skill.md` to the context directory with this format:
 
 ```
 # Skill Test Report
@@ -135,11 +141,14 @@ Write `test-skill.md` to the context directory:
 [Categories and examples for the PM to add]
 ```
 
-## Phase 5: Clean Up
+6. Delete the temporary test result files when done
+7. Use TaskUpdate to mark its task as completed
 
-1. Delete the temporary test result files (`context/test-result-1.md` through `context/test-result-N.md`).
-2. Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`).
-3. Clean up with **TeamDelete**.
+Wait for the reporter to finish, then proceed to cleanup.
+
+## Phase 4: Clean Up
+
+Send shutdown requests to all teammates via **SendMessage** (type: `shutdown_request`), then clean up with **TeamDelete**.
 
 ## Output Files
 - `test-skill.md` in the context directory
