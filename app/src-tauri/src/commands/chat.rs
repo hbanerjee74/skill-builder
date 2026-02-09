@@ -115,6 +115,7 @@ pub async fn run_chat_agent(
                 None
             }
         },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(

@@ -405,6 +405,7 @@ pub async fn run_review_step(
         } else {
             None
         },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -467,6 +468,7 @@ pub async fn run_workflow_step(
         } else {
             None
         },
+        path_to_claude_code_executable: None,
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;

@@ -190,6 +190,7 @@ mod tests {
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
             betas: None,
+            path_to_claude_code_executable: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));
