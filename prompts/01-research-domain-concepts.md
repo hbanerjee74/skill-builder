@@ -7,6 +7,15 @@ You orchestrate parallel research into domain concepts by spawning sub-agents vi
 - Read `shared-context.md` for the skill builder's purpose and file formats.
 - The coordinator will tell you **which domain** to research and **where to write** your output file.
 
+## Before You Start
+
+**Check for existing output file:**
+- Use the Glob or Read tool to check if the output file (the path provided by the coordinator, typically `context/clarifications-concepts.md`) already exists.
+- **If it exists:** Read it first. Your goal is to UPDATE and IMPROVE the existing file rather than rewriting from scratch. Preserve any existing questions that are still relevant, refine wording where needed, and add new questions discovered during your research. Remove questions that are no longer applicable.
+- **If it doesn't exist:** Proceed normally with fresh research.
+
+This same pattern applies to the sub-agents below — instruct them to check for their output files (`context/research-entities.md`, `context/research-metrics.md`) and update rather than overwrite if they exist.
+
 ## Phase 1: Parallel Research
 
 Spawn two sub-agents via the **Task tool** — both in the **same turn** so they run in parallel:
@@ -14,6 +23,7 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 **Sub-agent 1: Entity & Relationship Research** (`name: "entity-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
 Prompt it to:
+- **Before starting research:** Check if `context/research-entities.md` already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
 - Research key entities and their relationships for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory)
 - Research common analysis patterns (trend analysis, cohort analysis, forecasting)
 - Research cross-functional dependencies between entities
@@ -23,6 +33,7 @@ Prompt it to:
 **Sub-agent 2: Metrics & KPI Research** (`name: "metrics-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
 Prompt it to:
+- **Before starting research:** Check if `context/research-metrics.md` already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
 - Research core metrics and KPIs that matter for this domain
 - Research how these metrics are typically calculated and what business rules affect them
 - Research metrics that vary significantly by industry vertical or company size

@@ -12,6 +12,13 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions
 
+## Before You Start
+
+Check if `SKILL.md` already exists in the skill output directory.
+
+- **If it exists**: Read it and all files in `references/`. Compare against `decisions.md` to identify what changed. Only rewrite files that need updating — leave unchanged files alone. Skip Phase 1 planning if the structure is still valid.
+- **If it doesn't exist**: Proceed normally from Phase 1.
+
 ## Phase 1: Plan the Skill Structure
 
 Read `decisions.md` and `clarifications.md`. Then plan the folder structure:
@@ -36,7 +43,9 @@ Decide how many reference files are needed based on the decisions. Write out the
 
 ## Phase 2: Write SKILL.md
 
-Write SKILL.md yourself (do NOT delegate this to a sub-agent). It should contain:
+If SKILL.md already exists, read it first and update only the sections affected by changed decisions — don't rewrite from scratch unless the content is substantially wrong. Do NOT delegate SKILL.md to a sub-agent.
+
+If SKILL.md doesn't exist, write it from scratch. It should contain:
 - **Metadata block** at the top: skill name, one-line description (~100 words max)
 - **Overview**: what domain this covers, who it's for, key concepts at a glance
 - **When to use this skill**: trigger conditions / user intent patterns
@@ -58,6 +67,10 @@ You are writing a single reference file for a skill about [DOMAIN].
 
 Read the file at [path to decisions.md] for context on what decisions were made.
 Read the file at [path to SKILL.md] to understand how this reference fits the overall skill.
+
+If the file at [full path to references/topic-name.md] already exists, read it first.
+Update it to reflect the current decisions — don't rewrite from scratch unless the content is substantially wrong.
+If it doesn't exist, write it fresh.
 
 Write the file: [full path to references/topic-name.md]
 
