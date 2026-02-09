@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import {
   Loader2,
   Square,
+  Pause,
   CheckCircle2,
   XCircle,
   Clock,
@@ -198,7 +199,12 @@ function MessageItem({ message }: { message: AgentMessage }) {
   return null;
 }
 
-export function AgentOutputPanel({ agentId }: { agentId: string }) {
+interface AgentOutputPanelProps {
+  agentId: string;
+  onPause?: () => void;
+}
+
+export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -291,6 +297,17 @@ export function AgentOutputPanel({ agentId }: { agentId: string }) {
             <Badge variant="secondary" className="text-xs">
               ${run.totalCost.toFixed(4)}
             </Badge>
+          )}
+          {run.status === "running" && onPause && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={onPause}
+            >
+              <Pause className="size-3" />
+              Pause
+            </Button>
           )}
           {run.status === "running" && (
             <Button

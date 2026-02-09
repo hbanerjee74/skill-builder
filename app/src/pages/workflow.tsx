@@ -37,6 +37,7 @@ import {
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
+  cancelAgent,
   type PackageResult,
 } from "@/lib/tauri";
 
@@ -393,6 +394,23 @@ export default function WorkflowPage() {
     }
   };
 
+  const handlePauseAgent = async () => {
+    if (!activeAgentId) return;
+    try {
+      await cancelAgent(activeAgentId);
+    } catch {
+      // Agent may already be finished
+    }
+    // Capture whatever the agent wrote to disk
+    if (workspacePath) {
+      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
+    }
+    setActiveAgent(null);
+    updateStepStatus(currentStep, "pending");
+    setRunning(false);
+    toast.success(`Step ${currentStep + 1} paused — progress saved`);
+  };
+
   const handleReviewContinue = async () => {
     // Auto-fill empty Answer fields with the corresponding Recommendation
     let content = reviewContent;
@@ -577,7 +595,7 @@ export default function WorkflowPage() {
 
     // Single agent with output
     if (activeAgentId) {
-      return <AgentOutputPanel agentId={activeAgentId} />;
+      return <AgentOutputPanel agentId={activeAgentId} onPause={handlePauseAgent} />;
     }
 
     // Package step empty state
