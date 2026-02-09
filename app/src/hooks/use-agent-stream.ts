@@ -40,12 +40,19 @@ function parseContent(message: AgentMessagePayload["message"]): string | undefin
 // the race condition where Tauri events arrive before a React effect sets up
 // the listener.
 let initialized = false;
+let shuttingDown = false;
+
+/** Call before destroying the window to suppress late agent-exit error events. */
+export function markShuttingDown() {
+  shuttingDown = true;
+}
 
 export function initAgentStream() {
   if (initialized) return;
   initialized = true;
 
   listen<AgentMessagePayload>("agent-message", (event) => {
+    if (shuttingDown) return;
     const { agent_id, message } = event.payload;
 
     useAgentStore.getState().addMessage(agent_id, {
@@ -57,6 +64,7 @@ export function initAgentStream() {
   });
 
   listen<AgentExitPayload>("agent-exit", (event) => {
+    if (shuttingDown) return;
     useAgentStore.getState().completeRun(
       event.payload.agent_id,
       event.payload.success
