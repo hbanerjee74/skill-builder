@@ -10,7 +10,7 @@ A multi-agent workflow for creating Anthropic Claude skills — domain knowledge
 | **CLI** (Claude Desktop Cowork) | Production | Say "start" in a Cowork session — see `cowork/cowork.md` |
 | **Desktop App** (Tauri) | In development (`feature/desktop-ui`) | See [Desktop App](#desktop-app) below |
 
-Both CLI platforms run the same 10-step workflow orchestrated by the coordinator in `CLAUDE.md`. The desktop app replaces the CLI with a GUI — workflow dashboard, form-based Q&A, streaming agent output, and a chat interface for post-build editing.
+Both CLI platforms run the same 9-step workflow orchestrated by the coordinator in `CLAUDE.md`. The desktop app replaces the CLI with a GUI — workflow dashboard, form-based Q&A, streaming agent output, and a chat interface for post-build editing.
 
 ## Workflow Overview
 
@@ -19,14 +19,13 @@ Both CLI platforms run the same 10-step workflow orchestrated by the coordinator
 | **Initialization** | Choose a domain and skill name | Provide domain, confirm name |
 | **Step 1** | Research agent identifies key entities, metrics, KPIs | Wait |
 | **Step 2** | Review domain concept questions | Answer each question |
-| **Step 3** | Two agents research business patterns + data modeling (parallel) | Wait |
-| **Step 4** | Merge agent deduplicates questions | Wait |
-| **Step 5** | Review merged clarification questions | Answer each question |
-| **Step 6** | Reasoning agent analyzes answers, finds gaps/contradictions | Confirm reasoning, answer follow-ups |
-| **Step 7** | Build agent creates the skill files | Review skill output |
-| **Step 8** | Validator checks against best practices | Review validation log |
-| **Step 9** | Tester generates and runs test prompts | Review test results |
-| **Step 10** | Package into a `.skill` zip archive | Done |
+| **Step 3** | Orchestrator spawns parallel research + merge sub-agents | Wait |
+| **Step 4** | Review merged clarification questions | Answer each question |
+| **Step 5** | Reasoning agent analyzes answers, finds gaps/contradictions | Confirm reasoning, answer follow-ups |
+| **Step 6** | Build agent creates the skill files | Review skill output |
+| **Step 7** | Validator checks against best practices | Review validation log |
+| **Step 8** | Tester generates and runs test prompts | Review test results |
+| **Step 9** | Package into a `.skill` zip archive | Done |
 
 ## Directory Structure
 
@@ -39,6 +38,7 @@ skill-builder/
 ├── prompts/                   # Agent prompt files (shared by CLI and desktop app)
 │   ├── shared-context.md
 │   ├── 01-research-domain-concepts.md
+│   ├── 02-research-patterns-and-merge.md
 │   ├── 03a-research-business-patterns.md
 │   ├── 03b-research-data-modeling.md
 │   ├── 04-merge-clarifications.md
@@ -56,7 +56,7 @@ skill-builder/
 │   ├── src-tauri/             # Rust backend
 │   ├── package.json
 │   └── vite.config.ts
-└── <skillname>.skill          # Final zip archive (CLI Step 10)
+└── <skillname>.skill          # Final zip archive (CLI Step 9)
 ```
 
 ## CLI Workflow
@@ -162,8 +162,8 @@ See `CLAUDE.md` for full testing documentation including mock strategies and the
 | 1. Foundation | Tauri scaffold, settings, dashboard, skill CRUD | Done |
 | 2. Core Agent Loop | Sidecar + SDK, agent commands, streaming UI, Step 1 E2E | Done |
 | 3. Q&A Forms | Markdown parser, form components, Steps 2 and 5 | Done |
-| 4. Full Workflow | All 10 steps, parallel agents, reasoning loop, packaging | Done |
+| 4. Full Workflow | All 9 steps, orchestrator sub-agents, reasoning loop, packaging | Done |
 | 5. SQLite Migration | Replace plugin-store with rusqlite, remove GitHub/git | Done |
 | 6. Editor | CodeMirror editor, split pane, file tree, auto-save | Done |
-| 7. Chat | Conversational edit + review/suggest modes | Not started |
-| 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Not started |
+| 7. Chat | Conversational edit + review/suggest modes | Done |
+| 8. Polish | Error states, retry UX, loading states, keyboard shortcuts | Done |

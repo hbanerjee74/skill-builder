@@ -56,7 +56,7 @@ app/
 │   ├── router.tsx                    # TanStack Router routes
 │   ├── pages/                        # Page components
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   ├── workflow.tsx              # Workflow wizard (10-step)
+│   │   ├── workflow.tsx              # Workflow wizard (9-step)
 │   │   ├── editor.tsx                # Skill file editor
 │   │   └── settings.tsx              # API key + workspace config
 │   ├── components/
@@ -68,11 +68,10 @@ app/
 │   │   ├── new-skill-dialog.tsx      # Create skill dialog
 │   │   ├── delete-skill-dialog.tsx   # Delete confirmation
 │   │   ├── close-guard.tsx           # Block close while agents running
-│   │   ├── clarification-form.tsx    # Q&A form (Steps 2, 5)
+│   │   ├── clarification-form.tsx    # Q&A form (Steps 1, 3)
 │   │   ├── clarification-raw.tsx     # Raw markdown fallback
 │   │   ├── agent-output-panel.tsx    # Streaming agent output
-│   │   ├── parallel-agent-panel.tsx  # Dual-panel (Step 3)
-│   │   ├── reasoning-chat.tsx        # Step 6 chat interface
+│   │   ├── reasoning-chat.tsx        # Step 4 chat interface
 │   │   └── workflow-sidebar.tsx      # Step progression sidebar
 │   ├── stores/                       # Zustand state
 │   │   ├── skill-store.ts
@@ -101,7 +100,7 @@ app/
 │   │   ├── commands/                # Tauri IPC handlers
 │   │   │   ├── settings.rs          # get_settings, save_settings, test_api_key
 │   │   │   ├── skill.rs             # list_skills, create_skill, delete_skill
-│   │   │   ├── workflow.rs          # run_workflow_step, run_parallel_agents, package_skill
+│   │   │   ├── workflow.rs          # run_workflow_step, package_skill
 │   │   │   ├── agent.rs             # start_agent, cancel_agent (spawns sidecar)
 │   │   │   ├── node.rs              # check_node (Node.js version check)
 │   │   │   └── lifecycle.rs         # check_workspace_path, has_running_agents
@@ -136,9 +135,9 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 ### Key benefits
 
 - **No prompt modifications needed** — existing `prompts/*.md` work as-is since the SDK provides the same tools as Claude Code
-- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 3 parallel agents)
+- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 2 orchestrator)
 - **No tool execution loop to build** — SDK handles Claude → tool call → result → Claude internally
-- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 6 reasoning)
+- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 4 reasoning)
 
 ### Sidecar config (sent via stdin)
 
@@ -166,10 +165,10 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 | Agent | Model | SDK model value |
 | --- | --- | --- |
-| Research (Steps 1, 3) | Sonnet | `"sonnet"` |
-| Merger (Step 4) | Haiku | `"haiku"` |
-| Reasoner (Step 6) | Opus | `"opus"` |
-| Builder/Validator/Tester (Steps 7-9) | Sonnet | `"sonnet"` |
+| Research (Steps 0, 2) | Sonnet | `"sonnet"` |
+| Merger (Step 2 sub-agent) | Haiku | `"haiku"` |
+| Reasoner (Step 4) | Opus | `"opus"` |
+| Builder/Validator/Tester (Steps 5-7) | Sonnet | `"sonnet"` |
 
 ## Node.js Dependency
 
@@ -182,20 +181,19 @@ On startup, the Rust backend runs `node --version`:
 
 The sidecar JS file (`agent-runner.js`) is bundled with the app as a Tauri resource. It's a single esbuild-bundled file containing the SDK and all dependencies — no `npm install` needed at runtime.
 
-## Workflow (10 steps)
+## Workflow (9 steps)
 
 The app replicates the CLI workflow. Each step is a state in the workflow state machine:
 
 1. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
 2. **Domain Concepts Review** — user answers questions via form UI
-3. **Research Patterns + Data Modeling** — two agents run in parallel (two sidecar processes)
-4. **Merge** — deduplicate questions into `clarifications.md`
-5. **Human Review** — user answers merged questions via form UI
-6. **Reasoning** — multi-turn conversation, produces `decisions.md`
-7. **Build** — creates SKILL.md + reference files
-8. **Validate** — checks against best practices
-9. **Test** — generates and evaluates test prompts
-10. **Package** — creates `.skill` zip archive
+3. **Research Domain** — orchestrator spawns parallel research sub-agents + merger, writes `clarifications.md`
+4. **Human Review** — user answers merged questions via form UI
+5. **Reasoning** — multi-turn conversation, produces `decisions.md`
+6. **Build Skill** — creates SKILL.md + reference files
+7. **Validate** — checks against best practices
+8. **Test** — generates and evaluates test prompts
+9. **Package** — creates `.skill` zip archive
 
 ## Data Model (repo structure)
 
@@ -219,6 +217,7 @@ The app replicates the CLI workflow. Each step is a state in the workflow state 
 ## Key Reference Files
 
 - `prompts/shared-context.md` — markdown formats (used as-is by agents via SDK)
+- `prompts/02-research-patterns-and-merge.md` — orchestrator (spawns parallel sub-agents + merger)
 - `prompts/06-reasoning-agent.md` — most complex agent (multi-turn with follow-ups)
 - `prompts/07-build-agent.md` — skill output structure (SKILL.md + references/)
 - `app/PLAN.md` — full architecture, data model, UI specs, implementation phases

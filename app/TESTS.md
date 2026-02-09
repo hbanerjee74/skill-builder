@@ -130,21 +130,21 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Submit → answers written back to markdown file on disk
 - [ ] Re-open → previously answered questions show saved answers
 
-### Step 2 + 5 End-to-End
-- [ ] Step 2: `clarifications-concepts.md` rendered as form
+### Step 1 + 3 End-to-End
+- [ ] Step 1: `clarifications-concepts.md` rendered as form
 - [ ] Answer all questions → submit → file updated on disk
-- [ ] Step 5: `clarifications.md` rendered as form
+- [ ] Step 3: `clarifications.md` rendered as form
 - [ ] Answer all questions → submit → file updated on disk
 
 ## Phase 4: Full Workflow
 
-### Step 3 (Parallel Agents)
-- [ ] Two agents start simultaneously
-- [ ] Each streams to its own panel
-- [ ] Both complete before Step 4 begins
+### Step 2 (Research Domain — Orchestrator)
+- [ ] Orchestrator spawns two parallel research sub-agents + merger
 - [ ] `clarifications-patterns.md` and `clarifications-data.md` both written
+- [ ] Merger produces `clarifications.md`
+- [ ] Step completes when all sub-agents finish
 
-### Step 6 (Reasoning)
+### Step 4 (Reasoning)
 - [ ] Multi-turn conversation displayed in chat-like view
 - [ ] Reasoning summary shown to user
 - [ ] Follow-up questions detected and prompted
@@ -152,13 +152,13 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] `decisions.md` written as clean snapshot (not cumulative)
 - [ ] Loop ends when all clarifications resolved
 
-### Steps 7-9 (Build/Validate/Test)
-- [ ] Step 7: SKILL.md + reference files created in skill directory
-- [ ] Step 8: Validation log written, pass/fail summary shown
-- [ ] Step 9: Test results written, pass/partial/fail summary shown
-- [ ] If Step 9 finds issues → option to loop back to Step 7
+### Steps 5-7 (Build/Validate/Test)
+- [ ] Step 5: SKILL.md + reference files created in skill directory
+- [ ] Step 6: Validation log written, pass/fail summary shown
+- [ ] Step 7: Test results written, pass/partial/fail summary shown
+- [ ] If Step 7 finds issues → option to loop back to Step 5
 
-### Step 10 (Package)
+### Step 8 (Package)
 - [ ] `.skill` zip archive created in skill folder
 - [ ] Archive contains SKILL.md + references/
 - [ ] Workflow state marked "completed"
@@ -167,7 +167,7 @@ The checklists below cover manual QA scenarios not yet covered by automated test
 - [ ] Close app mid-workflow → relaunch → resume from correct step
 - [ ] Completed steps skipped on resume
 - [ ] In-progress step re-runs from beginning
-- [ ] Review steps (2, 5) show form with previous answers on resume
+- [ ] Review steps (1, 3) show form with previous answers on resume
 
 ## Phase 5: SQLite Migration
 

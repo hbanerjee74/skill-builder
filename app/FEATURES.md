@@ -46,7 +46,7 @@
 ### Frontend: Streaming UI
 - [x] Agent output streaming panel (real-time markdown display from Tauri events)
 - [x] Agent status display (model, elapsed time, token usage from result message)
-- [x] Workflow store (10 workflow steps with status tracking)
+- [x] Workflow store (9 workflow steps with status tracking)
 - [x] Agent store (run state, streaming events, cost tracking)
 - [x] `use-agent-stream` hook (subscribe to Tauri agent-message/agent-exit events)
 - [x] Workflow wizard page — step progression sidebar + content area
@@ -67,28 +67,26 @@
 - [x] Frontend: Question list renderer (parsed from markdown, with recommendations)
 - [x] Frontend: Raw markdown fallback for unparseable questions
 - [x] Frontend: Form submission → serialize back to exact markdown format
-- [x] Step 2 end-to-end: view questions as form → answer → save to file
-- [x] Step 5 end-to-end: view merged questions as form → answer → save
+- [x] Step 1 end-to-end: view questions as form → answer → save to file
+- [x] Step 3 end-to-end: view merged questions as form → answer → save
 - [x] Tests: 10 clarification form component tests + 7 Rust parser unit tests
 
 ## Phase 4: Full Workflow
 
 - [x] Rust: Workflow state machine (step ordering, transitions, gates)
-- [x] Rust: Step 3 — parallel agents (spawn two sidecar processes concurrently)
-- [x] Rust: Step 4 — merge agent execution
-- [x] Rust: Step 6 — reasoning agent with session resume for multi-turn
-- [x] Rust: Step 6 — follow-up question detection in reasoning chat
-- [x] Rust: Step 7 — build agent execution
-- [x] Rust: Step 8 — validator agent execution
-- [x] Rust: Step 9 — tester agent execution
-- [x] Rust: Step 10 — package skill as .skill zip archive
-- [x] Frontend: Step 3 — dual streaming panels (parallel agent output)
-- [x] Frontend: Step 6 — chat-like view for multi-turn reasoning
-- [x] Frontend: Step 6 — follow-up question prompt + re-run via session resume
-- [x] Frontend: Step 7-9 — agent output + summary display
-- [x] Frontend: Step 10 — package confirmation
+- [x] Rust: Step 2 — orchestrator spawns parallel research sub-agents + merger
+- [x] Rust: Step 4 — reasoning agent with session resume for multi-turn
+- [x] Rust: Step 4 — follow-up question detection in reasoning chat
+- [x] Rust: Step 5 — build agent execution
+- [x] Rust: Step 6 — validator agent execution
+- [x] Rust: Step 7 — tester agent execution
+- [x] Rust: Step 8 — package skill as .skill zip archive
+- [x] Frontend: Step 4 — chat-like view for multi-turn reasoning
+- [x] Frontend: Step 4 — follow-up question prompt + re-run via session resume
+- [x] Frontend: Step 5-7 — agent output + summary display
+- [x] Frontend: Step 8 — package confirmation
 - [x] Frontend: Workflow resume (load state, skip completed steps)
-- [x] Full 10-step workflow end-to-end
+- [x] Full 9-step workflow end-to-end
 
 ## Phase 5: SQLite Migration (replaced Git Integration)
 
