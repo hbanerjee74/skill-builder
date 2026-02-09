@@ -102,9 +102,10 @@ fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String>
     use tauri::Manager;
 
     // Production: Tauri resource directory
+    // Check for shared-context.md to distinguish real prompts from placeholder dirs
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         let prompts = resource_dir.join("prompts");
-        if prompts.is_dir() {
+        if prompts.join("shared-context.md").is_file() {
             return Ok(prompts);
         }
     }
