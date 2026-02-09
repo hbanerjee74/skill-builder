@@ -636,9 +636,17 @@ pub fn save_workflow_state(
 /// Output files produced by each step, relative to the skill directory.
 fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
-        0 => vec!["context/clarifications-concepts.md"],
+        0 => vec![
+            "context/research-entities.md",
+            "context/research-metrics.md",
+            "context/clarifications-concepts.md",
+        ],
         1 => vec![],  // Human review
-        2 => vec!["context/clarifications.md"],
+        2 => vec![
+            "context/clarifications-patterns.md",
+            "context/clarifications-data.md",
+            "context/clarifications.md",
+        ],
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
