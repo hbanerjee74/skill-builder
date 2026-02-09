@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
+    pub preferred_model: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -11,6 +12,7 @@ impl Default for AppSettings {
         Self {
             anthropic_api_key: None,
             workspace_path: None,
+            preferred_model: None,
         }
     }
 }
@@ -36,7 +38,6 @@ pub struct SkillSummary {
 pub struct StepConfig {
     pub step_id: u32,
     pub name: String,
-    pub model: String,
     pub prompt_template: String,
     pub output_file: String,
     pub allowed_tools: Vec<String>,
@@ -143,6 +144,7 @@ mod tests {
         let settings = AppSettings::default();
         assert!(settings.anthropic_api_key.is_none());
         assert!(settings.workspace_path.is_none());
+        assert!(settings.preferred_model.is_none());
     }
 
     #[test]
@@ -150,6 +152,7 @@ mod tests {
         let settings = AppSettings {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
+            preferred_model: Some("sonnet".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -160,6 +163,10 @@ mod tests {
         assert_eq!(
             deserialized.workspace_path.as_deref(),
             Some("/home/user/skills")
+        );
+        assert_eq!(
+            deserialized.preferred_model.as_deref(),
+            Some("sonnet")
         );
     }
 

@@ -8,85 +8,84 @@ use crate::types::{
     WorkflowStateResponse,
 };
 
-const DEFAULT_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
+const RESEARCH_TOOLS: &[&str] = &["Read", "Write", "Glob", "Grep"];
+const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
-// Explicit model IDs to avoid SDK shorthand resolution issues
-const MODEL_SONNET: &str = "claude-sonnet-4-5-20250929";
-const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
-const MODEL_OPUS: &str = "claude-opus-4-6";
+/// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
+/// If the input is already a full ID, pass it through unchanged.
+pub fn resolve_model_id(shorthand: &str) -> String {
+    match shorthand {
+        "sonnet" => "claude-sonnet-4-5-20250929".to_string(),
+        "haiku" => "claude-haiku-4-5-20251001".to_string(),
+        "opus" => "claude-opus-4-6".to_string(),
+        other => other.to_string(), // passthrough for full IDs
+    }
+}
 
 fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
             step_id: 0,
             name: "Research Domain Concepts".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         2 => Ok(StepConfig {
             step_id: 2,
             name: "Research Patterns".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "03a-research-business-patterns.md".to_string(),
             output_file: "context/clarifications-patterns.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         3 => Ok(StepConfig {
             step_id: 3,
             name: "Research Data Modeling".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "03b-research-data-modeling.md".to_string(),
             output_file: "context/clarifications-data.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 50,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         4 => Ok(StepConfig {
             step_id: 4,
             name: "Merge Clarifications".to_string(),
-            model: MODEL_HAIKU.to_string(),
             prompt_template: "04-merge-clarifications.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 30,
+            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 15,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
             name: "Reasoning".to_string(),
-            model: MODEL_OPUS.to_string(),
             prompt_template: "06-reasoning-agent.md".to_string(),
             output_file: "context/decisions.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
         }),
         7 => Ok(StepConfig {
             step_id: 7,
             name: "Build".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "07-build-agent.md".to_string(),
             output_file: "SKILL.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 80,
         }),
         8 => Ok(StepConfig {
             step_id: 8,
             name: "Validate".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "08-validate-agent.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         9 => Ok(StepConfig {
             step_id: 9,
             name: "Test".to_string(),
-            model: MODEL_SONNET.to_string(),
             prompt_template: "09-test-agent.md".to_string(),
             output_file: "context/test-skill.md".to_string(),
-            allowed_tools: DEFAULT_TOOLS.iter().map(|s| s.to_string()).collect(),
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         _ => Err(format!(
@@ -181,6 +180,15 @@ fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
     settings
         .anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())
+}
+
+fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
+    let conn = db.0.lock().ok();
+    let model_shorthand = conn
+        .and_then(|c| crate::db::read_settings(&c).ok())
+        .and_then(|s| s.preferred_model)
+        .unwrap_or_else(|| "sonnet".to_string());
+    resolve_model_id(&model_shorthand)
 }
 
 fn make_agent_id(skill_name: &str, label: &str) -> String {
@@ -288,7 +296,7 @@ pub async fn run_review_step(
 
     let config = SidecarConfig {
         prompt,
-        model: MODEL_HAIKU.to_string(),
+        model: resolve_model_id("haiku"),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
@@ -322,12 +330,13 @@ pub async fn run_workflow_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let model = read_preferred_model(&db);
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
         prompt,
-        model: step.model,
+        model,
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
@@ -654,7 +663,6 @@ mod tests {
             let config = config.unwrap();
             assert_eq!(config.step_id, step_id);
             assert!(!config.prompt_template.is_empty());
-            assert!(!config.model.is_empty());
         }
     }
 
@@ -667,13 +675,11 @@ mod tests {
     }
 
     #[test]
-    fn test_get_step_config_models() {
-        assert_eq!(get_step_config(0).unwrap().model, MODEL_SONNET);
-        assert_eq!(get_step_config(2).unwrap().model, MODEL_SONNET);
-        assert_eq!(get_step_config(3).unwrap().model, MODEL_SONNET);
-        assert_eq!(get_step_config(4).unwrap().model, MODEL_HAIKU);
-        assert_eq!(get_step_config(6).unwrap().model, MODEL_OPUS);
-        assert_eq!(get_step_config(7).unwrap().model, MODEL_SONNET);
+    fn test_resolve_model_id() {
+        assert_eq!(resolve_model_id("sonnet"), "claude-sonnet-4-5-20250929");
+        assert_eq!(resolve_model_id("haiku"), "claude-haiku-4-5-20251001");
+        assert_eq!(resolve_model_id("opus"), "claude-opus-4-6");
+        assert_eq!(resolve_model_id("claude-sonnet-4-5-20250929"), "claude-sonnet-4-5-20250929");
     }
 
     #[test]

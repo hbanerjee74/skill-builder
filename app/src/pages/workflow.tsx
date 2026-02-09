@@ -28,7 +28,6 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
-  runReviewStep,
   packageSkill,
   resetWorkflowStep,
   getWorkflowState,
@@ -43,53 +42,20 @@ import {
 
 interface StepConfig {
   type: "agent" | "human" | "package" | "reasoning";
-  model?: string;
   outputFiles?: string[];
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["context/clarifications-concepts.md"],
-  },
+  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"] },
   1: { type: "human" },
-  2: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["context/clarifications-patterns.md"],
-  },
-  3: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["context/clarifications-data.md"],
-  },
-  4: {
-    type: "agent",
-    model: "haiku",
-    outputFiles: ["context/clarifications.md"],
-  },
+  2: { type: "agent", outputFiles: ["context/clarifications-patterns.md"] },
+  3: { type: "agent", outputFiles: ["context/clarifications-data.md"] },
+  4: { type: "agent", outputFiles: ["context/clarifications.md"] },
   5: { type: "human" },
-  6: {
-    type: "reasoning",
-    model: "opus",
-    outputFiles: ["context/decisions.md"],
-  },
-  7: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["SKILL.md", "references/"],
-  },
-  8: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["context/agent-validation-log.md"],
-  },
-  9: {
-    type: "agent",
-    model: "sonnet",
-    outputFiles: ["context/test-skill.md"],
-  },
+  6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
+  7: { type: "agent", outputFiles: ["SKILL.md", "references/"] },
+  8: { type: "agent", outputFiles: ["context/agent-validation-log.md"] },
+  9: { type: "agent", outputFiles: ["context/test-skill.md"] },
   10: { type: "package" },
 };
 
@@ -134,10 +100,6 @@ export default function WorkflowPage() {
     null
   );
 
-  // Review state
-  const [reviewAgentId, setReviewAgentId] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const MAX_RETRIES = 2;
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -177,10 +139,9 @@ export default function WorkflowPage() {
     return () => { cancelled = true; };
   }, [skillName, initWorkflow, loadWorkflowState]);
 
-  // Reset retry count when moving to a new step
+  // Reset state when moving to a new step
   useEffect(() => {
-    setRetryCount(0);
-    setReviewAgentId(null);
+    // placeholder for future per-step state resets
   }, [currentStep]);
 
   // Persist workflow state to SQLite when steps change
@@ -242,44 +203,18 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!activeRunStatus) return;
-    // Skip if this is a review agent — handled by review effect
-    if (reviewAgentId) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
 
     if (activeRunStatus === "completed") {
-      const config = STEP_CONFIGS[step];
-      const hasOutputFiles = config?.outputFiles && config.outputFiles.length > 0;
-      const shouldReview = config?.type === "agent" && hasOutputFiles;
-
       setActiveAgent(null);
 
-      // If step has output files, run coordinator review
-      if (shouldReview && domain && workspacePath && retryCount < MAX_RETRIES) {
-        updateStepStatus(step, "in_progress"); // keep as in_progress during review
-        setRunning(false);
-
-        runReviewStep(skillName, step, domain, workspacePath)
-          .then((reviewId) => {
-            agentStartRun(reviewId, "haiku");
-            setReviewAgentId(reviewId);
-          })
-          .catch(() => {
-            updateStepStatus(step, "completed");
-            setRunning(false);
-            toast.success(`Step ${step + 1} completed`);
-          });
-        return;
-      }
-
-      // No review needed — complete normally
       if (workspacePath) {
         captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
       }
       updateStepStatus(step, "completed");
       setRunning(false);
-      setRetryCount(0);
       toast.success(`Step ${step + 1} completed`);
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
@@ -287,65 +222,9 @@ export default function WorkflowPage() {
       setActiveAgent(null);
       toast.error(`Step ${step + 1} failed`);
     }
-  }, [activeRunStatus, reviewAgentId, updateStepStatus, setRunning, setActiveAgent, skillName, domain, workspacePath, retryCount, MAX_RETRIES, agentStartRun]);
+  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath]);
 
-  // Watch for review agent completion
-  const reviewRun = reviewAgentId ? runs[reviewAgentId] : null;
-  const reviewRunStatus = reviewRun?.status;
-
-  useEffect(() => {
-    if (!reviewAgentId || !reviewRunStatus) return;
-    if (reviewRunStatus !== "completed" && reviewRunStatus !== "error") return;
-
-    const { currentStep: step } = useWorkflowStore.getState();
-
-    if (reviewRunStatus === "completed") {
-      // Parse review result from agent messages
-      const messages = reviewRun?.messages ?? [];
-      const resultText = messages
-        .filter((m) => m.type === "assistant" || m.type === "result")
-        .map((m) => m.content ?? "")
-        .join("\n");
-
-      const shouldRetry = resultText.includes("RETRY:");
-
-      if (shouldRetry && retryCount < MAX_RETRIES) {
-        // Extract reason
-        const reasonMatch = resultText.match(/RETRY:\s*(.+)/);
-        const reason = reasonMatch?.[1]?.trim() ?? "Quality check failed";
-
-        toast.info(`Retrying step ${step + 1}: ${reason}`);
-        setReviewAgentId(null);
-        setRetryCount((prev) => prev + 1);
-
-        // Restart the step
-        handleStartStep();
-      } else {
-        // PASS or max retries
-        if (shouldRetry) {
-          toast.warning(`Step ${step + 1} completed after max retries`);
-        } else {
-          toast.success(`Step ${step + 1} passed review`);
-        }
-        setReviewAgentId(null);
-        setRetryCount(0);
-        setActiveAgent(null);
-        if (workspacePath) {
-          captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
-        }
-        updateStepStatus(step, "completed");
-      }
-    } else {
-      // Review agent errored — complete step anyway
-      setReviewAgentId(null);
-      setActiveAgent(null);
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
-      }
-      updateStepStatus(step, "completed");
-      toast.success(`Step ${step + 1} completed`);
-    }
-  }, [reviewAgentId, reviewRunStatus, retryCount, MAX_RETRIES, reviewRun, updateStepStatus]);
+  // (Review agent logic removed — direct completion is faster and sufficient)
 
   // --- Step handlers ---
 
@@ -365,7 +244,7 @@ export default function WorkflowPage() {
         domain,
         workspacePath
       );
-      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
+      agentStartRun(agentId, "agent");
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -435,11 +314,25 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
+    // Auto-fill empty Answer fields with the corresponding Recommendation
+    let content = reviewContent;
+    if (content) {
+      content = content.replace(
+        /\*\*Recommendation\*\*:\s*(\w)[^\n]*\n\*\*Answer\*\*:\s*$/gm,
+        (match, letter) =>
+          match.replace(
+            /\*\*Answer\*\*:\s*$/,
+            `**Answer**: ${letter} (auto-selected from recommendation)`
+          )
+      );
+      setReviewContent(content);
+    }
+
     // Save the (possibly edited) content to DB
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && reviewContent !== null) {
+    if (config && content !== null) {
       try {
-        await saveArtifactContent(skillName, currentStep, config.relativePath, reviewContent);
+        await saveArtifactContent(skillName, currentStep, config.relativePath, content);
       } catch {
         // best-effort
       }
@@ -470,11 +363,6 @@ export default function WorkflowPage() {
   // --- Render content ---
 
   const renderContent = () => {
-    // Show review agent output when reviewing
-    if (reviewAgentId) {
-      return <AgentOutputPanel agentId={reviewAgentId} />;
-    }
-
     // Completed step with output files
     if (
       currentStepDef?.status === "completed" &&
@@ -714,12 +602,6 @@ export default function WorkflowPage() {
               <Badge variant="outline" className="gap-1">
                 <Loader2 className="size-3 animate-spin" />
                 Running
-              </Badge>
-            )}
-            {reviewAgentId && (
-              <Badge variant="outline" className="gap-1">
-                <Loader2 className="size-3 animate-spin" />
-                Reviewing...
               </Badge>
             )}
             {canStart && (

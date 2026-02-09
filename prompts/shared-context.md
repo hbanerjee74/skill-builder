@@ -96,6 +96,8 @@ Additionally:
 **Answer**: [PM writes chosen letter and any notes here]
 ```
 
+**Auto-fill rule:** If a question's `**Answer**:` field is empty or missing, treat the `**Recommendation**:` choice as the answer. Do not ask for clarification on unanswered questions — use the recommendation and proceed.
+
 ### `decisions.md` (in context directory)
 
 This file is a **clean snapshot**, not a cumulative log. Each time the reasoning agent updates it, it rewrites the entire file by merging existing decisions with new ones. If a new decision supersedes or refines an earlier one, the earlier entry is replaced — not kept alongside.

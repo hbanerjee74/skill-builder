@@ -17,9 +17,16 @@ import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 import { checkNode, type NodeStatus } from "@/lib/tauri"
 
+const MODEL_OPTIONS = [
+  { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
+  { value: "haiku", label: "Claude Haiku 4.5", description: "Fastest, lower cost" },
+  { value: "opus", label: "Claude Opus 4.6", description: "Most capable" },
+] as const
+
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -39,6 +46,7 @@ export default function SettingsPage() {
           if (!cancelled) {
             setApiKey(result.anthropic_api_key)
             setWorkspacePath(result.workspace_path)
+            setPreferredModel(result.preferred_model || "sonnet")
             setLoading(false)
           }
           return
@@ -77,6 +85,7 @@ export default function SettingsPage() {
         settings: {
           anthropic_api_key: apiKey,
           workspace_path: workspacePath,
+          preferred_model: preferredModel,
         },
       })
       setSaved(true)
@@ -87,6 +96,7 @@ export default function SettingsPage() {
       setStoreSettings({
         anthropicApiKey: apiKey,
         workspacePath,
+        preferredModel,
       })
 
       toast.success("Settings saved")
@@ -179,6 +189,32 @@ export default function SettingsPage() {
                 {apiKeyValid ? "Valid" : "Test"}
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Model</CardTitle>
+          <CardDescription>
+            Choose which Claude model to use for all workflow steps.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="model-select">Preferred Model</Label>
+            <select
+              id="model-select"
+              value={preferredModel}
+              onChange={(e) => setPreferredModel(e.target.value)}
+              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {MODEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} — {opt.description}
+                </option>
+              ))}
+            </select>
           </div>
         </CardContent>
       </Card>

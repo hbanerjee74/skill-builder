@@ -32,11 +32,13 @@ import SettingsPage from "@/pages/settings";
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
   workspace_path: null,
+  preferred_model: null,
 };
 
 const populatedSettings: AppSettings = {
   anthropic_api_key: "sk-ant-existing-key",
   workspace_path: "/home/user/workspace",
+  preferred_model: "sonnet",
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
@@ -69,6 +71,7 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
+    expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
     expect(screen.getByText("Node.js Runtime")).toBeInTheDocument();
   });

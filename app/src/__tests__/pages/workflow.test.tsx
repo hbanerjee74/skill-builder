@@ -25,7 +25,6 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
-  runReviewStep: vi.fn(() => Promise.resolve("review-agent-1")),
   packageSkill: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
@@ -86,28 +85,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — this triggers the review agent
+    // Agent completes — step should be marked completed directly
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
 
-    // Wait for review agent to be started (the mock returns "review-agent-1")
-    await waitFor(() => {
-      expect(useAgentStore.getState().runs["review-agent-1"]).toBeDefined();
-    });
-
-    // Simulate review agent completing with PASS
-    act(() => {
-      useAgentStore.getState().addMessage("review-agent-1", {
-        type: "assistant",
-        content: "PASS",
-        raw: {},
-        timestamp: Date.now(),
-      });
-      useAgentStore.getState().completeRun("review-agent-1", true);
-    });
-
-    // Wait for the step to be marked completed
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
     });
@@ -130,11 +112,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
 
-    // Toast for passing review
-    expect(mockToast.success).toHaveBeenCalledWith("Step 1 passed review");
+    expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("completes agent step 2 but does NOT auto-advance", async () => {
+  it("completes agent step 3 but does NOT auto-advance", async () => {
     // Simulate: step 2 (Research Patterns) running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setCurrentStep(2);
@@ -144,25 +125,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — this triggers the review agent
+    // Agent completes — step should be marked completed directly
     act(() => {
       useAgentStore.getState().completeRun("agent-2", true);
-    });
-
-    // Wait for review agent to be started
-    await waitFor(() => {
-      expect(useAgentStore.getState().runs["review-agent-1"]).toBeDefined();
-    });
-
-    // Simulate review agent completing with PASS
-    act(() => {
-      useAgentStore.getState().addMessage("review-agent-1", {
-        type: "assistant",
-        content: "PASS",
-        raw: {},
-        timestamp: Date.now(),
-      });
-      useAgentStore.getState().completeRun("review-agent-1", true);
     });
 
     await waitFor(() => {
@@ -184,7 +149,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(wf.steps[4].status).toBe("pending");
 
     expect(wf.isRunning).toBe(false);
-    expect(mockToast.success).toHaveBeenCalledWith("Step 3 passed review");
+    expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
   });
 
   it("marks step as error when agent fails — no cascade", async () => {
