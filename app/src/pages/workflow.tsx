@@ -245,8 +245,6 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!parallelAgentIds) return;
-    const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
-    if (currentSteps[step]?.status !== "in_progress") return;
 
     const bothCompleted = parallelStatusA === "completed" && parallelStatusB === "completed";
     const anyError = parallelStatusA === "error" || parallelStatusB === "error";
@@ -266,7 +264,8 @@ export default function WorkflowPage() {
       toast.success("Research steps completed");
     } else if (anyError) {
       setParallelAgents(null);
-      updateStepStatus(step, "error");
+      updateStepStatus(2, "error");
+      updateStepStatus(3, "error");
       setRunning(false);
       toast.error("Research step failed");
     }
@@ -316,6 +315,9 @@ export default function WorkflowPage() {
       const result = await runParallelAgents(skillName, domain, workspacePath);
       agentStartRun(result.agent_id_a, "agent");
       agentStartRun(result.agent_id_b, "agent");
+      // Clear activeAgentId so the single-agent watcher doesn't interfere —
+      // parallel agents are tracked exclusively via parallelAgentIds
+      setActiveAgent(null);
       setParallelAgents([result.agent_id_a, result.agent_id_b]);
     } catch (err) {
       updateStepStatus(2, "error");
