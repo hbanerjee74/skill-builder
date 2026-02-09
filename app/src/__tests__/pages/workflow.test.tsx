@@ -51,6 +51,7 @@ vi.mock("@/components/reasoning-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
+import { getWorkflowState, saveWorkflowState } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -182,6 +183,43 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     expect(wf.isRunning).toBe(false);
     expect(mockToast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not overwrite saved state during hydration", async () => {
+    // Simulate: SQLite has step 0 completed from a previous session
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        domain: "test domain",
+        current_step: 1,
+        status: "pending",
+        created_at: "",
+        updated_at: "",
+      },
+      steps: [
+        { skill_name: "test-skill", step_id: 0, status: "completed", started_at: null, completed_at: null },
+      ],
+    });
+
+    render(<WorkflowPage />);
+
+    // Wait for hydration to complete
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+    });
+
+    const wf = useWorkflowStore.getState();
+    expect(wf.steps[0].status).toBe("completed");
+    expect(wf.currentStep).toBe(1);
+
+    // saveWorkflowState should NOT have been called with all-pending state
+    // It should only be called after hydration with the correct state
+    const saveCalls = vi.mocked(saveWorkflowState).mock.calls;
+    for (const call of saveCalls) {
+      const stepStatuses = call[4] as Array<{ step_id: number; status: string }>;
+      const step0 = stepStatuses.find((s) => s.step_id === 0);
+      expect(step0?.status).toBe("completed");
+    }
   });
 
   it("does not complete a step that is not in_progress", async () => {

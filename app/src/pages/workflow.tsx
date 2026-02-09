@@ -74,12 +74,14 @@ export default function WorkflowPage() {
     currentStep,
     steps,
     isRunning,
+    hydrated,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
     setRunning,
     rerunFromStep,
     loadWorkflowState,
+    setHydrated,
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
@@ -120,7 +122,11 @@ export default function WorkflowPage() {
     getWorkflowState(skillName)
       .then((state) => {
         if (cancelled) return;
-        if (!state.run) return; // No saved state yet
+        if (!state.run) {
+          // No saved state — fresh skill, safe to persist
+          setHydrated(true);
+          return;
+        }
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName);
@@ -130,10 +136,13 @@ export default function WorkflowPage() {
           .map((s) => s.step_id);
         if (completedIds.length > 0) {
           loadWorkflowState(completedIds);
+        } else {
+          setHydrated(true);
         }
       })
       .catch(() => {
         // No saved state — fresh skill
+        setHydrated(true);
       });
 
     return () => { cancelled = true; };
@@ -146,7 +155,7 @@ export default function WorkflowPage() {
 
   // Persist workflow state to SQLite when steps change
   useEffect(() => {
-    if (!domain) return;
+    if (!domain || !hydrated) return;
     const store = useWorkflowStore.getState();
     if (store.skillName !== skillName) return;
 
@@ -164,7 +173,7 @@ export default function WorkflowPage() {
     saveWorkflowState(skillName, domain, currentStep, status, stepStatuses).catch(
       () => {} // silent — best-effort persistence
     );
-  }, [steps, currentStep, skillName, domain]);
+  }, [steps, currentStep, skillName, domain, hydrated]);
 
   // Load file content when entering a human review step
   useEffect(() => {

@@ -13,6 +13,7 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  hydrated: boolean;
 
   initWorkflow: (skillName: string, domain: string) => void;
   setCurrentStep: (step: number) => void;
@@ -20,6 +21,7 @@ interface WorkflowState {
   setRunning: (running: boolean) => void;
   rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
+  setHydrated: (hydrated: boolean) => void;
   reset: () => void;
 }
 
@@ -106,6 +108,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  hydrated: false,
 
   initWorkflow: (skillName, domain) =>
     set({
@@ -114,6 +117,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      hydrated: false,
     }),
 
   setCurrentStep: (step) => set({ currentStep: step }),
@@ -145,8 +149,11 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       return {
         steps,
         currentStep: firstIncomplete ? firstIncomplete.id : state.steps.length - 1,
+        hydrated: true,
       };
     }),
+
+  setHydrated: (hydrated) => set({ hydrated }),
 
   reset: () =>
     set({
@@ -155,5 +162,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      hydrated: false,
     }),
 }));
