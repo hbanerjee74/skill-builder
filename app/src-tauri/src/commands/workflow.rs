@@ -8,7 +8,6 @@ use crate::types::{
     WorkflowStateResponse,
 };
 
-const RESEARCH_TOOLS: &[&str] = &["Read", "Write", "Glob", "Grep"];
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
@@ -34,27 +33,11 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         }),
         2 => Ok(StepConfig {
             step_id: 2,
-            name: "Research Patterns".to_string(),
-            prompt_template: "03a-research-business-patterns.md".to_string(),
-            output_file: "context/clarifications-patterns.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
-        }),
-        3 => Ok(StepConfig {
-            step_id: 3,
-            name: "Research Data Modeling".to_string(),
-            prompt_template: "03b-research-data-modeling.md".to_string(),
-            output_file: "context/clarifications-data.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
-        }),
-        4 => Ok(StepConfig {
-            step_id: 4,
-            name: "Merge Clarifications".to_string(),
-            prompt_template: "04-merge-clarifications.md".to_string(),
+            name: "Research Patterns & Merge".to_string(),
+            prompt_template: "02-research-patterns-and-merge.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 8,
+            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
@@ -251,7 +234,7 @@ fn reconcile_disk_artifacts(
     }
 
     // Walk all steps that produce output files
-    for step_id in [0u32, 2, 3, 4, 6, 7, 8, 9] {
+    for step_id in [0u32, 2, 6, 7, 8, 9] {
         for file in get_step_output_files(step_id) {
             reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
         }
@@ -673,9 +656,9 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec!["context/clarifications-concepts.md"],
         1 => vec![],  // Human review
-        2 => vec!["context/clarifications-patterns.md"],
-        3 => vec!["context/clarifications-data.md"],
-        4 => vec!["context/clarifications.md"],
+        2 => vec!["context/clarifications-patterns.md", "context/clarifications-data.md", "context/clarifications.md"],
+        3 => vec![],  // Handled by step 2 orchestrator
+        4 => vec![],  // Handled by step 2 orchestrator
         5 => vec![],  // Human review
         6 => vec!["context/decisions.md"],
         7 => vec!["skill/SKILL.md"], // Also has skill/references/ dir
@@ -841,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 2, 3, 4, 6, 7, 8, 9];
+        let valid_steps = [0, 2, 6, 7, 8, 9];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -854,6 +837,8 @@ mod tests {
     #[test]
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
+        assert!(get_step_config(3).is_err());  // Handled by step 2 orchestrator
+        assert!(get_step_config(4).is_err());  // Handled by step 2 orchestrator
         assert!(get_step_config(5).is_err());  // Human review
         assert!(get_step_config(10).is_err()); // Package step
         assert!(get_step_config(99).is_err());
@@ -1044,7 +1029,8 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("skill").join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 3, 4, 6, 7
+        // Create output files for steps 0, 2, 6, 7
+        // Step 2 now produces all three research+merge files
         std::fs::write(
             skill_dir.join("context/clarifications-concepts.md"),
             "step0",
@@ -1057,43 +1043,47 @@ mod tests {
         .unwrap();
         std::fs::write(
             skill_dir.join("context/clarifications-data.md"),
-            "step3",
+            "step2",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step2").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("skill/SKILL.md"), "step7").unwrap();
         std::fs::write(skill_dir.join("skill/references/ref.md"), "ref").unwrap();
 
-        // Reset from step 4 onwards — steps 0, 2, 3 should be preserved
-        delete_step_output_files(workspace, "my-skill", 4);
+        // Reset from step 6 onwards — steps 0, 2 should be preserved
+        delete_step_output_files(workspace, "my-skill", 6);
 
-        // Steps 0, 2, 3 outputs should still exist
+        // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
         assert!(skill_dir.join("context/clarifications-patterns.md").exists());
         assert!(skill_dir.join("context/clarifications-data.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
 
-        // Steps 4+ outputs should be deleted
-        assert!(!skill_dir.join("context/clarifications.md").exists());
+        // Steps 6+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("skill/SKILL.md").exists());
         assert!(!skill_dir.join("skill/references").exists());
     }
 
     #[test]
-    fn test_clean_step_output_only_removes_target_step() {
+    fn test_clean_step_output_step2_removes_all_research_files() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create output files for steps 4 and 6
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        // Step 2 produces patterns, data, and merged clarifications
+        std::fs::write(skill_dir.join("context/clarifications-patterns.md"), "p").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications-data.md"), "d").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "m").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
 
-        // Clean only step 4 — step 6 should be untouched
-        clean_step_output(workspace, "my-skill", 4);
+        // Clean only step 2 — step 6 should be untouched
+        clean_step_output(workspace, "my-skill", 2);
 
+        assert!(!skill_dir.join("context/clarifications-patterns.md").exists());
+        assert!(!skill_dir.join("context/clarifications-data.md").exists());
         assert!(!skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }

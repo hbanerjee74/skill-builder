@@ -41,24 +41,21 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 2,
-    name: "Research Patterns",
-    description: "Research business patterns and workflows for the domain",
+    name: "Research Patterns & Merge",
+    description: "Research business patterns, data modeling, and merge clarification questions",
     status: "pending",
-
   },
   {
     id: 3,
     name: "Research Data Modeling",
-    description: "Research data structures, relationships, and modeling for the domain",
+    description: "Handled by step 3 orchestrator",
     status: "pending",
-
   },
   {
     id: 4,
     name: "Merge Clarifications",
-    description: "Deduplicate and merge clarification questions",
+    description: "Handled by step 3 orchestrator",
     status: "pending",
-
   },
   {
     id: 5,

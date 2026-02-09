@@ -43,9 +43,6 @@ vi.mock("@/components/workflow-sidebar", () => ({
 vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
-vi.mock("@/components/parallel-agent-panel", () => ({
-  ParallelAgentPanel: () => <div data-testid="parallel-agent-output" />,
-}));
 vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => <div data-testid="step-complete" />,
 }));
@@ -125,8 +122,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("completes agent step 3 but does NOT auto-advance", async () => {
-    // Simulate: step 2 (Research Patterns) running an agent
+  it("step 2 orchestrator auto-completes steps 3 and 4", async () => {
+    // Simulate: step 2 (Research Patterns & Merge orchestrator) running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setCurrentStep(2);
@@ -136,7 +133,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — step should be marked completed directly
+    // Agent completes — steps 2, 3, 4 should all be marked completed
     act(() => {
       useAgentStore.getState().completeRun("agent-2", true);
     });
@@ -150,14 +147,15 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 2 completed
     expect(wf.steps[2].status).toBe("completed");
 
+    // Steps 3 and 4 auto-completed by orchestrator
+    expect(wf.steps[3].status).toBe("completed");
+    expect(wf.steps[4].status).toBe("completed");
+
     // Does NOT auto-advance — stays on step 2
     expect(wf.currentStep).toBe(2);
 
-    // Step 3 still pending (user must click "Next Step")
-    expect(wf.steps[3].status).toBe("pending");
-
-    // Step 4 unaffected
-    expect(wf.steps[4].status).toBe("pending");
+    // Step 5 unaffected
+    expect(wf.steps[5].status).toBe("pending");
 
     expect(wf.isRunning).toBe(false);
     expect(mockToast.success).toHaveBeenCalledWith("Step 3 completed");
