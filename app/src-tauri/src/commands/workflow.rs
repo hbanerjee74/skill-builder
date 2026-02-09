@@ -33,8 +33,8 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Research Domain Concepts".to_string(),
             prompt_template: "01-research-domain-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
-            allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
+            allowed_tools: TEAM_TOOLS.iter().map(|s| s.to_string()).collect(),
+            max_turns: 50,
         }),
         2 => Ok(StepConfig {
             step_id: 2,
