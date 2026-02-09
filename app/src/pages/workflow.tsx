@@ -153,7 +153,8 @@ export default function WorkflowPage() {
       });
 
     return () => { cancelled = true; };
-  }, [skillName, initWorkflow, loadWorkflowState, setHydrated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillName]);
 
   // Reset state when moving to a new step
   useEffect(() => {
