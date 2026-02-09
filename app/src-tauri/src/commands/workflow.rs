@@ -227,6 +227,51 @@ fn stage_artifacts(
     Ok(())
 }
 
+/// Reconcile disk → SQLite: scan the workspace for existing step artifacts
+/// and capture any that aren't already in the DB (or are newer on disk).
+/// This handles the case where the app was shut down mid-agent and files
+/// were written to disk but never captured.
+fn reconcile_disk_artifacts(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    workspace_path: &str,
+) -> Result<(), String> {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    if !skill_dir.exists() {
+        return Ok(());
+    }
+
+    // Walk all steps that produce output files
+    for step_id in [0u32, 2, 3, 4, 6, 7, 8, 9] {
+        for file in get_step_output_files(step_id) {
+            let path = skill_dir.join(file);
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+                crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
+            }
+        }
+
+        // Step 7 also has skill/references/ directory
+        if step_id == 7 {
+            let refs_dir = skill_dir.join("skill").join("references");
+            if refs_dir.is_dir() {
+                for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
+                    crate::db::save_artifact(
+                        conn,
+                        skill_name,
+                        step_id as i32,
+                        &relative,
+                        &content,
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Recursively collect .md files from a directory, returning relative paths.
 fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, String> {
     let mut results = Vec::new();
@@ -323,11 +368,14 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Clean up this step's output files so partial results from a
-    // previous cancelled/failed run don't confuse the agent
+    // Reconcile disk → DB (captures files from interrupted runs),
+    // clean this step's output, then stage DB → disk for agent prereqs
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
+        crate::db::delete_step_artifacts(&conn, &skill_name, step_id as i32)?;
+    }
     clean_step_output(&workspace_path, &skill_name, step_id);
-
-    // Stage DB artifacts to filesystem before running agent
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
@@ -365,11 +413,15 @@ pub async fn run_parallel_agents(
 ) -> Result<ParallelAgentResult, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
 
-    // Clean up output files from previous cancelled/failed runs
+    // Reconcile disk → DB, clean these steps' output, stage DB → disk
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
+        crate::db::delete_step_artifacts(&conn, &skill_name, 2)?;
+        crate::db::delete_step_artifacts(&conn, &skill_name, 3)?;
+    }
     clean_step_output(&workspace_path, &skill_name, 2);
     clean_step_output(&workspace_path, &skill_name, 3);
-
-    // Stage DB artifacts to filesystem before running agents
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         stage_artifacts(&conn, &skill_name, &workspace_path)?;
