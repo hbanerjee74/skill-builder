@@ -95,54 +95,71 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
-/// Locate the bundled prompts directory. In production this is in the
+/// Locate the bundled agents directory. In production this is in the
 /// Tauri resource dir; in dev mode we resolve relative to CARGO_MANIFEST_DIR.
 fn resolve_prompts_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     use tauri::Manager;
 
     // Production: Tauri resource directory
-    // Check for shared-context.md to distinguish real prompts from placeholder dirs
+    // Check for agents/ directory to distinguish real agents from placeholder dirs
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let prompts = resource_dir.join("prompts");
-        if prompts.join("shared-context.md").is_file() {
-            return Ok(prompts);
+        let agents = resource_dir.join("agents");
+        if agents.is_dir() {
+            return Ok(agents);
         }
     }
 
-    // Dev mode: repo root relative to CARGO_MANIFEST_DIR (src-tauri/../../prompts)
+    // Dev mode: repo root relative to CARGO_MANIFEST_DIR (src-tauri/../../agents)
     let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent() // app/
         .and_then(|p| p.parent()) // repo root
-        .map(|p| p.join("prompts"));
+        .map(|p| p.join("agents"));
     if let Some(path) = dev_path {
         if path.is_dir() {
             return Ok(path);
         }
     }
 
-    Err("Could not find bundled prompts directory".to_string())
+    Err("Could not find bundled agents directory".to_string())
 }
 
-/// Copy bundled prompt .md files into `<workspace_path>/prompts/`.
-/// Creates the directory if it doesn't exist. Overwrites existing files
+/// Copy bundled agent .md files and references into workspace.
+/// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 pub fn ensure_workspace_prompts(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
-    let src_dir = resolve_prompts_dir(app_handle)?;
-    copy_prompts_from(&src_dir, workspace_path)
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent() // app/
+        .and_then(|p| p.parent()) // repo root
+        .ok_or("Could not resolve repo root")?
+        .to_path_buf();
+    
+    // Copy agents/ directory
+    let agents_src = repo_root.join("agents");
+    if agents_src.is_dir() {
+        copy_directory_to(&agents_src, workspace_path, "agents")?;
+    }
+    
+    // Copy references/ directory
+    let refs_src = repo_root.join("references");
+    if refs_src.is_dir() {
+        copy_directory_to(&refs_src, workspace_path, "references")?;
+    }
+    
+    Ok(())
 }
 
-/// Copy .md files from `src_dir` into `<workspace_path>/prompts/`.
-fn copy_prompts_from(src_dir: &Path, workspace_path: &str) -> Result<(), String> {
-    let dest_dir = Path::new(workspace_path).join("prompts");
+/// Copy .md files from `src_dir` into `<workspace_path>/<dest_name>/`.
+fn copy_directory_to(src_dir: &Path, workspace_path: &str, dest_name: &str) -> Result<(), String> {
+    let dest_dir = Path::new(workspace_path).join(dest_name);
 
     std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create prompts directory: {}", e))?;
+        .map_err(|e| format!("Failed to create {} directory: {}", dest_name, e))?;
 
     let entries = std::fs::read_dir(src_dir)
-        .map_err(|e| format!("Failed to read prompts source dir: {}", e))?;
+        .map_err(|e| format!("Failed to read {} source dir: {}", dest_name, e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
@@ -165,7 +182,7 @@ fn build_prompt(
     domain: &str,
 ) -> String {
     format!(
-        "Read prompts/shared-context.md and prompts/{} and follow the instructions. \
+        "Read references/shared-context.md and agents/{} and follow the instructions. \
          The domain is: {}. The skill name is: {}. \
          The skill directory is: {}/. \
          The context directory (for reading and writing intermediate files) is: {}/context/. \
@@ -331,7 +348,7 @@ pub async fn run_review_step(
          1. The file exists and is non-empty\n\
          2. The content is well-structured markdown\n\
          3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected format (check prompts/shared-context.md for format guidelines)\n\
+         4. The content follows the expected format (check references/shared-context.md for format guidelines)\n\
          5. The content is substantive (not placeholder or minimal)\n\
          \n\nRespond with EXACTLY one line:\n\
          - If satisfactory: PASS\n\
@@ -815,8 +832,8 @@ mod tests {
             "my-skill",
             "e-commerce",
         );
-        assert!(prompt.contains("prompts/shared-context.md"));
-        assert!(prompt.contains("prompts/01-research-domain-concepts.md"));
+        assert!(prompt.contains("references/shared-context.md"));
+        assert!(prompt.contains("agents/01-research-domain-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("my-skill/context/clarifications-concepts.md"));
