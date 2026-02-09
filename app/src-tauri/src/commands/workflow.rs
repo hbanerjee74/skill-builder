@@ -54,7 +54,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             prompt_template: "04-merge-clarifications.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: RESEARCH_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 15,
+            max_turns: 8,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
@@ -322,6 +322,10 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
 
+    // Clean up this step's output files so partial results from a
+    // previous cancelled/failed run don't confuse the agent
+    clean_step_output(&workspace_path, &skill_name, step_id);
+
     // Stage DB artifacts to filesystem before running agent
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -359,6 +363,10 @@ pub async fn run_parallel_agents(
     workspace_path: String,
 ) -> Result<ParallelAgentResult, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
+
+    // Clean up output files from previous cancelled/failed runs
+    clean_step_output(&workspace_path, &skill_name, 2);
+    clean_step_output(&workspace_path, &skill_name, 3);
 
     // Stage DB artifacts to filesystem before running agents
     {
@@ -575,37 +583,41 @@ fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     }
 }
 
-/// Delete output files for the given step and all subsequent steps.
-/// Extracted as a helper so it can be tested without `tauri::State`.
-fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
+/// Delete output files for a single step.
+fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32) {
     let skill_dir = Path::new(workspace_path).join(skill_name);
     if !skill_dir.exists() {
         return;
     }
 
+    for file in get_step_output_files(step_id) {
+        let path = skill_dir.join(file);
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    // Step 7 also produces a references/ directory
+    if step_id == 7 {
+        let refs_dir = skill_dir.join("references");
+        if refs_dir.is_dir() {
+            let _ = std::fs::remove_dir_all(&refs_dir);
+        }
+    }
+
+    // Step 10 produces a .skill zip
+    if step_id == 10 {
+        let skill_file = skill_dir.join(format!("{}.skill", skill_name));
+        if skill_file.exists() {
+            let _ = std::fs::remove_file(&skill_file);
+        }
+    }
+}
+
+/// Delete output files for the given step and all subsequent steps.
+fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32) {
     for step_id in from_step_id..=10 {
-        for file in get_step_output_files(step_id) {
-            let path = skill_dir.join(file);
-            if path.exists() {
-                let _ = std::fs::remove_file(&path);
-            }
-        }
-
-        // Step 7 also produces a references/ directory
-        if step_id == 7 {
-            let refs_dir = skill_dir.join("references");
-            if refs_dir.is_dir() {
-                let _ = std::fs::remove_dir_all(&refs_dir);
-            }
-        }
-
-        // Step 10 produces a .skill zip
-        if step_id == 10 {
-            let skill_file = skill_dir.join(format!("{}.skill", skill_name));
-            if skill_file.exists() {
-                let _ = std::fs::remove_file(&skill_file);
-            }
-        }
+        clean_step_output(workspace_path, skill_name, step_id);
     }
 }
 
@@ -960,6 +972,24 @@ mod tests {
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());
         assert!(!skill_dir.join("references").exists());
+    }
+
+    #[test]
+    fn test_clean_step_output_only_removes_target_step() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+
+        // Create output files for steps 4 and 6
+        std::fs::write(skill_dir.join("context/clarifications.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step6").unwrap();
+
+        // Clean only step 4 — step 6 should be untouched
+        clean_step_output(workspace, "my-skill", 4);
+
+        assert!(!skill_dir.join("context/clarifications.md").exists());
+        assert!(skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
