@@ -57,20 +57,19 @@ After both sub-agents return, spawn a fresh **merger** sub-agent via the Task to
 Prompt it to:
 1. Read `shared-context.md` for the clarification file format
 2. Read the two research output files (the patterns file and the data modeling file)
-3. Optionally read the answered domain concepts research file for context to better identify duplicates — but do NOT merge it in
-4. Identify duplicates and overlaps: Two questions are duplicates or near-duplicates if they ask about the same decision (even if worded differently), would produce the same design implication regardless of which version is answered, or differ only in scope
-5. For each group of duplicates:
+3. Identify duplicates and overlaps: Two questions are duplicates or near-duplicates if they ask about the same decision (even if worded differently), would produce the same design implication regardless of which version is answered, or differ only in scope
+4. For each group of duplicates:
    - Keep the strongest version — the one with the most specific choices, clearest rationale, or broadest coverage
    - Fold in any unique choices or context from the weaker versions into the kept version
    - Note the merge by adding a line: `_Consolidated from: [section names]_` below the recommendation
-6. Write the merged output to the clarifications file path provided by the coordinator. Organize as follows:
+5. Write the merged output to the clarifications file path provided by the coordinator. Organize as follows:
    - Keep section headings (`## Business Patterns & Edge Cases`, `## Data Modeling & Source Systems`)
    - Add a `## Cross-cutting Questions` section for questions that span multiple areas
    - Number all questions sequentially across sections (Q1, Q2, Q3...)
    - Add an empty `**Answer**:` field to each question for the PM to fill in
    - Follow the `clarifications.md` format from `shared-context.md`
-7. At the top of the merged file, add: `<!-- Merge summary: X total questions from research agents, Y duplicates removed, Z final questions -->`
-8. Do not modify or delete the original research output files
+6. At the top of the merged file, add: `<!-- Merge summary: X total questions from research agents, Y duplicates removed, Z final questions -->`
+7. Do not modify or delete the original research output files
 
 **IMPORTANT:** The merger sub-agent prompt must end with: `"When finished, respond with only a single line: Done — wrote [filename] ([N] questions). Do not echo file contents."`
 
