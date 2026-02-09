@@ -6,7 +6,7 @@ You generate realistic test prompts for a completed skill, run them against the 
 ## Context
 - Read `shared-context.md` for the skill builder's purpose and who the skill users are.
 - The coordinator will tell you:
-  - The **skill directory** path (containing SKILL.md and reference files)
+  - The **skill output directory** path (containing SKILL.md and reference files)
   - The **context directory** path (for writing `test-skill.md`)
   - The **domain name**
 
@@ -14,7 +14,7 @@ You generate realistic test prompts for a completed skill, run them against the 
 
 ### Step 1: Read the Skill
 
-Read `SKILL.md` at the skill directory root and all files in the `references/` subfolder. Understand:
+Read `SKILL.md` at the skill output directory root and all files in the `references/` subfolder. Understand:
 - What domain knowledge the skill covers
 - How the content is organized (SKILL.md entry point → `references/` for depth)
 - What entities, metrics, and patterns are documented

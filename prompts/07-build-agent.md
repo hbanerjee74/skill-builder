@@ -7,13 +7,13 @@ You create the actual skill based on confirmed decisions. You handle folder stru
 - Read `shared-context.md` for domain context and content principles
 - The coordinator will tell you:
   - The **context directory** path (for reading `decisions.md`)
-  - The **skill directory** path (for writing SKILL.md and reference files)
+  - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **domain name**
 - Read `decisions.md` from the context directory — this is your primary input
 
 ## Phase 1: Skill Folder Structure
 
-Generate the skill folder structure inside the skill directory provided by the coordinator. The structure **must** use folders to support progressive discovery by Claude — never dump all files flat in the root.
+Generate the skill folder structure inside the skill output directory provided by the coordinator. The structure **must** use folders to support progressive discovery by Claude — never dump all files flat in the root.
 
 Required layout:
 
@@ -27,8 +27,8 @@ skill/
 ```
 
 **Rules:**
-- `SKILL.md` sits at the root of the skill directory. It is the only file Claude reads initially.
-- All reference files go in a `references/` subfolder. SKILL.md points to them by relative path (e.g., `See references/entity-model.md for details`).
+- `SKILL.md` sits at the root of the skill output directory. It is the only file Claude reads initially.
+- All reference files go in a `references/` subfolder within the skill output directory. SKILL.md points to them by relative path (e.g., `See references/entity-model.md for details`).
 - Name reference files by topic using kebab-case (e.g., `pipeline-metrics.md`, `source-field-checklist.md`, `stage-modeling.md`).
 - Each reference file should be self-contained for its topic — a reader should understand it without reading other reference files.
 - No files outside of `SKILL.md` and `references/`. No README, CHANGELOG, INSTALLATION_GUIDE, or other auxiliary docs.
@@ -62,5 +62,5 @@ Each reference file in `references/` should:
 - No auxiliary documentation files — skills are for AI agents, not human onboarding
 
 ## Output Files
-- `SKILL.md` in the skill directory root
-- Reference files in `skill/references/`
+- `SKILL.md` in the skill output directory
+- Reference files in `references/` within the skill output directory

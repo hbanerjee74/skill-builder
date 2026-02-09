@@ -55,7 +55,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   4: { type: "agent", outputFiles: ["context/clarifications.md"] },
   5: { type: "human" },
   6: { type: "reasoning", outputFiles: ["context/decisions.md"] },
-  7: { type: "agent", outputFiles: ["SKILL.md", "references/"] },
+  7: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"] },
   8: { type: "agent", outputFiles: ["context/agent-validation-log.md"] },
   9: { type: "agent", outputFiles: ["context/test-skill.md"] },
   10: { type: "package" },
