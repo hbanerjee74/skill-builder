@@ -110,7 +110,6 @@ pub fn create_skill(
     }
 
     fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(base.join("references")).map_err(|e| e.to_string())?;
 
     let workflow_content = format!(
         "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: Initialization\n- **Status**: pending\n- **Completed steps**: \n- **Timestamp**: {}\n- **Notes**: Skill created\n",
