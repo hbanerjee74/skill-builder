@@ -81,16 +81,14 @@ export function AgentStatusHeader({
     return () => clearInterval(id);
   }, [run?.status]);
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (onCancel) {
       onCancel();
       return;
     }
-    try {
-      await cancelAgent(agentId);
-    } catch {
-      // Agent may already be finished
-    }
+    // Fire-and-forget: don't await the kill — it waits for process
+    // reaping which can take seconds with Node.js child process trees.
+    cancelAgent(agentId).catch(() => {});
   };
 
   if (!run) return null;

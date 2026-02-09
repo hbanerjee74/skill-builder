@@ -402,22 +402,22 @@ export default function WorkflowPage() {
     }
   };
 
-  const handlePauseAgent = async () => {
+  const handlePauseAgent = () => {
     if (!activeAgentId) return;
-    try {
-      await cancelAgent(activeAgentId);
-    } catch {
-      // Agent may already be finished
-    }
-    // Capture whatever the agent wrote to disk
-    if (workspacePath) {
-      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
-    }
+    // Update UI immediately — don't wait for the kill to finish.
+    // cancelAgent sends SIGKILL then waits for process reaping, which can
+    // take seconds with Node.js child process trees.
+    const agentId = activeAgentId;
     setActiveAgent(null);
     updateStepStatus(currentStep, "pending");
     setRunning(false);
     setPaused(true);
     toast.success(`Step ${currentStep + 1} paused — progress saved`);
+    // Fire-and-forget: kill process + capture artifacts in background
+    cancelAgent(agentId).catch(() => {});
+    if (workspacePath) {
+      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
+    }
   };
 
   const handleReviewContinue = async () => {

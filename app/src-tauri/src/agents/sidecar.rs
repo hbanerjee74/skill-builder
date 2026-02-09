@@ -213,9 +213,12 @@ pub async fn cancel_sidecar(
         // Drop the lock before killing so the stdout reader can acquire it
         drop(reg);
 
+        // Use start_kill() instead of kill().await — the latter waits for
+        // process reaping which can block for seconds with Node.js process
+        // trees. start_kill() just sends SIGKILL and returns immediately.
+        // The stdout reader task will reap the zombie when stdout closes.
         child
-            .kill()
-            .await
+            .start_kill()
             .map_err(|e| format!("Failed to kill sidecar: {}", e))?;
 
         // Emit the cancelled event ourselves with the correct flag
