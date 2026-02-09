@@ -301,6 +301,7 @@ export default function WorkflowPage() {
     }
 
     try {
+      clearRuns();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
 
