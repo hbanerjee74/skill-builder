@@ -202,6 +202,7 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 
 /// Write all DB artifacts for a skill to the workspace filesystem.
 /// This stages files so agents can read them during execution.
+/// Skips files that already exist on disk with the same byte length.
 fn stage_artifacts(
     conn: &rusqlite::Connection,
     skill_name: &str,
@@ -216,6 +217,14 @@ fn stage_artifacts(
 
     for artifact in &artifacts {
         let file_path = skill_dir.join(&artifact.relative_path);
+
+        // Skip if file already exists with same size (content unchanged)
+        if let Ok(meta) = std::fs::metadata(&file_path) {
+            if meta.len() == artifact.content.len() as u64 {
+                continue;
+            }
+        }
+
         if let Some(parent) = file_path.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
@@ -228,7 +237,7 @@ fn stage_artifacts(
 }
 
 /// Reconcile disk → SQLite: scan the workspace for existing step artifacts
-/// and capture any that aren't already in the DB (or are newer on disk).
+/// and capture any that aren't already in the DB (or differ in size).
 /// This handles the case where the app was shut down mid-agent and files
 /// were written to disk but never captured.
 fn reconcile_disk_artifacts(
@@ -244,25 +253,20 @@ fn reconcile_disk_artifacts(
     // Walk all steps that produce output files
     for step_id in [0u32, 2, 3, 4, 6, 7, 8, 9] {
         for file in get_step_output_files(step_id) {
-            let path = skill_dir.join(file);
-            if path.exists() {
-                let content = std::fs::read_to_string(&path)
-                    .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-                crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
-            }
+            reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
         }
 
         // Step 7 also has skill/references/ directory
         if step_id == 7 {
             let refs_dir = skill_dir.join("skill").join("references");
             if refs_dir.is_dir() {
-                for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
-                    crate::db::save_artifact(
+                for entry in walk_md_paths(&refs_dir, "skill/references")? {
+                    reconcile_single_file(
                         conn,
                         skill_name,
-                        step_id as i32,
-                        &relative,
-                        &content,
+                        step_id,
+                        &skill_dir,
+                        &entry,
                     )?;
                 }
             }
@@ -272,7 +276,63 @@ fn reconcile_disk_artifacts(
     Ok(())
 }
 
-/// Recursively collect .md files from a directory, returning relative paths.
+/// Reconcile a single file: skip if DB already has it with the same size.
+fn reconcile_single_file(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    step_id: u32,
+    skill_dir: &Path,
+    relative_path: &str,
+) -> Result<(), String> {
+    let path = skill_dir.join(relative_path);
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let disk_size = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // Skip if DB already has this artifact with the same size
+    if let Ok(Some(existing)) = crate::db::get_artifact_by_path(conn, skill_name, relative_path) {
+        if existing.size_bytes as u64 == disk_size {
+            return Ok(());
+        }
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    crate::db::save_artifact(conn, skill_name, step_id as i32, relative_path, &content)?;
+    Ok(())
+}
+
+/// Recursively collect .md file relative paths from a directory.
+fn walk_md_paths(dir: &Path, prefix: &str) -> Result<Vec<String>, String> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read dir {}: {}", dir.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            results.extend(walk_md_paths(&path, &relative)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            results.push(relative);
+        }
+    }
+
+    Ok(results)
+}
+
+/// Recursively collect .md files from a directory, returning relative paths and content.
 fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, String> {
     let mut results = Vec::new();
     let entries = std::fs::read_dir(dir)
