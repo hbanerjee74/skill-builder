@@ -11,10 +11,42 @@ export function formatModelName(model: string): string {
   return model;
 }
 
+/** Format a token count as a compact string (e.g. 45000 -> "45K"). */
+export function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
+
+/** Get the latest input_tokens from context history (most recent turn). */
+export function getLatestContextTokens(run: AgentRun): number {
+  if (run.contextHistory.length === 0) return 0;
+  return run.contextHistory[run.contextHistory.length - 1].inputTokens;
+}
+
+/** Compute context utilization as a percentage (0-100). */
+export function getContextUtilization(run: AgentRun): number {
+  const tokens = getLatestContextTokens(run);
+  if (run.contextWindow <= 0) return 0;
+  return Math.min(100, (tokens / run.contextWindow) * 100);
+}
+
 export interface AgentMessage {
   type: string;
   content?: string;
   raw: Record<string, unknown>;
+  timestamp: number;
+}
+
+export interface ContextSnapshot {
+  turn: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface CompactionEvent {
+  turn: number;
+  preTokens: number;
   timestamp: number;
 }
 
@@ -28,6 +60,9 @@ export interface AgentRun {
   totalCost?: number;
   tokenUsage?: { input: number; output: number };
   sessionId?: string;
+  contextHistory: ContextSnapshot[];
+  contextWindow: number;
+  compactionEvents: CompactionEvent[];
 }
 
 interface AgentState {
@@ -58,6 +93,9 @@ export const useAgentStore = create<AgentState>((set) => ({
           status: "running",
           messages: [],
           startTime: Date.now(),
+          contextHistory: [],
+          contextWindow: 200_000,
+          compactionEvents: [],
         },
       },
       activeAgentId: agentId,
@@ -72,6 +110,9 @@ export const useAgentStore = create<AgentState>((set) => ({
       const raw = message.raw;
       let tokenUsage = run.tokenUsage;
       let totalCost = run.totalCost;
+      let contextHistory = run.contextHistory;
+      let contextWindow = run.contextWindow;
+      let compactionEvents = run.compactionEvents;
 
       if (message.type === "result") {
         const usage = raw.usage as
@@ -87,6 +128,55 @@ export const useAgentStore = create<AgentState>((set) => ({
         if (cost !== undefined) {
           totalCost = cost;
         }
+        // Extract contextWindow from modelUsage in result messages
+        const modelUsage = raw.modelUsage as
+          | Record<string, { contextWindow?: number }>
+          | undefined;
+        if (modelUsage) {
+          for (const mu of Object.values(modelUsage)) {
+            if (mu.contextWindow && mu.contextWindow > 0) {
+              contextWindow = mu.contextWindow;
+              break;
+            }
+          }
+        }
+      }
+
+      // Extract per-turn context usage from assistant messages
+      if (message.type === "assistant") {
+        const betaMsg = (raw as Record<string, unknown>).message as
+          | { usage?: { input_tokens?: number; output_tokens?: number } }
+          | undefined;
+        if (betaMsg?.usage) {
+          const turn = run.messages.filter((m) => m.type === "assistant").length + 1;
+          contextHistory = [
+            ...contextHistory,
+            {
+              turn,
+              inputTokens: betaMsg.usage.input_tokens ?? 0,
+              outputTokens: betaMsg.usage.output_tokens ?? 0,
+            },
+          ];
+        }
+      }
+
+      // Detect compaction boundary messages
+      if (
+        message.type === "system" &&
+        (raw as Record<string, unknown>)?.subtype === "compact_boundary"
+      ) {
+        const metadata = (raw as Record<string, unknown>)?.compact_metadata as
+          | { pre_tokens?: number }
+          | undefined;
+        const turn = run.messages.filter((m) => m.type === "assistant").length;
+        compactionEvents = [
+          ...compactionEvents,
+          {
+            turn,
+            preTokens: metadata?.pre_tokens ?? 0,
+            timestamp: message.timestamp,
+          },
+        ];
       }
 
       // Extract session_id and model from init messages
@@ -113,6 +203,9 @@ export const useAgentStore = create<AgentState>((set) => ({
             tokenUsage,
             totalCost,
             sessionId,
+            contextHistory,
+            contextWindow,
+            compactionEvents,
           },
         },
       };

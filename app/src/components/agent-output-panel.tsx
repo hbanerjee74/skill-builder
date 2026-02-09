@@ -21,7 +21,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useAgentStore, type AgentMessage, formatModelName } from "@/stores/agent-store";
+import {
+  useAgentStore,
+  type AgentMessage,
+  formatModelName,
+  formatTokenCount,
+  getLatestContextTokens,
+  getContextUtilization,
+} from "@/stores/agent-store";
 import { cancelAgent } from "@/lib/tauri";
 
 function formatElapsed(ms: number): string {
@@ -146,6 +153,34 @@ function TurnMarker({ turn }: { turn: number }) {
         Turn {turn}
       </span>
       <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+function ContextMeter({ agentId }: { agentId: string }) {
+  const run = useAgentStore((s) => s.runs[agentId]);
+  if (!run || run.contextHistory.length === 0) return null;
+
+  const tokens = getLatestContextTokens(run);
+  const utilization = getContextUtilization(run);
+  const color =
+    utilization >= 80
+      ? "bg-red-500"
+      : utilization >= 50
+        ? "bg-yellow-500"
+        : "bg-green-500";
+
+  return (
+    <div className="flex items-center gap-1.5" title={`Context: ${tokens.toLocaleString()} / ${run.contextWindow.toLocaleString()} tokens`}>
+      <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
+        <div
+          className={`h-full transition-all ${color}`}
+          style={{ width: `${Math.max(1, utilization)}%` }}
+        />
+      </div>
+      <span className="text-[10px] tabular-nums text-muted-foreground">
+        {formatTokenCount(tokens)} / {formatTokenCount(run.contextWindow)}
+      </span>
     </div>
   );
 }
@@ -298,6 +333,7 @@ export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
               ${run.totalCost.toFixed(4)}
             </Badge>
           )}
+          <ContextMeter agentId={agentId} />
           {run.status === "running" && onPause && (
             <Button
               variant="outline"

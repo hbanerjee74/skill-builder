@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { useAgentStore, type AgentMessage, formatModelName } from "@/stores/agent-store";
+import {
+  useAgentStore,
+  type AgentMessage,
+  formatModelName,
+  formatTokenCount,
+  getLatestContextTokens,
+  getContextUtilization,
+} from "@/stores/agent-store";
 
 describe("useAgentStore", () => {
   beforeEach(() => {
@@ -231,6 +238,256 @@ describe("useAgentStore", () => {
     expect(state.runs["agent-1"].status).toBe("running");
     expect(state.runs["agent-2"].messages).toHaveLength(0);
     expect(state.runs["agent-2"].status).toBe("completed");
+  });
+});
+
+describe("context tracking", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("startRun initializes context tracking fields", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextHistory).toEqual([]);
+    expect(run.contextWindow).toBe(200_000);
+    expect(run.compactionEvents).toEqual([]);
+  });
+
+  it("extracts context snapshot from assistant messages with usage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Analyzing...",
+      raw: {
+        message: {
+          usage: { input_tokens: 15000, output_tokens: 500 },
+          content: [{ type: "text", text: "Analyzing..." }],
+        },
+      },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextHistory).toHaveLength(1);
+    expect(run.contextHistory[0]).toEqual({
+      turn: 1,
+      inputTokens: 15000,
+      outputTokens: 500,
+    });
+  });
+
+  it("tracks multiple turns of context usage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg1: AgentMessage = {
+      type: "assistant",
+      content: "Turn 1",
+      raw: { message: { usage: { input_tokens: 10000, output_tokens: 200 } } },
+      timestamp: Date.now(),
+    };
+    const msg2: AgentMessage = {
+      type: "assistant",
+      content: "Turn 2",
+      raw: { message: { usage: { input_tokens: 25000, output_tokens: 800 } } },
+      timestamp: Date.now(),
+    };
+
+    useAgentStore.getState().addMessage("agent-1", msg1);
+    useAgentStore.getState().addMessage("agent-1", msg2);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextHistory).toHaveLength(2);
+    expect(run.contextHistory[0].turn).toBe(1);
+    expect(run.contextHistory[0].inputTokens).toBe(10000);
+    expect(run.contextHistory[1].turn).toBe(2);
+    expect(run.contextHistory[1].inputTokens).toBe(25000);
+  });
+
+  it("does not add context snapshot for assistant messages without usage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Hello",
+      raw: { message: { content: [{ type: "text", text: "Hello" }] } },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextHistory).toHaveLength(0);
+  });
+
+  it("extracts contextWindow from result message modelUsage", () => {
+    useAgentStore.getState().startRun("agent-1", "opus");
+
+    const msg: AgentMessage = {
+      type: "result",
+      content: "Done",
+      raw: {
+        modelUsage: {
+          "claude-opus-4-6": {
+            inputTokens: 50000,
+            outputTokens: 2000,
+            contextWindow: 200000,
+            maxOutputTokens: 32000,
+            costUSD: 0.10,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextWindow).toBe(200000);
+  });
+
+  it("keeps default contextWindow when result has no modelUsage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "result",
+      content: "Done",
+      raw: { cost_usd: 0.01 },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextWindow).toBe(200_000);
+  });
+
+  it("detects compact_boundary messages and records compaction events", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    // First, add an assistant message to establish turn count
+    const assistantMsg: AgentMessage = {
+      type: "assistant",
+      content: "Working...",
+      raw: { message: { usage: { input_tokens: 180000, output_tokens: 1000 } } },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", assistantMsg);
+
+    const compactMsg: AgentMessage = {
+      type: "system",
+      content: undefined,
+      raw: {
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { trigger: "auto", pre_tokens: 190000 },
+      },
+      timestamp: 1700000000000,
+    };
+    useAgentStore.getState().addMessage("agent-1", compactMsg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.compactionEvents).toHaveLength(1);
+    expect(run.compactionEvents[0]).toEqual({
+      turn: 1,
+      preTokens: 190000,
+      timestamp: 1700000000000,
+    });
+  });
+
+  it("handles compact_boundary with missing metadata gracefully", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const compactMsg: AgentMessage = {
+      type: "system",
+      content: undefined,
+      raw: { type: "system", subtype: "compact_boundary" },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", compactMsg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.compactionEvents).toHaveLength(1);
+    expect(run.compactionEvents[0].preTokens).toBe(0);
+    expect(run.compactionEvents[0].turn).toBe(0);
+  });
+});
+
+describe("context helper functions", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("formatTokenCount formats tokens as K/M", () => {
+    expect(formatTokenCount(500)).toBe("500");
+    expect(formatTokenCount(1000)).toBe("1K");
+    expect(formatTokenCount(45000)).toBe("45K");
+    expect(formatTokenCount(1500000)).toBe("1.5M");
+    expect(formatTokenCount(200000)).toBe("200K");
+  });
+
+  it("getLatestContextTokens returns 0 when no history", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(getLatestContextTokens(run)).toBe(0);
+  });
+
+  it("getLatestContextTokens returns latest input tokens", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg1: AgentMessage = {
+      type: "assistant",
+      content: "Turn 1",
+      raw: { message: { usage: { input_tokens: 10000, output_tokens: 200 } } },
+      timestamp: Date.now(),
+    };
+    const msg2: AgentMessage = {
+      type: "assistant",
+      content: "Turn 2",
+      raw: { message: { usage: { input_tokens: 50000, output_tokens: 800 } } },
+      timestamp: Date.now(),
+    };
+
+    useAgentStore.getState().addMessage("agent-1", msg1);
+    useAgentStore.getState().addMessage("agent-1", msg2);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(getLatestContextTokens(run)).toBe(50000);
+  });
+
+  it("getContextUtilization computes percentage correctly", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Working",
+      raw: { message: { usage: { input_tokens: 100000, output_tokens: 500 } } },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(getContextUtilization(run)).toBe(50); // 100K / 200K = 50%
+  });
+
+  it("getContextUtilization caps at 100%", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Working",
+      raw: { message: { usage: { input_tokens: 250000, output_tokens: 500 } } },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(getContextUtilization(run)).toBe(100);
+  });
+
+  it("getContextUtilization returns 0 when no history", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(getContextUtilization(run)).toBe(0);
   });
 });
 
