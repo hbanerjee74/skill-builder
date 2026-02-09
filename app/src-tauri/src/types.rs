@@ -5,6 +5,8 @@ pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
     pub preferred_model: Option<String>,
+    #[serde(default)]
+    pub debug_mode: bool,
 }
 
 impl Default for AppSettings {
@@ -13,6 +15,7 @@ impl Default for AppSettings {
             anthropic_api_key: None,
             workspace_path: None,
             preferred_model: None,
+            debug_mode: false,
         }
     }
 }
@@ -159,6 +162,7 @@ mod tests {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
             preferred_model: Some("sonnet".to_string()),
+            debug_mode: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();

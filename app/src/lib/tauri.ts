@@ -6,6 +6,7 @@ export interface AppSettings {
   anthropic_api_key: string | null;
   workspace_path: string | null;
   preferred_model: string | null;
+  debug_mode: boolean;
 }
 
 export interface SkillSummary {

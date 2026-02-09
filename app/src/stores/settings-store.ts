@@ -4,6 +4,7 @@ interface SettingsState {
   anthropicApiKey: string | null;
   workspacePath: string | null;
   preferredModel: string | null;
+  debugMode: boolean;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -13,6 +14,7 @@ const initialState = {
   anthropicApiKey: null,
   workspacePath: null,
   preferredModel: null,
+  debugMode: false,
   isConfigured: false,
 };
 
