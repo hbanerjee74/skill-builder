@@ -3,6 +3,7 @@ import { create } from "zustand";
 interface SettingsState {
   anthropicApiKey: string | null;
   workspacePath: string | null;
+  skillsPath: string | null;
   preferredModel: string | null;
   debugMode: boolean;
   extendedContext: boolean;
@@ -14,6 +15,7 @@ interface SettingsState {
 const initialState = {
   anthropicApiKey: null,
   workspacePath: null,
+  skillsPath: null,
   preferredModel: null,
   debugMode: false,
   extendedContext: false,

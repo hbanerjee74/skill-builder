@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen } from "lucide-react"
+import { open } from "@tauri-apps/plugin-dialog"
+import { Loader2, Eye, EyeOff, Save, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -27,6 +28,7 @@ const MODEL_OPTIONS = [
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const [skillsPath, setSkillsPath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [debugMode, setDebugMode] = useState(false)
   const [extendedContext, setExtendedContext] = useState(false)
@@ -38,6 +40,7 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false)
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
   const [nodeLoading, setNodeLoading] = useState(true)
+  const [clearing, setClearing] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
@@ -49,6 +52,7 @@ export default function SettingsPage() {
           if (!cancelled) {
             setApiKey(result.anthropic_api_key)
             setWorkspacePath(result.workspace_path)
+            setSkillsPath(result.skills_path)
             setPreferredModel(result.preferred_model || "sonnet")
             setDebugMode(result.debug_mode ?? false)
             setExtendedContext(result.extended_context ?? false)
@@ -90,6 +94,7 @@ export default function SettingsPage() {
         settings: {
           anthropic_api_key: apiKey,
           workspace_path: workspacePath,
+          skills_path: skillsPath,
           preferred_model: preferredModel,
           debug_mode: debugMode,
           extended_context: extendedContext,
@@ -104,6 +109,7 @@ export default function SettingsPage() {
       setStoreSettings({
         anthropicApiKey: apiKey,
         workspacePath,
+        skillsPath,
         preferredModel,
         debugMode,
         extendedContext,
@@ -136,6 +142,26 @@ export default function SettingsPage() {
       )
     } finally {
       setTesting(false)
+    }
+  }
+
+  const handleBrowseSkillsPath = async () => {
+    const folder = await open({ directory: true, title: "Select Skills Folder" })
+    if (folder) setSkillsPath(folder)
+  }
+
+  const handleClearWorkspace = async () => {
+    if (!window.confirm("This will delete all working files and skill data from the workspace. Finished skills in your Skills Folder will not be affected.\n\nAre you sure?")) {
+      return
+    }
+    setClearing(true)
+    try {
+      await invoke("clear_workspace")
+      toast.success("Workspace cleared", { duration: 1500 })
+    } catch (err) {
+      toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setClearing(false)
     }
   }
 
@@ -269,6 +295,27 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Skills Folder</CardTitle>
+          <CardDescription>
+            Persistent folder for finished skill outputs (SKILL.md, references, .skill packages). Not affected by workspace clearing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <FolderOpen className="size-4 text-muted-foreground" />
+            <code className="text-sm text-muted-foreground flex-1">
+              {skillsPath || "Not configured"}
+            </code>
+            <Button variant="outline" size="sm" onClick={handleBrowseSkillsPath}>
+              <FolderSearch className="size-4" />
+              Browse
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Workspace Folder</CardTitle>
           <CardDescription>
             Skills and working files are stored in this directory. This is managed automatically.
@@ -277,9 +324,23 @@ export default function SettingsPage() {
         <CardContent>
           <div className="flex items-center gap-2">
             <FolderOpen className="size-4 text-muted-foreground" />
-            <code className="text-sm text-muted-foreground">
+            <code className="text-sm text-muted-foreground flex-1">
               {workspacePath || "Not initialized"}
             </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClearWorkspace}
+              disabled={clearing || !workspacePath}
+              className="text-destructive hover:text-destructive"
+            >
+              {clearing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Clear
+            </Button>
           </div>
         </CardContent>
       </Card>

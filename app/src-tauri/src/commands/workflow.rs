@@ -190,6 +190,13 @@ fn read_extended_context(db: &tauri::State<'_, Db>) -> bool {
         .unwrap_or(false)
 }
 
+fn read_debug_mode(db: &tauri::State<'_, Db>) -> bool {
+    let conn = db.0.lock().ok();
+    conn.and_then(|c| crate::db::read_settings(&c).ok())
+        .map(|s| s.debug_mode)
+        .unwrap_or(false)
+}
+
 fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
     let conn = db.0.lock().ok();
     let model_shorthand = conn
@@ -408,13 +415,15 @@ pub async fn run_review_step(
         output_path, domain
     );
 
+    let debug_mode = read_debug_mode(&db);
+
     let config = SidecarConfig {
         prompt,
         model: resolve_model_id("haiku"),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
-        max_turns: Some(10),
+        max_turns: Some(if debug_mode { 3 } else { 10 }),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: if extended_context {
@@ -467,6 +476,7 @@ pub async fn run_workflow_step(
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
     let extended_context = read_extended_context(&db);
+    let debug_mode = read_debug_mode(&db);
     let model = read_preferred_model(&db);
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
@@ -477,7 +487,7 @@ pub async fn run_workflow_step(
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
-        max_turns: Some(step.max_turns),
+        max_turns: Some(if debug_mode { 5 } else { step.max_turns }),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: if extended_context {
@@ -521,7 +531,67 @@ pub async fn package_skill(
     .await
     .map_err(|e| format!("Packaging task failed: {}", e))??;
 
+    // Copy outputs to skills_path if configured
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        if let Some(ref skills_path) = settings.skills_path {
+            let dest_dir = Path::new(skills_path).join(&skill_name);
+            std::fs::create_dir_all(&dest_dir)
+                .map_err(|e| format!("Failed to create skills output dir: {}", e))?;
+
+            let skill_dir = Path::new(&workspace_path).join(&skill_name);
+
+            // Copy SKILL.md
+            let src_skill_md = skill_dir.join("skill").join("SKILL.md");
+            if src_skill_md.exists() {
+                std::fs::copy(&src_skill_md, dest_dir.join("SKILL.md"))
+                    .map_err(|e| format!("Failed to copy SKILL.md to skills_path: {}", e))?;
+            }
+
+            // Copy references/ directory
+            let src_refs = skill_dir.join("skill").join("references");
+            if src_refs.is_dir() {
+                let dest_refs = dest_dir.join("references");
+                copy_directory_recursive(&src_refs, &dest_refs)
+                    .map_err(|e| format!("Failed to copy references to skills_path: {}", e))?;
+            }
+
+            // Copy .skill zip
+            let src_zip = Path::new(&result.file_path);
+            if src_zip.exists() {
+                let dest_zip = dest_dir.join(format!("{}.skill", skill_name));
+                std::fs::copy(src_zip, &dest_zip)
+                    .map_err(|e| format!("Failed to copy .skill zip to skills_path: {}", e))?;
+            }
+        }
+    }
+
     Ok(result)
+}
+
+/// Recursively copy a directory and all its contents.
+fn copy_directory_recursive(src: &Path, dest: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dest)
+        .map_err(|e| format!("Failed to create dir {}: {}", dest.display(), e))?;
+
+    let entries = std::fs::read_dir(src)
+        .map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let src_path = entry.path();
+        let dest_path = dest.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_directory_recursive(&src_path, &dest_path)?;
+        } else {
+            std::fs::copy(&src_path, &dest_path)
+                .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn create_skill_zip(
@@ -1069,5 +1139,91 @@ mod tests {
     fn test_delete_step_output_files_nonexistent_dir_is_ok() {
         // Should not panic on nonexistent directory
         delete_step_output_files("/tmp/nonexistent", "no-skill", 0);
+    }
+
+    #[test]
+    fn test_copy_directory_recursive_copies_all_file_types() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        // Create source files of various types (not just .md)
+        std::fs::write(src.path().join("SKILL.md"), "# Skill").unwrap();
+        std::fs::write(src.path().join("data.csv"), "col1,col2\na,b").unwrap();
+        std::fs::write(src.path().join("config.json"), "{}").unwrap();
+
+        let dest_path = dest.path().join("output");
+        copy_directory_recursive(src.path(), &dest_path).unwrap();
+
+        assert!(dest_path.join("SKILL.md").exists());
+        assert!(dest_path.join("data.csv").exists());
+        assert!(dest_path.join("config.json").exists());
+
+        // Verify content is preserved
+        let csv_content = std::fs::read_to_string(dest_path.join("data.csv")).unwrap();
+        assert_eq!(csv_content, "col1,col2\na,b");
+    }
+
+    #[test]
+    fn test_copy_directory_recursive_handles_nested_dirs() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        // Create nested structure
+        std::fs::create_dir_all(src.path().join("sub").join("deep")).unwrap();
+        std::fs::write(src.path().join("top.md"), "top").unwrap();
+        std::fs::write(src.path().join("sub").join("middle.txt"), "middle").unwrap();
+        std::fs::write(src.path().join("sub").join("deep").join("bottom.md"), "bottom").unwrap();
+
+        let dest_path = dest.path().join("copied");
+        copy_directory_recursive(src.path(), &dest_path).unwrap();
+
+        assert!(dest_path.join("top.md").exists());
+        assert!(dest_path.join("sub").join("middle.txt").exists());
+        assert!(dest_path.join("sub").join("deep").join("bottom.md").exists());
+
+        let bottom = std::fs::read_to_string(dest_path.join("sub").join("deep").join("bottom.md")).unwrap();
+        assert_eq!(bottom, "bottom");
+    }
+
+    #[test]
+    fn test_copy_directory_recursive_creates_dest_dir() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        std::fs::write(src.path().join("file.txt"), "hello").unwrap();
+
+        // Destination doesn't exist yet — copy_directory_recursive should create it
+        let dest_path = dest.path().join("new").join("nested").join("dir");
+        assert!(!dest_path.exists());
+
+        copy_directory_recursive(src.path(), &dest_path).unwrap();
+
+        assert!(dest_path.join("file.txt").exists());
+    }
+
+    #[test]
+    fn test_copy_directory_recursive_empty_dir() {
+        let src = tempfile::tempdir().unwrap();
+        let dest = tempfile::tempdir().unwrap();
+
+        // Source is empty
+        let dest_path = dest.path().join("empty_copy");
+        copy_directory_recursive(src.path(), &dest_path).unwrap();
+
+        assert!(dest_path.exists());
+        assert!(dest_path.is_dir());
+        // No files should be created
+        let count = std::fs::read_dir(&dest_path).unwrap().count();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_copy_directory_recursive_nonexistent_source_fails() {
+        let dest = tempfile::tempdir().unwrap();
+        let result = copy_directory_recursive(
+            Path::new("/nonexistent/source"),
+            &dest.path().join("dest"),
+        );
+        assert!(result.is_err());
     }
 }

@@ -49,6 +49,49 @@ pub fn get_workspace_path(db: tauri::State<'_, Db>) -> Result<String, String> {
         .ok_or_else(|| "Workspace path not initialized".to_string())
 }
 
+#[tauri::command]
+pub fn clear_workspace(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+    let workspace_path = settings.workspace_path
+        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
+    let base = std::path::Path::new(&workspace_path);
+    if !base.exists() {
+        return Ok(());
+    }
+
+    // List all subdirectories, skip agents/ and references/
+    let entries = std::fs::read_dir(base).map_err(|e| e.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_dir() { continue; }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name == "agents" || name == "references" { continue; }
+
+        // Delete filesystem
+        std::fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+
+        // Delete DB records
+        crate::db::delete_workflow_run(&conn, &name)?;
+        // Delete chat sessions for this skill
+        conn.execute("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE skill_name = ?1)", [&name])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM chat_sessions WHERE skill_name = ?1", [&name])
+            .map_err(|e| e.to_string())?;
+    }
+    drop(conn);
+
+    // Re-initialize workspace with bundled agents/references
+    super::workflow::ensure_workspace_prompts(&app, &workspace_path)?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

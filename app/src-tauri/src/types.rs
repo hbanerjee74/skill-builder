@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
+    #[serde(default)]
+    pub skills_path: Option<String>,
     pub preferred_model: Option<String>,
     #[serde(default)]
     pub debug_mode: bool,
@@ -18,6 +20,7 @@ impl Default for AppSettings {
         Self {
             anthropic_api_key: None,
             workspace_path: None,
+            skills_path: None,
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
@@ -153,7 +156,11 @@ mod tests {
         let settings = AppSettings::default();
         assert!(settings.anthropic_api_key.is_none());
         assert!(settings.workspace_path.is_none());
+        assert!(settings.skills_path.is_none());
         assert!(settings.preferred_model.is_none());
+        assert!(!settings.debug_mode);
+        assert!(!settings.extended_context);
+        assert!(!settings.splash_shown);
     }
 
     #[test]
@@ -161,6 +168,7 @@ mod tests {
         let settings = AppSettings {
             anthropic_api_key: Some("sk-ant-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
+            skills_path: Some("/home/user/output".to_string()),
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
             extended_context: false,
@@ -177,9 +185,22 @@ mod tests {
             Some("/home/user/skills")
         );
         assert_eq!(
+            deserialized.skills_path.as_deref(),
+            Some("/home/user/output")
+        );
+        assert_eq!(
             deserialized.preferred_model.as_deref(),
             Some("sonnet")
         );
+    }
+
+    #[test]
+    fn test_app_settings_deserialize_without_optional_fields() {
+        // Simulates loading settings saved before skills_path / debug_mode existed
+        let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(settings.skills_path.is_none());
+        assert!(!settings.debug_mode);
     }
 
     #[test]

@@ -38,6 +38,7 @@ import DashboardPage from "@/pages/dashboard";
 const defaultSettings: AppSettings = {
   anthropic_api_key: "sk-ant-test",
   workspace_path: "/home/user/workspace",
+  skills_path: null,
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,

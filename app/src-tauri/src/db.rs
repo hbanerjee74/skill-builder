@@ -569,6 +569,7 @@ mod tests {
         let settings = AppSettings {
             anthropic_api_key: Some("sk-test-key".to_string()),
             workspace_path: Some("/home/user/skills".to_string()),
+            skills_path: None,
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
             extended_context: false,
@@ -585,11 +586,48 @@ mod tests {
     }
 
     #[test]
+    fn test_write_and_read_settings_with_skills_path() {
+        let conn = create_test_db();
+        let settings = AppSettings {
+            anthropic_api_key: Some("sk-test".to_string()),
+            workspace_path: Some("/workspace".to_string()),
+            skills_path: Some("/home/user/my-skills".to_string()),
+            preferred_model: None,
+            debug_mode: false,
+            extended_context: false,
+            splash_shown: false,
+        };
+        write_settings(&conn, &settings).unwrap();
+
+        let loaded = read_settings(&conn).unwrap();
+        assert_eq!(loaded.skills_path.as_deref(), Some("/home/user/my-skills"));
+    }
+
+    #[test]
+    fn test_write_and_read_settings_with_debug_mode() {
+        let conn = create_test_db();
+        let settings = AppSettings {
+            anthropic_api_key: None,
+            workspace_path: None,
+            skills_path: None,
+            preferred_model: None,
+            debug_mode: true,
+            extended_context: false,
+            splash_shown: false,
+        };
+        write_settings(&conn, &settings).unwrap();
+
+        let loaded = read_settings(&conn).unwrap();
+        assert!(loaded.debug_mode);
+    }
+
+    #[test]
     fn test_overwrite_settings() {
         let conn = create_test_db();
         let v1 = AppSettings {
             anthropic_api_key: Some("key-1".to_string()),
             workspace_path: None,
+            skills_path: None,
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
@@ -600,6 +638,7 @@ mod tests {
         let v2 = AppSettings {
             anthropic_api_key: Some("key-2".to_string()),
             workspace_path: Some("/new/path".to_string()),
+            skills_path: None,
             preferred_model: Some("opus".to_string()),
             debug_mode: true,
             extended_context: false,

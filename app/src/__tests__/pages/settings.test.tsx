@@ -32,6 +32,7 @@ import SettingsPage from "@/pages/settings";
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
   workspace_path: null,
+  skills_path: null,
   preferred_model: null,
   debug_mode: false,
   extended_context: false,
@@ -41,6 +42,7 @@ const defaultSettings: AppSettings = {
 const populatedSettings: AppSettings = {
   anthropic_api_key: "sk-ant-existing-key",
   workspace_path: "/home/user/workspace",
+  skills_path: null,
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,
@@ -181,5 +183,74 @@ describe("SettingsPage", () => {
 
     const heading = screen.getByRole("heading", { name: "Settings" });
     expect(heading).toBeInTheDocument();
+  });
+
+  it("renders Skills Folder card with Browse button", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Skills Folder")).toBeInTheDocument();
+    expect(screen.getByText("Not configured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Browse/i })).toBeInTheDocument();
+  });
+
+  it("renders Skills Folder path when configured", async () => {
+    setupDefaultMocks({ skills_path: "/home/user/my-skills" });
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("/home/user/my-skills")).toBeInTheDocument();
+  });
+
+  it("renders Clear button in Workspace Folder card", async () => {
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Clear/i })).toBeInTheDocument();
+  });
+
+  it("disables Clear button when workspace path is not set", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const clearButton = screen.getByRole("button", { name: /Clear/i });
+    expect(clearButton).toBeDisabled();
+  });
+
+  it("includes skills_path in save_settings payload", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({ ...populatedSettings, skills_path: "/output" });
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const saveButton = screen.getByRole("button", { name: /Save Settings/i });
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          skills_path: "/output",
+        }),
+      });
+    });
   });
 });
