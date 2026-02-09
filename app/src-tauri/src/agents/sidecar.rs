@@ -31,6 +31,8 @@ pub struct SidecarConfig {
     pub permission_mode: Option<String>,
     #[serde(rename = "sessionId", skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub betas: Option<Vec<String>>,
 }
 
 pub async fn spawn_sidecar(
@@ -315,6 +317,7 @@ mod tests {
             max_turns: Some(25),
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
+            betas: None,
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -327,6 +330,8 @@ mod tests {
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         // session_id is None + skip_serializing_if — should be absent
         assert!(parsed.get("sessionId").is_none());
+        // betas is None + skip_serializing_if — should be absent
+        assert!(parsed.get("betas").is_none());
     }
 
     #[test]

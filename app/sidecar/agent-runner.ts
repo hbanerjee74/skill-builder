@@ -9,6 +9,7 @@ interface SidecarConfig {
   maxTurns?: number;
   permissionMode?: string;
   sessionId?: string;
+  betas?: string[];
 }
 
 let aborted = false;
@@ -61,6 +62,7 @@ async function main() {
         // so the SDK spawns cli.js with a compatible Node version.
         executable: process.execPath,
         ...(config.sessionId ? { resume: config.sessionId } : {}),
+        ...(config.betas ? { betas: config.betas } : {}),
       },
     });
 

@@ -106,6 +106,15 @@ pub async fn run_chat_agent(
         max_turns: Some(30),
         permission_mode: Some("bypassPermissions".into()),
         session_id: None,
+        betas: {
+            let conn = db_state.0.lock().map_err(|e| e.to_string())?;
+            let settings = db::read_settings(&conn)?;
+            if settings.extended_context {
+                Some(vec!["context-1m-2025-08-07".to_string()])
+            } else {
+                None
+            }
+        },
     };
 
     sidecar::spawn_sidecar(

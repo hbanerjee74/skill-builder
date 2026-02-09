@@ -5,6 +5,7 @@ interface SettingsState {
   workspacePath: string | null;
   preferredModel: string | null;
   debugMode: boolean;
+  extendedContext: boolean;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -15,6 +16,7 @@ const initialState = {
   workspacePath: null,
   preferredModel: null,
   debugMode: false,
+  extendedContext: false,
   isConfigured: false,
 };
 

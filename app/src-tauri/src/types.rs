@@ -7,6 +7,8 @@ pub struct AppSettings {
     pub preferred_model: Option<String>,
     #[serde(default)]
     pub debug_mode: bool,
+    #[serde(default)]
+    pub extended_context: bool,
 }
 
 impl Default for AppSettings {
@@ -16,6 +18,7 @@ impl Default for AppSettings {
             workspace_path: None,
             preferred_model: None,
             debug_mode: false,
+            extended_context: false,
         }
     }
 }
@@ -157,6 +160,7 @@ mod tests {
             workspace_path: Some("/home/user/skills".to_string()),
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
+            extended_context: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -185,6 +189,7 @@ mod tests {
             max_turns: Some(10),
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
+            betas: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));
@@ -193,5 +198,7 @@ mod tests {
         assert!(json.contains("\"permissionMode\""));
         // session_id is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"sessionId\""));
+        // betas is None with skip_serializing_if, so should not appear
+        assert!(!json.contains("\"betas\""));
     }
 }

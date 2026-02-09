@@ -34,6 +34,7 @@ const defaultSettings: AppSettings = {
   workspace_path: null,
   preferred_model: null,
   debug_mode: false,
+  extended_context: false,
 };
 
 const populatedSettings: AppSettings = {
@@ -41,6 +42,7 @@ const populatedSettings: AppSettings = {
   workspace_path: "/home/user/workspace",
   preferred_model: "sonnet",
   debug_mode: false,
+  extended_context: false,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {

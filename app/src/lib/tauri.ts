@@ -7,6 +7,7 @@ export interface AppSettings {
   workspace_path: string | null;
   preferred_model: string | null;
   debug_mode: boolean;
+  extended_context: boolean;
 }
 
 export interface SkillSummary {

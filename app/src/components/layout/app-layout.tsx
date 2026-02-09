@@ -18,6 +18,7 @@ export function AppLayout() {
         workspacePath: s.workspace_path,
         preferredModel: s.preferred_model,
         debugMode: s.debug_mode,
+        extendedContext: s.extended_context,
       });
     }).catch(() => {
       // Settings may not exist yet

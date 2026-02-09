@@ -571,6 +571,7 @@ mod tests {
             workspace_path: Some("/home/user/skills".to_string()),
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
+            extended_context: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -590,6 +591,7 @@ mod tests {
             workspace_path: None,
             preferred_model: None,
             debug_mode: false,
+            extended_context: false,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -598,6 +600,7 @@ mod tests {
             workspace_path: Some("/new/path".to_string()),
             preferred_model: Some("opus".to_string()),
             debug_mode: true,
+            extended_context: false,
         };
         write_settings(&conn, &v2).unwrap();
 

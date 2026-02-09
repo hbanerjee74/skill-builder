@@ -40,6 +40,7 @@ const defaultSettings: AppSettings = {
   workspace_path: "/home/user/workspace",
   preferred_model: "sonnet",
   debug_mode: false,
+  extended_context: false,
 };
 
 const sampleSkills: SkillSummary[] = [

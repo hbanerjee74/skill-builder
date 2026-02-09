@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [debugMode, setDebugMode] = useState(false)
+  const [extendedContext, setExtendedContext] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -50,6 +51,7 @@ export default function SettingsPage() {
             setWorkspacePath(result.workspace_path)
             setPreferredModel(result.preferred_model || "sonnet")
             setDebugMode(result.debug_mode ?? false)
+            setExtendedContext(result.extended_context ?? false)
             setLoading(false)
           }
           return
@@ -90,6 +92,7 @@ export default function SettingsPage() {
           workspace_path: workspacePath,
           preferred_model: preferredModel,
           debug_mode: debugMode,
+          extended_context: extendedContext,
         },
       })
       setSaved(true)
@@ -102,6 +105,7 @@ export default function SettingsPage() {
         workspacePath,
         preferredModel,
         debugMode,
+        extendedContext,
       })
 
       toast.success("Settings saved", { duration: 1500 })
@@ -238,6 +242,25 @@ export default function SettingsPage() {
               id="debug-mode"
               checked={debugMode}
               onCheckedChange={setDebugMode}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Context</CardTitle>
+          <CardDescription>
+            Enable 1M token context window for all agents. Requires a compatible API plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+            <Switch
+              id="extended-context"
+              checked={extendedContext}
+              onCheckedChange={setExtendedContext}
             />
           </div>
         </CardContent>

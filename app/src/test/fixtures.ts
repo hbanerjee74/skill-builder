@@ -9,6 +9,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     workspace_path: null,
     preferred_model: null,
     debug_mode: false,
+    extended_context: false,
     ...overrides,
   };
 }

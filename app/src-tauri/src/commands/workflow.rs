@@ -166,6 +166,13 @@ fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
         .ok_or_else(|| "Anthropic API key not configured".to_string())
 }
 
+fn read_extended_context(db: &tauri::State<'_, Db>) -> bool {
+    let conn = db.0.lock().ok();
+    conn.and_then(|c| crate::db::read_settings(&c).ok())
+        .map(|s| s.extended_context)
+        .unwrap_or(false)
+}
+
 fn read_preferred_model(db: &tauri::State<'_, Db>) -> String {
     let conn = db.0.lock().ok();
     let model_shorthand = conn
@@ -363,6 +370,7 @@ pub async fn run_review_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let extended_context = read_extended_context(&db);
     let agent_id = make_agent_id(&skill_name, &format!("review-step{}", step_id));
 
     let output_path = format!("{}/{}", skill_name, step.output_file);
@@ -392,6 +400,11 @@ pub async fn run_review_step(
         max_turns: Some(10),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
+        betas: if extended_context {
+            Some(vec!["context-1m-2025-08-07".to_string()])
+        } else {
+            None
+        },
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
@@ -422,6 +435,7 @@ pub async fn run_workflow_step(
 
     let step = get_step_config(step_id)?;
     let api_key = read_api_key(&db)?;
+    let extended_context = read_extended_context(&db);
     let model = read_preferred_model(&db);
     let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
@@ -435,6 +449,11 @@ pub async fn run_workflow_step(
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
+        betas: if extended_context {
+            Some(vec!["context-1m-2025-08-07".to_string()])
+        } else {
+            None
+        },
     };
 
     sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app).await?;
