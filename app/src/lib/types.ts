@@ -4,6 +4,7 @@ export interface AppSettings {
   preferred_model: string | null
   debug_mode: boolean
   extended_context: boolean
+  splash_shown: boolean
 }
 
 export interface SkillSummary {

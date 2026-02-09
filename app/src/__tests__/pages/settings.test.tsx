@@ -35,6 +35,7 @@ const defaultSettings: AppSettings = {
   preferred_model: null,
   debug_mode: false,
   extended_context: false,
+  splash_shown: false,
 };
 
 const populatedSettings: AppSettings = {
@@ -43,6 +44,7 @@ const populatedSettings: AppSettings = {
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,
+  splash_shown: true,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {

@@ -41,6 +41,7 @@ const defaultSettings: AppSettings = {
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,
+  splash_shown: false,
 };
 
 const sampleSkills: SkillSummary[] = [

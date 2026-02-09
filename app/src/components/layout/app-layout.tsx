@@ -1,14 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "@tanstack/react-router";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
+import { SplashScreen } from "@/components/splash-screen";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings } from "@/lib/tauri";
+import { getSettings, saveSettings } from "@/lib/tauri";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
+  const splashShown = useSettingsStore((s) => s.splashShown);
   const navigate = useNavigate();
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -19,9 +22,12 @@ export function AppLayout() {
         preferredModel: s.preferred_model,
         debugMode: s.debug_mode,
         extendedContext: s.extended_context,
+        splashShown: s.splash_shown,
       });
+      setSettingsLoaded(true);
     }).catch(() => {
-      // Settings may not exist yet
+      // Settings may not exist yet — show splash
+      setSettingsLoaded(true);
     });
   }, [setSettings]);
 
@@ -44,6 +50,16 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
+  const handleSplashDismiss = async () => {
+    setSettings({ splashShown: true });
+    try {
+      const current = await getSettings();
+      await saveSettings({ ...current, splash_shown: true });
+    } catch {
+      // Best effort — splash won't show again this session regardless
+    }
+  };
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
@@ -54,6 +70,9 @@ export function AppLayout() {
         </main>
       </div>
       <CloseGuard />
+      {settingsLoaded && !splashShown && (
+        <SplashScreen onDismiss={handleSplashDismiss} />
+      )}
     </div>
   );
 }

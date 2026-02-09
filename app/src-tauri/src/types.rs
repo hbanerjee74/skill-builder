@@ -9,6 +9,8 @@ pub struct AppSettings {
     pub debug_mode: bool,
     #[serde(default)]
     pub extended_context: bool,
+    #[serde(default)]
+    pub splash_shown: bool,
 }
 
 impl Default for AppSettings {
@@ -19,6 +21,7 @@ impl Default for AppSettings {
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
+            splash_shown: false,
         }
     }
 }
@@ -161,6 +164,7 @@ mod tests {
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
             extended_context: false,
+            splash_shown: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
