@@ -271,6 +271,19 @@ export default function WorkflowPage() {
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
 
+    if (activeRunStatus === "cancelled") {
+      // Agent was deliberately paused or cancelled — revert step to pending
+      // so the user can re-run it. The handlePauseAgent handler may have
+      // already done this, but this covers the Cancel button path too.
+      updateStepStatus(step, "pending");
+      setRunning(false);
+      setActiveAgent(null);
+      if (workspacePath) {
+        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
+      }
+      return;
+    }
+
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 

@@ -19,6 +19,7 @@ interface AgentMessagePayload {
 interface AgentExitPayload {
   agent_id: string;
   success: boolean;
+  cancelled?: boolean;
 }
 
 function parseContent(message: AgentMessagePayload["message"]): string | undefined {
@@ -65,10 +66,12 @@ export function initAgentStream() {
 
   listen<AgentExitPayload>("agent-exit", (event) => {
     if (shuttingDown) return;
-    useAgentStore.getState().completeRun(
-      event.payload.agent_id,
-      event.payload.success
-    );
+    const { agent_id, success, cancelled } = event.payload;
+    if (cancelled) {
+      useAgentStore.getState().cancelRun(agent_id);
+    } else {
+      useAgentStore.getState().completeRun(agent_id, success);
+    }
   });
 }
 

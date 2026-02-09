@@ -28,6 +28,18 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
         serde_json::json!({
             "agent_id": agent_id,
             "success": success,
+            "cancelled": false,
+        }),
+    );
+}
+
+pub fn handle_sidecar_cancelled(app_handle: &tauri::AppHandle, agent_id: &str) {
+    let _ = app_handle.emit(
+        "agent-exit",
+        serde_json::json!({
+            "agent_id": agent_id,
+            "success": false,
+            "cancelled": true,
         }),
     );
 }
