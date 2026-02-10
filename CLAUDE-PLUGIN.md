@@ -70,7 +70,7 @@ Rules:
 1. **Never read agent output files into the coordinator context.** Agents write to disk; the coordinator tells the user where to find the files and relays the summary the agent returned.
 2. **Prefer subagents over inline work.** If a step involves reading multiple files, reasoning over content, or producing output longer than a few lines, it belongs in a subagent — not in the coordinator.
 3. **Summaries only flow up.** Each Task prompt must end with an instruction like "Return a 5–10 bullet summary." The coordinator uses that summary for progress updates and to inform the next step's prompt — nothing more.
-4. **Parallel where independent.** Steps that don't depend on each other (e.g., Step 3a and 3b) must be dispatched as parallel Task calls in a single message to reduce wall-clock time without expanding coordinator context.
+4. **Parallel where independent.** Steps that don't depend on each other must be dispatched as parallel Task calls in a single message to reduce wall-clock time without expanding coordinator context.
 
 ### Path Resolution
 
