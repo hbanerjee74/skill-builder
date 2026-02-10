@@ -9,7 +9,9 @@ import {
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Play, Trash2 } from "lucide-react"
-import type { SkillSummary } from "@/lib/types"
+import type { SkillSummary, SkillType } from "@/lib/types"
+import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 interface SkillCardProps {
   skill: SkillSummary
@@ -106,6 +108,11 @@ export default function SkillCard({
             {skill.domain}
           </Badge>
         )}
+        {skill.skill_type && (
+          <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType] || "")}>
+            {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
+          </Badge>
+        )}
         {skill.tags && skill.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {skill.tags.map((tag) => (
@@ -133,6 +140,7 @@ export default function SkillCard({
             variant="ghost"
             size="icon-xs"
             className="text-muted-foreground hover:text-destructive"
+            aria-label="Delete skill"
             onClick={() => onDelete(skill)}
           >
             <Trash2 className="size-3" />

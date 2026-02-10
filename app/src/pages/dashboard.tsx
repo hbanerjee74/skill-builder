@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { FolderOpen, Search } from "lucide-react"
+import { FolderOpen, Search, Filter } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -11,12 +11,23 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import type { SkillSummary, AppSettings } from "@/lib/types"
+import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
 export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -25,6 +36,7 @@ export default function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
 
@@ -81,7 +93,8 @@ export default function DashboardPage() {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
-          (s.domain && s.domain.toLowerCase().includes(q))
+          (s.domain && s.domain.toLowerCase().includes(q)) ||
+          (s.skill_type && (SKILL_TYPE_LABELS[s.skill_type as keyof typeof SKILL_TYPE_LABELS] || s.skill_type).toLowerCase().includes(q))
       )
     }
     if (selectedTags.length > 0) {
@@ -89,10 +102,15 @@ export default function DashboardPage() {
         selectedTags.every((tag) => s.tags?.includes(tag))
       )
     }
+    if (selectedTypes.length > 0) {
+      result = result.filter((s) =>
+        s.skill_type != null && selectedTypes.includes(s.skill_type)
+      )
+    }
     return result
-  }, [skills, searchQuery, selectedTags])
+  }, [skills, searchQuery, selectedTags, selectedTypes])
 
-  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0
+  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
 
   const handleContinue = (skill: SkillSummary) => {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
@@ -127,6 +145,50 @@ export default function DashboardPage() {
             selectedTags={selectedTags}
             onChange={setSelectedTags}
           />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Filter className="size-4" />
+                Type
+                {selectedTypes.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                    {selectedTypes.length}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter by type</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {SKILL_TYPES.map((type) => (
+                <DropdownMenuCheckboxItem
+                  key={type}
+                  checked={selectedTypes.includes(type)}
+                  onCheckedChange={() => {
+                    setSelectedTypes((prev) =>
+                      prev.includes(type)
+                        ? prev.filter((t) => t !== type)
+                        : [...prev, type]
+                    )
+                  }}
+                >
+                  {SKILL_TYPE_LABELS[type]}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {selectedTypes.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <button
+                    type="button"
+                    className="w-full px-2 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedTypes([])}
+                  >
+                    Clear all
+                  </button>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
 

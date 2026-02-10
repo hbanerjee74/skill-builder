@@ -5,7 +5,7 @@ This is a merged repo containing **two frontends** for the same skill-building w
 1. **Claude Code Plugin** — Production CLI plugin
 2. **Desktop App** — Tauri 2 + React 19 GUI
 
-Both share the same agent prompts (`agents/*.md`) and reference material (`references/`).
+Both share the same agent prompts (`agents/`) and reference material (`references/`).
 
 ## Quick Navigation
 
@@ -22,22 +22,30 @@ Both frontends use the same agents and references. No conversion needed.
 
 | Directory | Purpose |
 |---|---|
-| `agents/*.md` | Agent prompts — orchestrators and sub-agents |
+| `agents/{type}/` | Type-specific agents (domain, platform, source, data-engineering) — 6 per type |
+| `agents/shared/` | Shared agents (merge, research-patterns, research-data) — used by all types |
 | `references/shared-context.md` | Domain definitions, file formats, content principles |
 
 ### Agent Files
+
+Each skill type directory (`domain/`, `platform/`, `source/`, `data-engineering/`) contains these 6 agents:
 
 | File | Role |
 |---|---|
 | `research-concepts.md` | Orchestrator: spawns entity + metrics researchers, merges results |
 | `research-patterns-and-merge.md` | Orchestrator: spawns patterns + data researchers + merger |
-| `research-patterns.md` | Sub-agent: business patterns research |
-| `research-data.md` | Sub-agent: data modeling research |
-| `merge.md` | Sub-agent: question deduplication |
 | `reasoning.md` | Gap analysis, contradiction detection, decisions |
 | `build.md` | Skill file creation (spawns reference writers) |
 | `validate.md` | Best practices validation (spawns parallel validators) |
 | `test.md` | Test generation + evaluation (spawns parallel testers) |
+
+Shared agents in `agents/shared/`:
+
+| File | Role |
+|---|---|
+| `research-patterns.md` | Sub-agent: business patterns research |
+| `research-data.md` | Sub-agent: data modeling research |
+| `merge.md` | Sub-agent: question deduplication |
 
 ## Platform Differences
 

@@ -1,25 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, FileEntry } from "@/lib/types";
 
-// --- Types ---
-
-export interface AppSettings {
-  anthropic_api_key: string | null;
-  workspace_path: string | null;
-  skills_path: string | null;
-  preferred_model: string | null;
-  debug_mode: boolean;
-  extended_context: boolean;
-  splash_shown: boolean;
-}
-
-export interface SkillSummary {
-  name: string;
-  domain: string | null;
-  current_step: string | null;
-  status: string | null;
-  last_modified: string | null;
-  tags: string[];
-}
+// Re-export shared types so existing imports from "@/lib/tauri" continue to work
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, FileEntry } from "@/lib/types";
 
 // --- Settings ---
 
@@ -40,8 +23,9 @@ export const createSkill = (
   workspacePath: string,
   name: string,
   domain: string,
-  tags?: string[]
-) => invoke("create_skill", { workspacePath, name, domain, tags: tags ?? null });
+  tags?: string[],
+  skillType?: string
+) => invoke("create_skill", { workspacePath, name, domain, tags: tags ?? null, skillType: skillType ?? null });
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
@@ -53,13 +37,6 @@ export const getAllTags = () =>
   invoke<string[]>("get_all_tags");
 
 // --- Node.js ---
-
-export interface NodeStatus {
-  available: boolean;
-  version: string | null;
-  meets_minimum: boolean;
-  error: string | null;
-}
 
 export const checkNode = () => invoke<NodeStatus>("check_node");
 
@@ -79,11 +56,6 @@ export const cancelAgent = (agentId: string) =>
   invoke("cancel_agent", { agentId });
 
 // --- Workflow ---
-
-export interface PackageResult {
-  file_path: string;
-  size_bytes: number;
-}
 
 export const runWorkflowStep = (
   skillName: string,
@@ -118,6 +90,7 @@ export interface WorkflowRunRow {
   domain: string;
   current_step: number;
   status: string;
+  skill_type: string;
   created_at: string;
   updated_at: string;
 }
@@ -149,21 +122,13 @@ export const saveWorkflowState = (
   currentStep: number,
   status: string,
   stepStatuses: StepStatusUpdate[],
-) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses });
+  skillType?: string,
+) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses, skillType: skillType ?? "domain" });
 
 // --- Files ---
 
 export const saveRawFile = (filePath: string, content: string) =>
   invoke("save_raw_file", { filePath, content });
-
-export interface FileEntry {
-  name: string;
-  relative_path: string;
-  absolute_path: string;
-  is_directory: boolean;
-  is_readonly: boolean;
-  size_bytes: number;
-}
 
 export const listSkillFiles = (workspacePath: string, skillName: string) =>
   invoke<FileEntry[]>("list_skill_files", { workspacePath, skillName });
@@ -256,3 +221,8 @@ export const saveArtifactContent = (
   relativePath: string,
   content: string,
 ) => invoke("save_artifact_content", { skillName, stepId, relativePath, content });
+
+// --- Agent Prompts ---
+
+export const getAgentPrompt = (skillType: string, phase: string) =>
+  invoke<string>("get_agent_prompt", { skillType, phase });

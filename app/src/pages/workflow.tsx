@@ -76,6 +76,7 @@ export default function WorkflowPage() {
 
   const {
     domain,
+    skillType,
     currentStep,
     steps,
     isRunning,
@@ -138,7 +139,7 @@ export default function WorkflowPage() {
         }
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
-        initWorkflow(skillName, domainName);
+        initWorkflow(skillName, domainName, state.run.skill_type);
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -198,10 +199,10 @@ export default function WorkflowPage() {
         ? "completed"
         : "pending";
 
-    saveWorkflowState(skillName, domain, currentStep, status, stepStatuses).catch(
+    saveWorkflowState(skillName, domain, currentStep, status, stepStatuses, skillType ?? undefined).catch(
       (err) => console.warn("Failed to persist workflow state:", err)
     );
-  }, [steps, currentStep, skillName, domain, hydrated]);
+  }, [steps, currentStep, skillName, domain, skillType, hydrated]);
 
   // Load file content when entering a human review step
   useEffect(() => {

@@ -11,6 +11,7 @@ const baseSkill: SkillSummary = {
   status: "in_progress",
   last_modified: new Date().toISOString(),
   tags: [],
+  skill_type: null,
 };
 
 describe("SkillCard", () => {
@@ -158,5 +159,25 @@ describe("SkillCard", () => {
     const badges = document.querySelectorAll('[data-slot="badge"]');
     // Status badge + domain badge = 2
     expect(badges.length).toBe(2);
+  });
+
+  it("renders skill type badge with correct color when skill_type is set", () => {
+    const skill = { ...baseSkill, skill_type: "platform" };
+    render(
+      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    const typeBadge = screen.getByText("Platform");
+    expect(typeBadge).toBeInTheDocument();
+    expect(typeBadge.className).toContain("bg-blue-100");
+  });
+
+  it("does not render type badge when skill_type is null", () => {
+    render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    expect(screen.queryByText("Platform")).not.toBeInTheDocument();
+    expect(screen.queryByText("Domain")).not.toBeInTheDocument();
+    expect(screen.queryByText("Source")).not.toBeInTheDocument();
+    expect(screen.queryByText("Data Engineering")).not.toBeInTheDocument();
   });
 });

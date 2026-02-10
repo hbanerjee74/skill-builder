@@ -1,5 +1,5 @@
 ---
-name: validate
+name: platform-validate
 description: Orchestrates parallel validation of skill files against best practices and coverage checks
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task

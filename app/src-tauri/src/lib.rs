@@ -50,6 +50,7 @@ pub fn run() {
             commands::workflow::capture_step_artifacts,
             commands::workflow::get_artifact_content,
             commands::workflow::save_artifact_content,
+            commands::workflow::get_agent_prompt,
             commands::chat::create_chat_session,
             commands::chat::list_chat_sessions,
             commands::chat::add_chat_message,

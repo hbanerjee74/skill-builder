@@ -25,7 +25,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
             step_id: 0,
-            name: "Research Domain Concepts".to_string(),
+            name: "Research Concepts".to_string(),
             prompt_template: "research-concepts.md".to_string(),
             output_file: "context/clarifications-concepts.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -33,7 +33,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         }),
         2 => Ok(StepConfig {
             step_id: 2,
-            name: "Research Domain".to_string(),
+            name: "Perform Research".to_string(),
             prompt_template: "research-patterns-and-merge.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -106,20 +106,27 @@ pub fn ensure_workspace_prompts(
     Ok(())
 }
 
-/// Copy .md files from `src_dir` into `<workspace_path>/<dest_name>/`.
+/// Copy .md files from `src_dir` into `<workspace_path>/<dest_name>/`,
+/// recursing into subdirectories to preserve the directory structure.
 fn copy_directory_to(src_dir: &Path, workspace_path: &str, dest_name: &str) -> Result<(), String> {
     let dest_dir = Path::new(workspace_path).join(dest_name);
+    copy_md_files_recursive(src_dir, &dest_dir, dest_name)
+}
 
-    std::fs::create_dir_all(&dest_dir)
-        .map_err(|e| format!("Failed to create {} directory: {}", dest_name, e))?;
+fn copy_md_files_recursive(src_dir: &Path, dest_dir: &Path, label: &str) -> Result<(), String> {
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| format!("Failed to create {} directory: {}", label, e))?;
 
     let entries = std::fs::read_dir(src_dir)
-        .map_err(|e| format!("Failed to read {} source dir: {}", dest_name, e))?;
+        .map_err(|e| format!("Failed to read {} source dir: {}", label, e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+        if path.is_dir() {
+            let sub_dest = dest_dir.join(entry.file_name());
+            copy_md_files_recursive(&path, &sub_dest, label)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
             let dest = dest_dir.join(entry.file_name());
             std::fs::copy(&path, &dest).map_err(|e| {
                 format!("Failed to copy {}: {}", path.display(), e)
@@ -137,6 +144,7 @@ fn build_prompt(
     domain: &str,
     workspace_path: &str,
     skills_path: Option<&str>,
+    skill_type: &str,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
@@ -146,7 +154,7 @@ fn build_prompt(
     } else {
         skill_dir.clone() // fallback: workspace_path/skill_name
     };
-    let agents_file = base.join("agents").join(prompt_file);
+    let agents_file = base.join("agents").join(skill_type).join(prompt_file);
     let shared_context = base.join("references").join("shared-context.md");
     // For build step (output_file starts with "skill/"), use skill_output_dir
     let output_path = if output_file.starts_with("skill/") {
@@ -173,6 +181,56 @@ fn build_prompt(
         skill_output_dir.display(),
         output_path.display(),
     )
+}
+
+const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
+const VALID_PHASES: &[&str] = &[
+    "research-concepts",
+    "research-patterns-and-merge",
+    "reasoning",
+    "build",
+    "validate",
+    "test",
+    "merge",
+    "research-patterns",
+    "research-data",
+];
+
+#[tauri::command]
+pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, String> {
+    // Validate inputs against allowlists to prevent path traversal
+    if !VALID_SKILL_TYPES.contains(&skill_type.as_str()) {
+        return Err(format!("Invalid skill type: '{}'", skill_type));
+    }
+    if !VALID_PHASES.contains(&phase.as_str()) {
+        return Err(format!("Invalid phase: '{}'", phase));
+    }
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .ok_or("Could not resolve repo root")?
+        .to_path_buf();
+
+    let primary = repo_root
+        .join("agents")
+        .join(&skill_type)
+        .join(format!("{}.md", phase));
+    let fallback = repo_root
+        .join("agents")
+        .join("shared")
+        .join(format!("{}.md", phase));
+
+    if primary.exists() {
+        std::fs::read_to_string(&primary).map_err(|e| e.to_string())
+    } else if fallback.exists() {
+        std::fs::read_to_string(&fallback).map_err(|e| e.to_string())
+    } else {
+        Err(format!(
+            "Prompt not found for type '{}', phase '{}'",
+            skill_type, phase
+        ))
+    }
 }
 
 fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
@@ -496,7 +554,11 @@ pub async fn run_workflow_step(
     let debug_mode = read_debug_mode(&db);
     let model = read_preferred_model(&db);
     let skills_path = read_skills_path(&db);
-    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref());
+    let skill_type = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        crate::db::get_skill_type(&conn, &skill_name)?
+    };
+    let prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
     let config = SidecarConfig {
@@ -684,11 +746,12 @@ pub fn save_workflow_state(
     domain: String,
     current_step: i32,
     status: String,
+    skill_type: String,
     step_statuses: Vec<StepStatusUpdate>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status)?;
+    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status, &skill_type)?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
@@ -802,6 +865,7 @@ pub fn reset_workflow_step(
             &run.domain,
             from_step_id as i32,
             "pending",
+            &run.skill_type,
         )?;
     }
 
@@ -954,9 +1018,10 @@ mod tests {
             "e-commerce",
             "/home/user/.vibedata",
             None,
+            "domain",
         );
         assert!(prompt.contains("/home/user/.vibedata/references/shared-context.md"));
-        assert!(prompt.contains("/home/user/.vibedata/agents/research-concepts.md"));
+        assert!(prompt.contains("/home/user/.vibedata/agents/domain/research-concepts.md"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("The shared context file is: /home/user/.vibedata/references/shared-context.md"));
@@ -977,6 +1042,7 @@ mod tests {
             "e-commerce",
             "/home/user/.vibedata",
             Some("/home/user/my-skills"),
+            "domain",
         );
         // skill output directory should use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
@@ -999,11 +1065,27 @@ mod tests {
             "e-commerce",
             "/home/user/.vibedata",
             Some("/home/user/my-skills"),
+            "domain",
         );
         // output path should be in workspace for non-build steps
         assert!(prompt.contains("Write output to /home/user/.vibedata/my-skill/context/decisions.md"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_skill_type() {
+        // Verify agents path includes the skill type subdirectory
+        let prompt = build_prompt(
+            "research-concepts.md",
+            "context/clarifications-concepts.md",
+            "my-skill",
+            "e-commerce",
+            "/home/user/.vibedata",
+            None,
+            "platform",
+        );
+        assert!(prompt.contains("/home/user/.vibedata/agents/platform/research-concepts.md"));
     }
 
     #[test]
@@ -1104,9 +1186,10 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let dest = tempfile::tempdir().unwrap();
 
-        // Create source .md files
+        // Create source .md files at root and in subdirectory
         std::fs::write(src.path().join("shared-context.md"), "# Shared").unwrap();
-        std::fs::write(src.path().join("research-concepts.md"), "# Research").unwrap();
+        std::fs::create_dir_all(src.path().join("domain")).unwrap();
+        std::fs::write(src.path().join("domain").join("research-concepts.md"), "# Research").unwrap();
         // Non-.md file should be ignored
         std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
 
@@ -1116,7 +1199,7 @@ mod tests {
         let agents_dir = dest.path().join("agents");
         assert!(agents_dir.is_dir());
         assert!(agents_dir.join("shared-context.md").exists());
-        assert!(agents_dir.join("research-concepts.md").exists());
+        assert!(agents_dir.join("domain").join("research-concepts.md").exists());
         assert!(!agents_dir.join("README.txt").exists());
 
         // Verify content
@@ -1153,6 +1236,12 @@ mod tests {
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
         assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
+        // Verify subdirectories exist
+        assert!(agents_dir.join("domain").is_dir(), "agents/domain/ should exist");
+        assert!(agents_dir.join("platform").is_dir(), "agents/platform/ should exist");
+        assert!(agents_dir.join("source").is_dir(), "agents/source/ should exist");
+        assert!(agents_dir.join("data-engineering").is_dir(), "agents/data-engineering/ should exist");
+        assert!(agents_dir.join("shared").is_dir(), "agents/shared/ should exist");
     }
 
     #[test]

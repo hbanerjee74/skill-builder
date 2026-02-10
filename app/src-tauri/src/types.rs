@@ -46,6 +46,7 @@ pub struct SkillSummary {
     pub last_modified: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    pub skill_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,12 +75,18 @@ pub struct SkillFileEntry {
     pub size_bytes: u64,
 }
 
+fn default_skill_type() -> String {
+    "domain".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowRunRow {
     pub skill_name: String,
     pub domain: String,
     pub current_step: i32,
     pub status: String,
+    #[serde(default = "default_skill_type")]
+    pub skill_type: String,
     pub created_at: String,
     pub updated_at: String,
 }

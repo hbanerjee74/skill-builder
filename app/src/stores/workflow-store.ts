@@ -10,12 +10,14 @@ export interface WorkflowStep {
 interface WorkflowState {
   skillName: string | null;
   domain: string | null;
+  skillType: string | null;
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
   hydrated: boolean;
 
-  initWorkflow: (skillName: string, domain: string) => void;
+  initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
+  setSkillType: (skillType: string | null) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
@@ -28,19 +30,19 @@ interface WorkflowState {
 const defaultSteps: WorkflowStep[] = [
   {
     id: 0,
-    name: "Research Domain Concepts",
+    name: "Research Concepts",
     description: "Research key concepts, terminology, and frameworks for the domain",
     status: "pending",
   },
   {
     id: 1,
-    name: "Domain Concepts Review",
+    name: "Concepts Review",
     description: "Review and answer clarification questions about domain concepts",
     status: "pending",
   },
   {
     id: 2,
-    name: "Research Domain",
+    name: "Perform Research",
     description: "Research business patterns, data modeling, and merge results",
     status: "pending",
   },
@@ -85,20 +87,24 @@ const defaultSteps: WorkflowStep[] = [
 export const useWorkflowStore = create<WorkflowState>((set) => ({
   skillName: null,
   domain: null,
+  skillType: null,
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
   hydrated: false,
 
-  initWorkflow: (skillName, domain) =>
+  initWorkflow: (skillName, domain, skillType) =>
     set({
       skillName,
       domain,
+      skillType: skillType ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
       hydrated: false,
     }),
+
+  setSkillType: (skillType) => set({ skillType }),
 
   setCurrentStep: (step) => set({ currentStep: step }),
 
@@ -139,6 +145,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     set({
       skillName: null,
       domain: null,
+      skillType: null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,

@@ -32,15 +32,15 @@ skill-builder/
 │   └── start/
 │       └── SKILL.md                 # Entry point: /skill-builder:start (coordinator)
 ├── agents/
-│   ├── research-concepts.md                # Domain concepts orchestrator (spawns entity + metrics researchers)
-│   ├── research-patterns-and-merge.md      # Patterns + data + merge orchestrator (spawns 3 sub-agents)
-│   ├── research-patterns.md                # Business patterns researcher (sub-agent)
-│   ├── research-data.md                    # Data modeling researcher (sub-agent)
-│   ├── merge.md                            # Question deduplicator (sub-agent)
-│   ├── reasoning.md                        # Reasoning + decision engine
-│   ├── build.md                            # Skill file creator (spawns reference writers)
-│   ├── validate.md                         # Best practices validator (spawns parallel validators)
-│   └── test.md                             # Test generator + evaluator (spawns parallel testers)
+│   ├── domain/                             # Domain skill agents (name prefix: domain-)
+│   ├── platform/                           # Platform skill agents (name prefix: platform-)
+│   ├── source/                             # Source skill agents (name prefix: source-)
+│   ├── data-engineering/                   # Data engineering skill agents (name prefix: de-)
+│   │   └── (each type dir has 6 agents: research-concepts, reasoning, build, validate, test, research-patterns-and-merge)
+│   └── shared/                             # Shared agents (no type prefix)
+│       ├── research-patterns.md            # Business patterns researcher (sub-agent)
+│       ├── research-data.md                # Data modeling researcher (sub-agent)
+│       └── merge.md                        # Question deduplicator (sub-agent)
 ├── references/
 │   └── shared-context.md            # Shared context read by all agents at runtime
 ├── CLAUDE.md                        # This file (plugin dev instructions)
@@ -58,7 +58,7 @@ The plugin has three layers:
 
 1. **Coordinator skill** (`skills/start/SKILL.md`) — invoked via `/skill-builder:start`. Contains the full 10-step workflow orchestration. Uses `!`echo $CLAUDE_PLUGIN_ROOT`` to resolve paths to plugin files at runtime.
 
-2. **Subagents** (`agents/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Spawned by the coordinator via `Task(subagent_type: "skill-builder:<agent-name>")`.
+2. **Subagents** (`agents/{type}/*.md` and `agents/shared/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Type-specific agents are spawned via `Task(subagent_type: "skill-builder:{type_prefix}-{agent}")`, shared agents via `Task(subagent_type: "skill-builder:{agent}")`.
 
 3. **Shared reference** (`references/shared-context.md`) — domain definitions, file formats, content principles. Read by agents at the path the coordinator passes in the Task prompt.
 
@@ -92,9 +92,9 @@ TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domai
 # 2. Create tasks for the team's shared task list
 TaskCreate(subject: "Research domain concepts", description: "...")
 
-# 3. Spawn agents as teammates
+# 3. Spawn agents as teammates (type_prefix derived from skill_type)
 Task(
-  subagent_type: "skill-builder:research-concepts",
+  subagent_type: "skill-builder:{type_prefix}-research-concepts",
   team_name: "skill-builder-<skillname>",
   name: "research-concepts",
   model: "sonnet",
@@ -189,7 +189,7 @@ Edit `skills/start/SKILL.md`. This contains the full coordinator logic:
 
 **Automated validation** runs automatically after every Edit/Write via a Claude Code hook (configured in `.claude/settings.json`). It checks:
 - Manifest validity (JSON, required fields)
-- All 8 agent files exist with valid frontmatter (name, description, model, tools as comma-separated string)
+- All 27 agent files exist with valid frontmatter (name, description, model, tools as comma-separated string)
 - Model tiers match the spec (sonnet/haiku/opus)
 - Coordinator skill exists with frontmatter and references TeamCreate, TeamDelete, CLAUDE_PLUGIN_ROOT, etc.
 - Shared context exists, old files removed, .gitignore correct

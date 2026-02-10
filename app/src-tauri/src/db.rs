@@ -15,6 +15,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     fs::create_dir_all(&app_dir)?;
     let conn = Connection::open(app_dir.join("skill-builder.db"))?;
     run_migrations(&conn)?;
+    run_add_skill_type_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -93,6 +94,27 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     )
 }
 
+fn run_add_skill_type_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_skill_type = conn
+        .prepare("PRAGMA table_info(workflow_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "skill_type"))
+        })
+        .unwrap_or(false);
+
+    if !has_skill_type {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN skill_type TEXT DEFAULT 'domain';",
+        )?;
+        // Backfill existing rows that may have NULL from the ALTER TABLE
+        conn.execute_batch(
+            "UPDATE workflow_runs SET skill_type = 'domain' WHERE skill_type IS NULL;",
+        )?;
+    }
+    Ok(())
+}
+
 pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     let mut stmt = conn
         .prepare("SELECT value FROM settings WHERE key = ?1")
@@ -125,13 +147,14 @@ pub fn save_workflow_run(
     domain: &str,
     current_step: i32,
     status: &str,
+    skill_type: &str,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, updated_at = datetime('now')",
-        rusqlite::params![skill_name, domain, current_step, status],
+             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now')",
+        rusqlite::params![skill_name, domain, current_step, status, skill_type],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -143,7 +166,7 @@ pub fn get_workflow_run(
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, created_at, updated_at
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -154,8 +177,9 @@ pub fn get_workflow_run(
             domain: row.get(1)?,
             current_step: row.get(2)?,
             status: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
+            skill_type: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
         })
     });
 
@@ -164,6 +188,13 @@ pub fn get_workflow_run(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, String> {
+    get_workflow_run(conn, skill_name).map(|opt| {
+        opt.map(|run| run.skill_type)
+            .unwrap_or_else(|| "domain".to_string())
+    })
 }
 
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
@@ -583,6 +614,7 @@ mod tests {
     fn create_test_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
         conn
     }
 
@@ -695,7 +727,7 @@ mod tests {
     #[test]
     fn test_workflow_run_crud() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "test domain", 3, "in_progress").unwrap();
+        save_workflow_run(&conn, "test-skill", "test domain", 3, "in_progress", "domain").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.skill_name, "test-skill");
         assert_eq!(run.domain, "test domain");
@@ -708,8 +740,8 @@ mod tests {
     #[test]
     fn test_workflow_run_upsert() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain1", 0, "pending").unwrap();
-        save_workflow_run(&conn, "test-skill", "domain1", 5, "in_progress").unwrap();
+        save_workflow_run(&conn, "test-skill", "domain1", 0, "pending", "domain").unwrap();
+        save_workflow_run(&conn, "test-skill", "domain1", 5, "in_progress", "domain").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 5);
         assert_eq!(run.status, "in_progress");
@@ -748,7 +780,7 @@ mod tests {
     #[test]
     fn test_delete_workflow_run() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "test-skill", "domain", 0, "pending").unwrap();
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         delete_workflow_run(&conn, "test-skill").unwrap();
         assert!(get_workflow_run(&conn, "test-skill").unwrap().is_none());
@@ -860,7 +892,7 @@ mod tests {
     #[test]
     fn test_delete_workflow_run_also_deletes_artifacts() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "domain", 0, "pending").unwrap();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
         save_artifact(&conn, "my-skill", 0, "context/test.md", "content").unwrap();
 
         delete_workflow_run(&conn, "my-skill").unwrap();
@@ -959,12 +991,63 @@ mod tests {
     #[test]
     fn test_delete_workflow_run_cascades_tags() {
         let conn = create_test_db();
-        save_workflow_run(&conn, "my-skill", "domain", 0, "pending").unwrap();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["tag1".into(), "tag2".into()]).unwrap();
 
         delete_workflow_run(&conn, "my-skill").unwrap();
 
         let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
         assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_skill_type_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+
+        // Verify skill_type column exists by inserting a row with it
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();
+        let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(run.skill_type, "platform");
+    }
+
+    #[test]
+    fn test_skill_type_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        // Running again should not error
+        run_add_skill_type_migration(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_get_skill_type_default() {
+        let conn = create_test_db();
+        // No workflow run exists — should return "domain" default
+        let skill_type = get_skill_type(&conn, "nonexistent-skill").unwrap();
+        assert_eq!(skill_type, "domain");
+    }
+
+    #[test]
+    fn test_get_skill_type_explicit() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "test", 0, "pending", "source").unwrap();
+        let skill_type = get_skill_type(&conn, "my-skill").unwrap();
+        assert_eq!(skill_type, "source");
+    }
+
+    #[test]
+    fn test_workflow_run_preserves_skill_type() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "test", 0, "pending", "data-engineering").unwrap();
+        let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.skill_type, "data-engineering");
+
+        // Update step/status — skill_type should be preserved
+        save_workflow_run(&conn, "my-skill", "test", 3, "in_progress", "data-engineering").unwrap();
+        let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.skill_type, "data-engineering");
+        assert_eq!(run.current_step, 3);
     }
 }

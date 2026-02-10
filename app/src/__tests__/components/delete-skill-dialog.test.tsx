@@ -20,6 +20,7 @@ const sampleSkill: SkillSummary = {
   status: "in_progress",
   last_modified: new Date().toISOString(),
   tags: [],
+  skill_type: null,
 };
 
 describe("DeleteSkillDialog", () => {

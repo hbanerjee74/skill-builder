@@ -53,6 +53,7 @@ const sampleSkills: SkillSummary[] = [
     status: "in_progress",
     last_modified: new Date().toISOString(),
     tags: ["salesforce", "crm"],
+    skill_type: "platform",
   },
   {
     name: "hr-analytics",
@@ -61,6 +62,7 @@ const sampleSkills: SkillSummary[] = [
     status: "completed",
     last_modified: new Date().toISOString(),
     tags: ["workday"],
+    skill_type: "domain",
   },
 ];
 
@@ -270,5 +272,76 @@ describe("DashboardPage", () => {
 
     expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
     expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
+  });
+
+  // --- Type filter tests ---
+
+  it("renders Type filter button when skills exist", async () => {
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /Type/i })).toBeInTheDocument();
+  });
+
+  it("filters skills by type selection", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    // Open type filter dropdown
+    await user.click(screen.getByRole("button", { name: /Type/i }));
+
+    // Select "Platform" type
+    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Platform/i });
+    await user.click(menuItem);
+
+    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+  });
+
+  it("combines search, tag, and type filters", async () => {
+    const user = userEvent.setup();
+    setupMocks({
+      skills: [
+        ...sampleSkills,
+        {
+          name: "marketing-data",
+          domain: "marketing",
+          current_step: "Step 1",
+          status: "in_progress",
+          last_modified: new Date().toISOString(),
+          tags: ["salesforce"],
+          skill_type: "platform",
+        },
+      ],
+    });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    // Filter by type: platform (Sales Pipeline + Marketing Data)
+    await user.click(screen.getByRole("button", { name: /Type/i }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: /Platform/i }));
+
+    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    expect(screen.getByText("Marketing Data")).toBeInTheDocument();
+    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+
+    // Further filter by search: "marketing"
+    const searchInput = screen.getByPlaceholderText("Search skills...");
+    await user.type(searchInput, "marketing");
+
+    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("Marketing Data")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
 
@@ -23,7 +23,20 @@ export default function TagInput({
 }: TagInputProps) {
   const [inputValue, setInputValue] = useState("")
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const filteredSuggestions = suggestions.filter(
+    (s) =>
+      !tags.includes(normalizeTag(s)) &&
+      normalizeTag(s).includes(normalizeTag(inputValue)) &&
+      inputValue.trim().length > 0
+  )
+
+  // Reset selectedIndex when filtered suggestions change
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [filteredSuggestions.length, inputValue])
 
   const addTag = (raw: string) => {
     const tag = normalizeTag(raw)
@@ -32,6 +45,7 @@ export default function TagInput({
     }
     setInputValue("")
     setShowSuggestions(false)
+    setSelectedIndex(-1)
   }
 
   const removeTag = (tag: string) => {
@@ -39,9 +53,25 @@ export default function TagInput({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
+    if (e.key === "ArrowDown" && showSuggestions && filteredSuggestions.length > 0) {
       e.preventDefault()
-      if (inputValue.trim()) {
+      setSelectedIndex((prev) =>
+        prev >= filteredSuggestions.length - 1 ? 0 : prev + 1
+      )
+    } else if (e.key === "ArrowUp" && showSuggestions && filteredSuggestions.length > 0) {
+      e.preventDefault()
+      setSelectedIndex((prev) =>
+        prev <= 0 ? filteredSuggestions.length - 1 : prev - 1
+      )
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      setShowSuggestions(false)
+      setSelectedIndex(-1)
+    } else if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault()
+      if (selectedIndex >= 0 && showSuggestions && filteredSuggestions.length > 0) {
+        addTag(filteredSuggestions[selectedIndex])
+      } else if (inputValue.trim()) {
         addTag(inputValue)
       }
     } else if (e.key === "Backspace" && !inputValue && tags.length > 0) {
@@ -63,13 +93,6 @@ export default function TagInput({
     }
     setShowSuggestions(true)
   }
-
-  const filteredSuggestions = suggestions.filter(
-    (s) =>
-      !tags.includes(s) &&
-      s.includes(normalizeTag(inputValue)) &&
-      inputValue.trim().length > 0
-  )
 
   return (
     <div className="relative">
@@ -113,12 +136,19 @@ export default function TagInput({
         />
       </div>
       {showSuggestions && filteredSuggestions.length > 0 && (
-        <div className="border-border bg-popover absolute z-10 mt-1 w-full rounded-md border py-1 shadow-md">
-          {filteredSuggestions.map((s) => (
+        <div
+          className="border-border bg-popover absolute z-10 mt-1 w-full rounded-md border py-1 shadow-md"
+          role="listbox"
+        >
+          {filteredSuggestions.map((s, index) => (
             <button
               key={s}
               type="button"
-              className="hover:bg-accent w-full px-3 py-1.5 text-left text-sm"
+              role="option"
+              aria-selected={index === selectedIndex}
+              className={`w-full px-3 py-1.5 text-left text-sm ${
+                index === selectedIndex ? "bg-accent" : "hover:bg-accent"
+              }`}
               onMouseDown={(e) => {
                 e.preventDefault()
                 addTag(s)

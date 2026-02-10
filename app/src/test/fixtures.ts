@@ -22,10 +22,11 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
   return {
     name: "test-skill",
     domain: "testing",
-    current_step: "Step 1: Research Domain Concepts",
+    current_step: "Step 1: Research Concepts",
     status: "in_progress",
     last_modified: "2026-01-15T10:00:00Z",
     tags: [],
+    skill_type: null,
     ...overrides,
   };
 }

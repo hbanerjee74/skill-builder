@@ -164,6 +164,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
         domain: "test domain",
         current_step: 1,
         status: "pending",
+        skill_type: "domain",
         created_at: "",
         updated_at: "",
       },

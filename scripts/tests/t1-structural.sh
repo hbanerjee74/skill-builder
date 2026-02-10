@@ -29,21 +29,41 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count ----
+  # ---- T1.3: Agent file count (27 = 6 per type × 4 types + 3 shared) ----
   local agent_count
-  agent_count=$(ls "$PLUGIN_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_9" "9" "$agent_count"
+  agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+  assert_count_eq "$tier" "agent_file_count_is_27" "27" "$agent_count"
 
-  # ---- T1.4: Each expected agent exists ----
-  local expected_agents="research-concepts research-patterns research-data research-patterns-and-merge merge reasoning build validate test"
-  for agent in $expected_agents; do
-    assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
+  # ---- T1.4: Each expected agent exists in correct subdirectory ----
+  local type_dirs="domain platform source data-engineering"
+  local type_agents="research-concepts research-patterns-and-merge reasoning build validate test"
+  local shared_agents="merge research-patterns research-data"
+
+  for dir in $type_dirs; do
+    for agent in $type_agents; do
+      assert_file_exists "$tier" "agent_${dir}_${agent}" "$PLUGIN_DIR/agents/${dir}/${agent}.md"
+    done
+  done
+  for agent in $shared_agents; do
+    assert_file_exists "$tier" "agent_shared_${agent}" "$PLUGIN_DIR/agents/shared/${agent}.md"
   done
 
   # ---- T1.5: Agent frontmatter present ----
   local agents_without_fm=0
-  for agent in $expected_agents; do
-    local file="$PLUGIN_DIR/agents/${agent}.md"
+  for dir in $type_dirs; do
+    for agent in $type_agents; do
+      local file="$PLUGIN_DIR/agents/${dir}/${agent}.md"
+      if [[ -f "$file" ]]; then
+        local first_line
+        first_line=$(head -1 "$file")
+        if [[ "$first_line" != "---" ]]; then
+          agents_without_fm=$((agents_without_fm + 1))
+        fi
+      fi
+    done
+  done
+  for agent in $shared_agents; do
+    local file="$PLUGIN_DIR/agents/shared/${agent}.md"
     if [[ -f "$file" ]]; then
       local first_line
       first_line=$(head -1 "$file")
@@ -69,8 +89,25 @@ run_t1() {
       *) echo "unknown" ;;
     esac
   }
-  for agent in $expected_agents; do
-    local file="$PLUGIN_DIR/agents/${agent}.md"
+  for dir in $type_dirs; do
+    for agent in $type_agents; do
+      local file="$PLUGIN_DIR/agents/${dir}/${agent}.md"
+      if [ -f "$file" ]; then
+        local fm
+        fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$file")
+        local actual_model
+        actual_model=$(echo "$fm" | grep "^model:" | sed 's/model: *//')
+        local expected_model
+        expected_model=$(expected_model_for "$agent")
+        if [ "$actual_model" != "$expected_model" ]; then
+          record_result "$tier" "model_${dir}_${agent}" "FAIL" "expected=$expected_model, got=$actual_model"
+          model_errors=$((model_errors + 1))
+        fi
+      fi
+    done
+  done
+  for agent in $shared_agents; do
+    local file="$PLUGIN_DIR/agents/shared/${agent}.md"
     if [ -f "$file" ]; then
       local fm
       fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$file")
@@ -79,7 +116,7 @@ run_t1() {
       local expected_model
       expected_model=$(expected_model_for "$agent")
       if [ "$actual_model" != "$expected_model" ]; then
-        record_result "$tier" "model_${agent}" "FAIL" "expected=$expected_model, got=$actual_model"
+        record_result "$tier" "model_shared_${agent}" "FAIL" "expected=$expected_model, got=$actual_model"
         model_errors=$((model_errors + 1))
       fi
     fi

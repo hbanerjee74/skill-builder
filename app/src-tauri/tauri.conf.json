@@ -27,7 +27,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "../../agents/*",
+      "../../agents/**/*",
       "../../references/*",
       "../sidecar/dist/agent-runner.js",
       "../sidecar/dist/sdk/cli.js",

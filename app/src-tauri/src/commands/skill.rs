@@ -79,6 +79,7 @@ fn list_skills_inner(
             status,
             last_modified,
             tags: vec![],
+            skill_type: None,
         });
     }
 
@@ -88,6 +89,7 @@ fn list_skills_inner(
             if let Ok(Some(run)) = crate::db::get_workflow_run(conn, &skill.name) {
                 skill.current_step = Some(format!("Step {}", run.current_step));
                 skill.status = Some(run.status);
+                skill.skill_type = Some(run.skill_type.clone());
                 if skill.domain.is_none() {
                     skill.domain = Some(run.domain);
                 }
@@ -115,10 +117,18 @@ pub fn create_skill(
     name: String,
     domain: String,
     tags: Option<Vec<String>>,
+    skill_type: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     let conn = db.0.lock().ok();
-    create_skill_inner(&workspace_path, &name, &domain, tags.as_deref(), conn.as_deref())
+    create_skill_inner(
+        &workspace_path,
+        &name,
+        &domain,
+        tags.as_deref(),
+        skill_type.as_deref(),
+        conn.as_deref(),
+    )
 }
 
 fn create_skill_inner(
@@ -126,6 +136,7 @@ fn create_skill_inner(
     name: &str,
     domain: &str,
     tags: Option<&[String]>,
+    skill_type: Option<&str>,
     conn: Option<&rusqlite::Connection>,
 ) -> Result<(), String> {
     let base = Path::new(workspace_path).join(name);
@@ -134,6 +145,8 @@ fn create_skill_inner(
     }
 
     fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
+
+    let skill_type = skill_type.unwrap_or("domain");
 
     let workflow_content = format!(
         "## Workflow State\n- **Skill name**: {}\n- **Domain**: {}\n- **Current step**: Initialization\n- **Status**: pending\n- **Completed steps**: \n- **Timestamp**: {}\n- **Notes**: Skill created\n",
@@ -144,9 +157,11 @@ fn create_skill_inner(
 
     fs::write(base.join("workflow.md"), workflow_content).map_err(|e| e.to_string())?;
 
-    if let Some(tags) = tags {
-        if !tags.is_empty() {
-            if let Some(conn) = conn {
+    if let Some(conn) = conn {
+        crate::db::save_workflow_run(conn, name, domain, 0, "pending", skill_type)?;
+
+        if let Some(tags) = tags {
+            if !tags.is_empty() {
                 crate::db::set_skill_tags(conn, name, tags)?;
             }
         }
@@ -217,7 +232,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None).unwrap();
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, None).unwrap();
 
         let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
@@ -231,8 +246,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", "domain", None, None).unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None);
+        create_skill_inner(workspace, "dup-skill", "domain", None, None, None).unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -242,7 +257,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "to-delete", "domain", None, None).unwrap();
+        create_skill_inner(workspace, "to-delete", "domain", None, None, None).unwrap();
         let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
 
@@ -264,7 +279,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a legitimate skill so the traversal target resolves
-        create_skill_inner(workspace, "legit", "domain", None, None).unwrap();
+        create_skill_inner(workspace, "legit", "domain", None, None, None).unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         let result = delete_skill_inner(workspace, "../../../etc", None);

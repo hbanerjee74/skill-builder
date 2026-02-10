@@ -138,8 +138,8 @@ describe("useWorkflowStore", () => {
 
   it("steps have expected names", () => {
     const state = useWorkflowStore.getState();
-    expect(state.steps[0].name).toBe("Research Domain Concepts");
-    expect(state.steps[2].name).toBe("Research Domain");
+    expect(state.steps[0].name).toBe("Research Concepts");
+    expect(state.steps[2].name).toBe("Perform Research");
     expect(state.steps[3].name).toBe("Human Review");
     expect(state.steps[4].name).toBe("Reasoning");
     expect(state.steps[5].name).toBe("Build Skill");

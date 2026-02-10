@@ -135,7 +135,7 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 ### Key benefits
 
-- **No prompt modifications needed** — existing `agents/*.md` work as-is since the SDK provides the same tools as Claude Code
+- **No prompt modifications needed** — existing agent prompts work as-is since the SDK provides the same tools as Claude Code
 - **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 3 parallel agents)
 - **No tool execution loop to build** — SDK handles Claude → tool call → result → Claude internally
 - **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 6 reasoning)
@@ -144,7 +144,7 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 ```json
 {
-  "prompt": "Read references/shared-context.md and agents/research-concepts.md...",
+  "prompt": "Read references/shared-context.md and agents/{type}/research-concepts.md...",
   "model": "sonnet",
   "apiKey": "sk-ant-...",
   "cwd": "/path/to/workspace",
@@ -219,8 +219,8 @@ The app replicates the CLI workflow. Each step is a state in the workflow state 
 ## Key Reference Files
 
 - `references/shared-context.md` — markdown formats (used as-is by agents via SDK)
-- `agents/reasoning.md` — most complex agent (multi-turn with follow-ups)
-- `agents/build.md` — skill output structure (SKILL.md + references/)
+- `agents/{type}/reasoning.md` — most complex agent (multi-turn with follow-ups)
+- `agents/{type}/build.md` — skill output structure (SKILL.md + references/)
 - `app/PLAN.md` — full architecture, data model, UI specs, implementation phases
 - `app/FEATURES.md` — feature checklist with status per phase
 - `app/TESTS.md` — test plan per phase

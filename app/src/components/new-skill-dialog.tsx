@@ -14,7 +14,16 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
+import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
+
+const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
+  platform: "Tools and platform-specific skills (dbt, Fabric, Databricks)",
+  domain: "Business domain knowledge (Finance, Marketing, HR)",
+  source: "Source system extraction patterns (Salesforce, SAP, Workday)",
+  "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
+}
 
 interface NewSkillDialogProps {
   workspacePath: string
@@ -37,6 +46,7 @@ export default function NewSkillDialog({
   tagSuggestions = [],
 }: NewSkillDialogProps) {
   const [open, setOpen] = useState(false)
+  const [skillType, setSkillType] = useState<string>("")
   const [domain, setDomain] = useState("")
   const [name, setName] = useState("")
   const [tags, setTags] = useState<string[]>([])
@@ -61,9 +71,11 @@ export default function NewSkillDialog({
         name: name.trim(),
         domain: domain.trim(),
         tags: tags.length > 0 ? tags : null,
+        skillType: skillType || null,
       })
       toast.success(`Skill "${name}" created`)
       setOpen(false)
+      setSkillType("")
       setDomain("")
       setName("")
       setTags([])
@@ -78,7 +90,7 @@ export default function NewSkillDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSkillType(""); }}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
@@ -94,6 +106,29 @@ export default function NewSkillDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label>Skill Type</Label>
+              <RadioGroup
+                value={skillType}
+                onValueChange={setSkillType}
+                className="grid grid-cols-2 gap-2"
+              >
+                {SKILL_TYPES.map((type) => (
+                  <label
+                    key={type}
+                    className="flex items-start gap-2 rounded-md border p-3 cursor-pointer hover:bg-accent [&:has([data-state=checked])]:border-primary"
+                  >
+                    <RadioGroupItem value={type} id={`type-${type}`} className="mt-0.5" />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-sm font-medium">{SKILL_TYPE_LABELS[type]}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {SKILL_TYPE_DESCRIPTIONS[type]}
+                      </span>
+                    </div>
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="domain">Domain</Label>
               <Input
@@ -148,7 +183,7 @@ export default function NewSkillDialog({
             </Button>
             <Button
               type="submit"
-              disabled={loading || !domain.trim() || !name.trim()}
+              disabled={loading || !skillType || !domain.trim() || !name.trim()}
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               Create

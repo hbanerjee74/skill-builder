@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -7,6 +7,7 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
+  { to: "/prompts" as const, label: "Prompts", icon: FileText },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
 

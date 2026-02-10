@@ -47,6 +47,11 @@ export function AppLayout() {
         e.preventDefault();
         if (!isRunning) navigate({ to: "/" });
       }
+      // Cmd+3 -> Prompts
+      if ((e.metaKey || e.ctrlKey) && e.key === "3") {
+        e.preventDefault();
+        if (!isRunning) navigate({ to: "/prompts" });
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);

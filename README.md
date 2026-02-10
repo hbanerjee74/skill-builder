@@ -9,7 +9,7 @@ A multi-agent workflow for creating domain-specific Claude skills. Domain-agnost
 | **Claude Code Plugin** | Production | `/skill-builder:start` — see [Installation](#installation-plugin) |
 | **Desktop App** (Tauri) | Complete | See [Desktop App](#desktop-app) |
 
-Both platforms share the same agent prompts (`agents/*.md`) and reference material (`references/`). The workflows differ slightly in step count and model selection.
+Both platforms share the same agent prompts (`agents/`) and reference material (`references/`). Agents are organized by skill type (platform, domain, source, data-engineering) with shared sub-agents. The workflows differ slightly in step count and model selection.
 
 ## Installation (Plugin)
 
@@ -36,21 +36,39 @@ Once the plugin is loaded, invoke the workflow:
 
 The coordinator handles everything: creating an agent team, spawning agents, tracking state, and walking you through each step.
 
-## Shared Agents
+## Agents
 
-Both platforms use the same agent files from `agents/`. Several agents are **orchestrators** that spawn their own sub-agents via the Task tool for parallel execution.
+Both platforms use the same agent files from `agents/`, organized by skill type. Each skill type has its own set of 6 agents, plus 3 shared sub-agents.
+
+### Type-specific agents (in `agents/{type}/`)
+
+Each type directory (`domain/`, `platform/`, `source/`, `data-engineering/`) contains:
 
 | Agent File | Role |
 |---|---|
 | `research-concepts.md` | Orchestrator: spawns entity + metrics researchers, merges results |
 | `research-patterns-and-merge.md` | Orchestrator: spawns patterns + data researchers + merger |
-| `research-patterns.md` | Sub-agent: business patterns research |
-| `research-data.md` | Sub-agent: data modeling research |
-| `merge.md` | Sub-agent: question deduplication |
 | `reasoning.md` | Gap analysis, contradiction detection, decisions |
 | `build.md` | Skill file creation (spawns reference file writers) |
 | `validate.md` | Best practices validation (spawns parallel validators) |
 | `test.md` | Test generation + evaluation (spawns parallel testers) |
+
+### Shared agents (in `agents/shared/`)
+
+| Agent File | Role |
+|---|---|
+| `research-patterns.md` | Sub-agent: business patterns research |
+| `research-data.md` | Sub-agent: data modeling research |
+| `merge.md` | Sub-agent: question deduplication |
+
+### Skill Types
+
+| Type | Focus |
+|---|---|
+| **Platform** | Tool/platform-specific (dbt, Fabric, Databricks) |
+| **Domain** | Business domain knowledge (Finance, Marketing, Supply Chain) |
+| **Source** | Source system extraction patterns (Salesforce, SAP, Workday) |
+| **Data Engineering** | Technical patterns (SCD Type 2, Incremental Loads) |
 
 Shared reference: `references/shared-context.md` — domain definitions, file formats, content principles read by all agents.
 
@@ -99,16 +117,12 @@ skill-builder/
 ├── skills/
 │   └── start/
 │       └── SKILL.md             # Plugin coordinator (entry point)
-├── agents/                      # Shared agent prompts (both platforms)
-│   ├── research-concepts.md
-│   ├── research-patterns-and-merge.md
-│   ├── research-patterns.md
-│   ├── research-data.md
-│   ├── merge.md
-│   ├── reasoning.md
-│   ├── build.md
-│   ├── validate.md
-│   └── test.md
+├── agents/                      # Agent prompts organized by skill type
+│   ├── domain/                  # Domain skill agents (6 files)
+│   ├── platform/                # Platform skill agents (6 files)
+│   ├── source/                  # Source skill agents (6 files)
+│   ├── data-engineering/        # Data engineering skill agents (6 files)
+│   └── shared/                  # Shared sub-agents (3 files: merge, research-patterns, research-data)
 ├── references/
 │   └── shared-context.md        # Shared context for all agents
 ├── app/                         # Desktop application

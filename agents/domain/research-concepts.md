@@ -1,5 +1,5 @@
 ---
-name: research-concepts
+name: domain-research-concepts
 description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task

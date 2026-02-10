@@ -9,6 +9,7 @@ import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import EditorPage from "./pages/editor";
 import ChatPage from "./pages/chat";
+import PromptsPage from "./pages/prompts";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -44,9 +45,16 @@ const chatRoute = createRoute({
   component: ChatPage,
 });
 
+const promptsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/prompts",
+  component: PromptsPage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
+  promptsRoute,
   workflowRoute,
   editorRoute,
   chatRoute,

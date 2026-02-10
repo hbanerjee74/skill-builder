@@ -7,8 +7,8 @@ test.describe("Clarification Q&A Form", () => {
   });
 
   test("shows workflow step sidebar", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /Research Domain Concepts/ })).toBeVisible();
-    await expect(page.getByText("Domain Concepts Review")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Research Concepts/ })).toBeVisible();
+    await expect(page.getByText("Concepts Review")).toBeVisible();
   });
 
   test("step 2 shows Q&A form when step is active", async ({ page }) => {
@@ -55,7 +55,7 @@ test.describe("Clarification Q&A Form", () => {
     // if the clarification form renders by navigating to the page with step 1
     // The form only renders when currentStep is a human review step (1 or 4)
     // Since we can't easily manipulate zustand from outside, verify the page renders
-    await expect(page.getByText("Step 1: Research Domain Concepts")).toBeVisible();
+    await expect(page.getByText("Step 1: Research Concepts")).toBeVisible();
   });
 
   test("renders question cards when form is loaded", async ({ page }) => {
@@ -89,6 +89,6 @@ test.describe("Clarification Q&A Form", () => {
     // The form only shows when currentStep is 1 or 4 (human review steps)
     // In default state, currentStep is 0, so the form won't show
     // We verify the basic page structure instead
-    await expect(page.getByText("Step 1: Research Domain Concepts")).toBeVisible();
+    await expect(page.getByText("Step 1: Research Concepts")).toBeVisible();
   });
 });

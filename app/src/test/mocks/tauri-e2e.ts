@@ -60,6 +60,7 @@ const mockResponses: Record<string, unknown> = {
   run_workflow_step: "agent-001",
   run_parallel_agents: { agent_id_a: "agent-001", agent_id_b: "agent-002" },
   package_skill: { file_path: "/tmp/test/my-skill.skill", size_bytes: 12345 },
+  get_agent_prompt: "# Sample Agent Prompt\n\nThis is a test prompt for the agent.\n\n## Instructions\n\nFollow these steps...",
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
