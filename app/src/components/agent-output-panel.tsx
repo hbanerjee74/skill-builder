@@ -525,7 +525,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
             return (
               <Fragment key={`${msg.timestamp}-${i}`}>
                 {turn > 0 && <TurnMarker turn={turn} />}
-                <div className={spacing}>
+                <div className={`${spacing} animate-message-in`}>
                   {content}
                 </div>
               </Fragment>

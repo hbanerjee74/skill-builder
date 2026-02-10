@@ -1094,3 +1094,85 @@ describe("VD-373: Message type icons", () => {
     }
   });
 });
+
+// --- VD-374: Message transitions and animations ---
+
+describe("VD-374: Message transitions and animations", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("collapse/expand animations use duration-200 ease-out", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
+    );
+    const details = screen.getByTestId("tool-call-details");
+    expect(details.className).toContain("transition-all");
+    expect(details.className).toContain("duration-200");
+    expect(details.className).toContain("ease-out");
+  });
+
+  it("message wrappers have animate-message-in class", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "Analyzing the domain...",
+      raw: { message: { content: [{ type: "text", text: "Analyzing the domain..." }] } },
+      timestamp: Date.now(),
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ToolCallGroup details have transition animation", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+      makeToolCallMsg("Read", { file_path: "/b.ts" }),
+    ];
+    render(<ToolCallGroup messages={groupMessages} />);
+    const details = screen.getByTestId("tool-group-details");
+    expect(details.className).toContain("transition-all");
+    expect(details.className).toContain("duration-200");
+    expect(details.className).toContain("ease-out");
+  });
+
+  it("multiple messages each get animate-message-in", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "First message",
+      raw: { message: { content: [{ type: "text", text: "First message" }] } },
+      timestamp: Date.now(),
+    });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "Second message",
+      raw: { message: { content: [{ type: "text", text: "Second message" }] } },
+      timestamp: Date.now() + 1,
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBe(2);
+  });
+
+  it("tool call groups also get animate-message-in wrapper", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/a.ts" } }] } },
+      timestamp: Date.now(),
+    });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "foo" } }] } },
+      timestamp: Date.now() + 1,
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBeGreaterThanOrEqual(1);
+  });
+});
