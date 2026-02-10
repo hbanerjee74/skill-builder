@@ -10,6 +10,9 @@ import {
   GitBranch,
   ChevronRight,
   ChevronDown,
+  MessageCircleQuestion,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -296,7 +299,7 @@ export function TurnMarker({ turn }: { turn: number }) {
   return (
     <div className="flex items-center gap-2 py-1">
       <div className="h-px flex-1 bg-border/40" />
-      <span className="text-xs text-muted-foreground">
+      <span className="text-xs font-medium text-muted-foreground">
         Turn {turn}
       </span>
       <div className="h-px flex-1 bg-border/40" />
@@ -318,7 +321,7 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-label={`${tool.summary} — ${expanded ? "collapse" : "expand"}`}
-        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" data-testid="chevron-down" aria-hidden="true" />
@@ -336,7 +339,7 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
       >
         {input && (
           <div className={`ml-5 mt-1 ${categoryStyles.tool_call}`}>
-            <pre className="overflow-x-auto text-xs">
+            <pre className="overflow-x-auto text-sm font-mono">
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>
@@ -356,7 +359,7 @@ export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-label={`${messages.length} tool calls — ${expanded ? "collapse" : "expand"}`}
-        className="flex w-full items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         {expanded ? (
           <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
@@ -392,17 +395,18 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
 
   if (category === "error") {
     return (
-      <div className={`${wrapperClass} text-sm text-destructive`}>
-        {message.content ?? "Unknown error"}
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-destructive`}>
+        <XCircle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{message.content ?? "Unknown error"}</span>
       </div>
     );
   }
 
   if (category === "result") {
     return (
-      <div className={`${wrapperClass} text-sm text-green-700 dark:text-green-400`}>
-        <span className="font-medium">Result: </span>
-        {message.content ?? "Agent completed"}
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-green-700 dark:text-green-400`}>
+        <CheckCircle2 className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span><span className="font-medium">Result: </span>{message.content ?? "Agent completed"}</span>
       </div>
     );
   }
@@ -415,12 +419,13 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     return (
       <div className={wrapperClass}>
         <div className="mb-1 flex items-center gap-2">
+          <MessageCircleQuestion className="size-4 shrink-0 text-[var(--chat-question-border)]" aria-hidden="true" />
           <Badge className="bg-[var(--chat-question-border)] text-white text-[10px] px-1.5 py-0">
             Needs Response
           </Badge>
         </div>
         <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-          <div className="markdown-body max-w-none text-sm">
+          <div className="markdown-body max-w-none text-base font-medium">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content ?? ""}
             </ReactMarkdown>
@@ -433,7 +438,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   if (category === "agent_response" && message.content) {
     return (
       <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-        <div className="markdown-body max-w-none text-sm">
+        <div className="markdown-body max-w-none text-base font-normal leading-relaxed">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>

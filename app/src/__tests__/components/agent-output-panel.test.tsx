@@ -327,7 +327,7 @@ describe("MessageItem visual treatments", () => {
     expect(button!.className).toContain("text-muted-foreground");
   });
 
-  it("renders question message with CSS variable border styling", () => {
+  it("renders question message with CSS variable border styling and medium typography", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -341,9 +341,14 @@ describe("MessageItem visual treatments", () => {
     const el = container.firstElementChild!;
     expect(el.className).toContain("border-l-[var(--chat-question-border)]");
     expect(el.className).toContain("bg-[var(--chat-question-bg)]");
+    // Question markdown body uses medium weight typography
+    const markdownBody = el.querySelector(".markdown-body");
+    expect(markdownBody).toBeInTheDocument();
+    expect(markdownBody!.className).toContain("text-base");
+    expect(markdownBody!.className).toContain("font-medium");
   });
 
-  it("renders agent_response without border styling", () => {
+  it("renders agent_response without border styling and with prose typography", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -356,6 +361,9 @@ describe("MessageItem visual treatments", () => {
     );
     const el = container.firstElementChild!;
     expect(el.className).not.toContain("border-l-2");
+    expect(el.className).toContain("text-base");
+    expect(el.className).toContain("font-normal");
+    expect(el.className).toContain("leading-relaxed");
   });
 });
 
@@ -932,5 +940,157 @@ describe("spacingClasses", () => {
     expect(spacingClasses.none).toBe("");
     expect(spacingClasses["group-start"]).toBe("mt-6");
     expect(spacingClasses.continuation).toBe("mt-1");
+  });
+});
+
+// --- VD-373: Typography hierarchy and message type icons ---
+
+describe("VD-373: Typography hierarchy", () => {
+  it("agent prose uses text-base font-normal leading-relaxed", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Analyzing the domain model...",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("text-base");
+    expect(el.className).toContain("font-normal");
+    expect(el.className).toContain("leading-relaxed");
+  });
+
+  it("tool call summaries use text-sm font-medium text-muted-foreground", () => {
+    const { container } = render(
+      <CollapsibleToolCall
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    const button = container.querySelector("button")!;
+    expect(button.className).toContain("text-sm");
+    expect(button.className).toContain("font-medium");
+    expect(button.className).toContain("text-muted-foreground");
+  });
+
+  it("tool call details (expanded) use text-sm font-mono", () => {
+    const { container } = render(
+      <CollapsibleToolCall
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Expand to reveal details
+    fireEvent.click(container.querySelector("button")!);
+    const pre = container.querySelector("pre")!;
+    expect(pre.className).toContain("text-sm");
+    expect(pre.className).toContain("font-mono");
+  });
+
+  it("turn markers use text-xs font-medium text-muted-foreground", () => {
+    render(<TurnMarker turn={5} />);
+    const span = screen.getByText("Turn 5");
+    expect(span.className).toContain("text-xs");
+    expect(span.className).toContain("font-medium");
+    expect(span.className).toContain("text-muted-foreground");
+  });
+
+  it("question messages use text-base font-medium", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const markdownBody = container.querySelector(".markdown-body")!;
+    expect(markdownBody).toBeInTheDocument();
+    expect(markdownBody.className).toContain("text-base");
+    expect(markdownBody.className).toContain("font-medium");
+  });
+});
+
+describe("VD-373: Message type icons", () => {
+  it("error messages render XCircle icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "error",
+          content: "Something went wrong",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // XCircle renders as an SVG inside the error wrapper
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+  });
+
+  it("result messages render CheckCircle2 icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+  });
+
+  it("question messages render MessageCircleQuestion icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // Question wrapper has an icon in the header row
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("agent prose responses do NOT render message-type icons", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Analyzing the domain...",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // Agent prose should have no SVG icons
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs).toHaveLength(0);
+  });
+
+  it("tool call messages do NOT render message-type icons (only tool icons)", () => {
+    const { container } = render(
+      <MessageItem
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Tool calls have tool-specific icons (e.g. FileText for Read) but not
+    // message-type icons (XCircle, CheckCircle2, MessageCircleQuestion).
+    // The tool icon is size-3.5, while message-type icons are size-4.
+    const svgs = container.querySelectorAll("svg");
+    // Should have exactly tool icons (chevron + tool icon), no size-4 message-type icons
+    for (const svg of svgs) {
+      expect(svg.classList.contains("size-4")).toBe(false);
+    }
   });
 });
