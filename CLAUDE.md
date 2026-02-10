@@ -51,7 +51,7 @@ Shared agents in `agents/shared/`:
 
 ### Plugin (CLI)
 - Location: Root directory (`skills/start/SKILL.md`)
-- Workflow: 10 steps (init, research, Q&A, parallel research, merge, Q&A, reasoning, build, validate, test, package)
+- Workflow: 9 steps + init (research, Q&A, research+merge, Q&A, reasoning, build, validate, test, package)
 - State: File-based (`workflow-state.md`)
 - Model selection: Per-agent (defined in coordinator)
 - Orchestration: Agent teams (TeamCreate/SendMessage/TeamDelete)
@@ -65,19 +65,20 @@ Shared agents in `agents/shared/`:
 
 ### Workflow Comparison
 
-| App Step | Plugin Equivalent | What Happens |
+| App Step | Plugin Step | What Happens |
 |---|---|---|
-| 0 | Step 1 | Research domain concepts (orchestrator) |
-| 1 | Step 2 | Human reviews concept questions |
-| 2 | Steps 3+4 | Research patterns + data + merge (single orchestrator) |
-| 3 | Step 5 | Human reviews merged questions |
-| 4 | Step 6 | Reasoning agent analyzes answers |
-| 5 | Step 7 | Build agent creates skill files |
-| 6 | Step 8 | Validate agent checks best practices |
-| 7 | Step 9 | Test agent generates + evaluates tests |
-| 8 | Step 10 | Package into .skill zip |
+| — | Init | User provides domain, skill name, skill type |
+| 0 | 1 | Research concepts (orchestrator) |
+| 1 | 2 | Human reviews concept questions |
+| 2 | 3 | Research patterns + data + merge (single orchestrator) |
+| 3 | 4 | Human reviews merged questions |
+| 4 | 5 | Reasoning |
+| 5 | 6 | Build |
+| 6 | 7 | Validate |
+| 7 | 8 | Test |
+| 8 | 9 | Package |
 
-The plugin has a separate Init step (Step 0) where the user names the skill. In the app, this happens in the new-skill dialog before the workflow starts.
+The only difference is the Init step — the plugin collects skill name and type via conversation, the app uses the new-skill dialog before the workflow starts.
 
 ## Development
 

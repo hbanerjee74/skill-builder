@@ -74,23 +74,22 @@ Shared reference: `references/shared-context.md` — domain definitions, file fo
 
 ## Workflow
 
-### Plugin (10 Steps)
+### Plugin (9 Steps + Init)
 
 The plugin uses Claude Code's native agent teams. The coordinator (`skills/start/SKILL.md`) orchestrates each step, selecting the model per-agent (sonnet for research, haiku for merge, opus for reasoning).
 
 | Step | What Happens | Your Role |
 |---|---|---|
-| **Init** | Choose a domain and skill name | Provide domain, confirm name |
+| **Init** | User provides domain, skill name, skill type | Provide domain, confirm name |
 | **Step 1** | Research agent identifies key entities, metrics, KPIs | Wait |
 | **Step 2** | Review domain concept questions | Answer each question |
-| **Step 3** | Two agents research business patterns + data modeling (parallel) | Wait |
-| **Step 4** | Merge agent deduplicates questions | Wait |
-| **Step 5** | Review merged clarification questions | Answer each question |
-| **Step 6** | Reasoning agent analyzes answers, finds gaps/contradictions | Confirm reasoning, answer follow-ups |
-| **Step 7** | Build agent creates the skill files | Review skill structure |
-| **Step 8** | Validator checks against best practices | Review validation log |
-| **Step 9** | Tester generates and runs test prompts | Review test results |
-| **Step 10** | Package into a `.skill` zip archive | Done |
+| **Step 3** | Research patterns + data + merge (single orchestrator) | Wait |
+| **Step 4** | Review merged clarification questions | Answer each question |
+| **Step 5** | Reasoning agent analyzes answers, finds gaps/contradictions | Confirm reasoning, answer follow-ups |
+| **Step 6** | Build agent creates the skill files | Review skill structure |
+| **Step 7** | Validator checks against best practices | Review validation log |
+| **Step 8** | Tester generates and runs test prompts | Review test results |
+| **Step 9** | Package into a `.skill` zip archive | Done |
 
 ### Desktop App (9 Steps)
 

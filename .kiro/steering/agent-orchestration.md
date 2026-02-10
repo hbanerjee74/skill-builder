@@ -30,23 +30,21 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This provi
 
 | Agent | Model | SDK Value |
 |-------|-------|-----------|
-| Research (Steps 1, 3) | Sonnet | `"sonnet"` |
-| Merger (Step 4) | Haiku | `"haiku"` |
-| Reasoner (Step 6) | Opus | `"opus"` |
-| Builder/Validator/Tester (Steps 7-9) | Sonnet | `"sonnet"` |
+| Research (Steps 0, 2) | Sonnet | `"sonnet"` |
+| Reasoner (Step 4) | Opus | `"opus"` |
+| Builder/Validator/Tester (Steps 5-7) | Sonnet | `"sonnet"` |
 
-## Workflow (10 Steps)
+## Workflow (9 Steps)
 
-1. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
-2. **Domain Concepts Review** — user answers questions via form UI
-3. **Research Patterns + Data Modeling** — two agents run in parallel
-4. **Merge** — deduplicate questions into `clarifications.md`
-5. **Human Review** — user answers merged questions via form UI
-6. **Reasoning** — multi-turn conversation, produces `decisions.md`
-7. **Build** — creates SKILL.md + reference files
-8. **Validate** — checks against best practices
-9. **Test** — generates and evaluates test prompts
-10. **Package** — creates `.skill` zip archive
+0. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
+1. **Domain Concepts Review** — user answers questions via form UI
+2. **Research Patterns + Data + Merge** — single orchestrator (spawns sub-agents internally)
+3. **Human Review** — user answers merged questions via form UI
+4. **Reasoning** — multi-turn conversation, produces `decisions.md`
+5. **Build** — creates SKILL.md + reference files
+6. **Validate** — checks against best practices
+7. **Test** — generates and evaluates test prompts
+8. **Package** — creates `.skill` zip archive
 
 ## Data Model (Repo Structure)
 
