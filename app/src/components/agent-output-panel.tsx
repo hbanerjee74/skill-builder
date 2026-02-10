@@ -10,6 +10,9 @@ import {
   GitBranch,
   ChevronRight,
   ChevronDown,
+  MessageCircleQuestion,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -335,7 +338,7 @@ export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
       >
         {input && (
           <div className={`ml-5 mt-1 ${categoryStyles.tool_call}`}>
-            <pre className="overflow-x-auto text-xs">
+            <pre className="overflow-x-auto text-sm font-mono">
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>
@@ -391,17 +394,18 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
 
   if (category === "error") {
     return (
-      <div className={`${wrapperClass} text-sm text-destructive`}>
-        {message.content ?? "Unknown error"}
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-destructive`}>
+        <XCircle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span>{message.content ?? "Unknown error"}</span>
       </div>
     );
   }
 
   if (category === "result") {
     return (
-      <div className={`${wrapperClass} text-sm text-green-700 dark:text-green-400`}>
-        <span className="font-medium">Result: </span>
-        {message.content ?? "Agent completed"}
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-green-700 dark:text-green-400`}>
+        <CheckCircle2 className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <span><span className="font-medium">Result: </span>{message.content ?? "Agent completed"}</span>
       </div>
     );
   }
@@ -414,6 +418,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     return (
       <div className={wrapperClass}>
         <div className="mb-0.5 flex items-center gap-2">
+          <MessageCircleQuestion className="size-4 shrink-0 text-[var(--chat-question-border)]" aria-hidden="true" />
           <Badge className="bg-[var(--chat-question-border)] text-white text-[10px] px-1.5 py-0">
             Needs Response
           </Badge>
@@ -519,7 +524,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
             return (
               <Fragment key={`${msg.timestamp}-${i}`}>
                 {turn > 0 && <TurnMarker turn={turn} />}
-                <div className={spacing}>
+                <div className={`${spacing} animate-message-in`}>
                   {content}
                 </div>
               </Fragment>

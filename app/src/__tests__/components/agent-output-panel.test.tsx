@@ -327,7 +327,7 @@ describe("MessageItem visual treatments", () => {
     expect(button!.className).toContain("text-muted-foreground");
   });
 
-  it("renders question message with CSS variable border styling", () => {
+  it("renders question message with CSS variable border styling and compact markdown", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -341,9 +341,13 @@ describe("MessageItem visual treatments", () => {
     const el = container.firstElementChild!;
     expect(el.className).toContain("border-l-[var(--chat-question-border)]");
     expect(el.className).toContain("bg-[var(--chat-question-bg)]");
+    // Question markdown body uses compact class
+    const markdownBody = el.querySelector(".markdown-body");
+    expect(markdownBody).toBeInTheDocument();
+    expect(markdownBody!.className).toContain("compact");
   });
 
-  it("renders agent_response without border styling", () => {
+  it("renders agent_response with pl-3 and compact markdown", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -356,6 +360,9 @@ describe("MessageItem visual treatments", () => {
     );
     const el = container.firstElementChild!;
     expect(el.className).not.toContain("border-l-2");
+    expect(el.className).toContain("pl-3");
+    expect(el.className).toContain("markdown-body");
+    expect(el.className).toContain("compact");
   });
 });
 
@@ -925,5 +932,236 @@ describe("spacingClasses", () => {
     expect(spacingClasses.none).toBe("");
     expect(spacingClasses["group-start"]).toBe("mt-3");
     expect(spacingClasses.continuation).toBe("mt-0.5");
+  });
+});
+
+// --- VD-373: Typography hierarchy and message type icons ---
+
+describe("VD-373: Typography hierarchy", () => {
+  it("agent prose uses compact markdown with pl-3", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Analyzing the domain model...",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("pl-3");
+    expect(el.className).toContain("markdown-body");
+    expect(el.className).toContain("compact");
+  });
+
+  it("tool call summaries use text-xs text-muted-foreground", () => {
+    const { container } = render(
+      <CollapsibleToolCall
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    const button = container.querySelector("button")!;
+    expect(button.className).toContain("text-xs");
+    expect(button.className).toContain("text-muted-foreground");
+  });
+
+  it("tool call details (expanded) use text-sm font-mono", () => {
+    const { container } = render(
+      <CollapsibleToolCall
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Expand to reveal details
+    fireEvent.click(container.querySelector("button")!);
+    const pre = container.querySelector("pre")!;
+    expect(pre.className).toContain("text-sm");
+    expect(pre.className).toContain("font-mono");
+  });
+
+  it("turn markers use Badge with font-medium", () => {
+    render(<TurnMarker turn={5} />);
+    const badge = screen.getByText("Turn 5");
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain("font-medium");
+  });
+
+  it("question messages use compact markdown", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const markdownBody = container.querySelector(".markdown-body")!;
+    expect(markdownBody).toBeInTheDocument();
+    expect(markdownBody.className).toContain("compact");
+  });
+});
+
+describe("VD-373: Message type icons", () => {
+  it("error messages render XCircle icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "error",
+          content: "Something went wrong",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // XCircle renders as an SVG inside the error wrapper
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+  });
+
+  it("result messages render CheckCircle2 icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+  });
+
+  it("question messages render MessageCircleQuestion icon", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // Question wrapper has an icon in the header row
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("agent prose responses do NOT render message-type icons", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Analyzing the domain...",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // Agent prose should have no SVG icons
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs).toHaveLength(0);
+  });
+
+  it("tool call messages do NOT render message-type icons (only tool icons)", () => {
+    const { container } = render(
+      <MessageItem
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Tool calls have tool-specific icons (e.g. FileText for Read) but not
+    // message-type icons (XCircle, CheckCircle2, MessageCircleQuestion).
+    // The tool icon is size-3.5, while message-type icons are size-4.
+    const svgs = container.querySelectorAll("svg");
+    // Should have exactly tool icons (chevron + tool icon), no size-4 message-type icons
+    for (const svg of svgs) {
+      expect(svg.classList.contains("size-4")).toBe(false);
+    }
+  });
+});
+
+// --- VD-374: Message transitions and animations ---
+
+describe("VD-374: Message transitions and animations", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+  });
+
+  it("collapse/expand animations use duration-200 ease-out", () => {
+    render(
+      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
+    );
+    const details = screen.getByTestId("tool-call-details");
+    expect(details.className).toContain("transition-all");
+    expect(details.className).toContain("duration-200");
+    expect(details.className).toContain("ease-out");
+  });
+
+  it("message wrappers have animate-message-in class", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "Analyzing the domain...",
+      raw: { message: { content: [{ type: "text", text: "Analyzing the domain..." }] } },
+      timestamp: Date.now(),
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("ToolCallGroup details have transition animation", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+      makeToolCallMsg("Read", { file_path: "/b.ts" }),
+    ];
+    render(<ToolCallGroup messages={groupMessages} />);
+    const details = screen.getByTestId("tool-group-details");
+    expect(details.className).toContain("transition-all");
+    expect(details.className).toContain("duration-200");
+    expect(details.className).toContain("ease-out");
+  });
+
+  it("multiple messages each get animate-message-in", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "First message",
+      raw: { message: { content: [{ type: "text", text: "First message" }] } },
+      timestamp: Date.now(),
+    });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "Second message",
+      raw: { message: { content: [{ type: "text", text: "Second message" }] } },
+      timestamp: Date.now() + 1,
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBe(2);
+  });
+
+  it("tool call groups also get animate-message-in wrapper", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/a.ts" } }] } },
+      timestamp: Date.now(),
+    });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: { message: { content: [{ type: "tool_use", name: "Grep", input: { pattern: "foo" } }] } },
+      timestamp: Date.now() + 1,
+    });
+    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
+    const animatedDivs = container.querySelectorAll(".animate-message-in");
+    expect(animatedDivs.length).toBeGreaterThanOrEqual(1);
   });
 });
