@@ -1,5 +1,5 @@
 use crate::types::{
-    AppSettings, ArtifactRow, ChatMessageRow, ChatSessionRow, WorkflowRunRow,
+    AppSettings, ArtifactRow, WorkflowRunRow,
     WorkflowStepRow,
 };
 use rusqlite::Connection;
@@ -482,131 +482,6 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
         .map_err(|e| e.to_string())
 }
 
-// --- Chat Sessions ---
-
-pub fn create_chat_session_row(
-    conn: &Connection,
-    id: &str,
-    skill_name: &str,
-    mode: &str,
-) -> Result<ChatSessionRow, String> {
-    conn.execute(
-        "INSERT INTO chat_sessions (id, skill_name, mode) VALUES (?1, ?2, ?3)",
-        rusqlite::params![id, skill_name, mode],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, skill_name, mode, created_at, updated_at
-             FROM chat_sessions WHERE id = ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    stmt.query_row(rusqlite::params![id], |row| {
-        Ok(ChatSessionRow {
-            id: row.get(0)?,
-            skill_name: row.get(1)?,
-            mode: row.get(2)?,
-            created_at: row.get(3)?,
-            updated_at: row.get(4)?,
-        })
-    })
-    .map_err(|e| e.to_string())
-}
-
-pub fn get_chat_sessions(
-    conn: &Connection,
-    skill_name: &str,
-) -> Result<Vec<ChatSessionRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, skill_name, mode, created_at, updated_at
-             FROM chat_sessions WHERE skill_name = ?1 ORDER BY updated_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![skill_name], |row| {
-            Ok(ChatSessionRow {
-                id: row.get(0)?,
-                skill_name: row.get(1)?,
-                mode: row.get(2)?,
-                created_at: row.get(3)?,
-                updated_at: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
-}
-
-pub fn add_chat_message_row(
-    conn: &Connection,
-    id: &str,
-    session_id: &str,
-    role: &str,
-    content: &str,
-) -> Result<ChatMessageRow, String> {
-    conn.execute(
-        "INSERT INTO chat_messages (id, session_id, role, content) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![id, session_id, role, content],
-    )
-    .map_err(|e| e.to_string())?;
-
-    conn.execute(
-        "UPDATE chat_sessions SET updated_at = datetime('now') WHERE id = ?1",
-        rusqlite::params![session_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, session_id, role, content, created_at
-             FROM chat_messages WHERE id = ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    stmt.query_row(rusqlite::params![id], |row| {
-        Ok(ChatMessageRow {
-            id: row.get(0)?,
-            session_id: row.get(1)?,
-            role: row.get(2)?,
-            content: row.get(3)?,
-            created_at: row.get(4)?,
-        })
-    })
-    .map_err(|e| e.to_string())
-}
-
-pub fn get_chat_messages(
-    conn: &Connection,
-    session_id: &str,
-) -> Result<Vec<ChatMessageRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, session_id, role, content, created_at
-             FROM chat_messages WHERE session_id = ?1 ORDER BY created_at",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![session_id], |row| {
-            Ok(ChatMessageRow {
-                id: row.get(0)?,
-                session_id: row.get(1)?,
-                role: row.get(2)?,
-                content: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -785,34 +660,6 @@ mod tests {
         delete_workflow_run(&conn, "test-skill").unwrap();
         assert!(get_workflow_run(&conn, "test-skill").unwrap().is_none());
         assert!(get_workflow_steps(&conn, "test-skill").unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_chat_session_crud() {
-        let conn = create_test_db();
-        let session =
-            create_chat_session_row(&conn, "sess-1", "test-skill", "conversational").unwrap();
-        assert_eq!(session.id, "sess-1");
-        assert_eq!(session.skill_name, "test-skill");
-        assert_eq!(session.mode, "conversational");
-
-        let sessions = get_chat_sessions(&conn, "test-skill").unwrap();
-        assert_eq!(sessions.len(), 1);
-    }
-
-    #[test]
-    fn test_chat_messages_crud() {
-        let conn = create_test_db();
-        create_chat_session_row(&conn, "sess-1", "test-skill", "conversational").unwrap();
-
-        add_chat_message_row(&conn, "msg-1", "sess-1", "user", "Hello").unwrap();
-        add_chat_message_row(&conn, "msg-2", "sess-1", "assistant", "Hi there!").unwrap();
-
-        let messages = get_chat_messages(&conn, "sess-1").unwrap();
-        assert_eq!(messages.len(), 2);
-        assert_eq!(messages[0].role, "user");
-        assert_eq!(messages[0].content, "Hello");
-        assert_eq!(messages[1].role, "assistant");
     }
 
     // --- Workflow Artifacts tests ---

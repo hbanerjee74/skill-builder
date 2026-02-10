@@ -50,8 +50,6 @@ const mockResponses: Record<string, unknown> = {
     ],
   },
   save_clarification_answers: undefined,
-  save_raw_file: undefined,
-  list_skill_files: [],
   read_file: "",
   check_workspace_path: true,
   has_running_agents: false,

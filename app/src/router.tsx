@@ -7,8 +7,6 @@ import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
-import EditorPage from "./pages/editor";
-import ChatPage from "./pages/chat";
 import PromptsPage from "./pages/prompts";
 
 const rootRoute = createRootRoute({
@@ -33,18 +31,6 @@ const workflowRoute = createRoute({
   component: WorkflowPage,
 });
 
-const editorRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/skill/$skillName/editor",
-  component: EditorPage,
-});
-
-const chatRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/skill/$skillName/chat",
-  component: ChatPage,
-});
-
 const promptsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/prompts",
@@ -56,8 +42,6 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   promptsRoute,
   workflowRoute,
-  editorRoute,
-  chatRoute,
 ]);
 
 export const router = createRouter({ routeTree });

@@ -1,4 +1,4 @@
-import type { AppSettings, SkillSummary, FileEntry } from "@/lib/tauri";
+import type { AppSettings, SkillSummary } from "@/lib/tauri";
 import type { AgentMessage } from "@/stores/agent-store";
 
 // --- Settings fixtures ---
@@ -27,20 +27,6 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     last_modified: "2026-01-15T10:00:00Z",
     tags: [],
     skill_type: null,
-    ...overrides,
-  };
-}
-
-// --- File fixtures ---
-
-export function makeFileEntry(overrides?: Partial<FileEntry>): FileEntry {
-  return {
-    name: "SKILL.md",
-    relative_path: "skill/SKILL.md",
-    absolute_path: "/ws/test-skill/skill/SKILL.md",
-    is_directory: false,
-    is_readonly: false,
-    size_bytes: 1024,
     ...overrides,
   };
 }

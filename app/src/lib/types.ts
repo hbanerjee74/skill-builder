@@ -59,13 +59,3 @@ export interface PackageResult {
   size_bytes: number
 }
 
-// --- File Editor Types ---
-
-export interface FileEntry {
-  name: string
-  relative_path: string
-  absolute_path: string
-  is_directory: boolean
-  is_readonly: boolean
-  size_bytes: number
-}

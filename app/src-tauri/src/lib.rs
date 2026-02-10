@@ -50,16 +50,9 @@ pub fn run() {
             commands::workflow::get_artifact_content,
             commands::workflow::save_artifact_content,
             commands::workflow::get_agent_prompt,
-            commands::chat::create_chat_session,
-            commands::chat::list_chat_sessions,
-            commands::chat::add_chat_message,
-            commands::chat::get_chat_messages,
-            commands::chat::run_chat_agent,
             commands::lifecycle::has_running_agents,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
-            commands::diff::generate_diff,
-            commands::diff::apply_suggestion,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

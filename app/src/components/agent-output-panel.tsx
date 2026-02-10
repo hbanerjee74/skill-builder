@@ -130,15 +130,6 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   return result(name);
 }
 
-function getToolInput(message: AgentMessage): Record<string, unknown> | null {
-  const raw = message.raw;
-  const msgContent = (raw as Record<string, unknown>).message as
-    | { content?: Array<{ type: string; name?: string; input?: Record<string, unknown> }> }
-    | undefined;
-  const toolBlock = msgContent?.content?.find((b) => b.type === "tool_use");
-  return toolBlock?.input ?? null;
-}
-
 /**
  * Check if a message ends with a question directed at the user.
  * Looks at the last non-empty line for a trailing question mark.
@@ -306,48 +297,6 @@ export function TurnMarker({ turn }: { turn: number }) {
   );
 }
 
-export function CollapsibleToolCall({ message }: { message: AgentMessage }) {
-  const [expanded, setExpanded] = useState(false);
-  const tool = getToolSummary(message);
-  if (!tool) return null;
-
-  const input = getToolInput(message);
-
-  return (
-    <div data-testid="collapsible-tool-call">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        aria-expanded={expanded}
-        aria-label={`${tool.summary} — ${expanded ? "collapse" : "expand"}`}
-        className="flex w-full items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {expanded ? (
-          <ChevronDown className="size-3.5 shrink-0" data-testid="chevron-down" aria-hidden="true" />
-        ) : (
-          <ChevronRight className="size-3.5 shrink-0" data-testid="chevron-right" aria-hidden="true" />
-        )}
-        {getToolIcon(tool.toolName)}
-        <span className="truncate text-left">{tool.summary}</span>
-      </button>
-      <div
-        className={`overflow-hidden transition-all duration-200 ease-out ${
-          expanded ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
-        }`}
-        data-testid="tool-call-details"
-      >
-        {input && (
-          <div className={`ml-5 mt-1 ${categoryStyles.tool_call}`}>
-            <pre className="overflow-x-auto text-sm font-mono">
-              {JSON.stringify(input, null, 2)}
-            </pre>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -374,10 +323,17 @@ export function ToolCallGroup({ messages }: { messages: AgentMessage[] }) {
         }`}
         data-testid="tool-group-details"
       >
-        <div className="ml-3 mt-1 flex flex-col gap-1 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
-          {messages.map((msg, idx) => (
-            <CollapsibleToolCall key={`${msg.timestamp}-${idx}`} message={msg} />
-          ))}
+        <div className="ml-3 mt-1 flex flex-col gap-0.5 border-l-2 border-l-[var(--chat-tool-border)] pl-3">
+          {messages.map((msg, idx) => {
+            const tool = getToolSummary(msg);
+            if (!tool) return null;
+            return (
+              <div key={`${msg.timestamp}-${idx}`} className="flex items-center gap-2 text-xs text-muted-foreground">
+                {getToolIcon(tool.toolName)}
+                <span className="truncate">{tool.summary}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -411,7 +367,14 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   }
 
   if (category === "tool_call") {
-    return <CollapsibleToolCall message={message} />;
+    const tool = getToolSummary(message);
+    if (!tool) return null;
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {getToolIcon(tool.toolName)}
+        <span className="truncate">{tool.summary}</span>
+      </div>
+    );
   }
 
   if (category === "question") {
@@ -504,7 +467,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
       <AgentStatusHeader agentId={agentId} />
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
-        <div ref={scrollRef} className="flex flex-col p-3 max-w-prose">
+        <div ref={scrollRef} className="flex flex-col p-3">
           {run.messages.map((msg, i) => {
             const turn = turnMap.get(i) ?? 0;
             const spacing = spacingClasses[messageGroups[i]];

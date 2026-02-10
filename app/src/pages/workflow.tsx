@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, Link, useBlocker } from "@tanstack/react-router";
+import { useParams, useBlocker } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -9,7 +9,6 @@ import {
   MessageSquare,
   SkipForward,
   FileText,
-  Pencil,
   ArrowRight,
   AlertCircle,
   RotateCcw,
@@ -107,7 +106,9 @@ export default function WorkflowPage() {
   // Key: shouldBlockFn reads directly from Zustand (not React state) so the
   // value is current when the router re-evaluates after proceed().
   const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
-    shouldBlockFn: () => useWorkflowStore.getState().isRunning,
+    shouldBlockFn: () => {
+      return useWorkflowStore.getState().isRunning;
+    },
     enableBeforeUnload: false,
     withResolver: true,
   });
@@ -623,7 +624,7 @@ export default function WorkflowPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <MessageSquare className="size-8 text-muted-foreground/50" />
           <p className="text-sm">
-            No clarification file found. You can edit it in the Editor or continue to the next step.
+            No clarification file found. Run the previous step or continue.
           </p>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
@@ -673,7 +674,7 @@ export default function WorkflowPage() {
           <div className="text-center">
             <p className="font-medium text-destructive">Step {currentStep + 1} failed</p>
             <p className="mt-1 text-sm">
-              An error occurred. You can retry this step or view the editor for details.
+              An error occurred. You can retry this step.
             </p>
           </div>
           <div className="flex gap-2">
@@ -808,18 +809,6 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Link to="/skill/$skillName/editor" params={{ skillName }}>
-                <Button variant="outline" size="sm">
-                  <Pencil className="size-3.5" />
-                  Editor
-                </Button>
-              </Link>
-              <Link to="/skill/$skillName/chat" params={{ skillName }}>
-                <Button variant="outline" size="sm">
-                  <MessageSquare className="size-3.5" />
-                  Chat
-                </Button>
-              </Link>
               {debugMode && (
                 <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
                   <Bug className="size-3" />

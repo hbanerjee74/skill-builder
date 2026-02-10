@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, FileEntry } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, FileEntry } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult } from "@/lib/types";
 
 // --- Settings ---
 
@@ -124,12 +124,6 @@ export const saveWorkflowState = (
 
 // --- Files ---
 
-export const saveRawFile = (filePath: string, content: string) =>
-  invoke("save_raw_file", { filePath, content });
-
-export const listSkillFiles = (workspacePath: string, skillName: string) =>
-  invoke<FileEntry[]>("list_skill_files", { workspacePath, skillName });
-
 export const readFile = (filePath: string) =>
   invoke<string>("read_file", { filePath });
 
@@ -140,54 +134,6 @@ export const hasRunningAgents = () =>
 
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
-
-// --- Chat ---
-
-export interface ChatSessionRow {
-  id: string;
-  skill_name: string;
-  mode: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface ChatMessageRow {
-  id: string;
-  session_id: string;
-  role: string;
-  content: string;
-  created_at: string;
-}
-
-export const createChatSession = (skillName: string, mode: string) =>
-  invoke<ChatSessionRow>("create_chat_session", { skillName, mode });
-
-export const listChatSessions = (skillName: string) =>
-  invoke<ChatSessionRow[]>("list_chat_sessions", { skillName });
-
-export const addChatMessage = (sessionId: string, role: string, content: string) =>
-  invoke<ChatMessageRow>("add_chat_message", { sessionId, role, content });
-
-export const getChatMessages = (sessionId: string) =>
-  invoke<ChatMessageRow[]>("get_chat_messages", { sessionId });
-
-export const runChatAgent = (skillName: string, sessionId: string, message: string, workspacePath: string) =>
-  invoke<string>("run_chat_agent", { skillName, sessionId, message, workspacePath });
-
-// --- Diff ---
-
-export interface DiffResult {
-  file_path: string;
-  old_content: string;
-  new_content: string;
-  has_changes: boolean;
-}
-
-export const generateDiff = (filePath: string, newContent: string) =>
-  invoke<DiffResult>("generate_diff", { filePath, newContent });
-
-export const applySuggestion = (filePath: string, newContent: string) =>
-  invoke("apply_suggestion", { filePath, newContent });
 
 // --- Artifacts ---
 

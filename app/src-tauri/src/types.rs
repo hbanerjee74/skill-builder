@@ -101,24 +101,6 @@ pub struct WorkflowStepRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatSessionRow {
-    pub id: String,
-    pub skill_name: String,
-    pub mode: String,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessageRow {
-    pub id: String,
-    pub session_id: String,
-    pub role: String,
-    pub content: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowStateResponse {
     pub run: Option<WorkflowRunRow>,
     pub steps: Vec<WorkflowStepRow>,

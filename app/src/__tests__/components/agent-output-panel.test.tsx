@@ -22,7 +22,6 @@ import {
   classifyMessage,
   categoryStyles,
   MessageItem,
-  CollapsibleToolCall,
   ToolCallGroup,
   TurnMarker,
   computeToolCallGroups,
@@ -300,7 +299,7 @@ describe("MessageItem visual treatments", () => {
     expect(el.textContent).toContain("Agent finished successfully");
   });
 
-  it("renders tool_call message as collapsible with summary text", () => {
+  it("renders tool_call message as simple non-interactive summary", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -317,14 +316,17 @@ describe("MessageItem visual treatments", () => {
         }}
       />,
     );
-    // Tool call should render as collapsible
-    const collapsible = container.querySelector('[data-testid="collapsible-tool-call"]');
-    expect(collapsible).toBeInTheDocument();
-    expect(collapsible!.textContent).toContain("Reading b.ts");
+    // Tool call should render as simple non-interactive summary (no collapsible)
+    const summary = container.querySelector("div");
+    expect(summary).toBeInTheDocument();
+    expect(summary!.textContent).toContain("Reading b.ts");
 
-    // Should have muted foreground on the button
-    const button = collapsible!.querySelector("button");
-    expect(button!.className).toContain("text-muted-foreground");
+    // Should have muted foreground styling
+    expect(summary!.className).toContain("text-muted-foreground");
+
+    // Should NOT have a button (no expand/collapse)
+    const button = container.querySelector("button");
+    expect(button).not.toBeInTheDocument();
   });
 
   it("renders question message with CSS variable border styling and compact markdown", () => {
@@ -573,67 +575,6 @@ function makeToolCallMsg(name: string, input: Record<string, unknown>): AgentMes
   };
 }
 
-describe("CollapsibleToolCall", () => {
-  it("renders collapsed by default with chevron-right", () => {
-    render(
-      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
-    );
-    expect(screen.getByText("Reading app.ts")).toBeInTheDocument();
-    expect(screen.getByTestId("chevron-right")).toBeInTheDocument();
-    expect(screen.queryByTestId("chevron-down")).not.toBeInTheDocument();
-
-    // Details area should be collapsed (max-h-0)
-    const details = screen.getByTestId("tool-call-details");
-    expect(details.className).toContain("max-h-0");
-    expect(details.className).toContain("opacity-0");
-  });
-
-  it("expands to show details when clicked", () => {
-    render(
-      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
-    );
-
-    // Click to expand
-    fireEvent.click(screen.getByRole("button"));
-
-    // Chevron should switch to down
-    expect(screen.getByTestId("chevron-down")).toBeInTheDocument();
-    expect(screen.queryByTestId("chevron-right")).not.toBeInTheDocument();
-
-    // Details should be visible (max-h-96, opacity-100)
-    const details = screen.getByTestId("tool-call-details");
-    expect(details.className).toContain("max-h-96");
-    expect(details.className).toContain("opacity-100");
-
-    // Should show the input parameters
-    expect(screen.getByText(/\/src\/app\.ts/)).toBeInTheDocument();
-  });
-
-  it("collapses again when clicked twice", () => {
-    render(
-      <CollapsibleToolCall message={makeToolCallMsg("Grep", { pattern: "TODO" })} />,
-    );
-
-    const button = screen.getByRole("button");
-    fireEvent.click(button); // expand
-    fireEvent.click(button); // collapse
-
-    expect(screen.getByTestId("chevron-right")).toBeInTheDocument();
-    const details = screen.getByTestId("tool-call-details");
-    expect(details.className).toContain("max-h-0");
-  });
-
-  it("has animation classes", () => {
-    render(
-      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/x.ts" })} />,
-    );
-    const details = screen.getByTestId("tool-call-details");
-    expect(details.className).toContain("transition-all");
-    expect(details.className).toContain("duration-200");
-    expect(details.className).toContain("ease-out");
-  });
-});
-
 describe("ToolCallGroup", () => {
   const groupMessages = [
     makeToolCallMsg("Read", { file_path: "/a.ts" }),
@@ -653,18 +594,19 @@ describe("ToolCallGroup", () => {
     expect(details.className).toContain("opacity-0");
   });
 
-  it("expands to show individual tool calls when clicked", () => {
+  it("expands to show individual tool summaries when clicked", () => {
     render(<ToolCallGroup messages={groupMessages} />);
 
-    // Click group header button (first button) to expand
+    // Click group header button to expand
     fireEvent.click(screen.getAllByRole("button")[0]);
 
     const details = screen.getByTestId("tool-group-details");
     expect(details.className).toContain("opacity-100");
 
-    // Individual tool calls should be visible
-    const toolCalls = screen.getAllByTestId("collapsible-tool-call");
-    expect(toolCalls).toHaveLength(3);
+    // Individual tool summaries should be visible as plain text
+    expect(screen.getByText("Reading a.ts")).toBeInTheDocument();
+    expect(screen.getByText(/Grep:/)).toBeInTheDocument();
+    expect(screen.getByText("Reading b.ts")).toBeInTheDocument();
   });
 
   it("has connecting left border when expanded", () => {
@@ -955,30 +897,6 @@ describe("VD-373: Typography hierarchy", () => {
     expect(el.className).toContain("compact");
   });
 
-  it("tool call summaries use text-xs text-muted-foreground", () => {
-    const { container } = render(
-      <CollapsibleToolCall
-        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
-      />,
-    );
-    const button = container.querySelector("button")!;
-    expect(button.className).toContain("text-xs");
-    expect(button.className).toContain("text-muted-foreground");
-  });
-
-  it("tool call details (expanded) use text-sm font-mono", () => {
-    const { container } = render(
-      <CollapsibleToolCall
-        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
-      />,
-    );
-    // Expand to reveal details
-    fireEvent.click(container.querySelector("button")!);
-    const pre = container.querySelector("pre")!;
-    expect(pre.className).toContain("text-sm");
-    expect(pre.className).toContain("font-mono");
-  });
-
   it("turn markers use Badge with font-medium", () => {
     render(<TurnMarker turn={5} />);
     const badge = screen.getByText("Turn 5");
@@ -1084,21 +1002,144 @@ describe("VD-373: Message type icons", () => {
   });
 });
 
+// --- Tool call rendering: standalone vs grouped ---
+
+describe("Tool call rendering: standalone vs grouped", () => {
+  it("standalone tool call has no chevron button", () => {
+    const { container } = render(
+      <MessageItem
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Should not have any button element
+    expect(container.querySelector("button")).not.toBeInTheDocument();
+    // Should not have any chevron icons
+    expect(screen.queryByTestId("chevron-right")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("chevron-down")).not.toBeInTheDocument();
+  });
+
+  it("standalone tool call shows tool icon and summary text", () => {
+    const { container } = render(
+      <MessageItem
+        message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })}
+      />,
+    );
+    // Should show the summary text
+    expect(screen.getByText("Reading app.ts")).toBeInTheDocument();
+    // Should have a tool icon (FileText for Read)
+    const svgs = container.querySelectorAll("svg");
+    expect(svgs.length).toBe(1);
+    expect(svgs[0].classList.contains("size-3.5")).toBe(true);
+  });
+
+  it("standalone tool call is plain text (no interactive elements)", () => {
+    const { container } = render(
+      <MessageItem
+        message={makeToolCallMsg("Grep", { pattern: "TODO" })}
+      />,
+    );
+    // Should have no interactive elements
+    expect(container.querySelector("button")).not.toBeInTheDocument();
+    // Should be a simple div with icon + text
+    const wrapper = container.firstElementChild!;
+    expect(wrapper.tagName).toBe("DIV");
+    expect(wrapper.querySelector("button")).not.toBeInTheDocument();
+  });
+
+  it("ToolCallGroup has exactly one chevron in header", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+      makeToolCallMsg("Read", { file_path: "/b.ts" }),
+    ];
+    const { container } = render(<ToolCallGroup messages={groupMessages} />);
+
+    // Should have exactly one button (the group header)
+    const buttons = container.querySelectorAll("button");
+    expect(buttons).toHaveLength(1);
+
+    // Button should contain a chevron (ChevronRight in collapsed state)
+    const button = buttons[0];
+    const chevrons = button.querySelectorAll("svg.size-3\\.5.shrink-0");
+    // ChevronRight + Terminal icon = 2 icons, but we care that there's exactly one button
+    expect(button).toBeInTheDocument();
+  });
+
+  it("ToolCallGroup expanded members are plain text (no buttons)", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+      makeToolCallMsg("Read", { file_path: "/b.ts" }),
+    ];
+    render(<ToolCallGroup messages={groupMessages} />);
+
+    // Click to expand
+    fireEvent.click(screen.getAllByRole("button")[0]);
+
+    // Should show the three tool summaries as text
+    expect(screen.getByText("Reading a.ts")).toBeInTheDocument();
+    expect(screen.getByText(/Grep:/)).toBeInTheDocument();
+    expect(screen.getByText("Reading b.ts")).toBeInTheDocument();
+
+    // Expanded members should NOT have buttons
+    // (The only button is the group header, which we already clicked)
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+  });
+
+  it("ToolCallGroup expanded members have no chevrons", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/a.ts" }),
+      makeToolCallMsg("Grep", { pattern: "export" }),
+    ];
+    const { container } = render(<ToolCallGroup messages={groupMessages} />);
+
+    // Expand the group
+    fireEvent.click(screen.getAllByRole("button")[0]);
+
+    // The details container should have no buttons inside it
+    const details = screen.getByTestId("tool-group-details");
+    expect(details.querySelector("button")).not.toBeInTheDocument();
+
+    // Each member should be a simple div with no interactive elements
+    const members = details.querySelectorAll("div.flex.items-center");
+    expect(members).toHaveLength(2);
+    for (const member of members) {
+      expect(member.querySelector("button")).not.toBeInTheDocument();
+    }
+  });
+
+  it("ToolCallGroup expanded members show icon and text only", () => {
+    const groupMessages = [
+      makeToolCallMsg("Read", { file_path: "/test.ts" }),
+      makeToolCallMsg("Write", { file_path: "/output.ts" }),
+    ];
+    const { container } = render(<ToolCallGroup messages={groupMessages} />);
+
+    // Expand
+    fireEvent.click(screen.getAllByRole("button")[0]);
+
+    // Find the details container
+    const details = screen.getByTestId("tool-group-details");
+    const memberDivs = details.querySelectorAll("div.flex.items-center");
+
+    // Should have 2 member divs
+    expect(memberDivs).toHaveLength(2);
+
+    // Each member div should have icon + text, no button
+    for (const div of memberDivs) {
+      expect(div.querySelector("button")).not.toBeInTheDocument();
+      expect(div.querySelector("svg.size-3\\.5")).toBeInTheDocument();
+      expect(div.querySelector("span")).toBeInTheDocument();
+    }
+  });
+});
+
 // --- VD-374: Message transitions and animations ---
 
 describe("VD-374: Message transitions and animations", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
-  });
-
-  it("collapse/expand animations use duration-200 ease-out", () => {
-    render(
-      <CollapsibleToolCall message={makeToolCallMsg("Read", { file_path: "/src/app.ts" })} />,
-    );
-    const details = screen.getByTestId("tool-call-details");
-    expect(details.className).toContain("transition-all");
-    expect(details.className).toContain("duration-200");
-    expect(details.className).toContain("ease-out");
   });
 
   it("message wrappers have animate-message-in class", () => {
