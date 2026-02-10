@@ -56,7 +56,7 @@ app/
 │   ├── router.tsx                    # TanStack Router routes
 │   ├── pages/                        # Page components
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   ├── workflow.tsx              # Workflow wizard (10-step)
+│   │   ├── workflow.tsx              # Workflow wizard (9-step)
 │   │   ├── editor.tsx                # Skill file editor
 │   │   └── settings.tsx              # API key + workspace config
 │   ├── components/
@@ -166,10 +166,9 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 | Agent | Model | SDK model value |
 | --- | --- | --- |
-| Research (Steps 1, 3) | Sonnet | `"sonnet"` |
-| Merger (Step 4) | Haiku | `"haiku"` |
-| Reasoner (Step 6) | Opus | `"opus"` |
-| Builder/Validator/Tester (Steps 7-9) | Sonnet | `"sonnet"` |
+| Research (Steps 0, 2) | Sonnet | `"sonnet"` |
+| Reasoner (Step 4) | Opus | `"opus"` |
+| Builder/Validator/Tester (Steps 5-7) | Sonnet | `"sonnet"` |
 
 ## Node.js Dependency
 
@@ -182,20 +181,19 @@ On startup, the Rust backend runs `node --version`:
 
 The sidecar JS file (`agent-runner.js`) is bundled with the app as a Tauri resource. It's a single esbuild-bundled file containing the SDK and all dependencies — no `npm install` needed at runtime.
 
-## Workflow (10 steps)
+## Workflow (9 steps)
 
-The app replicates the CLI workflow. Each step is a state in the workflow state machine:
+The app replicates the plugin workflow. Each step is a state in the workflow state machine:
 
-1. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
-2. **Domain Concepts Review** — user answers questions via form UI
-3. **Research Patterns + Data Modeling** — two agents run in parallel (two sidecar processes)
-4. **Merge** — deduplicate questions into `clarifications.md`
-5. **Human Review** — user answers merged questions via form UI
-6. **Reasoning** — multi-turn conversation, produces `decisions.md`
-7. **Build** — creates SKILL.md + reference files
-8. **Validate** — checks against best practices
-9. **Test** — generates and evaluates test prompts
-10. **Package** — creates `.skill` zip archive
+0. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
+1. **Domain Concepts Review** — user answers questions via form UI
+2. **Research Patterns + Data + Merge** — single orchestrator (spawns sub-agents internally)
+3. **Human Review** — user answers merged questions via form UI
+4. **Reasoning** — multi-turn conversation, produces `decisions.md`
+5. **Build** — creates SKILL.md + reference files
+6. **Validate** — checks against best practices
+7. **Test** — generates and evaluates test prompts
+8. **Package** — creates `.skill` zip archive
 
 ## Data Model (repo structure)
 

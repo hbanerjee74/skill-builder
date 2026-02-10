@@ -1,11 +1,11 @@
 ---
 name: start
-description: Multi-agent workflow for creating domain-specific Claude skills
+description: Multi-agent workflow for creating Claude skills (platform, domain, source, or data-engineering)
 ---
 
 # Skill Builder — Coordinator
 
-You are the coordinator for the Skill Builder workflow. You orchestrate a 10-step process to create domain-specific skills for data/analytics engineers.
+You are the coordinator for the Skill Builder workflow. You orchestrate a 9-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
 
 ## Path Resolution
 
@@ -37,10 +37,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
 ### Step 0: Initialization
 
-1. Ask the user: "What functional domain should this skill cover? (e.g., sales pipeline, supply chain, HR analytics, financial planning)"
-2. Derive the skill name from the domain (lowercase, kebab-case, e.g., "sales-pipeline")
-3. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
-4. Ask the user: "What type of skill is this?
+1. Ask the user: "What type of skill is this?
      1. Platform — Tool/platform-specific (dbt, Fabric, Databricks)
      2. Domain — Business domain knowledge (Finance, Marketing, Supply Chain)
      3. Source — Source system extraction patterns (Salesforce, SAP, Workday)
@@ -48,12 +45,23 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
    Store the selection as kebab-case: `platform`, `domain`, `source`, `data-engineering`. Default to `domain` if the user's response is unclear.
 
+2. Ask a type-appropriate follow-up question:
+   - Platform: "Which platform or tool?" (e.g., dbt, Fabric, Databricks)
+   - Domain: "What functional domain?" (e.g., sales pipeline, HR analytics)
+   - Source: "Which source system?" (e.g., Salesforce, SAP, Workday)
+   - Data Engineering: "Which pipeline pattern?" (e.g., SCD Type 2, CDC, Incremental)
+
+   Store the answer as `<domain>`.
+
+3. Derive the skill name from the answer (lowercase, kebab-case, e.g., "sales-pipeline")
+4. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
+
 5. **Detect start mode** by checking the filesystem:
 
    **Mode A — Resume** (`./workflow-state.md` exists):
    The user is continuing a previous session.
    - Read `workflow-state.md`, show the last completed step.
-   - Recover `skill_type` from the `## Skill Type:` line in workflow-state.md. If the line is missing (legacy session), ask the user for the skill type using the prompt in step 4 above and write it to workflow-state.md.
+   - Recover `skill_type` from the `## Skill Type:` line in workflow-state.md. If the line is missing (legacy session), ask the user for the skill type using the prompt in item 1 above and write it to workflow-state.md.
    - Ask: "Continue from step N, or start fresh (this deletes all progress)?"
    - If continue: skip to the recorded step + 1.
    - If start fresh: delete `./workflow-state.md`, `./context/`, and `./<skillname>/` then fall through to Mode C.
@@ -61,10 +69,10 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but `./workflow-state.md` does NOT):
    The user has a finished skill and wants to improve it.
    - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the reasoning step so you can refine it."
-   - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in step 4 above.
+   - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in item 1 above.
    - Create `./context/` if it doesn't exist.
-   - Create `./workflow-state.md` at Step 6 (include the `## Skill Type:` line).
-   - Skip to Step 6 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
+   - Create `./workflow-state.md` at Step 5 (include the `## Skill Type:` line).
+   - Skip to Step 5 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
 
    **Mode C — Scratch** (no `./<skillname>/` directory and no `./workflow-state.md`):
    Fresh start — full workflow.
@@ -100,12 +108,12 @@ Derive the prefix once after initialization (or resume) and use it for all subse
 
 All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents (`merge`, `research-patterns`, `research-data`) remain unprefixed.
 
-### Step 1: Research Domain Concepts
+### Step 1: Research Concepts
 
 1. Update workflow-state.md: Step 1
 2. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research domain concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./context/clarifications-concepts.md")
+   TaskCreate(subject: "Research concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./context/clarifications-concepts.md")
    ```
 3. Spawn the research-concepts agent as a teammate:
    ```
@@ -113,8 +121,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      subagent_type: "skill-builder:{type_prefix}-research-concepts",
      team_name: "skill-builder-<skillname>",
      name: "research-concepts",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research domain concepts' task.
+     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research concepts' task.
 
+     Skill type: <skill_type>
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
      Write your output to: ./context/clarifications-concepts.md
@@ -124,7 +133,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    ```
 4. Relay the agent's summary to the user.
 
-### Step 2: Human Gate — Domain Concepts
+### Step 2: Human Gate — Concepts Review
 
 1. Update workflow-state.md: Step 2
 2. Tell the user:
@@ -133,80 +142,45 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 3. Wait for the user to confirm they've answered the questions.
 
-### Step 3: Parallel Research (Business Patterns + Data Modeling)
+### Step 3: Research Patterns & Merge
 
 1. Update workflow-state.md: Step 3
-2. Create two tasks in the team task list:
+2. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research business patterns for <domain>", description: "Research business patterns and write to ./context/clarifications-patterns.md")
-   TaskCreate(subject: "Research data modeling for <domain>", description: "Research data modeling and write to ./context/clarifications-data.md")
+   TaskCreate(subject: "Research patterns and merge for <domain>", description: "Research patterns and data modeling, merge results. Write to ./context/clarifications.md")
    ```
-3. Spawn BOTH agents in a single message (parallel):
+3. Spawn the research-patterns-and-merge orchestrator:
    ```
    Task(
-     subagent_type: "skill-builder:research-patterns",
+     subagent_type: "skill-builder:{type_prefix}-research-patterns-and-merge",
      team_name: "skill-builder-<skillname>",
-     name: "research-patterns",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research business patterns' task.
+     name: "research-patterns-and-merge",
+     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research patterns and merge' task.
 
+     Skill type: <skill_type>
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
      Answered concepts file: ./context/clarifications-concepts.md
-     Write your output to: ./context/clarifications-patterns.md
-
-     Return a 5-10 bullet summary."
-   )
-
-   Task(
-     subagent_type: "skill-builder:research-data",
-     team_name: "skill-builder-<skillname>",
-     name: "research-data",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research data modeling' task.
-
-     Domain: <domain>
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Answered concepts file: ./context/clarifications-concepts.md
-     Write your output to: ./context/clarifications-data.md
-
-     Return a 5-10 bullet summary."
-   )
-   ```
-4. Relay both summaries to the user.
-
-### Step 4: Merge Clarifications
-
-1. Update workflow-state.md: Step 4
-2. Spawn the merge agent:
-   ```
-   Task(
-     subagent_type: "skill-builder:merge",
-     team_name: "skill-builder-<skillname>",
-     name: "merge",
-     prompt: "You are on the skill-builder-<skillname> team.
-
      Context directory: ./context/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
-
-     Read clarifications-patterns.md and clarifications-data.md from the context directory.
      Write merged output to: ./context/clarifications.md
 
-     Return a summary: how many questions total, how many duplicates removed, how many final questions."
+     Return a 5-10 bullet summary of the merged questions."
    )
    ```
-3. Relay the merge summary to the user.
+4. Relay the agent's summary to the user.
 
-### Step 5: Human Gate — Merged Questions
+### Step 4: Human Gate — Merged Questions
 
-1. Update workflow-state.md: Step 5
+1. Update workflow-state.md: Step 4
 2. Tell the user:
    "Please review and answer the merged questions in `./context/clarifications.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 3. Wait for the user to confirm.
 
-### Step 6: Reasoning & Decision Engine
+### Step 5: Reasoning & Decision Engine
 
-1. Update workflow-state.md: Step 6
+1. Update workflow-state.md: Step 5
 2. Spawn the reasoning agent:
    ```
    Task(
@@ -216,6 +190,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      model: "opus",
      prompt: "You are on the skill-builder-<skillname> team.
 
+     Skill type: <skill_type>
      Context directory: ./context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
@@ -230,9 +205,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 5. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
 6. Once confirmed, proceed.
 
-### Step 7: Build Skill
+### Step 6: Build Skill
 
-1. Update workflow-state.md: Step 7
+1. Update workflow-state.md: Step 6
 2. Spawn the build agent:
    ```
    Task(
@@ -241,6 +216,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      name: "build",
      prompt: "You are on the skill-builder-<skillname> team.
 
+     Skill type: <skill_type>
      Domain: <domain>
      Context directory: ./context/
      Skill directory: ./<skillname>/
@@ -253,9 +229,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 3. Relay the structure and summary to the user.
 4. **Human Gate**: "Does this structure look right? Any changes needed?"
 
-### Step 8: Validate
+### Step 7: Validate
 
-1. Update workflow-state.md: Step 8
+1. Update workflow-state.md: Step 7
 2. Spawn the validate agent:
    ```
    Task(
@@ -264,6 +240,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      name: "validate",
      prompt: "You are on the skill-builder-<skillname> team.
 
+     Skill type: <skill_type>
      Skill directory: ./<skillname>/
      Context directory: ./context/
 
@@ -276,9 +253,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 3. Relay pass/fail counts to the user.
 4. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md`. Proceed to testing?"
 
-### Step 9: Test
+### Step 8: Test
 
-1. Update workflow-state.md: Step 9
+1. Update workflow-state.md: Step 8
 2. Spawn the test agent:
    ```
    Task(
@@ -287,6 +264,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      name: "test",
      prompt: "You are on the skill-builder-<skillname> team.
 
+     Skill type: <skill_type>
      Domain: <domain>
      Skill directory: ./<skillname>/
      Context directory: ./context/
@@ -300,11 +278,11 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    ```
 3. Relay test results to the user.
 4. **Human Gate**: "Review test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
-5. If rebuild: go back to Step 7.
+5. If rebuild: go back to Step 6.
 
-### Step 10: Package
+### Step 9: Package
 
-1. Update workflow-state.md: Step 10
+1. Update workflow-state.md: Step 9
 2. Package the skill:
    ```bash
    cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
@@ -330,5 +308,5 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 
 At the start of each step, display progress to the user:
 ```
-[Step N/10] <Step name>
+[Step N/9] <Step name>
 ```

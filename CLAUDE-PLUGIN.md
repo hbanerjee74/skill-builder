@@ -56,7 +56,7 @@ skill-builder/
 
 The plugin has three layers:
 
-1. **Coordinator skill** (`skills/start/SKILL.md`) — invoked via `/skill-builder:start`. Contains the full 10-step workflow orchestration. Uses `!`echo $CLAUDE_PLUGIN_ROOT`` to resolve paths to plugin files at runtime.
+1. **Coordinator skill** (`skills/start/SKILL.md`) — invoked via `/skill-builder:start`. Contains the full 9-step + init workflow orchestration. Uses `!`echo $CLAUDE_PLUGIN_ROOT`` to resolve paths to plugin files at runtime.
 
 2. **Subagents** (`agents/{type}/*.md` and `agents/shared/*.md`) — each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Type-specific agents are spawned via `Task(subagent_type: "skill-builder:{type_prefix}-{agent}")`, shared agents via `Task(subagent_type: "skill-builder:{agent}")`.
 
@@ -108,16 +108,12 @@ SendMessage(type: "message", recipient: "research-concepts", content: "...", sum
 TeamDelete()
 ```
 
-For parallel agents (Step 3): spawn both teammates in a single message — they share the task list and work concurrently.
-
 ### Model Selection
 
 | Agent | Model | Rationale |
 |---|---|---|
 | research-concepts | **sonnet** | Structured research, runs in parallel |
-| research-patterns | **sonnet** | Structured research, runs in parallel |
-| research-data | **sonnet** | Structured research, runs in parallel |
-| merge | **haiku** | Mechanical deduplication — cheapest tier sufficient |
+| research-patterns-and-merge | **sonnet** | Orchestrator: spawns patterns + data researchers + merger |
 | reasoning | **opus** | Deep analytical reasoning, contradiction detection |
 | build | **sonnet** | Content generation and structured writing |
 | validate | **sonnet** | Checking against best practices |
@@ -130,24 +126,23 @@ Only one skill is active at a time. The coordinator detects which mode to use ba
 | Mode | Condition | Behavior |
 |---|---|---|
 | **A — Resume** | `workflow-state.md` exists | Continue from last completed step, or start fresh |
-| **B — Modify existing** | `SKILL.md` exists but no `workflow-state.md` | Skip to Step 6 (reasoning) to refine the existing skill |
+| **B — Modify existing** | `SKILL.md` exists but no `workflow-state.md` | Skip to Step 5 (reasoning) to refine the existing skill |
 | **C — Scratch** | No skill directory | Full workflow from Step 0 |
 
-## Workflow (10 Steps)
+## Workflow (9 Steps + Init)
 
 | Step | Agent | What Happens | Human Gate? |
 |---|---|---|---|
-| Init | — | User provides domain, coordinator detects start mode | Yes (confirm name) |
+| Init | — | User provides domain, skill name, skill type | Yes (confirm name) |
 | 1 | research-concepts | Research key entities, metrics, KPIs | No |
 | 2 | — | User answers domain concept questions | **Yes** |
-| 3 | research-patterns + research-data | Parallel: business patterns + data modeling | No |
-| 4 | merge | Deduplicate questions | No |
-| 5 | — | User answers merged questions | **Yes** |
-| 6 | reasoning | Analyze answers, find gaps, update decisions | **Yes** (confirm reasoning) |
-| 7 | build | Create SKILL.md + reference files | Yes (confirm structure) |
-| 8 | validate | Check against best practices | Yes (review log) |
-| 9 | test | Generate + evaluate test prompts | Yes (review results) |
-| 10 | — | Package into .skill zip | No |
+| 3 | research-patterns-and-merge | Research patterns + data + merge (single orchestrator) | No |
+| 4 | — | User answers merged questions | **Yes** |
+| 5 | reasoning | Analyze answers, find gaps, update decisions | **Yes** (confirm reasoning) |
+| 6 | build | Create SKILL.md + reference files | Yes (confirm structure) |
+| 7 | validate | Check against best practices | Yes (review log) |
+| 8 | test | Generate + evaluate test prompts | Yes (review results) |
+| 9 | — | Package into .skill zip | No |
 
 ## Output Data Model (in user's CWD)
 
@@ -156,12 +151,12 @@ Only one skill is active at a time. The coordinator detects which mode to use ba
 ├── workflow-state.md                    # Session resume checkpoint
 ├── context/                             # Working files
 │   ├── clarifications-concepts.md       # Step 1 output
-│   ├── clarifications-patterns.md       # Step 3a output
-│   ├── clarifications-data.md           # Step 3b output
-│   ├── clarifications.md               # Step 4 merged output
-│   ├── decisions.md                     # Step 6 output
-│   ├── agent-validation-log.md          # Step 8 output
-│   └── test-skill.md                    # Step 9 output
+│   ├── clarifications-patterns.md       # Step 3 internal output (orchestrator)
+│   ├── clarifications-data.md           # Step 3 internal output (orchestrator)
+│   ├── clarifications.md               # Step 3 merged output
+│   ├── decisions.md                     # Step 5 output
+│   ├── agent-validation-log.md          # Step 7 output
+│   └── test-skill.md                    # Step 8 output
 └── <skillname>/                         # Deployable skill
     ├── SKILL.md                         # Entry point (<500 lines)
     └── references/                      # Deep-dive files
@@ -180,7 +175,7 @@ Only one skill is active at a time. The coordinator detects which mode to use ba
 
 Edit `skills/start/SKILL.md`. This contains the full coordinator logic:
 - Session resume
-- All 10 steps with agent spawning instructions
+- All 9 steps + init with agent spawning instructions
 - Human review gates
 - Error recovery
 - Context conservation rules
