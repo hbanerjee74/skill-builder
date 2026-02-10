@@ -185,8 +185,8 @@ The sidecar JS file (`agent-runner.js`) is bundled with the app as a Tauri resou
 
 The app replicates the plugin workflow. Each step is a state in the workflow state machine:
 
-0. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
-1. **Domain Concepts Review** — user answers questions via form UI
+0. **Research Concepts** — research agent writes `clarifications-concepts.md`
+1. **Concepts Review** — user answers questions via form UI
 2. **Research Patterns + Data + Merge** — single orchestrator (spawns sub-agents internally)
 3. **Human Review** — user answers merged questions via form UI
 4. **Reasoning** — multi-turn conversation, produces `decisions.md`

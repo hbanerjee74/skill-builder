@@ -36,8 +36,8 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This provi
 
 ## Workflow (9 Steps)
 
-0. **Research Domain Concepts** — research agent writes `clarifications-concepts.md`
-1. **Domain Concepts Review** — user answers questions via form UI
+0. **Research Concepts** — research agent writes `clarifications-concepts.md`
+1. **Concepts Review** — user answers questions via form UI
 2. **Research Patterns + Data + Merge** — single orchestrator (spawns sub-agents internally)
 3. **Human Review** — user answers merged questions via form UI
 4. **Reasoning** — multi-turn conversation, produces `decisions.md`
