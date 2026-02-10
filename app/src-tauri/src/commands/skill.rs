@@ -78,6 +78,7 @@ fn list_skills_inner(
             current_step,
             status,
             last_modified,
+            tags: vec![],
         });
     }
 
@@ -92,6 +93,16 @@ fn list_skills_inner(
                 }
             }
         }
+
+        // Batch-fetch tags for all skills
+        let names: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
+        if let Ok(tags_map) = crate::db::get_tags_for_skills(conn, &names) {
+            for skill in &mut skills {
+                if let Some(tags) = tags_map.get(&skill.name) {
+                    skill.tags = tags.clone();
+                }
+            }
+        }
     }
 
     skills.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
@@ -103,8 +114,21 @@ pub fn create_skill(
     workspace_path: String,
     name: String,
     domain: String,
+    tags: Option<Vec<String>>,
+    db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let base = Path::new(&workspace_path).join(&name);
+    let conn = db.0.lock().ok();
+    create_skill_inner(&workspace_path, &name, &domain, tags.as_deref(), conn.as_deref())
+}
+
+fn create_skill_inner(
+    workspace_path: &str,
+    name: &str,
+    domain: &str,
+    tags: Option<&[String]>,
+    conn: Option<&rusqlite::Connection>,
+) -> Result<(), String> {
+    let base = Path::new(workspace_path).join(name);
     if base.exists() {
         return Err(format!("Skill '{}' already exists", name));
     }
@@ -120,25 +144,67 @@ pub fn create_skill(
 
     fs::write(base.join("workflow.md"), workflow_content).map_err(|e| e.to_string())?;
 
+    if let Some(tags) = tags {
+        if !tags.is_empty() {
+            if let Some(conn) = conn {
+                crate::db::set_skill_tags(conn, name, tags)?;
+            }
+        }
+    }
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_skill(workspace_path: String, name: String) -> Result<(), String> {
-    let base = Path::new(&workspace_path).join(&name);
+pub fn delete_skill(
+    workspace_path: String,
+    name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().ok();
+    delete_skill_inner(&workspace_path, &name, conn.as_deref())
+}
+
+fn delete_skill_inner(
+    workspace_path: &str,
+    name: &str,
+    conn: Option<&rusqlite::Connection>,
+) -> Result<(), String> {
+    let base = Path::new(workspace_path).join(name);
     if !base.exists() {
         return Err(format!("Skill '{}' not found", name));
     }
 
     // Verify this is inside the workspace path to prevent directory traversal
-    let canonical_workspace = fs::canonicalize(&workspace_path).map_err(|e| e.to_string())?;
+    let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
     let canonical_target = fs::canonicalize(&base).map_err(|e| e.to_string())?;
     if !canonical_target.starts_with(&canonical_workspace) {
         return Err("Invalid skill path".to_string());
     }
 
+    // Clean up tags from the database
+    if let Some(conn) = conn {
+        let _ = crate::db::set_skill_tags(conn, name, &[]);
+    }
+
     fs::remove_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn update_skill_tags(
+    skill_name: String,
+    tags: Vec<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::set_skill_tags(&conn, &skill_name, &tags)
+}
+
+#[tauri::command]
+pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_all_tags(&conn)
 }
 
 #[cfg(test)]
@@ -149,11 +215,11 @@ mod tests {
     #[test]
     fn test_create_and_list_skills() {
         let dir = tempdir().unwrap();
-        let workspace = dir.path().to_str().unwrap().to_string();
+        let workspace = dir.path().to_str().unwrap();
 
-        create_skill(workspace.clone(), "my-skill".into(), "sales pipeline".into()).unwrap();
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None).unwrap();
 
-        let skills = list_skills_inner(&workspace, None).unwrap();
+        let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "my-skill");
         assert_eq!(skills[0].domain.as_deref(), Some("sales pipeline"));
@@ -163,10 +229,10 @@ mod tests {
     #[test]
     fn test_create_duplicate_skill() {
         let dir = tempdir().unwrap();
-        let workspace = dir.path().to_str().unwrap().to_string();
+        let workspace = dir.path().to_str().unwrap();
 
-        create_skill(workspace.clone(), "dup-skill".into(), "domain".into()).unwrap();
-        let result = create_skill(workspace, "dup-skill".into(), "domain".into());
+        create_skill_inner(workspace, "dup-skill", "domain", None, None).unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -174,14 +240,14 @@ mod tests {
     #[test]
     fn test_delete_skill() {
         let dir = tempdir().unwrap();
-        let workspace = dir.path().to_str().unwrap().to_string();
+        let workspace = dir.path().to_str().unwrap();
 
-        create_skill(workspace.clone(), "to-delete".into(), "domain".into()).unwrap();
-        let skills = list_skills_inner(&workspace, None).unwrap();
+        create_skill_inner(workspace, "to-delete", "domain", None, None).unwrap();
+        let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
 
-        delete_skill(workspace.clone(), "to-delete".into()).unwrap();
-        let skills = list_skills_inner(&workspace, None).unwrap();
+        delete_skill_inner(workspace, "to-delete", None).unwrap();
+        let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 0);
     }
 
@@ -195,17 +261,17 @@ mod tests {
     #[test]
     fn test_delete_skill_directory_traversal() {
         let dir = tempdir().unwrap();
-        let workspace = dir.path().to_str().unwrap().to_string();
+        let workspace = dir.path().to_str().unwrap();
 
         // Create a legitimate skill so the traversal target resolves
-        create_skill(workspace.clone(), "legit".into(), "domain".into()).unwrap();
+        create_skill_inner(workspace, "legit", "domain", None, None).unwrap();
 
         // Attempt to delete using ".." to escape the workspace
-        let result = delete_skill(workspace.clone(), "../../../etc".into());
+        let result = delete_skill_inner(workspace, "../../../etc", None);
         assert!(result.is_err());
 
         // The legitimate skill should still exist
-        let skills = list_skills_inner(&workspace, None).unwrap();
+        let skills = list_skills_inner(workspace, None).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "legit");
     }
@@ -213,9 +279,9 @@ mod tests {
     #[test]
     fn test_delete_nonexistent_skill() {
         let dir = tempdir().unwrap();
-        let workspace = dir.path().to_str().unwrap().to_string();
+        let workspace = dir.path().to_str().unwrap();
 
-        let result = delete_skill(workspace, "no-such-skill".into());
+        let result = delete_skill_inner(workspace, "no-such-skill", None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
     }

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { FolderOpen } from "lucide-react"
+import { FolderOpen, Search } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -9,10 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
+import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 
@@ -21,6 +23,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
 
   const loadSettings = useCallback(async () => {
@@ -51,13 +56,43 @@ export default function DashboardPage() {
     }
   }, [workspacePath])
 
+  const loadTags = useCallback(async () => {
+    try {
+      const tags = await invoke<string[]>("get_all_tags")
+      setAvailableTags(tags)
+    } catch {
+      setAvailableTags([])
+    }
+  }, [])
+
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
 
   useEffect(() => {
     loadSkills()
-  }, [loadSkills])
+    loadTags()
+  }, [loadSkills, loadTags])
+
+  const filteredSkills = useMemo(() => {
+    let result = skills
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase()
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.domain && s.domain.toLowerCase().includes(q))
+      )
+    }
+    if (selectedTags.length > 0) {
+      result = result.filter((s) =>
+        selectedTags.every((tag) => s.tags?.includes(tag))
+      )
+    }
+    return result
+  }, [skills, searchQuery, selectedTags])
+
+  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0
 
   const handleContinue = (skill: SkillSummary) => {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
@@ -70,10 +105,30 @@ export default function DashboardPage() {
         {workspacePath && (
           <NewSkillDialog
             workspacePath={workspacePath}
-            onCreated={loadSkills}
+            onCreated={() => { loadSkills(); loadTags(); }}
+            tagSuggestions={availableTags}
           />
         )}
       </div>
+
+      {!loading && skills.length > 0 && (
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input
+              placeholder="Search skills..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <TagFilter
+            availableTags={availableTags}
+            selectedTags={selectedTags}
+            onChange={setSelectedTags}
+          />
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -108,14 +163,27 @@ export default function DashboardPage() {
             <CardContent className="flex justify-center">
               <NewSkillDialog
                 workspacePath={workspacePath}
-                onCreated={loadSkills}
+                onCreated={() => { loadSkills(); loadTags(); }}
+                tagSuggestions={availableTags}
               />
             </CardContent>
           )}
         </Card>
+      ) : filteredSkills.length === 0 && isFiltering ? (
+        <Card>
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
+              <Search className="size-6 text-muted-foreground" />
+            </div>
+            <CardTitle>No matching skills</CardTitle>
+            <CardDescription>
+              Try a different search term or clear your filters.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {skills.map((skill) => (
+          {filteredSkills.map((skill) => (
             <SkillCard
               key={skill.name}
               skill={skill}
@@ -133,10 +201,10 @@ export default function DashboardPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null)
         }}
-        onDeleted={loadSkills}
+        onDeleted={() => { loadSkills(); loadTags(); }}
       />
 
-      <OnboardingDialog onComplete={() => { loadSettings(); loadSkills(); }} />
+      <OnboardingDialog onComplete={() => { loadSettings(); loadSkills(); loadTags(); }} />
     </div>
   )
 }

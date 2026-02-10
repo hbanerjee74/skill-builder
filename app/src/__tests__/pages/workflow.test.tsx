@@ -33,6 +33,7 @@ vi.mock("@/lib/tauri", () => ({
   captureStepArtifacts: vi.fn(() => Promise.resolve([])),
   getArtifactContent: vi.fn(() => Promise.resolve(null)),
   saveArtifactContent: vi.fn(() => Promise.resolve()),
+  cancelAgent: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle
@@ -219,5 +220,28 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // No toast for stale completion
     expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it("reverts step to pending when agent is cancelled", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Agent cancelled
+    act(() => {
+      useAgentStore.getState().cancelRun("agent-1");
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[0].status).toBe("pending");
+    });
+
+    const wf = useWorkflowStore.getState();
+    expect(wf.steps[0].status).toBe("pending");
+    expect(wf.isRunning).toBe(false);
   });
 });

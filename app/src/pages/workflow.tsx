@@ -14,6 +14,7 @@ import {
   AlertCircle,
   RotateCcw,
   Bug,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -100,14 +101,13 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   const debugAutoAnswerRef = useRef<number | null>(null);
 
-  // Track whether the current step was paused (for resume vs fresh start)
-  const [paused, setPaused] = useState(false);
-
   // Package result state
   const [packageResult, setPackageResult] = useState<PackageResult | null>(
     null
   );
 
+  // Track whether current step has partial output from a cancelled run
+  const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -161,8 +161,25 @@ export default function WorkflowPage() {
   // Reset state when moving to a new step
   useEffect(() => {
     debugAutoAnswerRef.current = null;
-    setPaused(false);
+    setHasPartialOutput(false);
   }, [currentStep]);
+
+  // Detect partial output from cancelled runs
+  useEffect(() => {
+    if (!workspacePath || !hydrated) return;
+    const cfg = STEP_CONFIGS[currentStep];
+    const stepStatus = steps[currentStep]?.status;
+    if (!cfg?.outputFiles || stepStatus !== "pending") {
+      setHasPartialOutput(false);
+      return;
+    }
+    // Check if any artifact exists for this step
+    const path = cfg.outputFiles[0];
+    if (!path) return;
+    getArtifactContent(skillName, path)
+      .then((artifact) => setHasPartialOutput(!!artifact?.content))
+      .catch(() => setHasPartialOutput(false));
+  }, [currentStep, steps, workspacePath, skillName, hydrated]);
 
   // Persist workflow state to SQLite when steps change
   useEffect(() => {
@@ -266,23 +283,10 @@ export default function WorkflowPage() {
   const activeRunStatus = activeRun?.status;
 
   useEffect(() => {
-    if (!activeRunStatus) return;
+    if (!activeRunStatus || !activeAgentId) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
-
-    if (activeRunStatus === "cancelled") {
-      // Agent was deliberately paused or cancelled — revert step to pending
-      // so the user can re-run it. The handlePauseAgent handler may have
-      // already done this, but this covers the Cancel button path too.
-      updateStepStatus(step, "pending");
-      setRunning(false);
-      setActiveAgent(null);
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath).catch(() => {});
-      }
-      return;
-    }
 
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
@@ -302,6 +306,22 @@ export default function WorkflowPage() {
       } else {
         finish();
       }
+    } else if (activeRunStatus === "cancelled") {
+      // Capture partial artifacts before reverting to pending
+      const revert = () => {
+        updateStepStatus(step, "pending");
+        setRunning(false);
+        setActiveAgent(null);
+        toast.info(`Step ${step + 1} cancelled`);
+      };
+
+      if (workspacePath) {
+        captureStepArtifacts(skillName, step, workspacePath)
+          .catch(() => {})
+          .then(revert);
+      } else {
+        revert();
+      }
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -314,7 +334,7 @@ export default function WorkflowPage() {
 
   // --- Step handlers ---
 
-  const handleStartAgentStep = async () => {
+  const handleStartAgentStep = async (resume = false) => {
     if (!domain || !workspacePath) {
       toast.error("Missing domain or workspace path");
       return;
@@ -324,21 +344,32 @@ export default function WorkflowPage() {
       clearRuns();
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
+      setHasPartialOutput(false);
 
       const agentId = await runWorkflowStep(
         skillName,
         currentStep,
         domain,
         workspacePath,
-        paused,
+        resume,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
-      setPaused(false);
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
       toast.error(
         `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  };
+
+  const handleCancelStep = async () => {
+    if (!activeAgentId) return;
+    try {
+      await cancelAgent(activeAgentId);
+    } catch (err) {
+      toast.error(
+        `Failed to cancel: ${err instanceof Error ? err.message : String(err)}`
       );
     }
   };
@@ -374,12 +405,12 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStartStep = async () => {
+  const handleStartStep = async (resume = false) => {
     if (!stepConfig) return;
 
     switch (stepConfig.type) {
       case "agent":
-        return handleStartAgentStep();
+        return handleStartAgentStep(resume);
       case "package":
         return handlePackageStep();
       case "human":
@@ -399,24 +430,6 @@ export default function WorkflowPage() {
       toast.error(
         `Failed to reset: ${err instanceof Error ? err.message : String(err)}`
       );
-    }
-  };
-
-  const handlePauseAgent = () => {
-    if (!activeAgentId) return;
-    // Update UI immediately — don't wait for the kill to finish.
-    // cancelAgent sends SIGKILL then waits for process reaping, which can
-    // take seconds with Node.js child process trees.
-    const agentId = activeAgentId;
-    setActiveAgent(null);
-    updateStepStatus(currentStep, "pending");
-    setRunning(false);
-    setPaused(true);
-    toast.success(`Step ${currentStep + 1} paused — progress saved`);
-    // Fire-and-forget: kill process + capture artifacts in background
-    cancelAgent(agentId).catch(() => {});
-    if (workspacePath) {
-      captureStepArtifacts(skillName, currentStep, workspacePath).catch(() => {});
     }
   };
 
@@ -599,7 +612,7 @@ export default function WorkflowPage() {
 
     // Single agent with output
     if (activeAgentId) {
-      return <AgentOutputPanel agentId={activeAgentId} onPause={handlePauseAgent} />;
+      return <AgentOutputPanel agentId={activeAgentId} />;
     }
 
     // Package step empty state
@@ -638,7 +651,7 @@ export default function WorkflowPage() {
               <RotateCcw className="size-3.5" />
               Reset Step
             </Button>
-            <Button size="sm" onClick={handleStartStep}>
+            <Button size="sm" onClick={() => handleStartStep()}>
               <Play className="size-3.5" />
               Retry
             </Button>
@@ -666,7 +679,7 @@ export default function WorkflowPage() {
       case "package":
         return "Package";
       default:
-        return paused ? "Resume" : "Start Step";
+        return "Start Step";
     }
   };
 
@@ -719,10 +732,20 @@ export default function WorkflowPage() {
                 Debug
               </Badge>
             )}
+            {isRunning && stepConfig?.type === "agent" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCancelStep}
+              >
+                <Square className="size-3.5" />
+                Cancel
+              </Button>
+            )}
             {canStart && (
-              <Button onClick={handleStartStep} size="sm">
-                {getStartButtonIcon()}
-                {getStartButtonLabel()}
+              <Button onClick={() => handleStartStep(hasPartialOutput)} size="sm">
+                {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
+                {hasPartialOutput ? "Resume" : getStartButtonLabel()}
               </Button>
             )}
             {isHumanReviewStep && currentStepDef?.status !== "completed" && (

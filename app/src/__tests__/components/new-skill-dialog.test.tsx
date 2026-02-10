@@ -118,6 +118,7 @@ describe("NewSkillDialog", () => {
         workspacePath: "/workspace",
         name: "sales-pipeline",
         domain: "Sales Pipeline",
+        tags: null,
       });
     });
 
@@ -164,6 +165,48 @@ describe("NewSkillDialog", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Create New Skill")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders tag input in dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    expect(screen.getByText("Tags")).toBeInTheDocument();
+    expect(screen.getByText("Optional tags for categorization")).toBeInTheDocument();
+  });
+
+  it("passes tags to invoke when tags are added", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockResolvedValue(undefined);
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Test Domain");
+
+    const tagInput = screen.getByRole("textbox", { name: /tag input/i });
+    await user.type(tagInput, "analytics{Enter}");
+    await user.type(tagInput, "salesforce{Enter}");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
+        workspacePath: "/workspace",
+        name: "test-domain",
+        domain: "Test Domain",
+        tags: ["analytics", "salesforce"],
+      });
     });
   });
 

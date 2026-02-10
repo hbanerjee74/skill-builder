@@ -185,10 +185,9 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
 
 interface AgentOutputPanelProps {
   agentId: string;
-  onPause?: () => void;
 }
 
-export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
+export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -226,7 +225,7 @@ export function AgentOutputPanel({ agentId, onPause }: AgentOutputPanelProps) {
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <AgentStatusHeader agentId={agentId} onPause={onPause} />
+      <AgentStatusHeader agentId={agentId} />
       <Separator />
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col gap-2 p-4">

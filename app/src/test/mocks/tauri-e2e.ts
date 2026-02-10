@@ -26,6 +26,8 @@ const mockResponses: Record<string, unknown> = {
   list_skills: [],
   create_skill: undefined,
   delete_skill: undefined,
+  update_skill_tags: undefined,
+  get_all_tags: [],
   parse_clarifications: {
     sections: [
       {

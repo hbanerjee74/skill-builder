@@ -1,17 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { useAgentStore } from "@/stores/agent-store";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = vi.fn();
 }
-
-// Mock @/lib/tauri cancelAgent
-vi.mock("@/lib/tauri", () => ({
-  cancelAgent: vi.fn(() => Promise.resolve()),
-}));
 
 // Mock react-markdown to avoid ESM issues in tests
 vi.mock("react-markdown", () => ({
@@ -24,12 +18,10 @@ vi.mock("remark-gfm", () => ({
 }));
 
 import { AgentOutputPanel } from "@/components/agent-output-panel";
-import { cancelAgent } from "@/lib/tauri";
 
 describe("AgentOutputPanel", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
-    vi.mocked(cancelAgent).mockReset();
   });
 
   it("shows empty state when no run exists", () => {
@@ -55,23 +47,6 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByText("Sonnet")).toBeInTheDocument();
   });
 
-  it("shows Cancel button when running", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    render(<AgentOutputPanel agentId="test-agent" />);
-    expect(
-      screen.getByRole("button", { name: /Cancel/i })
-    ).toBeInTheDocument();
-  });
-
-  it("does not show Cancel button when completed", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().completeRun("test-agent", true);
-    render(<AgentOutputPanel agentId="test-agent" />);
-    expect(
-      screen.queryByRole("button", { name: /Cancel/i })
-    ).not.toBeInTheDocument();
-  });
-
   it("shows Completed status badge for completed agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().completeRun("test-agent", true);
@@ -84,16 +59,6 @@ describe("AgentOutputPanel", () => {
     useAgentStore.getState().completeRun("test-agent", false);
     render(<AgentOutputPanel agentId="test-agent" />);
     expect(screen.getByText("Error")).toBeInTheDocument();
-  });
-
-  it("calls cancelAgent when Cancel is clicked", async () => {
-    const user = userEvent.setup();
-    vi.mocked(cancelAgent).mockResolvedValue(undefined);
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    render(<AgentOutputPanel agentId="test-agent" />);
-
-    await user.click(screen.getByRole("button", { name: /Cancel/i }));
-    expect(cancelAgent).toHaveBeenCalledWith("test-agent");
   });
 
   it("renders error message for error-type messages", () => {

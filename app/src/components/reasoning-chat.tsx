@@ -24,7 +24,6 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import {
   runWorkflowStep,
   startAgent,
-  cancelAgent,
   captureStepArtifacts,
   getArtifactContent,
   saveArtifactContent,
@@ -280,44 +279,6 @@ export function ReasoningChat({
   useEffect(() => {
     handleAgentTurnComplete();
   }, [handleAgentTurnComplete]);
-
-  // --- Pause handler ---
-
-  const handlePause = async () => {
-    if (!currentAgentId) return;
-    try {
-      await cancelAgent(currentAgentId);
-    } catch {
-      // Agent may have already finished
-    }
-
-    // Collect any partial text the agent produced before pause
-    if (currentRun) {
-      const textParts: string[] = [];
-      for (const msg of currentRun.messages) {
-        if (msg.type === "assistant" && msg.content) {
-          textParts.push(msg.content);
-        }
-      }
-      const partialText = textParts.join("\n\n");
-      if (partialText) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "agent", content: partialText, agentId: currentAgentId },
-        ]);
-      }
-    }
-
-    const pausePhase = messages.length > 0 ? "summary" : "not_started";
-    setPhase(pausePhase);
-    setRunning(false);
-    updateStepStatus(currentStep, "pending");
-
-    // Save state so we can resume later
-    saveSession(messages, sessionId, pausePhase, round);
-    loadDecisions();
-    toast.info("Reasoning session paused — you can resume anytime");
-  };
 
   // --- Agent launchers ---
 
@@ -616,7 +577,6 @@ export function ReasoningChat({
           <AgentStatusHeader
             agentId={currentAgentId}
             title="Reasoning Agent"
-            onPause={isAgentRunning ? handlePause : undefined}
           />
           <Separator />
         </>

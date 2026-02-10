@@ -52,6 +52,7 @@ const sampleSkills: SkillSummary[] = [
     current_step: "Step 3",
     status: "in_progress",
     last_modified: new Date().toISOString(),
+    tags: ["salesforce", "crm"],
   },
   {
     name: "hr-analytics",
@@ -59,6 +60,7 @@ const sampleSkills: SkillSummary[] = [
     current_step: "completed",
     status: "completed",
     last_modified: new Date().toISOString(),
+    tags: ["workday"],
   },
 ];
 
@@ -76,6 +78,7 @@ function setupMocks(
     list_skills: skills,
     create_skill: undefined,
     delete_skill: undefined,
+    get_all_tags: ["salesforce", "crm", "workday"],
   });
 }
 
@@ -162,5 +165,110 @@ describe("DashboardPage", () => {
     expect(
       screen.getByRole("button", { name: /New Skill/i })
     ).toBeInTheDocument();
+  });
+
+  // --- F2: Search and Filter tests ---
+
+  it("renders search input when skills exist", async () => {
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.getByPlaceholderText("Search skills...")).toBeInTheDocument();
+  });
+
+  it("filters skills by name", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search skills...");
+    await user.type(searchInput, "sales");
+
+    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    expect(screen.queryByText("Hr Analytics")).not.toBeInTheDocument();
+  });
+
+  it("filters skills by domain", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search skills...");
+    await user.type(searchInput, "HR");
+
+    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
+  });
+
+  it("shows no matching skills state when search has no results", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search skills...");
+    await user.type(searchInput, "nonexistent");
+
+    expect(screen.getByText("No matching skills")).toBeInTheDocument();
+    expect(
+      screen.getByText("Try a different search term or clear your filters.")
+    ).toBeInTheDocument();
+  });
+
+  it("does not show search bar when workspace is empty", async () => {
+    setupMocks({ skills: [] });
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("No skills yet")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByPlaceholderText("Search skills...")).not.toBeInTheDocument();
+  });
+
+  it("renders Tags filter button when skills exist", async () => {
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("button", { name: /Tags/i })).toBeInTheDocument();
+  });
+
+  it("filters skills by tag selection", async () => {
+    const user = userEvent.setup();
+    setupMocks();
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    // Open tag filter dropdown
+    await user.click(screen.getByRole("button", { name: /Tags/i }));
+
+    // Select "workday" tag via the checkbox menu item
+    const menuItem = screen.getByRole("menuitemcheckbox", { name: /workday/i });
+    await user.click(menuItem);
+
+    expect(screen.queryByText("Sales Pipeline")).not.toBeInTheDocument();
+    expect(screen.getByText("Hr Analytics")).toBeInTheDocument();
   });
 });

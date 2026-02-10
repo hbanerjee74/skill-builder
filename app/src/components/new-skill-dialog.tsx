@@ -14,10 +14,12 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import TagInput from "@/components/tag-input"
 
 interface NewSkillDialogProps {
   workspacePath: string
   onCreated: () => void
+  tagSuggestions?: string[]
 }
 
 function toKebabCase(str: string): string {
@@ -32,10 +34,12 @@ function toKebabCase(str: string): string {
 export default function NewSkillDialog({
   workspacePath,
   onCreated,
+  tagSuggestions = [],
 }: NewSkillDialogProps) {
   const [open, setOpen] = useState(false)
   const [domain, setDomain] = useState("")
   const [name, setName] = useState("")
+  const [tags, setTags] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -56,11 +60,13 @@ export default function NewSkillDialog({
         workspacePath,
         name: name.trim(),
         domain: domain.trim(),
+        tags: tags.length > 0 ? tags : null,
       })
       toast.success(`Skill "${name}" created`)
       setOpen(false)
       setDomain("")
       setName("")
+      setTags([])
       onCreated()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -112,6 +118,19 @@ export default function NewSkillDialog({
               />
               <p className="text-xs text-muted-foreground">
                 Kebab-case identifier for this skill
+              </p>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="tags">Tags</Label>
+              <TagInput
+                tags={tags}
+                onChange={setTags}
+                suggestions={tagSuggestions}
+                disabled={loading}
+                placeholder="e.g., salesforce, analytics"
+              />
+              <p className="text-xs text-muted-foreground">
+                Optional tags for categorization
               </p>
             </div>
             {error && (

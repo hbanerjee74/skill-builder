@@ -14,14 +14,12 @@ if (!Element.prototype.scrollIntoView) {
 const {
   mockRunWorkflowStep,
   mockStartAgent,
-  mockCancelAgent,
   mockCaptureStepArtifacts,
   mockGetArtifactContent,
   mockSaveArtifactContent,
 } = vi.hoisted(() => ({
   mockRunWorkflowStep: vi.fn(() => Promise.resolve("agent-1")),
   mockStartAgent: vi.fn(() => Promise.resolve("agent-2")),
-  mockCancelAgent: vi.fn(() => Promise.resolve()),
   mockCaptureStepArtifacts: vi.fn(() => Promise.resolve()),
   mockGetArtifactContent: vi.fn(() => Promise.resolve(null)),
   mockSaveArtifactContent: vi.fn(() => Promise.resolve()),
@@ -30,7 +28,6 @@ const {
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
   startAgent: mockStartAgent,
-  cancelAgent: mockCancelAgent,
   captureStepArtifacts: mockCaptureStepArtifacts,
   getArtifactContent: mockGetArtifactContent,
   saveArtifactContent: mockSaveArtifactContent,
@@ -186,7 +183,6 @@ describe("ReasoningChat — conflict detection and resolution flow", () => {
 
     mockRunWorkflowStep.mockReset().mockResolvedValue("agent-1");
     mockStartAgent.mockReset().mockResolvedValue("agent-2");
-    mockCancelAgent.mockReset().mockResolvedValue(undefined);
     mockCaptureStepArtifacts.mockReset().mockResolvedValue(undefined);
     mockGetArtifactContent.mockReset().mockResolvedValue(null);
     mockSaveArtifactContent.mockReset().mockResolvedValue(undefined);

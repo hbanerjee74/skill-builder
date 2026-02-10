@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   Loader2,
-  Square,
-  Pause,
   CheckCircle2,
   XCircle,
   Clock,
   Cpu,
+  Ban,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   useAgentStore,
   formatModelName,
@@ -18,7 +17,6 @@ import {
   getLatestContextTokens,
   getContextUtilization,
 } from "@/stores/agent-store";
-import { cancelAgent } from "@/lib/tauri";
 
 export function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -61,14 +59,12 @@ function ContextMeter({ agentId }: { agentId: string }) {
 interface AgentStatusHeaderProps {
   agentId: string;
   title?: string;
-  onPause?: () => void;
   onCancel?: () => void;
 }
 
 export function AgentStatusHeader({
   agentId,
   title = "Agent Output",
-  onPause,
   onCancel,
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
@@ -81,16 +77,6 @@ export function AgentStatusHeader({
     return () => clearInterval(id);
   }, [run?.status]);
 
-  const handleCancel = () => {
-    if (onCancel) {
-      onCancel();
-      return;
-    }
-    // Fire-and-forget: don't await the kill — it waits for process
-    // reaping which can take seconds with Node.js child process trees.
-    cancelAgent(agentId).catch(() => {});
-  };
-
   if (!run) return null;
 
   const elapsed = run.endTime
@@ -101,7 +87,7 @@ export function AgentStatusHeader({
     running: <Loader2 className="size-3.5 animate-spin" />,
     completed: <CheckCircle2 className="size-3.5 text-green-500" />,
     error: <XCircle className="size-3.5 text-destructive" />,
-    cancelled: <Square className="size-3.5 text-muted-foreground" />,
+    cancelled: <Ban className="size-3.5 text-yellow-500" />,
   }[run.status];
 
   const statusLabel = {
@@ -147,26 +133,15 @@ export function AgentStatusHeader({
           </Badge>
         )}
         <ContextMeter agentId={agentId} />
-        {run.status === "running" && onPause && (
+        {run.status === "running" && onCancel && (
           <Button
-            variant="outline"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={onPause}
+            variant="ghost"
+            size="icon"
+            className="size-6 text-muted-foreground hover:text-destructive"
+            onClick={onCancel}
+            title="Cancel agent"
           >
-            <Pause className="size-3" />
-            Pause
-          </Button>
-        )}
-        {run.status === "running" && (
-          <Button
-            variant="destructive"
-            size="sm"
-            className="h-6 px-2 text-xs"
-            onClick={handleCancel}
-          >
-            <Square className="size-3" />
-            Cancel
+            <XCircle className="size-4" />
           </Button>
         )}
       </div>

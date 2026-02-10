@@ -10,6 +10,7 @@ const baseSkill: SkillSummary = {
   current_step: "Step 3",
   status: "in_progress",
   last_modified: new Date().toISOString(),
+  tags: [],
 };
 
 describe("SkillCard", () => {
@@ -138,5 +139,24 @@ describe("SkillCard", () => {
     expect(
       screen.getByRole("button", { name: /Continue/i })
     ).toBeInTheDocument();
+  });
+
+  it("renders tag badges when tags are present", () => {
+    const skill = { ...baseSkill, tags: ["analytics", "salesforce"] };
+    render(
+      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    expect(screen.getByText("analytics")).toBeInTheDocument();
+    expect(screen.getByText("salesforce")).toBeInTheDocument();
+  });
+
+  it("does not render tags section when tags are empty", () => {
+    render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
+    );
+    // Only "sales" domain badge and status badge should be present
+    const badges = document.querySelectorAll('[data-slot="badge"]');
+    // Status badge + domain badge = 2
+    expect(badges.length).toBe(2);
   });
 });

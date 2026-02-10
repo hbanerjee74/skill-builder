@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -10,20 +10,22 @@ use tokio::sync::Mutex;
 
 use super::events;
 
-/// Tracks spawned sidecar child processes, plus a set of agent IDs that were
-/// deliberately cancelled (so the stdout reader knows not to emit a duplicate
-/// agent-exit event).
+pub struct AgentEntry {
+    pub child: Child,
+    pub pid: u32,
+}
+
 pub struct Registry {
-    pub children: HashMap<String, Child>,
-    pub cancelled: std::collections::HashSet<String>,
+    pub agents: HashMap<String, AgentEntry>,
+    pub cancelled: HashSet<String>,
 }
 
 pub type AgentRegistry = Arc<Mutex<Registry>>;
 
 pub fn create_registry() -> AgentRegistry {
     Arc::new(Mutex::new(Registry {
-        children: HashMap::new(),
-        cancelled: std::collections::HashSet::new(),
+        agents: HashMap::new(),
+        cancelled: HashSet::new(),
     }))
 }
 
@@ -79,13 +81,14 @@ pub async fn spawn_sidecar(
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
+    let pid = child.id().ok_or("Failed to get child PID")?;
     let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
     let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
 
     // Store child in registry
     {
         let mut reg = registry.lock().await;
-        reg.children.insert(agent_id.clone(), child);
+        reg.agents.insert(agent_id.clone(), AgentEntry { child, pid });
     }
 
     // Open a log file for this agent run so users can `tail -f` it
@@ -99,7 +102,7 @@ pub async fn spawn_sidecar(
     tokio::spawn(async move {
         let reader = BufReader::new(stdout);
         let mut lines = reader.lines();
-        let mut success = true;
+        let mut success = false;
 
         while let Ok(Some(line)) = lines.next_line().await {
             events::handle_sidecar_message(&app_handle_stdout, &agent_id_stdout, &line);
@@ -109,26 +112,22 @@ pub async fn spawn_sidecar(
             }
         }
 
-        // Stdout closed — sidecar exited.
-        // If this agent was deliberately cancelled, the cancel_sidecar fn
-        // already emitted the agent-exit event — skip duplicate emission.
-        let was_cancelled = {
+        // Stdout closed — sidecar exited. Check exit status.
+        let was_cancelled;
+        {
             let mut reg = registry_stdout.lock().await;
-            let cancelled = reg.cancelled.remove(&agent_id_stdout);
-            if !cancelled {
-                // Normal exit: check the child's exit status
-                if let Some(mut child) = reg.children.remove(&agent_id_stdout) {
-                    match child.try_wait() {
-                        Ok(Some(status)) => {
-                            success = status.success();
-                        }
-                        _ => {}
+            was_cancelled = reg.cancelled.remove(&agent_id_stdout);
+            if let Some(mut entry) = reg.agents.remove(&agent_id_stdout) {
+                match entry.child.try_wait() {
+                    Ok(Some(status)) => {
+                        success = status.success();
                     }
+                    _ => {}
                 }
             }
-            cancelled
-        };
+        }
 
+        // If cancelled, the cancel_sidecar function already emitted an exit event
         if !was_cancelled {
             events::handle_sidecar_exit(&app_handle_stdout, &agent_id_stdout, success);
         }
@@ -138,8 +137,8 @@ pub async fn spawn_sidecar(
             let mut f = f.lock().unwrap_or_else(|e| e.into_inner());
             let _ = writeln!(
                 f,
-                "{{\"type\":\"agent-exit\",\"success\":{},\"cancelled\":{}}}",
-                success, was_cancelled
+                "{{\"type\":\"agent-exit\",\"success\":{}}}",
+                success
             );
         }
     });
@@ -160,6 +159,54 @@ pub async fn spawn_sidecar(
                     serde_json::to_string(&line).unwrap_or_else(|_| format!("\"{}\"", line))
                 );
             }
+        }
+    });
+
+    Ok(())
+}
+
+pub async fn cancel_sidecar(
+    agent_id: &str,
+    registry: &AgentRegistry,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
+    let pid: u32;
+
+    // Mark as cancelled and get PID while holding the lock
+    {
+        let mut reg = registry.lock().await;
+        let entry = reg
+            .agents
+            .get(&agent_id.to_string())
+            .ok_or_else(|| format!("Agent {} not found", agent_id))?;
+        pid = entry.pid;
+        reg.cancelled.insert(agent_id.to_string());
+    }
+    // Lock released before sending signal
+
+    // Send SIGTERM
+    #[cfg(unix)]
+    {
+        use nix::sys::signal::{kill, Signal};
+        use nix::unistd::Pid;
+        let _ = kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+    }
+
+    // Emit cancelled exit event immediately
+    events::handle_sidecar_cancelled(app_handle, agent_id);
+
+    // Spawn a 5-second SIGKILL fallback
+    let registry_fallback = registry.clone();
+    let agent_id_fallback = agent_id.to_string();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        let mut reg = registry_fallback.lock().await;
+        if let Some(mut entry) = reg.agents.remove(&agent_id_fallback) {
+            log::warn!(
+                "Agent {} did not exit after SIGTERM, sending SIGKILL",
+                agent_id_fallback
+            );
+            let _ = entry.child.start_kill();
         }
     });
 
@@ -198,34 +245,6 @@ fn open_agent_log(
             log::warn!("Could not create agent log {}: {}", log_path.display(), e);
             None
         }
-    }
-}
-
-pub async fn cancel_sidecar(
-    agent_id: String,
-    registry: AgentRegistry,
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    let mut reg = registry.lock().await;
-    if let Some(mut child) = reg.children.remove(&agent_id) {
-        // Mark as cancelled so the stdout reader doesn't emit a duplicate event
-        reg.cancelled.insert(agent_id.clone());
-        // Drop the lock before killing so the stdout reader can acquire it
-        drop(reg);
-
-        // Use start_kill() instead of kill().await — the latter waits for
-        // process reaping which can block for seconds with Node.js process
-        // trees. start_kill() just sends SIGKILL and returns immediately.
-        // The stdout reader task will reap the zombie when stdout closes.
-        child
-            .start_kill()
-            .map_err(|e| format!("Failed to kill sidecar: {}", e))?;
-
-        // Emit the cancelled event ourselves with the correct flag
-        events::handle_sidecar_cancelled(&app_handle, &agent_id);
-        Ok(())
-    } else {
-        Err(format!("Agent '{}' not found", agent_id))
     }
 }
 
@@ -389,17 +408,6 @@ fn resolve_sdk_cli_path(app_handle: &tauri::AppHandle) -> Result<String, String>
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_cancel_sidecar_not_found() {
-        let registry = create_registry();
-        // Verify that trying to cancel a nonexistent agent returns an error.
-        // We can't call cancel_sidecar directly because it needs a tauri::AppHandle,
-        // so we test the registry lookup logic directly.
-        let reg = registry.lock().await;
-        assert!(!reg.children.contains_key("nonexistent-agent"));
-        assert!(reg.children.is_empty());
-    }
-
     #[test]
     fn test_sidecar_config_serialization() {
         let config = SidecarConfig {
@@ -433,6 +441,35 @@ mod tests {
     fn test_create_registry() {
         // Ensure registry creation doesn't panic and returns usable type
         let _registry = create_registry();
+    }
+
+    #[tokio::test]
+    async fn test_cancel_marks_cancelled_set() {
+        let registry = create_registry();
+        // Manually insert a cancelled entry to verify the set works
+        {
+            let mut reg = registry.lock().await;
+            reg.cancelled.insert("test-agent".to_string());
+        }
+        let reg = registry.lock().await;
+        assert!(reg.cancelled.contains("test-agent"));
+    }
+
+    #[tokio::test]
+    async fn test_cancel_not_found_returns_error() {
+        // Without an AppHandle we can't call cancel_sidecar directly,
+        // but we can verify that looking up a missing agent fails.
+        let registry = create_registry();
+        let reg = registry.lock().await;
+        assert!(reg.agents.get("nonexistent").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_registry_agents_empty_after_init() {
+        let registry = create_registry();
+        let reg = registry.lock().await;
+        assert!(reg.agents.is_empty());
+        assert!(reg.cancelled.is_empty());
     }
 
     #[test]

@@ -5,6 +5,7 @@ import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { getSettings } from "@/lib/tauri";
 
 export function AppLayout() {
@@ -19,6 +20,7 @@ export function AppLayout() {
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
         workspacePath: s.workspace_path,
+        skillsPath: s.skills_path,
         preferredModel: s.preferred_model,
         debugMode: s.debug_mode,
         extendedContext: s.extended_context,
@@ -30,24 +32,26 @@ export function AppLayout() {
     });
   }, [setSettings]);
 
+  const isRunning = useWorkflowStore((s) => s.isRunning);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+, (Mac) or Ctrl+, (Win/Linux) -> Settings
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
-        navigate({ to: "/settings" });
+        if (!isRunning) navigate({ to: "/settings" });
       }
       // Cmd+1 -> Dashboard
       if ((e.metaKey || e.ctrlKey) && e.key === "1") {
         e.preventDefault();
-        navigate({ to: "/" });
+        if (!isRunning) navigate({ to: "/" });
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate]);
+  }, [navigate, isRunning]);
 
   const handleSplashDismiss = () => {
     setSplashDismissed(true);

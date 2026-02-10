@@ -66,11 +66,13 @@ export function initAgentStream() {
 
   listen<AgentExitPayload>("agent-exit", (event) => {
     if (shuttingDown) return;
-    const { agent_id, success, cancelled } = event.payload;
-    if (cancelled) {
-      useAgentStore.getState().cancelRun(agent_id);
+    if (event.payload.cancelled) {
+      useAgentStore.getState().cancelRun(event.payload.agent_id);
     } else {
-      useAgentStore.getState().completeRun(agent_id, success);
+      useAgentStore.getState().completeRun(
+        event.payload.agent_id,
+        event.payload.success
+      );
     }
   });
 }

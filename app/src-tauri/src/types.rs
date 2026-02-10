@@ -44,6 +44,8 @@ pub struct SkillSummary {
     pub current_step: Option<String>,
     pub status: Option<String>,
     pub last_modified: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,21 +90,6 @@ pub struct WorkflowStepRow {
     pub step_id: i32,
     pub status: String,
     pub started_at: Option<String>,
-    pub completed_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRunRow {
-    pub agent_id: String,
-    pub skill_name: String,
-    pub step_id: i32,
-    pub model: String,
-    pub status: String,
-    pub input_tokens: Option<i64>,
-    pub output_tokens: Option<i64>,
-    pub total_cost: Option<f64>,
-    pub session_id: Option<String>,
-    pub started_at: String,
     pub completed_at: Option<String>,
 }
 

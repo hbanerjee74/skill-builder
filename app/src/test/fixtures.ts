@@ -7,6 +7,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
   return {
     anthropic_api_key: null,
     workspace_path: null,
+    skills_path: null,
     preferred_model: null,
     debug_mode: false,
     extended_context: false,
@@ -24,6 +25,7 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     current_step: "Step 1: Research Domain Concepts",
     status: "in_progress",
     last_modified: "2026-01-15T10:00:00Z",
+    tags: [],
     ...overrides,
   };
 }

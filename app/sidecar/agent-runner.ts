@@ -19,6 +19,8 @@ const abortController = new AbortController();
 function handleShutdown() {
   aborted = true;
   abortController.abort();
+  // Force exit after 3s if SDK doesn't respond to abort
+  setTimeout(() => process.exit(0), 3000).unref();
 }
 
 process.on("SIGTERM", handleShutdown);

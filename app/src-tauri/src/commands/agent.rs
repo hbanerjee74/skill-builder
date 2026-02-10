@@ -51,5 +51,5 @@ pub async fn cancel_agent(
     state: tauri::State<'_, AgentRegistry>,
     agent_id: String,
 ) -> Result<(), String> {
-    sidecar::cancel_sidecar(agent_id, state.inner().clone(), app).await
+    sidecar::cancel_sidecar(&agent_id, state.inner(), &app).await
 }

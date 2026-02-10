@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 export interface AppSettings {
   anthropic_api_key: string | null;
   workspace_path: string | null;
+  skills_path: string | null;
   preferred_model: string | null;
   debug_mode: boolean;
   extended_context: boolean;
@@ -17,6 +18,7 @@ export interface SkillSummary {
   current_step: string | null;
   status: string | null;
   last_modified: string | null;
+  tags: string[];
 }
 
 // --- Settings ---
@@ -37,11 +39,18 @@ export const listSkills = (workspacePath: string) =>
 export const createSkill = (
   workspacePath: string,
   name: string,
-  domain: string
-) => invoke("create_skill", { workspacePath, name, domain });
+  domain: string,
+  tags?: string[]
+) => invoke("create_skill", { workspacePath, name, domain, tags: tags ?? null });
 
 export const deleteSkill = (workspacePath: string, name: string) =>
   invoke("delete_skill", { workspacePath, name });
+
+export const updateSkillTags = (skillName: string, tags: string[]) =>
+  invoke("update_skill_tags", { skillName, tags });
+
+export const getAllTags = () =>
+  invoke<string[]>("get_all_tags");
 
 // --- Node.js ---
 

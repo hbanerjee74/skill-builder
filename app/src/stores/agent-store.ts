@@ -69,21 +69,17 @@ export interface AgentRun {
 interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
-  parallelAgentIds: [string, string] | null;
-
   startRun: (agentId: string, model: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   cancelRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
-  setParallelAgents: (ids: [string, string] | null) => void;
   clearRuns: () => void;
 }
 
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
-  parallelAgentIds: null,
 
   startRun: (agentId, model) =>
     set((state) => {
@@ -264,7 +260,5 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
-  setParallelAgents: (ids) => set({ parallelAgentIds: ids }),
-
-  clearRuns: () => set({ runs: {}, activeAgentId: null, parallelAgentIds: null }),
+  clearRuns: () => set({ runs: {}, activeAgentId: null }),
 }));

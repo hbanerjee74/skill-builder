@@ -33,8 +33,10 @@ export function OnboardingDialog({ onComplete }: { onComplete: () => void }) {
     if (!apiKey) return;
     setSaving(true);
     try {
+      // Read existing settings first to avoid overwriting other fields
+      const existing = await invoke<AppSettings>("get_settings");
       await invoke("save_settings", {
-        settings: { anthropic_api_key: apiKey, workspace_path: null },
+        settings: { ...existing, anthropic_api_key: apiKey },
       });
       toast.success("API key saved! You're ready to start.");
       setIsOpen(false);

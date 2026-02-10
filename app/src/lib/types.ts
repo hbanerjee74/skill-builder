@@ -14,6 +14,7 @@ export interface SkillSummary {
   current_step: string | null
   status: string | null
   last_modified: string | null
+  tags: string[]
 }
 
 export interface NodeStatus {

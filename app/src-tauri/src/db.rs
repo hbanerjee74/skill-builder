@@ -1,8 +1,9 @@
 use crate::types::{
-    AgentRunRow, AppSettings, ArtifactRow, ChatMessageRow, ChatSessionRow, WorkflowRunRow,
+    AppSettings, ArtifactRow, ChatMessageRow, ChatSessionRow, WorkflowRunRow,
     WorkflowStepRow,
 };
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
 
@@ -81,6 +82,13 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (skill_name, step_id, relative_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS skill_tags (
+            skill_name TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (skill_name, tag)
         );",
     )
 }
@@ -174,6 +182,11 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM skill_tags WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
     delete_all_artifacts(conn, skill_name)?;
     Ok(())
 }
@@ -245,62 +258,6 @@ pub fn reset_workflow_steps_from(
     )
     .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-// --- Agent Runs ---
-
-pub fn save_agent_run(conn: &Connection, run: &AgentRunRow) -> Result<(), String> {
-    conn.execute(
-        "INSERT OR REPLACE INTO agent_runs
-         (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens, total_cost, session_id, started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        rusqlite::params![
-            run.agent_id,
-            run.skill_name,
-            run.step_id,
-            run.model,
-            run.status,
-            run.input_tokens,
-            run.output_tokens,
-            run.total_cost,
-            run.session_id,
-            run.started_at,
-            run.completed_at
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn get_agent_runs(conn: &Connection, skill_name: &str) -> Result<Vec<AgentRunRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
-                    total_cost, session_id, started_at, completed_at
-             FROM agent_runs WHERE skill_name = ?1 ORDER BY started_at",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![skill_name], |row| {
-            Ok(AgentRunRow {
-                agent_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                step_id: row.get(2)?,
-                model: row.get(3)?,
-                status: row.get(4)?,
-                input_tokens: row.get(5)?,
-                output_tokens: row.get(6)?,
-                total_cost: row.get(7)?,
-                session_id: row.get(8)?,
-                started_at: row.get(9)?,
-                completed_at: row.get(10)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
 }
 
 // --- Workflow Artifacts ---
@@ -398,19 +355,6 @@ pub fn delete_artifacts_from(
     Ok(())
 }
 
-pub fn delete_step_artifacts(
-    conn: &Connection,
-    skill_name: &str,
-    step_id: i32,
-) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM workflow_artifacts WHERE skill_name = ?1 AND step_id = ?2",
-        rusqlite::params![skill_name, step_id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 pub fn delete_all_artifacts(conn: &Connection, skill_name: &str) -> Result<(), String> {
     conn.execute(
         "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
@@ -418,6 +362,93 @@ pub fn delete_all_artifacts(conn: &Connection, skill_name: &str) -> Result<(), S
     )
     .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// --- Skill Tags ---
+
+pub fn get_tags_for_skills(
+    conn: &Connection,
+    skill_names: &[String],
+) -> Result<HashMap<String, Vec<String>>, String> {
+    if skill_names.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // SQLite default SQLITE_MAX_VARIABLE_NUMBER is 999; chunk if needed
+    if skill_names.len() > 900 {
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for chunk in skill_names.chunks(900) {
+            let chunk_result = get_tags_for_skills(conn, &chunk.to_vec())?;
+            map.extend(chunk_result);
+        }
+        return Ok(map);
+    }
+
+    let placeholders: Vec<String> = (1..=skill_names.len()).map(|i| format!("?{}", i)).collect();
+    let sql = format!(
+        "SELECT skill_name, tag FROM skill_tags WHERE skill_name IN ({}) ORDER BY skill_name, tag",
+        placeholders.join(", ")
+    );
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+    let params: Vec<&dyn rusqlite::types::ToSql> = skill_names
+        .iter()
+        .map(|s| s as &dyn rusqlite::types::ToSql)
+        .collect();
+
+    let rows = stmt
+        .query_map(params.as_slice(), |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (name, tag) = row.map_err(|e| e.to_string())?;
+        map.entry(name).or_default().push(tag);
+    }
+
+    Ok(map)
+}
+
+pub fn set_skill_tags(
+    conn: &Connection,
+    skill_name: &str,
+    tags: &[String],
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM skill_tags WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut stmt = conn
+        .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, tag) VALUES (?1, ?2)")
+        .map_err(|e| e.to_string())?;
+
+    for tag in tags {
+        let normalized = tag.trim().to_lowercase();
+        if !normalized.is_empty() {
+            stmt.execute(rusqlite::params![skill_name, normalized])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT tag FROM skill_tags ORDER BY tag")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 // --- Chat Sessions ---
@@ -752,30 +783,6 @@ mod tests {
         assert_eq!(messages[1].role, "assistant");
     }
 
-    #[test]
-    fn test_agent_run_crud() {
-        let conn = create_test_db();
-        let run = AgentRunRow {
-            agent_id: "agent-1".to_string(),
-            skill_name: "test-skill".to_string(),
-            step_id: 0,
-            model: "sonnet".to_string(),
-            status: "completed".to_string(),
-            input_tokens: Some(1000),
-            output_tokens: Some(500),
-            total_cost: Some(0.05),
-            session_id: None,
-            started_at: "2024-01-01T00:00:00Z".to_string(),
-            completed_at: Some("2024-01-01T00:01:00Z".to_string()),
-        };
-        save_agent_run(&conn, &run).unwrap();
-
-        let runs = get_agent_runs(&conn, "test-skill").unwrap();
-        assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].agent_id, "agent-1");
-        assert_eq!(runs[0].input_tokens, Some(1000));
-    }
-
     // --- Workflow Artifacts tests ---
 
     #[test]
@@ -878,5 +885,86 @@ mod tests {
         assert_eq!(artifacts[2].step_id, 2);
         assert_eq!(artifacts[2].relative_path, "context/patterns.md");
         assert_eq!(artifacts[3].step_id, 5);
+    }
+
+    // --- Skill Tags tests ---
+
+    #[test]
+    fn test_set_and_get_tags() {
+        let conn = create_test_db();
+        set_skill_tags(&conn, "my-skill", &["analytics".into(), "salesforce".into()]).unwrap();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        assert_eq!(tags, vec!["analytics", "salesforce"]);
+    }
+
+    #[test]
+    fn test_tags_normalize_lowercase_trim() {
+        let conn = create_test_db();
+        set_skill_tags(
+            &conn,
+            "my-skill",
+            &["  Analytics ".into(), "SALESFORCE".into(), "  ".into()],
+        )
+        .unwrap();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        assert_eq!(tags, vec!["analytics", "salesforce"]);
+    }
+
+    #[test]
+    fn test_tags_deduplicate() {
+        let conn = create_test_db();
+        set_skill_tags(
+            &conn,
+            "my-skill",
+            &["analytics".into(), "analytics".into(), "Analytics".into()],
+        )
+        .unwrap();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        assert_eq!(tags, vec!["analytics"]);
+    }
+
+    #[test]
+    fn test_set_tags_replaces() {
+        let conn = create_test_db();
+        set_skill_tags(&conn, "my-skill", &["old-tag".into()]).unwrap();
+        set_skill_tags(&conn, "my-skill", &["new-tag".into()]).unwrap();
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        assert_eq!(tags, vec!["new-tag"]);
+    }
+
+    #[test]
+    fn test_get_tags_for_skills_batch() {
+        let conn = create_test_db();
+        set_skill_tags(&conn, "skill-a", &["tag1".into(), "tag2".into()]).unwrap();
+        set_skill_tags(&conn, "skill-b", &["tag2".into(), "tag3".into()]).unwrap();
+        set_skill_tags(&conn, "skill-c", &["tag1".into()]).unwrap();
+
+        let names = vec!["skill-a".into(), "skill-b".into(), "skill-c".into()];
+        let map = get_tags_for_skills(&conn, &names).unwrap();
+        assert_eq!(map.get("skill-a").unwrap(), &vec!["tag1", "tag2"]);
+        assert_eq!(map.get("skill-b").unwrap(), &vec!["tag2", "tag3"]);
+        assert_eq!(map.get("skill-c").unwrap(), &vec!["tag1"]);
+    }
+
+    #[test]
+    fn test_get_all_tags() {
+        let conn = create_test_db();
+        set_skill_tags(&conn, "skill-a", &["beta".into(), "alpha".into()]).unwrap();
+        set_skill_tags(&conn, "skill-b", &["beta".into(), "gamma".into()]).unwrap();
+
+        let all = get_all_tags(&conn).unwrap();
+        assert_eq!(all, vec!["alpha", "beta", "gamma"]);
+    }
+
+    #[test]
+    fn test_delete_workflow_run_cascades_tags() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending").unwrap();
+        set_skill_tags(&conn, "my-skill", &["tag1".into(), "tag2".into()]).unwrap();
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
+        assert!(tags.is_empty());
     }
 }
