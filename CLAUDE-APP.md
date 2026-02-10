@@ -6,7 +6,7 @@ A Tauri v2 desktop application for building Claude skills. All code lives in `ap
 
 ```
 ┌──────────────────── Frontend (WebView) ──────────────────────┐
-│  Dashboard │ Workflow Wizard │ Chat │ Editor │ Settings      │
+│  Dashboard │ Workflow Wizard │ Prompts │ Settings             │
 │                        │                                     │
 │              Zustand Store (skills, workflow, agents)        │
 │                        │ Tauri IPC (invoke / events)         │
@@ -35,7 +35,7 @@ A Tauri v2 desktop application for building Claude skills. All code lives in `ap
 
 ## Tech Stack
 
-**Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router + Query, React Hook Form + Zod, react-markdown
+**Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router, react-markdown
 
 **Backend:** Tauri 2, rusqlite, notify, pulldown-cmark, tauri-plugin-shell, tokio
 
@@ -50,18 +50,14 @@ app/
 ├── src/                              # React frontend
 │   ├── main.tsx                      # Entry (providers + router)
 │   ├── router.tsx                    # TanStack Router routes
-│   ├── pages/                        # Page components
-│   │   ├── chat.tsx                  # Chat interface
+│   ├── pages/                        # Page components (4 pages)
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   ├── editor.tsx                # Skill file editor
 │   │   ├── prompts.tsx               # Agent prompts viewer
 │   │   ├── settings.tsx              # API key + workspace config
 │   │   └── workflow.tsx              # Workflow wizard (9-step)
 │   ├── components/
 │   │   ├── ui/                       # shadcn/ui primitives (17 components)
 │   │   ├── layout/                   # App shell (app-layout, sidebar, header)
-│   │   ├── editor/                   # CodeMirror editor, file tree, preview
-│   │   ├── chat/                     # Chat sub-components (suggestion-card)
 │   │   ├── theme-provider.tsx        # Dark mode (next-themes)
 │   │   ├── skill-card.tsx            # Dashboard skill card
 │   │   ├── new-skill-dialog.tsx      # Create skill dialog
@@ -74,25 +70,22 @@ app/
 │   │   ├── splash-screen.tsx         # App splash screen
 │   │   ├── tag-filter.tsx            # Skill tag filter bar
 │   │   ├── tag-input.tsx             # Tag input component
-│   │   ├── reasoning-chat.tsx        # Step 4 chat interface
+│   │   ├── reasoning-chat.tsx        # Step 5 multi-turn reasoning chat
+│   │   ├── refinement-chat.tsx       # Post-workflow skill refinement chat
 │   │   ├── workflow-sidebar.tsx      # Step progression sidebar
 │   │   └── workflow-step-complete.tsx # Step completion indicator
-│   ├── stores/                       # Zustand state (6 stores)
+│   ├── stores/                       # Zustand state (4 stores)
 │   │   ├── agent-store.ts
-│   │   ├── chat-store.ts
-│   │   ├── editor-store.ts
 │   │   ├── settings-store.ts
 │   │   ├── skill-store.ts
 │   │   └── workflow-store.ts
 │   ├── hooks/
-│   │   ├── use-agent-stream.ts      # Subscribe to Tauri agent events
-│   │   ├── use-auto-save.ts         # Editor auto-save hook
-│   │   └── use-skill-files.ts       # Read skill files
+│   │   └── use-agent-stream.ts      # Subscribe to Tauri agent events
 │   ├── lib/
 │   │   ├── utils.ts                 # cn() helper
 │   │   ├── tauri.ts                 # Typed Tauri invoke wrappers
 │   │   ├── types.ts                 # Shared TypeScript interfaces
-│   │   └── reasoning-parser.ts      # Step 4 response classifier + extraction
+│   │   └── reasoning-parser.ts      # Step 5 response classifier + extraction
 │   └── styles/globals.css           # Tailwind + dark mode tokens + CSS color system
 ├── sidecar/                          # Node.js agent runner
 │   ├── package.json                  # @anthropic-ai/claude-agent-sdk dep
@@ -105,17 +98,15 @@ app/
 │   │   ├── main.rs                  # Entry point
 │   │   ├── types.rs                 # Shared types (AppSettings, etc.)
 │   │   ├── db.rs                    # SQLite init, migrations, settings read/write
-│   │   ├── commands/                # Tauri IPC handlers
+│   │   ├── commands/                # Tauri IPC handlers (9 modules)
+│   │   │   ├── agent.rs             # start_agent (spawns sidecar)
+│   │   │   ├── clarification.rs     # save_raw_file (persist clarification answers)
+│   │   │   ├── files.rs             # list_skill_files, read_file (skill file tree + content)
+│   │   │   ├── lifecycle.rs         # check_workspace_path, has_running_agents
+│   │   │   ├── node.rs              # check_node (Node.js version check)
 │   │   │   ├── settings.rs          # get_settings, save_settings, test_api_key
 │   │   │   ├── skill.rs             # list_skills, create_skill, delete_skill
 │   │   │   ├── workflow.rs          # run_review_step, run_workflow_step, package_skill
-│   │   │   ├── agent.rs             # start_agent (spawns sidecar)
-│   │   │   ├── node.rs              # check_node (Node.js version check)
-│   │   │   ├── lifecycle.rs         # check_workspace_path, has_running_agents
-│   │   │   ├── chat.rs              # Chat session CRUD + run_chat_agent (spawns chat sidecar)
-│   │   │   ├── clarification.rs     # save_raw_file (persist clarification answers)
-│   │   │   ├── diff.rs              # generate_diff, apply_suggestion (editor diff/apply)
-│   │   │   ├── files.rs             # list_skill_files, read_file (skill file tree + content)
 │   │   │   └── workspace.rs         # init_workspace, get_workspace_path, clear_workspace
 │   │   ├── agents/                  # Sidecar management
 │   │   │   ├── mod.rs
@@ -339,17 +330,16 @@ Use Claude Code agent teams (`TeamCreate` + `Task` tool) **in addition to worktr
 ### Examples of good granular commits
 
 ```
-Add chat session SQLite schema and CRUD functions
-Add chat store with session and message state
-Add chat page with message bubbles and input
-Wire chat route into TanStack Router
-Add chat-store unit tests
+Add refinement chat component with session persistence
+Add workflow step 9 support to Rust backend
+Wire refinement chat into workflow completion screen
+Add refinement-chat unit tests
 ```
 
 ### Examples of bad commits
 
 ```
-Add chat feature                    # Too broad — mixes backend + frontend + tests
+Add refinement chat feature         # Too broad — mixes backend + frontend + tests
 Fix stuff                           # No context
 Update files                        # Meaningless
 Add chat and also fix sidebar bug   # Two unrelated changes
@@ -383,28 +373,26 @@ npm run test:all      # Vitest + Playwright
 ```
 app/
 ├── src/__tests__/                # Frontend unit tests (Vitest)
-│   ├── stores/                   # Zustand store logic
-│   ├── lib/                      # Utility functions (reasoning-parser, etc.)
-│   ├── pages/                    # Page component tests
+│   ├── stores/                   # Zustand store logic (agent, settings, skill, workflow)
+│   ├── lib/                      # Utility functions (reasoning-parser, utils)
+│   ├── pages/                    # Page component tests (dashboard, prompts, settings, workflow)
 │   ├── components/               # Component tests
 │   │   ├── agent-output-panel.test.tsx
 │   │   ├── close-guard.test.tsx
 │   │   ├── delete-skill-dialog.test.tsx
 │   │   ├── new-skill-dialog.test.tsx
 │   │   ├── reasoning-chat.test.tsx
+│   │   ├── refinement-chat.test.tsx
 │   │   ├── skill-card.test.tsx
 │   │   ├── tag-filter.test.tsx
 │   │   └── tag-input.test.tsx
 │   └── hooks/                    # Hook tests
-│       ├── use-agent-stream.test.ts
-│       ├── use-auto-save.test.ts
-│       └── use-skill-files.test.ts
+│       └── use-agent-stream.test.ts
 ├── e2e/                          # E2E tests (Playwright)
 │   ├── clarification.spec.ts
 │   ├── close-guard.spec.ts
 │   ├── dashboard.spec.ts
 │   ├── dashboard-states.spec.ts
-│   ├── editor.spec.ts
 │   ├── navigation.spec.ts
 │   ├── settings.spec.ts
 │   └── skill-crud.spec.ts
@@ -418,10 +406,16 @@ app/
 ├── playwright.config.ts
 └── src-tauri/src/                # Rust tests (inline #[cfg(test)] modules)
     ├── db.rs
+    ├── types.rs
+    ├── agents/sidecar.rs
     ├── markdown/workflow_state.rs
     ├── markdown/clarification.rs
+    ├── commands/clarification.rs
+    ├── commands/files.rs
     ├── commands/node.rs
-    └── commands/skill.rs
+    ├── commands/skill.rs
+    ├── commands/workflow.rs
+    └── commands/workspace.rs
 ```
 
 ### Mocking Tauri APIs
