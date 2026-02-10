@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
-import { FolderOpen, Search, Filter } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -26,6 +26,7 @@ import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
+import { useSettingsStore } from "@/stores/settings-store"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
@@ -39,6 +40,7 @@ export default function DashboardPage() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
+  const skillsPath = useSettingsStore((s) => s.skillsPath)
 
   const loadSettings = useCallback(async () => {
     try {
@@ -120,7 +122,7 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Skills</h1>
-        {workspacePath && (
+        {workspacePath && skillsPath && (
           <NewSkillDialog
             workspacePath={workspacePath}
             onCreated={() => { loadSkills(); loadTags(); }}
@@ -128,6 +130,24 @@ export default function DashboardPage() {
           />
         )}
       </div>
+
+      {!skillsPath && (
+        <Card className="border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+          <CardHeader className="flex flex-row items-start gap-3 pb-3">
+            <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <div className="flex-1">
+              <CardTitle className="text-base">Skills folder not configured</CardTitle>
+              <CardDescription className="mt-1">
+                Set a skills folder in Settings before creating skills. Finished outputs (SKILL.md, references, .skill packages) are saved there and won&apos;t be lost when the workspace is cleared.
+              </CardDescription>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => navigate({ to: "/settings" })}>
+              <Settings className="size-3.5" />
+              Settings
+            </Button>
+          </CardHeader>
+        </Card>
+      )}
 
       {!loading && skills.length > 0 && (
         <div className="flex items-center gap-3">
@@ -221,7 +241,7 @@ export default function DashboardPage() {
               Create your first skill to get started.
             </CardDescription>
           </CardHeader>
-          {workspacePath && (
+          {workspacePath && skillsPath && (
             <CardContent className="flex justify-center">
               <NewSkillDialog
                 workspacePath={workspacePath}

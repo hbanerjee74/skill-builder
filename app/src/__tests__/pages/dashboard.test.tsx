@@ -6,6 +6,7 @@ import {
   mockInvokeCommands,
   resetTauriMocks,
 } from "@/test/mocks/tauri";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { SkillSummary, AppSettings } from "@/lib/types";
 
 // Mock @tanstack/react-router
@@ -82,12 +83,18 @@ function setupMocks(
     delete_skill: undefined,
     get_all_tags: ["salesforce", "crm", "workday"],
   });
+
+  // Hydrate the Zustand settings store (normally done by app-layout.tsx)
+  useSettingsStore.getState().setSettings({
+    skillsPath: settings.skills_path,
+  });
 }
 
 describe("DashboardPage", () => {
   beforeEach(() => {
     resetTauriMocks();
     mockNavigate.mockReset();
+    useSettingsStore.getState().reset();
   });
 
   it("shows loading skeletons while fetching skills", async () => {
@@ -156,8 +163,8 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("shows New Skill button when workspace is set", async () => {
-    setupMocks();
+  it("shows New Skill button when workspace and skills_path are set", async () => {
+    setupMocks({ settings: { skills_path: "/home/user/skills" } });
     render(<DashboardPage />);
 
     await waitFor(() => {
@@ -167,6 +174,19 @@ describe("DashboardPage", () => {
     expect(
       screen.getByRole("button", { name: /New Skill/i })
     ).toBeInTheDocument();
+  });
+
+  it("hides New Skill button and shows banner when skills_path is not set", async () => {
+    setupMocks(); // skills_path is null by default
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: /New Skill/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Skills folder not configured")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Settings/i })).toBeInTheDocument();
   });
 
   // --- F2: Search and Filter tests ---
