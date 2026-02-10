@@ -2,10 +2,6 @@
 
 A Tauri v2 desktop application for building Claude skills. All code lives in `app/`.
 
-## Design Plan
-
-Full architecture, data model, and UI specs: `app/PLAN.md`
-
 ## Architecture
 
 ```
@@ -45,7 +41,7 @@ Full architecture, data model, and UI specs: `app/PLAN.md`
 
 **Agent Runtime:** Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar process)
 
-**Runtime Dependency:** Node.js 18+ (checked on startup, user prompted to install if missing)
+**Runtime Dependency:** Node.js 18–24 (checked on startup, user prompted to install if missing; Node 25+ causes SDK crashes)
 
 ## Project Structure
 
@@ -55,41 +51,52 @@ app/
 │   ├── main.tsx                      # Entry (providers + router)
 │   ├── router.tsx                    # TanStack Router routes
 │   ├── pages/                        # Page components
+│   │   ├── chat.tsx                  # Chat interface
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   ├── workflow.tsx              # Workflow wizard (9-step)
 │   │   ├── editor.tsx                # Skill file editor
-│   │   └── settings.tsx              # API key + workspace config
+│   │   ├── prompts.tsx               # Agent prompts viewer
+│   │   ├── settings.tsx              # API key + workspace config
+│   │   └── workflow.tsx              # Workflow wizard (9-step)
 │   ├── components/
-│   │   ├── ui/                       # shadcn/ui primitives (16 components)
+│   │   ├── ui/                       # shadcn/ui primitives (17 components)
 │   │   ├── layout/                   # App shell (app-layout, sidebar, header)
 │   │   ├── editor/                   # CodeMirror editor, file tree, preview
+│   │   ├── chat/                     # Chat sub-components (suggestion-card)
 │   │   ├── theme-provider.tsx        # Dark mode (next-themes)
 │   │   ├── skill-card.tsx            # Dashboard skill card
 │   │   ├── new-skill-dialog.tsx      # Create skill dialog
 │   │   ├── delete-skill-dialog.tsx   # Delete confirmation
-│   │   ├── close-guard.tsx           # Block close while agents running
-│   │   ├── clarification-form.tsx    # Q&A form (Steps 2, 5)
-│   │   ├── clarification-raw.tsx     # Raw markdown fallback
-│   │   ├── agent-output-panel.tsx    # Streaming agent output
-│   │   ├── parallel-agent-panel.tsx  # Dual-panel (Step 3)
-│   │   ├── reasoning-chat.tsx        # Step 6 chat interface
-│   │   └── workflow-sidebar.tsx      # Step progression sidebar
-│   ├── stores/                       # Zustand state
-│   │   ├── skill-store.ts
+│   │   ├── close-guard.tsx           # Confirm-before-close when agents running
+│   │   ├── agent-output-panel.tsx    # Streaming agent output with cancel button
+│   │   ├── agent-status-header.tsx   # Agent run status indicator
+│   │   ├── error-boundary.tsx        # React error boundary
+│   │   ├── onboarding-dialog.tsx     # First-run onboarding
+│   │   ├── splash-screen.tsx         # App splash screen
+│   │   ├── tag-filter.tsx            # Skill tag filter bar
+│   │   ├── tag-input.tsx             # Tag input component
+│   │   ├── reasoning-chat.tsx        # Step 4 chat interface
+│   │   ├── workflow-sidebar.tsx      # Step progression sidebar
+│   │   └── workflow-step-complete.tsx # Step completion indicator
+│   ├── stores/                       # Zustand state (6 stores)
+│   │   ├── agent-store.ts
+│   │   ├── chat-store.ts
+│   │   ├── editor-store.ts
 │   │   ├── settings-store.ts
-│   │   ├── workflow-store.ts
-│   │   └── agent-store.ts
+│   │   ├── skill-store.ts
+│   │   └── workflow-store.ts
 │   ├── hooks/
 │   │   ├── use-agent-stream.ts      # Subscribe to Tauri agent events
+│   │   ├── use-auto-save.ts         # Editor auto-save hook
 │   │   └── use-skill-files.ts       # Read skill files
 │   ├── lib/
 │   │   ├── utils.ts                 # cn() helper
 │   │   ├── tauri.ts                 # Typed Tauri invoke wrappers
-│   │   └── types.ts                 # Shared TypeScript interfaces
-│   └── styles/globals.css           # Tailwind + dark mode tokens
+│   │   ├── types.ts                 # Shared TypeScript interfaces
+│   │   └── reasoning-parser.ts      # Step 4 response classifier + extraction
+│   └── styles/globals.css           # Tailwind + dark mode tokens + CSS color system
 ├── sidecar/                          # Node.js agent runner
-│   ├── package.json                  # @anthropic-ai/claude-code SDK dep
-│   ├── agent-runner.ts               # Entry — reads config from stdin, streams JSON to stdout
+│   ├── package.json                  # @anthropic-ai/claude-agent-sdk dep
+│   ├── agent-runner.ts               # Entry — reads config from CLI argument, streams JSON to stdout
 │   ├── tsconfig.json
 │   └── build.js                      # esbuild bundle → single agent-runner.js
 ├── src-tauri/                        # Rust backend
@@ -101,16 +108,21 @@ app/
 │   │   ├── commands/                # Tauri IPC handlers
 │   │   │   ├── settings.rs          # get_settings, save_settings, test_api_key
 │   │   │   ├── skill.rs             # list_skills, create_skill, delete_skill
-│   │   │   ├── workflow.rs          # run_workflow_step, run_parallel_agents, package_skill
-│   │   │   ├── agent.rs             # start_agent, cancel_agent (spawns sidecar)
+│   │   │   ├── workflow.rs          # run_review_step, run_workflow_step, package_skill
+│   │   │   ├── agent.rs             # start_agent (spawns sidecar)
 │   │   │   ├── node.rs              # check_node (Node.js version check)
-│   │   │   └── lifecycle.rs         # check_workspace_path, has_running_agents
+│   │   │   ├── lifecycle.rs         # check_workspace_path, has_running_agents
+│   │   │   ├── chat.rs              # Chat session CRUD + run_chat_agent (spawns chat sidecar)
+│   │   │   ├── clarification.rs     # save_raw_file (persist clarification answers)
+│   │   │   ├── diff.rs              # generate_diff, apply_suggestion (editor diff/apply)
+│   │   │   ├── files.rs             # list_skill_files, read_file (skill file tree + content)
+│   │   │   └── workspace.rs         # init_workspace, get_workspace_path, clear_workspace
 │   │   ├── agents/                  # Sidecar management
 │   │   │   ├── mod.rs
-│   │   │   ├── sidecar.rs           # Spawn Node.js process, pipe stdin/stdout
+│   │   │   ├── sidecar.rs           # Spawn Node.js process, pass config as CLI arg
 │   │   │   └── events.rs            # Parse JSON lines → Tauri events
 │   │   └── markdown/                # Markdown parsing
-│   │       ├── clarifications.rs    # Q&A format parser/serializer
+│   │       ├── clarification.rs     # Q&A format parser/serializer
 │   │       └── workflow_state.rs    # Parse workflow state files
 │   ├── Cargo.toml
 │   └── tauri.conf.json              # bundles sidecar/dist/agent-runner.js
@@ -125,22 +137,32 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 ### How it works
 
 1. **Rust backend** spawns `node agent-runner.js` as a child process
-2. Writes agent config to stdin (JSON): prompt, model, API key, cwd, allowed tools
+2. Passes agent config as a CLI argument (JSON): prompt, model, API key, cwd, allowed tools
 3. **Sidecar** uses SDK's `query()` function with the config
 4. SDK handles the full tool execution loop (Read, Write, Glob, Grep, Bash, Task)
 5. Sidecar streams `SDKMessage` objects as JSON lines to stdout
 6. **Rust backend** reads stdout line by line, parses JSON, emits Tauri events
 7. **Frontend** subscribes to Tauri events for real-time display
-8. To cancel: Rust kills the child process (or sends abort signal via stdin)
+8. To cancel: frontend unmount triggers process cleanup; no IPC cancel command needed
 
 ### Key benefits
 
 - **No prompt modifications needed** — existing agent prompts work as-is since the SDK provides the same tools as Claude Code
-- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 3 parallel agents)
+- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 2 orchestrator)
 - **No tool execution loop to build** — SDK handles Claude → tool call → result → Claude internally
-- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 6 reasoning)
+- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 4 reasoning)
 
-### Sidecar config (sent via stdin)
+### Agent logging
+
+The sidecar creates `.agent-logs/<agent_id>.jsonl` files in the workspace directory. Each log file contains:
+- First line: redacted config (API key replaced with `[REDACTED]`)
+- Subsequent lines: raw JSON messages from stdout (same as Tauri events)
+- stderr lines logged as `{"type":"stderr","content":"..."}`
+- Final line: `{"type":"agent-exit","success":true|false}`
+
+Useful for debugging agent runs: `tail -f .agent-logs/<agent_id>.jsonl`
+
+### Sidecar config (passed as CLI argument)
 
 ```json
 {
@@ -150,9 +172,14 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
   "cwd": "/path/to/workspace",
   "allowedTools": ["Read", "Write", "Glob", "Grep"],
   "maxTurns": 50,
-  "permissionMode": "bypassPermissions"
+  "permissionMode": "bypassPermissions",
+  "sessionId": "abc-123",
+  "betas": ["interleaved-thinking"],
+  "pathToClaudeCodeExecutable": "/path/to/sdk/cli.js"
 }
 ```
+
+Optional fields (`sessionId`, `betas`, `pathToClaudeCodeExecutable`) are omitted when not set. `sessionId` enables session resume (used by Step 4 reasoning). `pathToClaudeCodeExecutable` is auto-resolved by the Rust backend to the bundled SDK cli.js.
 
 ### Sidecar output (JSON lines to stdout)
 
@@ -172,11 +199,11 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 ## Node.js Dependency
 
-The app requires **Node.js 18+** for the agent sidecar.
+The app requires **Node.js 18–24** for the agent sidecar (Node 25+ causes SDK crashes).
 
 On startup, the Rust backend runs `node --version`:
-- If found and >= 18: proceed normally
-- If not found or too old: show a dialog with install instructions + link to nodejs.org
+- If found and in the 18–24 range: proceed normally
+- If not found, too old, or 25+: show a dialog with install instructions + link to nodejs.org
 - Settings page also shows Node.js status indicator
 
 The sidecar JS file (`agent-runner.js`) is bundled with the app as a Tauri resource. It's a single esbuild-bundled file containing the SDK and all dependencies — no `npm install` needed at runtime.
@@ -219,9 +246,6 @@ The app replicates the plugin workflow. Each step is a state in the workflow sta
 - `references/shared-context.md` — markdown formats (used as-is by agents via SDK)
 - `agents/{type}/reasoning.md` — most complex agent (multi-turn with follow-ups)
 - `agents/{type}/build.md` — skill output structure (SKILL.md + references/)
-- `app/PLAN.md` — full architecture, data model, UI specs, implementation phases
-- `app/FEATURES.md` — feature checklist with status per phase
-- `app/TESTS.md` — test plan per phase
 
 ## Development
 
@@ -241,7 +265,7 @@ npm run tauri build                          # Production build
 - Linux: `.deb`, `.AppImage`, `.rpm`
 - CI: `tauri-apps/tauri-action` GitHub Action builds all platforms
 - Auto-update: `tauri-plugin-updater` checks GitHub Releases
-- **Requires Node.js 18+** on user's machine (checked at startup)
+- **Requires Node.js 18–24** on user's machine (checked at startup; Node 25+ causes SDK crashes)
 
 ## Parallel Development with Git Worktrees
 
@@ -249,18 +273,18 @@ The user runs **multiple Claude Code instances in parallel**, each in its own gi
 
 ### Worktree workflow
 
-When starting work on a task, **always create a new worktree** branching from `feature/desktop-ui`:
+When starting work on a task, **always create a new worktree** branching from `main`:
 
 ```bash
 # Create worktree with a descriptive branch name
-git worktree add ~/src/skill-builder-<task-name> -b <task-name> feature/desktop-ui
+git worktree add ~/src/skill-builder-<task-name> -b <task-name> main
 
 # Install dependencies in the new worktree
 cd ~/src/skill-builder-<task-name>/app && npm install
 cd sidecar && npm install && npm run build && cd ..
 ```
 
-When done, the user will merge the branch back into `feature/desktop-ui` and clean up:
+When done, the user will merge the branch back into `main` and clean up:
 
 ```bash
 # From the main repo
@@ -360,12 +384,30 @@ npm run test:all      # Vitest + Playwright
 app/
 ├── src/__tests__/                # Frontend unit tests (Vitest)
 │   ├── stores/                   # Zustand store logic
-│   ├── lib/                      # Utility functions
-│   └── pages/                    # Page component tests
+│   ├── lib/                      # Utility functions (reasoning-parser, etc.)
+│   ├── pages/                    # Page component tests
+│   ├── components/               # Component tests
+│   │   ├── agent-output-panel.test.tsx
+│   │   ├── close-guard.test.tsx
+│   │   ├── delete-skill-dialog.test.tsx
+│   │   ├── new-skill-dialog.test.tsx
+│   │   ├── reasoning-chat.test.tsx
+│   │   ├── skill-card.test.tsx
+│   │   ├── tag-filter.test.tsx
+│   │   └── tag-input.test.tsx
+│   └── hooks/                    # Hook tests
+│       ├── use-agent-stream.test.ts
+│       ├── use-auto-save.test.ts
+│       └── use-skill-files.test.ts
 ├── e2e/                          # E2E tests (Playwright)
+│   ├── clarification.spec.ts
+│   ├── close-guard.spec.ts
+│   ├── dashboard.spec.ts
+│   ├── dashboard-states.spec.ts
+│   ├── editor.spec.ts
 │   ├── navigation.spec.ts
 │   ├── settings.spec.ts
-│   └── dashboard.spec.ts
+│   └── skill-crud.spec.ts
 ├── src/test/                     # Test infrastructure
 │   ├── setup.ts                  # Vitest setup (jest-dom + mocks)
 │   └── mocks/                    # Tauri API mocks
@@ -377,7 +419,7 @@ app/
 └── src-tauri/src/                # Rust tests (inline #[cfg(test)] modules)
     ├── db.rs
     ├── markdown/workflow_state.rs
-    ├── markdown/clarifications.rs
+    ├── markdown/clarification.rs
     ├── commands/node.rs
     └── commands/skill.rs
 ```
@@ -406,4 +448,4 @@ Always run existing tests (`npm test && cargo test`) before committing to catch 
 
 ### Manual test checklist
 
-See `app/TESTS.md` for a comprehensive manual test plan organized by phase. Use it for QA before releases.
+Run all three test tiers before merging to catch regressions.

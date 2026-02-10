@@ -225,11 +225,19 @@ export default function WorkflowPage() {
       setHasPartialOutput(false);
       return;
     }
-    // Check if any artifact exists for this step
+    // Check if any artifact exists for this step — try SQLite first,
+    // then fall back to filesystem (handles interrupted runs where
+    // artifacts were written to disk but never captured to SQLite).
     const path = cfg.outputFiles[0];
     if (!path) return;
     getArtifactContent(skillName, path)
-      .then((artifact) => setHasPartialOutput(!!artifact?.content))
+      .catch(() => null)
+      .then(async (artifact) => {
+        if (artifact?.content) return true;
+        const filePath = `${workspacePath}/${skillName}/${path}`;
+        return readFile(filePath).then((content) => !!content).catch(() => false);
+      })
+      .then((exists) => setHasPartialOutput(exists))
       .catch(() => setHasPartialOutput(false));
   }, [currentStep, steps, workspacePath, skillName, hydrated]);
 
