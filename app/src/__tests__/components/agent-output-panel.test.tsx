@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, type AgentMessage } from "@/stores/agent-store";
 
 // Polyfill scrollIntoView for jsdom
 if (!Element.prototype.scrollIntoView) {
@@ -21,9 +21,9 @@ import {
   AgentOutputPanel,
   classifyMessage,
   categoryStyles,
+  MessageItem,
   type MessageCategory,
 } from "@/components/agent-output-panel";
-import type { AgentMessage } from "@/stores/agent-store";
 
 describe("AgentOutputPanel", () => {
   beforeEach(() => {
@@ -180,7 +180,8 @@ describe("classifyMessage", () => {
       classifyMessage(
         msg({
           type: "assistant",
-          raw: { message: { content: [{ type: "tool_use", name: "Read", input: {} }] } },
+          content: null as unknown as string,
+          raw: { message: { content: [{ type: "tool_use", name: "Read" }] } },
         }),
       ),
     ).toBe("tool_call");
@@ -189,7 +190,10 @@ describe("classifyMessage", () => {
   it("classifies assistant with follow-up questions as question", () => {
     expect(
       classifyMessage(
-        msg({ type: "assistant", content: "## Follow-up Questions\n1. What is X?" }),
+        msg({
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What is the primary key?",
+        }),
       ),
     ).toBe("question");
   });
@@ -197,19 +201,26 @@ describe("classifyMessage", () => {
   it("classifies assistant with gate_check text as question", () => {
     expect(
       classifyMessage(
-        msg({ type: "assistant", content: "Everything looks good. Ready to proceed to the build step." }),
+        msg({
+          type: "assistant",
+          content: "Ready to proceed to the build step.",
+        }),
       ),
     ).toBe("question");
   });
 
   it("classifies assistant with plain text as agent_response", () => {
     expect(
-      classifyMessage(msg({ type: "assistant", content: "Analyzing the domain..." })),
+      classifyMessage(
+        msg({ type: "assistant", content: "Analyzing the domain..." }),
+      ),
     ).toBe("agent_response");
   });
 
   it("classifies unknown type as status (fallback)", () => {
-    expect(classifyMessage(msg({ type: "unknown" }))).toBe("status");
+    expect(
+      classifyMessage(msg({ type: "unknown_type" as AgentMessage["type"] })),
+    ).toBe("status");
   });
 
   it("classifies assistant with empty content as agent_response", () => {
@@ -218,56 +229,92 @@ describe("classifyMessage", () => {
 });
 
 describe("MessageItem visual treatments", () => {
-  beforeEach(() => {
-    useAgentStore.getState().clearRuns();
+  it("renders error message with CSS variable border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "error",
+          content: "Something broke",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-error-border)]");
+    expect(el.className).toContain("bg-[var(--chat-error-bg)]");
+    expect(el.textContent).toBe("Something broke");
   });
 
-  it("applies error styles to error messages", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", msg({ type: "error", content: "Oops" }));
-    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
-    const errorDiv = container.querySelector(".border-l-\\[var\\(--chat-error-border\\)\\]");
-    expect(errorDiv).toBeInTheDocument();
+  it("renders result message with CSS variable border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-result-border)]");
+    expect(el.className).toContain("bg-[var(--chat-result-bg)]");
+    expect(el.textContent).toContain("Agent finished successfully");
   });
 
-  it("applies result styles to result messages", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", msg({ type: "result", content: "Done" }));
-    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
-    const resultDiv = container.querySelector(".border-l-\\[var\\(--chat-result-border\\)\\]");
-    expect(resultDiv).toBeInTheDocument();
+  it("renders tool_call message with CSS variable border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: null as unknown as string,
+          raw: {
+            message: {
+              content: [
+                { type: "tool_use", name: "Read", input: { file_path: "/a/b.ts" } },
+              ],
+            },
+          },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-tool-border)]");
+    expect(el.className).toContain("text-muted-foreground");
+    expect(el.textContent).toContain("Reading b.ts");
   });
 
-  it("applies tool_call styles to tool use messages", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", msg({
-      type: "assistant",
-      raw: { message: { content: [{ type: "tool_use", name: "Read", input: { file_path: "/test.md" } }] } },
-    }));
-    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
-    const toolDiv = container.querySelector(".border-l-\\[var\\(--chat-tool-border\\)\\]");
-    expect(toolDiv).toBeInTheDocument();
-  });
-
-  it("applies question styles to follow-up messages", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", msg({
-      type: "assistant",
-      content: "## Follow-up Questions\n1. What about X?",
-    }));
-    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
-    const questionDiv = container.querySelector(".border-l-\\[var\\(--chat-question-border\\)\\]");
-    expect(questionDiv).toBeInTheDocument();
+  it("renders question message with CSS variable border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What about X?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-question-border)]");
+    expect(el.className).toContain("bg-[var(--chat-question-bg)]");
   });
 
   it("renders agent_response without border styling", () => {
-    useAgentStore.getState().startRun("test-agent", "sonnet");
-    useAgentStore.getState().addMessage("test-agent", msg({
-      type: "assistant",
-      content: "Just plain text",
-    }));
-    const { container } = render(<AgentOutputPanel agentId="test-agent" />);
-    expect(container.querySelector(".border-l-2")).not.toBeInTheDocument();
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Just plain text",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).not.toContain("border-l-2");
   });
 });
 
