@@ -20,7 +20,9 @@ vi.mock("remark-gfm", () => ({
 import {
   AgentOutputPanel,
   classifyMessage,
+  categoryStyles,
   MessageItem,
+  type MessageCategory,
 } from "@/components/agent-output-panel";
 
 describe("AgentOutputPanel", () => {
@@ -156,25 +158,20 @@ describe("AgentOutputPanel", () => {
   });
 });
 
-describe("classifyMessage", () => {
-  const msg = (overrides: Partial<AgentMessage>) =>
-    ({
-      type: "assistant",
-      content: "",
-      raw: {},
-      timestamp: Date.now(),
-      ...overrides,
-    }) as AgentMessage;
+function msg(overrides: Partial<AgentMessage>): AgentMessage {
+  return { type: "assistant", content: "", raw: {}, timestamp: Date.now(), ...overrides };
+}
 
-  it("classifies system message as status", () => {
+describe("classifyMessage", () => {
+  it("classifies system messages as status", () => {
     expect(classifyMessage(msg({ type: "system" }))).toBe("status");
   });
 
-  it("classifies error message as error", () => {
+  it("classifies error messages as error", () => {
     expect(classifyMessage(msg({ type: "error", content: "fail" }))).toBe("error");
   });
 
-  it("classifies result message as result", () => {
+  it("classifies result messages as result", () => {
     expect(classifyMessage(msg({ type: "result", content: "done" }))).toBe("result");
   });
 
@@ -225,10 +222,14 @@ describe("classifyMessage", () => {
       classifyMessage(msg({ type: "unknown_type" as AgentMessage["type"] })),
     ).toBe("status");
   });
+
+  it("classifies assistant with empty content as agent_response", () => {
+    expect(classifyMessage(msg({ type: "assistant", content: "" }))).toBe("agent_response");
+  });
 });
 
 describe("MessageItem visual treatments", () => {
-  it("renders error message with destructive styling", () => {
+  it("renders error message with CSS variable border styling", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -240,12 +241,12 @@ describe("MessageItem visual treatments", () => {
       />,
     );
     const el = container.firstElementChild!;
-    expect(el.className).toContain("border-destructive");
-    expect(el.className).toContain("bg-destructive");
+    expect(el.className).toContain("border-l-[var(--chat-error-border)]");
+    expect(el.className).toContain("bg-[var(--chat-error-bg)]");
     expect(el.textContent).toBe("Something broke");
   });
 
-  it("renders result message with green border/bg styling", () => {
+  it("renders result message with CSS variable border styling", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -257,12 +258,12 @@ describe("MessageItem visual treatments", () => {
       />,
     );
     const el = container.firstElementChild!;
-    expect(el.className).toContain("border-green-500");
-    expect(el.className).toContain("bg-green-500");
+    expect(el.className).toContain("border-l-[var(--chat-result-border)]");
+    expect(el.className).toContain("bg-[var(--chat-result-bg)]");
     expect(el.textContent).toContain("Agent finished successfully");
   });
 
-  it("renders tool_call message with muted foreground styling", () => {
+  it("renders tool_call message with CSS variable border styling", () => {
     const { container } = render(
       <MessageItem
         message={{
@@ -280,7 +281,62 @@ describe("MessageItem visual treatments", () => {
       />,
     );
     const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-tool-border)]");
     expect(el.className).toContain("text-muted-foreground");
     expect(el.textContent).toContain("Reading b.ts");
+  });
+
+  it("renders question message with CSS variable border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "## Follow-up Questions\n1. What about X?",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).toContain("border-l-[var(--chat-question-border)]");
+    expect(el.className).toContain("bg-[var(--chat-question-bg)]");
+  });
+
+  it("renders agent_response without border styling", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "assistant",
+          content: "Just plain text",
+          raw: {},
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    const el = container.firstElementChild!;
+    expect(el.className).not.toContain("border-l-2");
+  });
+});
+
+describe("categoryStyles", () => {
+  it("has entries for all message categories", () => {
+    const categories: MessageCategory[] = [
+      "agent_response", "tool_call", "question", "result", "error", "status",
+    ];
+    for (const cat of categories) {
+      expect(categoryStyles).toHaveProperty(cat);
+    }
+  });
+
+  it("has non-empty styles for decorated categories", () => {
+    expect(categoryStyles.tool_call).toContain("border-l-2");
+    expect(categoryStyles.question).toContain("border-l-2");
+    expect(categoryStyles.result).toContain("border-l-2");
+    expect(categoryStyles.error).toContain("border-l-2");
+  });
+
+  it("has empty styles for plain categories", () => {
+    expect(categoryStyles.agent_response).toBe("");
+    expect(categoryStyles.status).toBe("");
   });
 });
