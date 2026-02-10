@@ -55,38 +55,48 @@ app/
 │   ├── main.tsx                      # Entry (providers + router)
 │   ├── router.tsx                    # TanStack Router routes
 │   ├── pages/                        # Page components
+│   │   ├── chat.tsx                  # Chat interface
 │   │   ├── dashboard.tsx             # Skill cards grid
-│   │   ├── workflow.tsx              # Workflow wizard (9-step)
 │   │   ├── editor.tsx                # Skill file editor
-│   │   └── settings.tsx              # API key + workspace config
+│   │   ├── prompts.tsx               # Agent prompts viewer
+│   │   ├── settings.tsx              # API key + workspace config
+│   │   └── workflow.tsx              # Workflow wizard (9-step)
 │   ├── components/
-│   │   ├── ui/                       # shadcn/ui primitives (16 components)
+│   │   ├── ui/                       # shadcn/ui primitives (17 components)
 │   │   ├── layout/                   # App shell (app-layout, sidebar, header)
 │   │   ├── editor/                   # CodeMirror editor, file tree, preview
+│   │   ├── chat/                     # Chat sub-components (suggestion-card)
 │   │   ├── theme-provider.tsx        # Dark mode (next-themes)
 │   │   ├── skill-card.tsx            # Dashboard skill card
 │   │   ├── new-skill-dialog.tsx      # Create skill dialog
 │   │   ├── delete-skill-dialog.tsx   # Delete confirmation
-│   │   ├── close-guard.tsx           # Block close while agents running
-│   │   ├── clarification-form.tsx    # Q&A form (Steps 2, 5)
-│   │   ├── clarification-raw.tsx     # Raw markdown fallback
-│   │   ├── agent-output-panel.tsx    # Streaming agent output
-│   │   ├── parallel-agent-panel.tsx  # Dual-panel (Step 3)
-│   │   ├── reasoning-chat.tsx        # Step 6 chat interface
-│   │   └── workflow-sidebar.tsx      # Step progression sidebar
-│   ├── stores/                       # Zustand state
-│   │   ├── skill-store.ts
+│   │   ├── close-guard.tsx           # Confirm-before-close when agents running
+│   │   ├── agent-output-panel.tsx    # Streaming agent output with cancel button
+│   │   ├── agent-status-header.tsx   # Agent run status indicator
+│   │   ├── error-boundary.tsx        # React error boundary
+│   │   ├── onboarding-dialog.tsx     # First-run onboarding
+│   │   ├── splash-screen.tsx         # App splash screen
+│   │   ├── tag-filter.tsx            # Skill tag filter bar
+│   │   ├── tag-input.tsx             # Tag input component
+│   │   ├── reasoning-chat.tsx        # Step 4 chat interface
+│   │   ├── workflow-sidebar.tsx      # Step progression sidebar
+│   │   └── workflow-step-complete.tsx # Step completion indicator
+│   ├── stores/                       # Zustand state (6 stores)
+│   │   ├── agent-store.ts
+│   │   ├── chat-store.ts
+│   │   ├── editor-store.ts
 │   │   ├── settings-store.ts
-│   │   ├── workflow-store.ts
-│   │   └── agent-store.ts
+│   │   ├── skill-store.ts
+│   │   └── workflow-store.ts
 │   ├── hooks/
 │   │   ├── use-agent-stream.ts      # Subscribe to Tauri agent events
+│   │   ├── use-auto-save.ts         # Editor auto-save hook
 │   │   └── use-skill-files.ts       # Read skill files
 │   ├── lib/
 │   │   ├── utils.ts                 # cn() helper
 │   │   ├── tauri.ts                 # Typed Tauri invoke wrappers
 │   │   └── types.ts                 # Shared TypeScript interfaces
-│   └── styles/globals.css           # Tailwind + dark mode tokens
+│   └── styles/globals.css           # Tailwind + dark mode tokens + CSS color system
 ├── sidecar/                          # Node.js agent runner
 │   ├── package.json                  # @anthropic-ai/claude-code SDK dep
 │   ├── agent-runner.ts               # Entry — reads config from stdin, streams JSON to stdout
@@ -101,8 +111,8 @@ app/
 │   │   ├── commands/                # Tauri IPC handlers
 │   │   │   ├── settings.rs          # get_settings, save_settings, test_api_key
 │   │   │   ├── skill.rs             # list_skills, create_skill, delete_skill
-│   │   │   ├── workflow.rs          # run_workflow_step, run_parallel_agents, package_skill
-│   │   │   ├── agent.rs             # start_agent, cancel_agent (spawns sidecar)
+│   │   │   ├── workflow.rs          # run_review_step, run_workflow_step, package_skill
+│   │   │   ├── agent.rs             # start_agent (spawns sidecar)
 │   │   │   ├── node.rs              # check_node (Node.js version check)
 │   │   │   └── lifecycle.rs         # check_workspace_path, has_running_agents
 │   │   ├── agents/                  # Sidecar management
@@ -131,14 +141,14 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 5. Sidecar streams `SDKMessage` objects as JSON lines to stdout
 6. **Rust backend** reads stdout line by line, parses JSON, emits Tauri events
 7. **Frontend** subscribes to Tauri events for real-time display
-8. To cancel: Rust kills the child process (or sends abort signal via stdin)
+8. To cancel: frontend unmount triggers process cleanup; no IPC cancel command needed
 
 ### Key benefits
 
 - **No prompt modifications needed** — existing agent prompts work as-is since the SDK provides the same tools as Claude Code
-- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 3 parallel agents)
+- **Sub-agents work** — SDK supports the Task tool for spawning sub-agents (Step 2 orchestrator)
 - **No tool execution loop to build** — SDK handles Claude → tool call → result → Claude internally
-- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 6 reasoning)
+- **Session resume** — SDK supports `resume: sessionId` for continuing conversations (Step 4 reasoning)
 
 ### Sidecar config (sent via stdin)
 
@@ -249,18 +259,18 @@ The user runs **multiple Claude Code instances in parallel**, each in its own gi
 
 ### Worktree workflow
 
-When starting work on a task, **always create a new worktree** branching from `feature/desktop-ui`:
+When starting work on a task, **always create a new worktree** branching from `main`:
 
 ```bash
 # Create worktree with a descriptive branch name
-git worktree add ~/src/skill-builder-<task-name> -b <task-name> feature/desktop-ui
+git worktree add ~/src/skill-builder-<task-name> -b <task-name> main
 
 # Install dependencies in the new worktree
 cd ~/src/skill-builder-<task-name>/app && npm install
 cd sidecar && npm install && npm run build && cd ..
 ```
 
-When done, the user will merge the branch back into `feature/desktop-ui` and clean up:
+When done, the user will merge the branch back into `main` and clean up:
 
 ```bash
 # From the main repo
@@ -363,9 +373,14 @@ app/
 │   ├── lib/                      # Utility functions
 │   └── pages/                    # Page component tests
 ├── e2e/                          # E2E tests (Playwright)
+│   ├── clarification.spec.ts
+│   ├── close-guard.spec.ts
+│   ├── dashboard.spec.ts
+│   ├── dashboard-states.spec.ts
+│   ├── editor.spec.ts
 │   ├── navigation.spec.ts
 │   ├── settings.spec.ts
-│   └── dashboard.spec.ts
+│   └── skill-crud.spec.ts
 ├── src/test/                     # Test infrastructure
 │   ├── setup.ts                  # Vitest setup (jest-dom + mocks)
 │   └── mocks/                    # Tauri API mocks
