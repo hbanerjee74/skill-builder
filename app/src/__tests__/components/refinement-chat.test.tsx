@@ -109,7 +109,6 @@ describe("RefinementChat", () => {
     skillName: "test-skill",
     domain: "Test Domain",
     workspacePath: "/workspace",
-    onDismiss: vi.fn(),
   };
 
   beforeEach(() => {
@@ -119,15 +118,10 @@ describe("RefinementChat", () => {
     mockStartAgent.mockReset().mockResolvedValue("agent-1");
     mockGetArtifactContent.mockReset().mockResolvedValue(null);
     mockSaveArtifactContent.mockReset().mockResolvedValue(undefined);
-
-    defaultProps.onDismiss.mockClear();
   });
 
   it("renders empty state with input when no persisted messages", async () => {
     render(<RefinementChat {...defaultProps} />);
-
-    // Should show header
-    expect(screen.getByText("Skill Refinement")).toBeInTheDocument();
 
     // Should show input
     await waitFor(() => {
@@ -151,7 +145,7 @@ describe("RefinementChat", () => {
     mockGetArtifactContent.mockResolvedValueOnce({
       content: JSON.stringify(savedSession),
       skill_name: "test-skill",
-      step_id: 9,
+      step_id: 8,
       relative_path: "context/refinement-chat.json",
       size_bytes: 100,
       created_at: "2025-01-01T00:00:00.000Z",
@@ -208,18 +202,6 @@ describe("RefinementChat", () => {
       expect(input).toBeDisabled();
       expect(screen.getByPlaceholderText("Waiting for agent response...")).toBeInTheDocument();
     });
-  });
-
-  it("calls onDismiss when dismiss button clicked", async () => {
-    const user = userEvent.setup();
-    render(<RefinementChat {...defaultProps} />);
-
-    const dismissButton = screen.getByRole("button", { name: /close refinement chat/i });
-    await act(async () => {
-      await user.click(dismissButton);
-    });
-
-    expect(defaultProps.onDismiss).toHaveBeenCalledOnce();
   });
 
   it("includes system prompt on first turn", async () => {
@@ -319,7 +301,7 @@ describe("RefinementChat", () => {
     await waitFor(() => {
       expect(mockSaveArtifactContent).toHaveBeenCalledWith(
         "test-skill",
-        9,
+        8,
         "context/refinement-chat.json",
         expect.stringContaining("Test message"),
       );
@@ -364,39 +346,6 @@ describe("RefinementChat", () => {
 
     // Should have multi-line content
     expect(input).toHaveValue("Line 1\nLine 2");
-  });
-
-  it("saves state before dismissing", async () => {
-    const user = userEvent.setup();
-    render(<RefinementChat {...defaultProps} />);
-
-    // Send a message
-    const input = await screen.findByPlaceholderText(/Ask a question or request a change/);
-    await user.type(input, "Test");
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /send message/i }));
-    });
-
-    // Complete agent
-    act(() => {
-      simulateAgentCompletion("agent-1", "Response");
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Response")).toBeInTheDocument();
-    });
-
-    // Dismiss
-    mockSaveArtifactContent.mockClear();
-
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: /close refinement chat/i }));
-    });
-
-    // Should save before dismissing
-    expect(mockSaveArtifactContent).toHaveBeenCalled();
-    expect(defaultProps.onDismiss).toHaveBeenCalled();
   });
 
   it("handles agent errors gracefully", async () => {

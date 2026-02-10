@@ -53,6 +53,9 @@ vi.mock("@/components/workflow-step-complete", () => ({
 vi.mock("@/components/reasoning-chat", () => ({
   ReasoningChat: () => <div data-testid="reasoning-chat" />,
 }));
+vi.mock("@/components/refinement-chat", () => ({
+  RefinementChat: () => <div data-testid="refinement-chat" />,
+}));
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
@@ -369,14 +372,14 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     });
   });
 
-  it("renders completion screen on last step (step 7)", async () => {
-    // Simulate all steps complete, on step 7 (the new last step)
+  it("renders completion screen on last step (step 8)", async () => {
+    // Simulate all steps complete, on step 8 (the last step)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 9; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(7);
+    useWorkflowStore.getState().setCurrentStep(8);
 
     // No artifact
     vi.mocked(getArtifactContent).mockResolvedValue(null);
@@ -389,5 +392,126 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Should render completion screen
     expect(screen.queryByTestId("step-complete")).toBeTruthy();
+  });
+
+  it("renders RefinementChat on step 8 when step is not completed", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // Complete steps 0-7 so we can be on step 8
+    for (let i = 0; i < 8; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(8);
+
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // RefinementChat should be rendered
+    expect(screen.queryByTestId("refinement-chat")).toBeTruthy();
+  });
+
+  it("shows Mark Complete and Skip buttons on refinement step", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 8; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(8);
+
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Both buttons should be present
+    expect(screen.getByText("Mark Complete")).toBeTruthy();
+    expect(screen.getByText("Skip")).toBeTruthy();
+  });
+
+  it("Mark Complete button marks step 8 as completed", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 8; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(8);
+
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Mark Complete
+    const markCompleteBtn = screen.getByText("Mark Complete");
+    act(() => {
+      markCompleteBtn.click();
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[8].status).toBe("completed");
+    });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Step 9 marked complete");
+  });
+
+  it("Skip button marks step 8 as completed", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 8; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(8);
+
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Click Skip
+    const skipBtn = screen.getByText("Skip");
+    act(() => {
+      skipBtn.click();
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[8].status).toBe("completed");
+    });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Step 9 skipped");
+  });
+
+  it("does not show Mark Complete / Skip buttons when step 8 is completed", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 9; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(8);
+
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    render(<WorkflowPage />);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // Buttons should NOT appear when step is already completed
+    expect(screen.queryByText("Mark Complete")).toBeNull();
+    expect(screen.queryByText("Skip")).toBeNull();
   });
 });
