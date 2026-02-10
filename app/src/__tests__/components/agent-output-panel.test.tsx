@@ -376,8 +376,8 @@ describe("categoryStyles", () => {
     expect(categoryStyles.error).toContain("border-l-2");
   });
 
-  it("has empty styles for plain categories", () => {
-    expect(categoryStyles.agent_response).toBe("");
+  it("has expected styles for plain categories", () => {
+    expect(categoryStyles.agent_response).toBe("pl-3");
     expect(categoryStyles.status).toBe("");
   });
 });
@@ -930,7 +930,7 @@ describe("computeMessageGroups", () => {
 describe("spacingClasses", () => {
   it("maps all spacing types to string classes", () => {
     expect(spacingClasses.none).toBe("");
-    expect(spacingClasses["group-start"]).toBe("mt-6");
-    expect(spacingClasses.continuation).toBe("mt-1");
+    expect(spacingClasses["group-start"]).toBe("mt-3");
+    expect(spacingClasses.continuation).toBe("mt-0.5");
   });
 });

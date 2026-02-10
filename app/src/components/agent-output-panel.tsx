@@ -186,7 +186,7 @@ export function classifyMessage(message: AgentMessage): MessageCategory {
 }
 
 export const categoryStyles: Record<MessageCategory, string> = {
-  agent_response: "",
+  agent_response: "pl-3",
   tool_call:
     "border-l-2 border-l-[var(--chat-tool-border)] bg-[var(--chat-tool-bg)] rounded-md px-3 py-2",
   question:
@@ -249,8 +249,8 @@ export function computeMessageGroups(
 
 export const spacingClasses: Record<MessageSpacing, string> = {
   none: "",
-  "group-start": "mt-6",
-  continuation: "mt-1",
+  "group-start": "mt-3",
+  continuation: "mt-0.5",
 };
 
 // --- Tool call grouping ---
@@ -420,7 +420,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
           </Badge>
         </div>
         <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-          <div className="markdown-body max-w-none text-sm">
+          <div className="markdown-body compact max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content ?? ""}
             </ReactMarkdown>
@@ -433,7 +433,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   if (category === "agent_response" && message.content) {
     return (
       <ErrorBoundary fallback={<pre className="whitespace-pre-wrap text-sm">{message.content}</pre>}>
-        <div className="markdown-body max-w-none text-sm">
+        <div className={`${wrapperClass} markdown-body compact max-w-none`}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {message.content}
           </ReactMarkdown>
