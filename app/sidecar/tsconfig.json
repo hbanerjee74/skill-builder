@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
