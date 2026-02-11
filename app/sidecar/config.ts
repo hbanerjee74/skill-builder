@@ -9,6 +9,7 @@ export interface SidecarConfig {
   permissionMode?: string;
   sessionId?: string;
   betas?: string[];
+  maxThinkingTokens?: number;
   pathToClaudeCodeExecutable?: string;
 }
 
