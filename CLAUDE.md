@@ -33,8 +33,6 @@ claude --plugin-dir .                    # Load plugin locally
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Node.js 18-24 only**: Node 25+ causes SDK crashes. Checked at app startup.
-- **Context conservation (plugin)**: The coordinator must NEVER read agent output files. Agents write to disk; coordinator relays summaries only.
-- **Plugin path resolution**: Use `${CLAUDE_PLUGIN_ROOT}/` for plugin files. Output goes to user's CWD.
 - **Parallel worktrees**: Set `DEV_PORT=<port>` to avoid conflicts (convention: `1000 + issue_number`).
 - **Verify before committing**: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
 

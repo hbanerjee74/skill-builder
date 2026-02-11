@@ -32,17 +32,6 @@ Three layers:
 
 3. **Shared reference** (`references/shared-context.md`) -- domain definitions, file formats, content principles. Read by agents at the path the coordinator passes in the Task prompt.
 
-### Model Selection
-
-Models are set in agent frontmatter. The coordinator does NOT override them.
-
-| Agent | Model | Rationale |
-|---|---|---|
-| research-concepts | **sonnet** | Structured research, runs in parallel |
-| research-patterns-and-merge | **sonnet** | Orchestrator: spawns sub-agents |
-| reasoning | **opus** | Deep analytical reasoning |
-| build, validate, test | **sonnet** | Content generation and evaluation |
-
 ## Development Guide
 
 ### Adding/modifying an agent
