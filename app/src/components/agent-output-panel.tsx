@@ -432,6 +432,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     const tools = config.allowedTools as string[] | undefined;
     const model = config.model as string | undefined;
     const agentName = config.agentName as string | undefined;
+    const discoveredSkills = raw.discoveredSkills as string[] | undefined;
     return (
       <div className={`${wrapperClass} text-xs text-muted-foreground space-y-0.5`}>
         {agentName && <div><span className="font-medium">Agent:</span> {agentName}</div>}
@@ -442,6 +443,16 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
             {tools.map((t) => (
               <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
                 {t}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {discoveredSkills && discoveredSkills.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="font-medium">Skills:</span>
+            {discoveredSkills.map((s) => (
+              <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-blue-400 text-blue-600 dark:text-blue-400">
+                {s}
               </Badge>
             ))}
           </div>
