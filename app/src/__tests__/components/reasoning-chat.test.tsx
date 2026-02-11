@@ -671,4 +671,50 @@ describe("ReasoningChat — simplified write-first flow", () => {
       "domain-reasoning",
     );
   });
+
+  // --- Debug mode tests ---
+
+  it("auto-starts reasoning in debug mode", async () => {
+    // Enable debug mode
+    useSettingsStore.getState().setSettings({ debugMode: true });
+
+    render(<TestWrapper {...defaultProps} />);
+
+    // In debug mode, handleStart should be called automatically
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalledWith(
+        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace"
+      );
+    }, { timeout: 500 });
+  });
+
+  it("auto-completes reasoning in debug mode after agent finishes, skipping decisions validation", async () => {
+    // Enable debug mode
+    useSettingsStore.getState().setSettings({ debugMode: true });
+
+    // No decisions.md exists anywhere — would normally block completion
+    mockReadFile.mockRejectedValue(new Error("not found"));
+    mockGetArtifactContent.mockResolvedValue(null);
+
+    render(<TestWrapper {...defaultProps} />);
+
+    // Wait for auto-start
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    }, { timeout: 500 });
+
+    // Simulate agent completion
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_SUMMARY_RESPONSE);
+    });
+
+    // In debug mode, should auto-complete without requiring decisions.md
+    await waitFor(() => {
+      const store = useWorkflowStore.getState();
+      expect(store.steps[4].status).toBe("completed");
+    }, { timeout: 1000 });
+
+    // Should advance to step 5
+    expect(useWorkflowStore.getState().currentStep).toBe(5);
+  });
 });

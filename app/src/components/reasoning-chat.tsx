@@ -101,6 +101,7 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
   const { updateStepStatus, setRunning, currentStep, skillType } = useWorkflowStore();
   const skillsPath = useSettingsStore((s) => s.skillsPath);
+  const debugMode = useSettingsStore((s) => s.debugMode);
 
   // Derive agent name so resume turns load the full agent persona (e.g., "domain-reasoning")
   const agentName = skillType ? `${skillType}-reasoning` : undefined;
@@ -169,6 +170,10 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       })
       .catch(() => setRestored(true));
   }, [skillName, restored]);
+
+  // Debug mode refs — declared here, effects are after handler definitions
+  const debugAutoStartedRef = useRef(false);
+  const debugAutoCompletedRef = useRef(false);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -336,46 +341,50 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
       // Best-effort
     }
 
-    // Validate that decisions.md was actually created before marking step complete.
-    // Check in order: skillsPath, workspacePath, SQLite artifact.
-    let decisionsFound = false;
+    // In debug mode, skip decisions.md validation — the agent may not have created it
+    // with Haiku model, and we want fully unattended flow.
+    if (!debugMode) {
+      // Validate that decisions.md was actually created before marking step complete.
+      // Check in order: skillsPath, workspacePath, SQLite artifact.
+      let decisionsFound = false;
 
-    // 1. Check skill output directory (primary per VD-405)
-    if (skillsPath) {
-      try {
-        const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
-        if (content && content.trim().length > 0) decisionsFound = true;
-      } catch {
-        // File doesn't exist there
+      // 1. Check skill output directory (primary per VD-405)
+      if (skillsPath) {
+        try {
+          const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
+          if (content && content.trim().length > 0) decisionsFound = true;
+        } catch {
+          // File doesn't exist there
+        }
       }
-    }
 
-    // 2. Check workspace directory (fallback)
-    if (!decisionsFound) {
-      try {
-        const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
-        if (content && content.trim().length > 0) decisionsFound = true;
-      } catch {
-        // File doesn't exist there
+      // 2. Check workspace directory (fallback)
+      if (!decisionsFound) {
+        try {
+          const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
+          if (content && content.trim().length > 0) decisionsFound = true;
+        } catch {
+          // File doesn't exist there
+        }
       }
-    }
 
-    // 3. Check SQLite artifact (last resort)
-    if (!decisionsFound) {
-      try {
-        const artifact = await getArtifactContent(skillName, "context/decisions.md");
-        if (artifact?.content && artifact.content.trim().length > 0) decisionsFound = true;
-      } catch {
-        // No artifact
+      // 3. Check SQLite artifact (last resort)
+      if (!decisionsFound) {
+        try {
+          const artifact = await getArtifactContent(skillName, "context/decisions.md");
+          if (artifact?.content && artifact.content.trim().length > 0) decisionsFound = true;
+        } catch {
+          // No artifact
+        }
       }
-    }
 
-    if (!decisionsFound) {
-      toast.error(
-        "Decisions file was not created. The reasoning agent did not save decisions.md. " +
-        "Please send feedback to the agent asking it to write decisions before completing.",
-      );
-      return;
+      if (!decisionsFound) {
+        toast.error(
+          "Decisions file was not created. The reasoning agent did not save decisions.md. " +
+          "Please send feedback to the agent asking it to write decisions before completing.",
+        );
+        return;
+      }
     }
 
     setPhase("completed");
@@ -387,12 +396,36 @@ export const ReasoningChat = forwardRef<ReasoningChatHandle, ReasoningChatProps>
     if (currentStep < steps.length - 1) {
       useWorkflowStore.getState().setCurrentStep(currentStep + 1);
     }
-  }, [skillName, workspacePath, skillsPath, setPhase, updateStepStatus, currentStep, setRunning]);
+  }, [skillName, workspacePath, skillsPath, debugMode, setPhase, updateStepStatus, currentStep, setRunning]);
 
   // Expose completeStep to parent via ref
   useImperativeHandle(ref, () => ({
     completeStep: handleCompleteStep,
   }), [handleCompleteStep]);
+
+  // Debug mode: auto-start reasoning when component renders with not_started phase
+  useEffect(() => {
+    if (!debugMode || !restored || debugAutoStartedRef.current) return;
+    if (phase !== "not_started" || messages.length > 0) return;
+    debugAutoStartedRef.current = true;
+    const timer = setTimeout(() => {
+      handleStart();
+    }, 100);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugMode, restored, phase, messages.length]);
+
+  // Debug mode: auto-complete when agent finishes (phase becomes awaiting_feedback)
+  useEffect(() => {
+    if (!debugMode || debugAutoCompletedRef.current) return;
+    if (phase !== "awaiting_feedback") return;
+    debugAutoCompletedRef.current = true;
+    const timer = setTimeout(() => {
+      handleCompleteStep();
+    }, 200);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugMode, phase]);
 
   // Free-form send — primary interaction method
   const handleSend = () => {

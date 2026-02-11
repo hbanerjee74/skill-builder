@@ -272,12 +272,13 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Debug Mode</CardTitle>
           <CardDescription>
-            Auto-answer clarification questions with recommended choices during human review steps.
+            Run the full workflow unattended using Haiku for all agents.
+            Human review steps auto-complete, validate and test steps are skipped.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-            <Label htmlFor="debug-mode">Auto-answer with recommendations</Label>
+            <Label htmlFor="debug-mode">Unattended workflow (Haiku, skip validate/test)</Label>
             <Switch
               id="debug-mode"
               checked={debugMode}

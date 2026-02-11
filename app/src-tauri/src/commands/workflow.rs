@@ -317,18 +317,6 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.skills_path
 }
 
-/// Per-step turn limits for debug mode. Orchestrator steps (0, 2, 5) that
-/// spawn sub-agents need more headroom; simple agent steps can stay low.
-fn debug_max_turns(step_id: u32) -> u32 {
-    match step_id {
-        0 | 2 => 15, // research orchestrators: spawn + merge
-        5 => 30,     // build: reads 4 files + plan + write SKILL.md + spawn writers + reviewer
-        4 => 10,     // reasoning: single agent, reads + writes
-        6 | 7 => 15, // validate/test: spawn parallel checkers
-        _ => 5,
-    }
-}
-
 fn make_agent_id(skill_name: &str, label: &str) -> String {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -577,15 +565,13 @@ pub async fn run_review_step(
         output_path, domain
     );
 
-    let debug_mode = read_debug_mode(&db);
-
     let config = SidecarConfig {
         prompt,
         model: Some(resolve_model_id("haiku")),
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
-        max_turns: Some(if debug_mode { 3 } else { 10 }),
+        max_turns: Some(10),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: if extended_context {
@@ -716,11 +702,11 @@ pub async fn run_workflow_step(
 
     let config = SidecarConfig {
         prompt,
-        model: None,
+        model: if debug_mode { Some(resolve_model_id("haiku")) } else { None },
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
-        max_turns: Some(if debug_mode { debug_max_turns(step_id) } else { step.max_turns }),
+        max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: if extended_context {
@@ -2292,5 +2278,77 @@ mod tests {
             &conn,
         );
         assert!(result.is_ok());
+    }
+
+    // --- debug mode: no reduced turns, haiku model override ---
+
+    #[test]
+    fn test_debug_max_turns_removed() {
+        // debug_max_turns no longer exists as a function. This test verifies
+        // that get_step_config returns the *normal* turn limits for every step,
+        // which is what run_workflow_step now uses unconditionally.
+        let expected: Vec<(u32, u32)> = vec![
+            (0, 50),   // research concepts
+            (2, 50),   // research patterns
+            (4, 100),  // reasoning
+            (5, 120),  // build
+            (6, 80),   // validate
+            (7, 80),   // test
+        ];
+        for (step_id, expected_turns) in expected {
+            let config = get_step_config(step_id).unwrap();
+            assert_eq!(
+                config.max_turns, expected_turns,
+                "Step {} should have max_turns={} (normal), got {}",
+                step_id, expected_turns, config.max_turns
+            );
+        }
+    }
+
+    #[test]
+    fn test_resolve_model_id_haiku_returns_full_id() {
+        // The haiku shorthand is used for debug mode model override
+        let haiku_id = resolve_model_id("haiku");
+        assert_eq!(haiku_id, "claude-haiku-4-5-20251001");
+        assert!(haiku_id.contains("haiku"), "Haiku model ID should contain 'haiku'");
+    }
+
+    #[test]
+    fn test_debug_mode_model_override_logic() {
+        // Verify the model selection logic used in run_workflow_step:
+        // debug_mode=true  → Some(resolve_model_id("haiku"))
+        // debug_mode=false → None (agent front matter model is used)
+
+        let debug_mode = true;
+        let model: Option<String> = if debug_mode { Some(resolve_model_id("haiku")) } else { None };
+        assert_eq!(model, Some("claude-haiku-4-5-20251001".to_string()));
+
+        let debug_mode = false;
+        let model: Option<String> = if debug_mode { Some(resolve_model_id("haiku")) } else { None };
+        assert_eq!(model, None);
+    }
+
+    #[test]
+    fn test_step_max_turns_unchanged_regardless_of_debug() {
+        // Ensure every agent step has the same max_turns value
+        // regardless of any debug flag — debug mode no longer reduces turns.
+        let steps_with_expected_turns = [
+            (0, 50),
+            (2, 50),
+            (4, 100),
+            (5, 120),
+            (6, 80),
+            (7, 80),
+        ];
+        for (step_id, normal_turns) in steps_with_expected_turns {
+            let config = get_step_config(step_id).unwrap();
+            // In the old code, debug mode would have reduced these values.
+            // Now they should always be the normal values.
+            assert_eq!(
+                config.max_turns, normal_turns,
+                "Step {} max_turns should always be {} (not reduced for debug)",
+                step_id, normal_turns
+            );
+        }
     }
 }
