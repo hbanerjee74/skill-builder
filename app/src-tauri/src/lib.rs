@@ -24,7 +24,6 @@ pub fn run() {
 
             Ok(())
         })
-        .manage(agents::sidecar::create_registry())
         .manage(agents::sidecar_pool::SidecarPool::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,

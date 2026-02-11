@@ -50,6 +50,12 @@ impl SidecarPool {
         }
     }
 
+    /// Returns true if there are any active sidecar processes in the pool.
+    pub async fn has_running(&self) -> bool {
+        let pool = self.sidecars.lock().await;
+        !pool.is_empty()
+    }
+
     /// Get an existing sidecar for a skill or spawn a new persistent one.
     /// Waits for the `{"type":"sidecar_ready"}` signal before returning.
     ///

@@ -53,7 +53,7 @@ export const startAgent = (
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, persistent: true });
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null });
 
 // --- Workflow ---
 
@@ -64,14 +64,14 @@ export const runWorkflowStep = (
   workspacePath: string,
   resume?: boolean,
   rerun?: boolean,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false, persistent: true });
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
 
 export const runReviewStep = (
   skillName: string,
   stepId: number,
   domain: string,
   workspacePath: string,
-) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath, persistent: true });
+) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath });
 
 export const packageSkill = (
   skillName: string,

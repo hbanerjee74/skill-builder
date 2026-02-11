@@ -1,11 +1,10 @@
-use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
+use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 
 #[tauri::command]
 pub async fn start_agent(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     agent_id: String,
@@ -16,9 +15,8 @@ pub async fn start_agent(
     max_turns: Option<u32>,
     session_id: Option<String>,
     skill_name: String,
-    step_label: String,
+    _step_label: String,
     agent_name: Option<String>,
-    persistent: Option<bool>,
 ) -> Result<String, String> {
     let (api_key, extended_context) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -47,27 +45,14 @@ pub async fn start_agent(
         agent_name,
     };
 
-    if persistent.unwrap_or(false) {
-        sidecar::spawn_sidecar_persistent(
-            agent_id.clone(),
-            config,
-            pool.inner().clone(),
-            app,
-            skill_name,
-            step_label,
-        )
-        .await?;
-    } else {
-        sidecar::spawn_sidecar(
-            agent_id.clone(),
-            config,
-            state.inner().clone(),
-            app,
-            skill_name,
-            step_label,
-        )
-        .await?;
-    }
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
+    )
+    .await?;
 
     Ok(agent_id)
 }
