@@ -64,6 +64,7 @@ export interface AgentRun {
   contextHistory: ContextSnapshot[];
   contextWindow: number;
   compactionEvents: CompactionEvent[];
+  thinkingEnabled: boolean;
 }
 
 interface AgentState {
@@ -102,6 +103,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextHistory: [],
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
+                thinkingEnabled: false,
               },
         },
         activeAgentId: agentId,
@@ -126,6 +128,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextHistory: [],
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
+                thinkingEnabled: false,
               },
         },
         // Do NOT set activeAgentId — chat components manage their own lifecycle
@@ -145,6 +148,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         contextHistory: [],
         contextWindow: extendedContext ? 1_000_000 : 200_000,
         compactionEvents: [],
+        thinkingEnabled: false,
       };
 
       // Extract token usage and cost from result messages
@@ -165,7 +169,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             output: usage.output_tokens ?? 0,
           };
         }
-        const cost = raw.cost_usd as number | undefined;
+        const cost = raw.total_cost_usd as number | undefined;
         if (cost !== undefined) {
           totalCost = cost;
         }
@@ -186,15 +190,19 @@ export const useAgentStore = create<AgentState>((set) => ({
       // Extract per-turn context usage from assistant messages
       if (message.type === "assistant") {
         const betaMsg = (raw as Record<string, unknown>).message as
-          | { usage?: { input_tokens?: number; output_tokens?: number } }
+          | { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
           | undefined;
         if (betaMsg?.usage) {
           const turn = run.messages.filter((m) => m.type === "assistant").length + 1;
+          // Total context = non-cached + cache-read + cache-creation tokens
+          const totalInput = (betaMsg.usage.input_tokens ?? 0)
+            + (betaMsg.usage.cache_read_input_tokens ?? 0)
+            + (betaMsg.usage.cache_creation_input_tokens ?? 0);
           contextHistory = [
             ...contextHistory,
             {
               turn,
-              inputTokens: betaMsg.usage.input_tokens ?? 0,
+              inputTokens: totalInput,
               outputTokens: betaMsg.usage.output_tokens ?? 0,
             },
           ];
@@ -218,6 +226,17 @@ export const useAgentStore = create<AgentState>((set) => ({
             timestamp: message.timestamp,
           },
         ];
+      }
+
+      // Extract thinkingEnabled from config messages
+      let thinkingEnabled = run.thinkingEnabled;
+      if (message.type === "config") {
+        const configObj = (raw as Record<string, unknown>).config as
+          | { maxThinkingTokens?: number }
+          | undefined;
+        if (configObj?.maxThinkingTokens && configObj.maxThinkingTokens > 0) {
+          thinkingEnabled = true;
+        }
       }
 
       // Extract session_id and model from init messages
@@ -244,6 +263,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             tokenUsage,
             totalCost,
             sessionId,
+            thinkingEnabled,
             contextHistory,
             contextWindow,
             compactionEvents,

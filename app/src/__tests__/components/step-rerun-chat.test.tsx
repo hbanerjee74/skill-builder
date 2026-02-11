@@ -106,7 +106,7 @@ function simulateAgentCompletion(agentId: string, text: string) {
   store.addMessage(agentId, {
     type: "result",
     content: "Success",
-    raw: { cost_usd: 0.02, usage: { input_tokens: 3000, output_tokens: 1000 } },
+    raw: { total_cost_usd: 0.02, usage: { input_tokens: 3000, output_tokens: 1000 } },
     timestamp: Date.now(),
   });
   // Mark completed

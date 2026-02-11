@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [debugMode, setDebugMode] = useState(false)
   const [extendedContext, setExtendedContext] = useState(false)
+  const [extendedThinking, setExtendedThinking] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -55,6 +56,7 @@ export default function SettingsPage() {
             setPreferredModel(result.preferred_model || "sonnet")
             setDebugMode(result.debug_mode ?? false)
             setExtendedContext(result.extended_context ?? false)
+            setExtendedThinking(result.extended_thinking ?? false)
             setLoading(false)
           }
           return
@@ -91,6 +93,7 @@ export default function SettingsPage() {
     preferredModel: string;
     debugMode: boolean;
     extendedContext: boolean;
+    extendedThinking: boolean;
   }>) => {
     const settings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
@@ -99,6 +102,7 @@ export default function SettingsPage() {
       preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
       debug_mode: overrides.debugMode !== undefined ? overrides.debugMode : debugMode,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
+      extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
     }
     try {
       await invoke("save_settings", { settings })
@@ -110,6 +114,7 @@ export default function SettingsPage() {
         preferredModel: settings.preferred_model,
         debugMode: settings.debug_mode,
         extendedContext: settings.extended_context,
+        extendedThinking: settings.extended_thinking,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -303,6 +308,25 @@ export default function SettingsPage() {
               id="extended-context"
               checked={extendedContext}
               onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Thinking</CardTitle>
+          <CardDescription>
+            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
+            <Switch
+              id="extended-thinking"
+              checked={extendedThinking}
+              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
             />
           </div>
         </CardContent>

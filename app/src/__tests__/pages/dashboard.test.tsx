@@ -50,6 +50,7 @@ const defaultSettings: AppSettings = {
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,
+  extended_thinking: false,
   splash_shown: false,
 };
 

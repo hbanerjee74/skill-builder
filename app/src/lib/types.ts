@@ -22,6 +22,7 @@ export interface AppSettings {
   preferred_model: string | null
   debug_mode: boolean
   extended_context: boolean
+  extended_thinking: boolean
   splash_shown: boolean
 }
 

@@ -5,6 +5,7 @@ import {
   XCircle,
   Clock,
   Cpu,
+  Brain,
 } from "lucide-react";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -114,6 +115,12 @@ export function AgentStatusHeader({
         {turnCount > 0 && (
           <Badge variant="secondary" className="text-xs">
             Turn {turnCount}
+          </Badge>
+        )}
+        {run.thinkingEnabled && (
+          <Badge variant="secondary" className="gap-1 text-xs">
+            <Brain className="size-3" />
+            Thinking
           </Badge>
         )}
         {run.tokenUsage && (

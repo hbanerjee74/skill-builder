@@ -39,5 +39,6 @@ export function buildQueryOptions(config: SidecarConfig, abortController: AbortC
       : {}),
     ...(config.sessionId ? { resume: config.sessionId } : {}),
     ...(config.betas ? { betas: config.betas } : {}),
+    ...(config.maxThinkingTokens ? { maxThinkingTokens: config.maxThinkingTokens } : {}),
   };
 }

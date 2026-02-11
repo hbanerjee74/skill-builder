@@ -37,6 +37,7 @@ const defaultSettings: AppSettings = {
   preferred_model: null,
   debug_mode: false,
   extended_context: false,
+  extended_thinking: false,
   splash_shown: false,
 };
 
@@ -47,6 +48,7 @@ const populatedSettings: AppSettings = {
   preferred_model: "sonnet",
   debug_mode: false,
   extended_context: false,
+  extended_thinking: false,
   splash_shown: false,
 };
 
@@ -160,6 +162,27 @@ describe("SettingsPage", () => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
           debug_mode: true,
+        }),
+      });
+    });
+  });
+
+  it("auto-saves when Extended Thinking toggle is changed", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
+    await user.click(thinkingSwitch);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          extended_thinking: true,
         }),
       });
     });
