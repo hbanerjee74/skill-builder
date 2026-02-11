@@ -6,7 +6,7 @@ const config = JSON.stringify({ build: { devUrl: `http://localhost:${port}` } })
 
 try {
   execSync('npm run sidecar:build', { stdio: 'inherit' });
-  execSync(`npx tauri dev --config '${config}'`, { stdio: 'inherit' });
+  execSync(`npm run tauri -- dev --config '${config}'`, { stdio: 'inherit' });
 } catch (e) {
   process.exit(e.status || 1);
 }
