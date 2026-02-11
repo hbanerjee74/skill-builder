@@ -1,15 +1,19 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseConfig } from "./config.js";
-import { buildQueryOptions } from "./options.js";
+import { runAgentRequest } from "./run-agent.js";
 import { createAbortState, handleShutdown } from "./shutdown.js";
+import { runPersistent } from "./persistent-mode.js";
 
 const state = createAbortState();
 
 process.on("SIGTERM", () => handleShutdown(state));
 process.on("SIGINT", () => handleShutdown(state));
 
+/**
+ * One-shot mode: parse config from argv[2], run the agent, exit.
+ * This is the original behavior, preserved for backward compatibility.
+ */
 async function main() {
   let config;
   try {
@@ -23,21 +27,10 @@ async function main() {
   }
 
   try {
-    if (config.apiKey) {
-      process.env.ANTHROPIC_API_KEY = config.apiKey;
-    }
-
-    const options = buildQueryOptions(config, state.abortController);
-
-    const conversation = query({
-      prompt: config.prompt,
-      options,
-    });
-
-    for await (const message of conversation) {
-      if (state.aborted) break;
+    await runAgentRequest(config, (message) => {
+      if (state.aborted) return;
       process.stdout.write(JSON.stringify(message) + "\n");
-    }
+    });
 
     process.exit(0);
   } catch (err) {
@@ -60,5 +53,9 @@ const isDirectRun =
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isDirectRun) {
-  main();
+  if (process.argv.includes("--persistent")) {
+    runPersistent();
+  } else {
+    main();
+  }
 }

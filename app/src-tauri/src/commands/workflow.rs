@@ -1,7 +1,8 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
-use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
+use crate::agents::sidecar::{self, SidecarConfig};
+use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::types::{
     ArtifactRow, PackageResult, StepConfig, StepStatusUpdate,
@@ -526,7 +527,7 @@ fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, Stri
 #[tauri::command]
 pub async fn run_review_step(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
+    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
@@ -583,8 +584,15 @@ pub async fn run_review_step(
         agent_name: None,
     };
 
-    let step_label = format!("review-step{}", step_id);
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
+    )
+    .await?;
+
     Ok(agent_id)
 }
 
@@ -649,7 +657,7 @@ fn validate_decisions_exist(
 #[tauri::command]
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AgentRegistry>,
+    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
@@ -727,8 +735,15 @@ pub async fn run_workflow_step(
         agent_name: Some(agent_name),
     };
 
-    let step_label = format!("step{}-{}", step_id, step.name);
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
+    )
+    .await?;
+
     Ok(agent_id)
 }
 

@@ -45,6 +45,7 @@ import {
   getArtifactContent,
   saveArtifactContent,
   readFile,
+  cleanupSkillSidecar,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -139,21 +140,29 @@ export default function WorkflowPage() {
 
     useWorkflowStore.getState().setRunning(false);
     useAgentStore.getState().clearRuns();
+
+    // Fire-and-forget: shut down persistent sidecar for this skill
+    cleanupSkillSidecar(skillName).catch(() => {});
+
     proceed?.();
-  }, [proceed]);
+  }, [proceed, skillName]);
 
   // Safety-net cleanup: revert running state on unmount (e.g. if the
   // component is removed without going through the blocker dialog).
+  // Also shuts down the persistent sidecar for this skill.
   useEffect(() => {
     return () => {
       const store = useWorkflowStore.getState();
-      if (!store.isRunning) return;
-
-      if (store.steps[store.currentStep]?.status === "in_progress") {
-        useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
+      if (store.isRunning) {
+        if (store.steps[store.currentStep]?.status === "in_progress") {
+          useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
+        }
+        useWorkflowStore.getState().setRunning(false);
+        useAgentStore.getState().clearRuns();
       }
-      useWorkflowStore.getState().setRunning(false);
-      useAgentStore.getState().clearRuns();
+
+      // Fire-and-forget: shut down persistent sidecar for this skill
+      cleanupSkillSidecar(skillName).catch(() => {});
     };
   }, [skillName]);
 

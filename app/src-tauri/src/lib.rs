@@ -24,7 +24,7 @@ pub fn run() {
 
             Ok(())
         })
-        .manage(agents::sidecar::create_registry())
+        .manage(agents::sidecar_pool::SidecarPool::new())
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
@@ -52,6 +52,7 @@ pub fn run() {
             commands::workflow::save_artifact_content,
             commands::workflow::get_agent_prompt,
             commands::lifecycle::has_running_agents,
+            commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
@@ -69,6 +70,16 @@ pub fn run() {
                 let _ = window.emit("close-requested", ());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Shutdown all persistent sidecars on app exit
+                use tauri::Manager;
+                let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
+                // Use a blocking approach since we're in the exit handler
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(pool.shutdown_all());
+            }
+        });
 }

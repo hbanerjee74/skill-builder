@@ -142,6 +142,10 @@ export const hasRunningAgents = () =>
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
 
+/** Shut down the persistent sidecar process for a skill (fire-and-forget). */
+export const cleanupSkillSidecar = (skillName: string) =>
+  invoke<void>("cleanup_skill_sidecar", { skillName });
+
 // --- Artifacts ---
 
 export interface ArtifactRow {

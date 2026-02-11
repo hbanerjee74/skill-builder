@@ -1,9 +1,8 @@
-use crate::agents::sidecar::AgentRegistry;
+use crate::agents::sidecar_pool::SidecarPool;
 
 #[tauri::command]
 pub async fn has_running_agents(
-    state: tauri::State<'_, AgentRegistry>,
+    pool: tauri::State<'_, SidecarPool>,
 ) -> Result<bool, String> {
-    let reg = state.lock().await;
-    Ok(!reg.agents.is_empty())
+    Ok(pool.has_running().await)
 }
