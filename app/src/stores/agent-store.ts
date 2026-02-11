@@ -64,6 +64,7 @@ export interface AgentRun {
   contextHistory: ContextSnapshot[];
   contextWindow: number;
   compactionEvents: CompactionEvent[];
+  thinkingEnabled: boolean;
 }
 
 interface AgentState {
@@ -102,6 +103,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextHistory: [],
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
+                thinkingEnabled: false,
               },
         },
         activeAgentId: agentId,
@@ -126,6 +128,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextHistory: [],
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
+                thinkingEnabled: false,
               },
         },
         // Do NOT set activeAgentId — chat components manage their own lifecycle
@@ -145,6 +148,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         contextHistory: [],
         contextWindow: extendedContext ? 1_000_000 : 200_000,
         compactionEvents: [],
+        thinkingEnabled: false,
       };
 
       // Extract token usage and cost from result messages
@@ -224,6 +228,17 @@ export const useAgentStore = create<AgentState>((set) => ({
         ];
       }
 
+      // Extract thinkingEnabled from config messages
+      let thinkingEnabled = run.thinkingEnabled;
+      if (message.type === "config") {
+        const configObj = (raw as Record<string, unknown>).config as
+          | { maxThinkingTokens?: number }
+          | undefined;
+        if (configObj?.maxThinkingTokens && configObj.maxThinkingTokens > 0) {
+          thinkingEnabled = true;
+        }
+      }
+
       // Extract session_id and model from init messages
       let sessionId = run.sessionId;
       let model = run.model;
@@ -248,6 +263,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             tokenUsage,
             totalCost,
             sessionId,
+            thinkingEnabled,
             contextHistory,
             contextWindow,
             compactionEvents,

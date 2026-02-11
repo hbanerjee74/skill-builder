@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { useAgentStore } from "@/stores/agent-store";
-import { useSettingsStore } from "@/stores/settings-store";
 import { AgentStatusHeader } from "@/components/agent-status-header";
 
 describe("AgentStatusHeader", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
-    useSettingsStore.getState().reset();
   });
 
   it("returns null when no run exists", () => {
@@ -23,17 +21,25 @@ describe("AgentStatusHeader", () => {
     expect(screen.getByText("Sonnet")).toBeInTheDocument();
   });
 
-  it("shows Thinking badge when extendedThinking is enabled", () => {
+  it("shows Thinking badge when config has maxThinkingTokens", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useSettingsStore.getState().setSettings({ extendedThinking: true });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "config",
+      raw: { type: "config", config: { maxThinkingTokens: 32000 } },
+      timestamp: Date.now(),
+    });
     render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.getByText("Thinking")).toBeInTheDocument();
   });
 
-  it("does NOT show Thinking badge when extendedThinking is disabled", () => {
+  it("does NOT show Thinking badge when config has no maxThinkingTokens", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    useSettingsStore.getState().setSettings({ extendedThinking: false });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "config",
+      raw: { type: "config", config: {} },
+      timestamp: Date.now(),
+    });
     render(<AgentStatusHeader agentId="test-agent" />);
 
     expect(screen.queryByText("Thinking")).not.toBeInTheDocument();
