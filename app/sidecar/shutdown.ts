@@ -1,0 +1,33 @@
+export interface AbortState {
+  aborted: boolean;
+  abortController: AbortController;
+}
+
+/**
+ * Create a fresh abort state for shutdown handling.
+ */
+export function createAbortState(): AbortState {
+  return {
+    aborted: false,
+    abortController: new AbortController(),
+  };
+}
+
+/**
+ * Handle a shutdown signal (SIGTERM / SIGINT).
+ * Sets the aborted flag, calls abort(), and schedules a force exit.
+ *
+ * @param state   The abort state to mutate
+ * @param exitFn  Function to call for force-exit (defaults to process.exit)
+ * @param timerFn Function to schedule the force-exit (defaults to setTimeout)
+ */
+export function handleShutdown(
+  state: AbortState,
+  exitFn: (code: number) => void = (code) => process.exit(code),
+  timerFn: (cb: () => void, ms: number) => { unref(): void } = (cb, ms) => setTimeout(cb, ms),
+) {
+  state.aborted = true;
+  state.abortController.abort();
+  // Force exit after 3s if SDK doesn't respond to abort
+  timerFn(() => exitFn(0), 3000).unref();
+}

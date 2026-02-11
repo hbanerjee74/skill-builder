@@ -187,7 +187,7 @@ The desktop app (`app/`) is a **Tauri v2** application providing a GUI for the s
 ```bash
 cd app
 npm install
-npm run tauri dev     # Dev mode (hot reload)
+npm run dev           # Dev mode (hot reload)
 npm run tauri build   # Production build
 ```
 
@@ -201,6 +201,18 @@ npm test              # Frontend unit tests (Vitest)
 cd src-tauri && cargo test   # Rust tests
 npm run test:e2e      # E2E tests (Playwright)
 ```
+
+### Parallel Worktree Development
+
+To work on multiple issues simultaneously using git worktrees, set `DEV_PORT` to avoid port conflicts:
+
+```bash
+# In each worktree's app/ directory:
+DEV_PORT=1417 npm run dev   # worktree for VD-417
+DEV_PORT=1405 npm run dev   # worktree for VD-405
+```
+
+**Port convention for agents:** use `1000 + issue_number` for issues < 1000, or the issue number directly for >= 1000. Without `DEV_PORT`, the default port 1420 is used.
 
 ## Development (Plugin)
 

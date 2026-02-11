@@ -242,9 +242,22 @@ The app replicates the plugin workflow. Each step is a state in the workflow sta
 cd app
 npm install
 cd sidecar && npm install && npm run build  # Bundle sidecar
-cd .. && npm run tauri dev                   # Dev mode (hot reload)
+cd .. && npm run dev                         # Dev mode (hot reload)
 npm run tauri build                          # Production build
 ```
+
+### Parallel Worktree Development
+
+To run multiple worktrees simultaneously, set `DEV_PORT` to a unique port per worktree:
+
+```bash
+DEV_PORT=1417 npm run dev   # worktree for VD-417
+DEV_PORT=1405 npm run dev   # worktree for VD-405
+```
+
+Convention for agents: use `1000 + issue_number` for issues < 1000, or the issue number directly for issues >= 1000.
+
+Without `DEV_PORT`, the default port 1420 is used.
 
 ## Distribution
 
