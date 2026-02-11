@@ -32,7 +32,7 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("settingSources");
   });
 
-  it("prefers agentName when both agentName and model are present", () => {
+  it("passes both agent + model when both agentName and model are present (model overrides front-matter)", () => {
     const config = makeConfig({
       agentName: "my-agent",
       model: "claude-sonnet-4-20250514",
@@ -41,7 +41,8 @@ describe("buildQueryOptions", () => {
     const opts = buildQueryOptions(config, ac);
 
     expect(opts).toHaveProperty("agent", "my-agent");
-    expect(opts).not.toHaveProperty("model");
+    expect(opts).toHaveProperty("settingSources", ["project"]);
+    expect(opts).toHaveProperty("model", "claude-sonnet-4-20250514");
   });
 
   it("defaults maxTurns to 50 when not specified", () => {

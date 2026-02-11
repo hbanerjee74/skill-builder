@@ -1,4 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState, handleShutdown } from "./shutdown.js";
@@ -51,4 +53,12 @@ async function main() {
   }
 }
 
-main();
+// Only run when executed directly (not when imported for testing).
+// In ESM we check if the resolved argv[1] matches this module's file URL.
+const isDirectRun =
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  main();
+}

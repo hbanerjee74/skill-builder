@@ -301,20 +301,39 @@ export default function WorkflowPage() {
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillsPath, skillName]);
 
+  // Check if a step should be auto-completed in debug mode
+  const isDebugAutoCompleteStep = useCallback((stepId: number) => {
+    const cfg = STEP_CONFIGS[stepId];
+    if (!cfg) return false;
+    // Auto-complete: human review (1, 3), validate (6), test (7), refinement (8)
+    return cfg.type === "human" || stepId === 6 || stepId === 7 || cfg.type === "refinement";
+  }, []);
+
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
-    if (currentStep < steps.length - 1) {
-      const nextStep = currentStep + 1;
-      setCurrentStep(nextStep);
+    if (currentStep >= steps.length - 1) return;
+
+    let nextStep = currentStep + 1;
+    setCurrentStep(nextStep);
+
+    if (debugMode) {
+      // In debug mode, skip through auto-completable steps in a chain
+      while (nextStep < steps.length && isDebugAutoCompleteStep(nextStep)) {
+        updateStepStatus(nextStep, "completed");
+        toast.success(`Step ${nextStep + 1} auto-completed (debug)`);
+        if (nextStep >= steps.length - 1) return; // Last step, stop
+        nextStep += 1;
+        setCurrentStep(nextStep);
+      }
+      // Now nextStep is an agent or reasoning step — auto-start effect will handle it
+    } else {
+      // Normal mode: set human steps to waiting_for_user
       const nextConfig = STEP_CONFIGS[nextStep];
       if (nextConfig?.type === "human") {
         updateStepStatus(nextStep, "waiting_for_user");
       }
     }
-  }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
-
-  // Debug mode: auto-advance agent steps only (not human review steps)
-  // Human review steps (1 and 3) always require manual review.
+  }, [currentStep, steps.length, setCurrentStep, updateStepStatus, debugMode, isDebugAutoCompleteStep]);
 
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -355,17 +374,20 @@ export default function WorkflowPage() {
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
-      toast.error(`Step ${step + 1} failed`);
+      toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
   // (Review agent logic removed — direct completion is faster and sufficient)
 
+  // Debug auto-start ref — tracks which step we've already auto-started
+  const debugAutoStartedRef = useRef<number | null>(null);
+
   // --- Step handlers ---
 
   const handleStartAgentStep = async (resume = false) => {
     if (!domain || !workspacePath) {
-      toast.error("Missing domain or workspace path");
+      toast.error("Missing domain or workspace path", { duration: Infinity });
       return;
     }
 
@@ -387,7 +409,8 @@ export default function WorkflowPage() {
       updateStepStatus(currentStep, "error");
       setRunning(false);
       toast.error(
-        `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to start agent: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -419,7 +442,8 @@ export default function WorkflowPage() {
       toast.success(`Reset to step ${currentStep + 1}`);
     } catch (err) {
       toast.error(
-        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`
+        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
       );
     }
   };
@@ -465,10 +489,40 @@ export default function WorkflowPage() {
       })
       .then((content) => {
         setReviewContent(content ?? null);
-        if (!content) toast.error("Failed to reload file");
+        if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
       .finally(() => setLoadingReview(false));
   };
+
+  // Debug mode: auto-start agent steps when landing on a pending agent step.
+  // This fires after advanceToNextStep sets the current step to an agent/reasoning step.
+  useEffect(() => {
+    if (!debugMode || !hydrated || isRunning) return;
+
+    const stepStatus = steps[currentStep]?.status;
+    if (stepStatus !== "pending") return;
+
+    const cfg = STEP_CONFIGS[currentStep];
+    if (!cfg || cfg.type === "human" || cfg.type === "refinement") return;
+
+    // Prevent re-triggering for the same step (guards against re-renders)
+    if (debugAutoStartedRef.current === currentStep) return;
+    debugAutoStartedRef.current = currentStep;
+
+    // Agent step in debug mode — auto-start it after a small delay
+    // so React state updates settle before we start the agent.
+    // Reasoning step auto-start is handled inside reasoning-chat.tsx.
+    if (cfg.type === "agent") {
+      const timer = setTimeout(() => {
+        const store = useWorkflowStore.getState();
+        if (store.currentStep !== currentStep || store.steps[currentStep]?.status !== "pending") return;
+        if (store.isRunning) return;
+        handleStartAgentStep();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debugMode, currentStep, hydrated, isRunning, steps]);
 
   const currentStepDef = steps[currentStep];
   const canStart =

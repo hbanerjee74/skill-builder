@@ -153,7 +153,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
     await user.click(debugSwitch);
 
     await waitFor(() => {
@@ -197,7 +197,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
     await user.click(debugSwitch);
 
     await waitFor(() => {
@@ -221,11 +221,11 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const debugSwitch = screen.getByRole("switch", { name: /Auto-answer with recommendations/i });
+    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
     await user.click(debugSwitch);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error");
+      expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
     });
   });
 
