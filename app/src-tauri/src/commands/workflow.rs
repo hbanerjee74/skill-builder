@@ -337,7 +337,7 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     }
 }
 
-fn build_betas(extended_context: bool, thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
+pub fn build_betas(extended_context: bool, thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
     let mut betas = Vec::new();
     if extended_context {
         betas.push("context-1m-2025-08-07".to_string());
