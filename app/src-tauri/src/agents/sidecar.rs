@@ -95,6 +95,20 @@ pub async fn spawn_sidecar(
         reg.agents.insert(agent_id.clone(), AgentEntry { child, pid });
     }
 
+    // Emit redacted config to frontend so the agent output panel shows allowed tools
+    {
+        let mut config_val = serde_json::to_value(&config).unwrap_or_default();
+        if let Some(obj) = config_val.as_object_mut() {
+            obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
+            obj.remove("prompt"); // Don't clutter the UI with the full prompt
+        }
+        let config_event = serde_json::json!({
+            "type": "config",
+            "config": config_val,
+        });
+        events::handle_sidecar_message(&app_handle, &agent_id, &config_event.to_string());
+    }
+
     // Open a log file for this agent run so users can `tail -f` it
     let log_file = open_agent_log(Path::new(&config.cwd), &skill_name, &step_label, &config_json);
 
