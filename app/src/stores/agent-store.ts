@@ -186,15 +186,19 @@ export const useAgentStore = create<AgentState>((set) => ({
       // Extract per-turn context usage from assistant messages
       if (message.type === "assistant") {
         const betaMsg = (raw as Record<string, unknown>).message as
-          | { usage?: { input_tokens?: number; output_tokens?: number } }
+          | { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
           | undefined;
         if (betaMsg?.usage) {
           const turn = run.messages.filter((m) => m.type === "assistant").length + 1;
+          // Total context = non-cached + cache-read + cache-creation tokens
+          const totalInput = (betaMsg.usage.input_tokens ?? 0)
+            + (betaMsg.usage.cache_read_input_tokens ?? 0)
+            + (betaMsg.usage.cache_creation_input_tokens ?? 0);
           contextHistory = [
             ...contextHistory,
             {
               turn,
-              inputTokens: betaMsg.usage.input_tokens ?? 0,
+              inputTokens: totalInput,
               outputTokens: betaMsg.usage.output_tokens ?? 0,
             },
           ];

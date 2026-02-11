@@ -308,6 +308,33 @@ describe("context tracking", () => {
     expect(run.contextHistory[1].inputTokens).toBe(25000);
   });
 
+  it("includes cache tokens in context snapshot inputTokens", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const msg: AgentMessage = {
+      type: "assistant",
+      content: "Cached turn",
+      raw: {
+        message: {
+          usage: {
+            input_tokens: 7,
+            output_tokens: 300,
+            cache_read_input_tokens: 48000,
+            cache_creation_input_tokens: 2000,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    };
+    useAgentStore.getState().addMessage("agent-1", msg);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.contextHistory).toHaveLength(1);
+    // Total input = 7 + 48000 + 2000 = 50007
+    expect(run.contextHistory[0].inputTokens).toBe(50007);
+    expect(run.contextHistory[0].outputTokens).toBe(300);
+  });
+
   it("does not add context snapshot for assistant messages without usage", () => {
     useAgentStore.getState().startRun("agent-1", "sonnet");
 
