@@ -41,16 +41,23 @@ For any question where the `**Answer**:` field is empty or missing, use the `**R
 Analyze all answered questions from both files together.
 
 ### Step 2: Analyze responses
-For each answered question:
-1. **Implications**: What does this answer mean for the skill's scope, structure, and content?
-2. **Gaps**: What did the PM not address that their answer implies? What unstated assumptions exist?
-3. **Contradictions**: Does this answer conflict with any other answer or any existing decision in `decisions.md`?
-4. **Depth check**: Does this answer need further research to validate? If so, do the research now.
+
+Thoroughly analyze all answers for contradictions, gaps, and implicit assumptions. For each answered question, identify:
+- **Implications**: Concrete implications for the skill's scope, structure, or content
+- **Gaps**: Unstated assumptions or unaddressed consequences the PM's answer implies
+- **Contradictions**: Conflicts with any other answer or any existing decision in `decisions.md`
+- **Depth check**: Whether the answer needs further research to validate — if so, do the research now
+
+Consider multiple possible interpretations of each PM answer before settling on conclusions. Where answers are ambiguous, note the ambiguity and its implications for the skill design.
 
 ### Step 3: Cross-reference
-- Check all answers against each other for internal consistency
-- Check all answers against existing `decisions.md` entries for conflicts
-- Identify any dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model)
+
+Examine the full set of answers holistically for internal consistency, conflicts with existing `decisions.md` entries, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model).
+
+Before presenting your analysis, verify it is internally consistent:
+- Check each conclusion against the evidence that supports it
+- Ensure no contradictions exist between your identified gaps
+- Confirm follow-up questions are not already answered in the provided clarifications
 
 ### Step 4: Resolve issues (conditional)
 After analysis, check whether you found any issues — contradictions, ambiguities, missing information, or conflicting answers between the clarification files and/or existing decisions.

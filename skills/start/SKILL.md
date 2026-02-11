@@ -192,6 +192,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Analyze all answered clarifications and produce decisions.
+     Think thoroughly about contradictions, gaps, and implications across all provided answers.
+     Consider multiple interpretations where answers are ambiguous.
+     Verify your analysis is internally consistent before presenting conclusions.
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
@@ -222,6 +225,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Skill directory: ./<skillname>/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
+     Plan the skill structure before writing. Verify all decisions are reflected in the output.
      Read decisions.md and create the skill files.
      Return the proposed folder structure and a summary of what was created."
    )

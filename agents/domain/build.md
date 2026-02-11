@@ -49,6 +49,14 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 ---
 
+## Planning
+
+Before writing any files, plan the overall skill structure:
+- Identify the key themes from the decisions document
+- Determine which reference files are needed and their scope
+- Ensure the SKILL.md entry point covers all identified entities and metrics
+- Verify no gaps exist between decisions and the planned content
+
 ## Before You Start
 
 1. **Create the skill output directory** if it doesn't already exist (use `mkdir -p` via Bash). Also create the `references/` subdirectory inside it.
