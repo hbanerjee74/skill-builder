@@ -85,10 +85,3 @@ claude --plugin-dir .
 - **`references/shared-context.md`**: Read by every agent. Changes here affect all agents.
 - **Plugin caching**: Plugins are copied to a cache dir on install. All file references must be within the plugin directory or in the user's CWD.
 
-## Reference Links
-
-- [Claude Code Plugin docs](https://code.claude.com/docs/en/plugins)
-- [Plugin reference](https://code.claude.com/docs/en/plugins-reference)
-- [Subagent docs](https://code.claude.com/docs/en/sub-agents)
-- [Hooks reference](https://code.claude.com/docs/en/hooks)
-- [Skills docs](https://code.claude.com/docs/en/skills)
