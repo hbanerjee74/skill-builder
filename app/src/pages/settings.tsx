@@ -112,7 +112,7 @@ export default function SettingsPage() {
         extendedContext: settings.extended_context,
       })
       setSaved(true)
-      setTimeout(() => setSaved(false), 1000)
+      setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       toast.error(`Failed to save: ${err}`)
     }
