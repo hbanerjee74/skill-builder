@@ -39,19 +39,23 @@ function parseStepProgress(currentStep: string | null): number {
 }
 
 /**
- * Returns true if the skill has completed the Build step (step 5, 0-indexed).
- * A skill has build output if:
- * - current_step parses to step >= 6 (past the Build step), OR
- * - status is "completed"
+ * Returns true only when all 9 workflow steps are complete.
+ * Download should be gated on full completion -- partial progress
+ * (e.g. past the Build step) is not enough.
+ *
+ * A skill's workflow is 100% complete when:
+ * - status is "completed", OR
+ * - current_step text matches "completed", OR
+ * - current_step parses to step 8 (the last step, 0-indexed)
  */
-export function hasBuildOutput(skill: SkillSummary): boolean {
+export function isWorkflowComplete(skill: SkillSummary): boolean {
   if (skill.status === "completed") return true
   if (!skill.current_step) return false
+  if (/completed/i.test(skill.current_step)) return true
   const match = skill.current_step.match(/step\s*(\d+)/i)
   if (match) {
-    return Number(match[1]) >= 6
+    return Number(match[1]) >= 8
   }
-  if (/completed/i.test(skill.current_step)) return true
   return false
 }
 
@@ -116,7 +120,7 @@ export default function SkillCard({
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step)
   const relativeTime = formatRelativeTime(skill.last_modified)
-  const canDownload = hasBuildOutput(skill)
+  const canDownload = isWorkflowComplete(skill)
 
   return (
     <ContextMenu>
@@ -186,7 +190,14 @@ export default function SkillCard({
           onSelect={() => canDownload && onDownload?.(skill)}
         >
           <Download className="size-4" />
-          Download .skill
+          <span className="flex flex-col">
+            <span>Download .skill</span>
+            {!canDownload && (
+              <span className="text-xs text-muted-foreground">
+                Complete all workflow steps to download
+              </span>
+            )}
+          </span>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
