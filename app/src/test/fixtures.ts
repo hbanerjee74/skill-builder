@@ -11,6 +11,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     preferred_model: null,
     debug_mode: false,
     extended_context: false,
+    extended_thinking: false,
     splash_shown: false,
     ...overrides,
   };

@@ -165,7 +165,7 @@ export const useAgentStore = create<AgentState>((set) => ({
             output: usage.output_tokens ?? 0,
           };
         }
-        const cost = raw.cost_usd as number | undefined;
+        const cost = raw.total_cost_usd as number | undefined;
         if (cost !== undefined) {
           totalCost = cost;
         }

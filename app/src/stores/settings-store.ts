@@ -7,6 +7,7 @@ interface SettingsState {
   preferredModel: string | null;
   debugMode: boolean;
   extendedContext: boolean;
+  extendedThinking: boolean;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -19,6 +20,7 @@ const initialState = {
   preferredModel: null,
   debugMode: false,
   extendedContext: false,
+  extendedThinking: false,
   isConfigured: false,
 };
 

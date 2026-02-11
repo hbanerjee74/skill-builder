@@ -5,6 +5,7 @@ import {
   XCircle,
   Clock,
   Cpu,
+  Brain,
 } from "lucide-react";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import {
   getLatestContextTokens,
   getContextUtilization,
 } from "@/stores/agent-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 export function formatElapsed(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -64,6 +66,7 @@ export function AgentStatusHeader({
   title = "Agent Output",
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
+  const extendedThinking = useSettingsStore((s) => s.extendedThinking);
 
   // Force re-render every second while running so elapsed time updates
   const [, setTick] = useState(0);
@@ -114,6 +117,12 @@ export function AgentStatusHeader({
         {turnCount > 0 && (
           <Badge variant="secondary" className="text-xs">
             Turn {turnCount}
+          </Badge>
+        )}
+        {extendedThinking && (
+          <Badge variant="secondary" className="gap-1 text-xs">
+            <Brain className="size-3" />
+            Thinking
           </Badge>
         )}
         {run.tokenUsage && (

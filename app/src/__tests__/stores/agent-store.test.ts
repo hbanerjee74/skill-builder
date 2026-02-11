@@ -71,7 +71,7 @@ describe("useAgentStore", () => {
       content: "Done",
       raw: {
         usage: { input_tokens: 1500, output_tokens: 500 },
-        cost_usd: 0.042,
+        total_cost_usd: 0.042,
       },
       timestamp: Date.now(),
     };
@@ -92,7 +92,7 @@ describe("useAgentStore", () => {
       content: "Done",
       raw: {
         usage: { input_tokens: 100 },
-        // no cost_usd
+        // no total_cost_usd
       },
       timestamp: Date.now(),
     };
@@ -111,7 +111,7 @@ describe("useAgentStore", () => {
       type: "result",
       content: "Done",
       raw: {
-        cost_usd: 0.01,
+        total_cost_usd: 0.01,
       },
       timestamp: Date.now(),
     };
@@ -354,7 +354,7 @@ describe("context tracking", () => {
     const msg: AgentMessage = {
       type: "result",
       content: "Done",
-      raw: { cost_usd: 0.01 },
+      raw: { total_cost_usd: 0.01 },
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
