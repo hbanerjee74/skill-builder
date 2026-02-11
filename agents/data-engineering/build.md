@@ -1,6 +1,6 @@
 ---
 name: de-build
-description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files
+description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -33,6 +33,14 @@ If the coordinator's prompt contains `[RERUN MODE]`:
 If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
 
 ---
+
+## Planning
+
+Before writing any files, plan the overall skill structure:
+- Identify the key themes from the decisions document
+- Determine which reference files are needed and their scope
+- Ensure the SKILL.md entry point covers all identified entities and metrics
+- Verify no gaps exist between decisions and the planned content
 
 ## Before You Start
 

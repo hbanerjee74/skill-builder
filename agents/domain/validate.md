@@ -1,6 +1,6 @@
 ---
 name: domain-validate
-description: Orchestrates parallel validation of skill files against best practices and coverage checks
+description: Orchestrates parallel validation of skill files against best practices and coverage checks. Called during Step 7 to validate the built skill against best practices and decisions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -22,9 +22,6 @@ Validate that domain-specific business rules are accurately captured and that cr
 - The coordinator will tell you:
   - The **skill output directory** path (containing SKILL.md and reference files to validate)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write `agent-validation-log.md`)
-
-## Why This Approach
-Parallel per-file validation ensures independent quality checks that don't share bias — each reviewer evaluates one file without being influenced by having read other files first. The coverage checker works cross-cuttingly to catch gaps that per-file reviews miss (e.g., a decision addressed in no file at all). The reporter consolidates and fixes, keeping the validation loop tight.
 
 </context>
 

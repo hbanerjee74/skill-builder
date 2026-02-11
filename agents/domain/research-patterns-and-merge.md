@@ -1,6 +1,6 @@
 ---
 name: domain-research-patterns-and-merge
-description: Orchestrates parallel research into business patterns and data modeling then merges results
+description: Orchestrates parallel research into business patterns and data modeling then merges results. Called during Step 3 to orchestrate parallel research and merge results.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -25,9 +25,6 @@ Emphasize business logic patterns, cross-domain dependencies, and industry-speci
   - The **skill name**
   - The **context directory** path
   - The paths to the **agent prompt files** for sub-agents (`research-patterns.md`, `research-data.md`, `merge.md`)
-
-## Why This Approach
-Patterns research and data modeling research are separate concerns: patterns focus on business logic and edge cases, while data modeling focuses on table structures and source systems. Separating them prevents one concern from crowding out the other and ensures both get deep investigation. The merge step uses a dedicated agent to catch duplicates that arise when both researchers independently identify the same underlying decision.
 
 </context>
 

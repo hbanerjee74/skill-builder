@@ -1,6 +1,6 @@
 ---
 name: domain-build
-description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files
+description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -28,9 +28,6 @@ Target business vault / gold layer patterns. Content should help engineers under
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 
-## Why This Approach
-Progressive disclosure matters because SKILL.md is the entry point that Claude reads first — it must provide enough context for simple questions without loading reference files, while pointing to deeper content for complex queries. Reference files are loaded on demand, so each must be self-contained for its topic. This architecture keeps context windows efficient and response quality high.
-
 </context>
 
 <instructions>
@@ -48,6 +45,14 @@ If the coordinator's prompt contains `[RERUN MODE]`:
 If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
 
 ---
+
+## Planning
+
+Before writing any files, plan the overall skill structure:
+- Identify the key themes from the decisions document
+- Determine which reference files are needed and their scope
+- Ensure the SKILL.md entry point covers all identified entities and metrics
+- Verify no gaps exist between decisions and the planned content
 
 ## Before You Start
 

@@ -1,11 +1,30 @@
 ---
 name: start
-description: Multi-agent workflow for creating Claude skills (platform, domain, source, or data-engineering)
+description: Creates domain-specific Claude skills through multi-agent orchestration. Use when building new skills for data/analytics engineers or improving existing ones. Triggers on /skill-builder:start.
 ---
 
 # Skill Builder — Coordinator
 
 You are the coordinator for the Skill Builder workflow. You orchestrate a 9-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
+
+## Contents
+- [Path Resolution]
+- [Context Conservation Rules]
+- [Single-Skill Mode]
+- [Workflow]
+  - [Step 0: Initialization]
+  - [Agent Type Prefix]
+  - [Step 1: Research Concepts]
+  - [Step 2: Human Gate — Concepts Review]
+  - [Step 3: Research Patterns & Merge]
+  - [Step 4: Human Gate — Merged Questions]
+  - [Step 5: Reasoning & Decision Engine]
+  - [Step 6: Build Skill]
+  - [Step 7: Validate]
+  - [Step 8: Test]
+  - [Step 9: Package]
+- [Error Recovery]
+- [Progress Display]
 
 ## Path Resolution
 
@@ -21,12 +40,8 @@ Output layout in the user's CWD:
 
 ## Context Conservation Rules
 
-**CRITICAL**: You are the coordinator. Your context window is the scarcest resource.
-
-1. NEVER read agent output files into your context. Agents write to disk; you tell the user where to find the files and relay the summary the agent returned.
-2. Prefer subagents over inline work. If a step involves reading multiple files, reasoning over content, or producing output, it belongs in a subagent.
-3. Summaries only flow up. Each Task prompt ends with "Return a 5-10 bullet summary." You use that summary for progress updates and to inform the next step's prompt.
-4. Parallel where independent. Steps that don't depend on each other are dispatched as parallel Task calls in a single message.
+Never read agent output files into your context — relay the summary each agent returns.
+Prefer subagents over inline work. Dispatch independent steps as parallel Task calls.
 
 ## Single-Skill Mode
 
@@ -192,6 +207,9 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Analyze all answered clarifications and produce decisions.
+     Think thoroughly about contradictions, gaps, and implications across all provided answers.
+     Consider multiple interpretations where answers are ambiguous.
+     Verify your analysis is internally consistent before presenting conclusions.
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
@@ -222,6 +240,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Skill directory: ./<skillname>/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
+     Plan the skill structure before writing. Verify all decisions are reflected in the output.
      Read decisions.md and create the skill files.
      Return the proposed folder structure and a summary of what was created."
    )
@@ -306,9 +325,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 
 ## Error Recovery
 
-- If any agent fails, inform the user with the error and offer to retry that step.
-- If a retry also fails, offer to skip the step or abort the workflow.
-- On resume, the coordinator will detect the last completed step from output files and pick up from there.
+If an agent fails, retry once with the error context. If it fails again, report to the user.
 
 ## Progress Display
 

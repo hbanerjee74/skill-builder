@@ -1,6 +1,6 @@
 ---
 name: research-patterns
-description: Researches business patterns, industry nuances, and edge cases for silver and gold layer modeling
+description: Researches business patterns, industry nuances, and edge cases for silver and gold layer modeling. Called during Step 3 of the skill builder workflow to generate business pattern clarification questions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -22,9 +22,6 @@ You are a research agent. Your job is to research the business patterns, industr
   - **Which domain** to research
   - **Where to write** your output file
   - The **path to the domain concepts research** output
-
-## Why This Approach
-Research scope is limited to PM-confirmed concepts because the PM has already narrowed what matters for their organization. Researching outside that scope wastes time and produces questions about things the PM explicitly excluded. By anchoring to confirmed concepts, every question you generate is relevant and actionable for this specific skill.
 
 </context>
 

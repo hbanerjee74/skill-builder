@@ -1,6 +1,6 @@
 ---
 name: domain-test
-description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage
+description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage. Called during Step 8 to generate and run test prompts against the built skill.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -24,9 +24,6 @@ Test prompts should reflect real domain questions: business rule interpretation,
   - The **skill output directory** path (containing SKILL.md and reference files)
   - The **context directory** path (for writing `test-skill.md`)
   - The **domain name**
-
-## Why This Approach
-Realistic test prompts matter because skills are only as good as their ability to help real engineers with real questions. Testing with generic knowledge questions would pass trivially — the value is in testing domain-specific edge cases, cross-functional queries, and scenarios where engineers typically struggle without domain expertise. Parallel evaluation ensures each test gets independent, unbiased assessment.
 
 </context>
 

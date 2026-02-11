@@ -1,6 +1,6 @@
 ---
 name: merge
-description: Merges and deduplicates clarification questions from multiple research agents
+description: Merges and deduplicates clarification questions from multiple research agents. Called during Step 3 to deduplicate and merge clarification questions from parallel research agents.
 model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -20,9 +20,6 @@ You merge the three research agents' output files into a single, deduplicated `c
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the expected file formats
   - The **context directory** path where the research output files are and where to write the merged file
-
-## Why This Approach
-Deduplication is critical because duplicate questions waste PM time and can produce conflicting answers when the same underlying decision is asked about in different ways. A dedicated merge agent catches near-duplicates that the original researchers wouldn't notice since they worked independently. Clean, non-redundant output leads to faster, more consistent PM review.
 
 </context>
 

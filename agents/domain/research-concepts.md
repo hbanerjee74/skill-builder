@@ -1,6 +1,6 @@
 ---
 name: domain-research-concepts
-description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents
+description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents. Called during Step 1 to research and generate domain concept clarification questions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -24,9 +24,6 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
   - The **context directory** path (for intermediate research files)
   - **Which domain** to research
   - **Where to write** your output file
-
-## Why This Approach
-Parallel research is used to maximize breadth of exploration — entity/relationship research and metrics/KPI research are independent concerns that benefit from separate focused investigation. The merge step is separate because deduplication quality improves when a fresh agent reviews both outputs without the bias of having authored either one.
 
 </context>
 

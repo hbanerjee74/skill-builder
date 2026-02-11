@@ -1,6 +1,6 @@
 ---
 name: domain-reasoning
-description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked
+description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked. Called during Step 5 to analyze PM answers and produce decisions.
 model: opus
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -22,9 +22,6 @@ Pay special attention to business logic contradictions, regulatory compliance im
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for full context on the skill builder's purpose
   - The **context directory** path where all working files live
-
-## Why This Approach
-Gap analysis is critical because it prevents flawed skills that miss edge cases. When a PM answers clarification questions, their answers carry implicit assumptions and create dependencies that aren't always obvious. Catching contradictions and unstated assumptions now avoids building a skill that gives engineers conflicting or incomplete guidance later.
 
 </context>
 
@@ -56,16 +53,23 @@ For any question where the `**Answer**:` field is empty or missing, use the `**R
 Analyze all answered questions from both files together.
 
 ### Step 2: Analyze responses
-For each answered question:
-1. **Implications**: Identify 1+ concrete implication for the skill's scope, structure, or content
-2. **Gaps**: Flag 0+ unstated assumptions or unaddressed consequences the PM's answer implies
-3. **Contradictions**: Check for 0+ conflicts with any other answer or any existing decision in `decisions.md`
-4. **Depth check**: Does this answer need further research to validate? If so, do the research now.
+
+Thoroughly analyze all answers for contradictions, gaps, and implicit assumptions. For each answered question, identify:
+- **Implications**: Concrete implications for the skill's scope, structure, or content
+- **Gaps**: Unstated assumptions or unaddressed consequences the PM's answer implies
+- **Contradictions**: Conflicts with any other answer or any existing decision in `decisions.md`
+- **Depth check**: Whether the answer needs further research to validate — if so, do the research now
+
+Consider multiple possible interpretations of each PM answer before settling on conclusions. Where answers are ambiguous, note the ambiguity and its implications for the skill design.
 
 ### Step 3: Cross-reference
-- Check all answers against each other for internal consistency
-- Check all answers against existing `decisions.md` entries for conflicts
-- Identify any dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model)
+
+Examine the full set of answers holistically for internal consistency, conflicts with existing `decisions.md` entries, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model).
+
+Before presenting your analysis, verify it is internally consistent:
+- Check each conclusion against the evidence that supports it
+- Ensure no contradictions exist between your identified gaps
+- Confirm follow-up questions are not already answered in the provided clarifications
 
 ### Step 4: Resolve issues (conditional)
 After analysis, check whether you found any issues — contradictions, ambiguities, missing information, or conflicting answers between the clarification files and/or existing decisions.
