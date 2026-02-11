@@ -53,7 +53,7 @@ export const startAgent = (
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null });
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, persistent: true });
 
 // --- Workflow ---
 
@@ -64,14 +64,14 @@ export const runWorkflowStep = (
   workspacePath: string,
   resume?: boolean,
   rerun?: boolean,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false, persistent: true });
 
 export const runReviewStep = (
   skillName: string,
   stepId: number,
   domain: string,
   workspacePath: string,
-) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath });
+) => invoke<string>("run_review_step", { skillName, stepId, domain, workspacePath, persistent: true });
 
 export const packageSkill = (
   skillName: string,
@@ -141,6 +141,10 @@ export const hasRunningAgents = () =>
 
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
+
+/** Shut down the persistent sidecar process for a skill (fire-and-forget). */
+export const cleanupSkillSidecar = (skillName: string) =>
+  invoke<void>("cleanup_skill_sidecar", { skillName });
 
 // --- Artifacts ---
 
