@@ -1,11 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 use super::events;
 use super::sidecar::SidecarConfig;
@@ -13,9 +13,22 @@ use super::sidecar::SidecarConfig;
 /// A persistent Node.js sidecar process that stays alive across multiple agent invocations.
 struct PersistentSidecar {
     child: Child,
-    stdin: tokio::process::ChildStdin,
+    /// Mutex-protected stdin ensures concurrent `send_request` calls serialize their writes,
+    /// preventing interleaved bytes on the wire even though the Node.js side processes
+    /// requests sequentially by `request_id`.
+    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
     pid: u32,
-    request_counter: AtomicU64,
+    /// Handle for the stdout reader task — aborted on shutdown/crash-respawn.
+    stdout_task: JoinHandle<()>,
+    /// Handle for the stderr reader task — aborted on shutdown/crash-respawn.
+    stderr_task: JoinHandle<()>,
+}
+
+/// Abort the reader tasks and drop the sidecar, cleaning up all resources.
+fn cleanup_sidecar(sidecar: PersistentSidecar) {
+    sidecar.stdout_task.abort();
+    sidecar.stderr_task.abort();
+    // `child`, `stdin`, etc. are dropped here — stdin closes, process may receive SIGPIPE.
 }
 
 /// Pool of persistent sidecar processes, one per skill.
@@ -24,50 +37,123 @@ struct PersistentSidecar {
 #[derive(Clone)]
 pub struct SidecarPool {
     sidecars: Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    /// Tracks skills that are currently being spawned to prevent duplicate spawns
+    /// while the pool lock is released during the spawn + sidecar_ready wait.
+    spawning: Arc<Mutex<HashSet<String>>>,
 }
 
 impl SidecarPool {
     pub fn new() -> Self {
         SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
+            spawning: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
     /// Get an existing sidecar for a skill or spawn a new persistent one.
     /// Waits for the `{"type":"sidecar_ready"}` signal before returning.
+    ///
+    /// The pool lock is NOT held during the spawn + ready-wait phase to avoid
+    /// blocking other skills. A per-skill "spawning" guard prevents duplicate spawns.
     pub async fn get_or_spawn(
         &self,
         skill_name: &str,
         app_handle: &tauri::AppHandle,
     ) -> Result<(), String> {
-        let mut pool = self.sidecars.lock().await;
+        // Phase 1: Check if we already have a live sidecar (short lock)
+        {
+            let mut pool = self.sidecars.lock().await;
 
-        // Check if we already have a live sidecar for this skill
-        if let Some(sidecar) = pool.get_mut(skill_name) {
-            // Verify it's still alive by checking if the process has exited
-            match sidecar.child.try_wait() {
-                Ok(Some(_status)) => {
-                    // Process has exited, remove it and fall through to spawn a new one
-                    log::info!(
-                        "Sidecar for '{}' (pid {}) has exited, will respawn",
-                        skill_name,
-                        sidecar.pid
-                    );
-                    pool.remove(skill_name);
+            if let Some(sidecar) = pool.get_mut(skill_name) {
+                // Verify it's still alive by checking if the process has exited
+                match sidecar.child.try_wait() {
+                    Ok(Some(_status)) => {
+                        // Process has exited, remove it and fall through to spawn a new one
+                        log::info!(
+                            "Sidecar for '{}' (pid {}) has exited, will respawn",
+                            skill_name,
+                            sidecar.pid
+                        );
+                        // Issue 3: Abort orphaned reader tasks before removing
+                        if let Some(old) = pool.remove(skill_name) {
+                            cleanup_sidecar(old);
+                        }
+                    }
+                    Ok(None) => {
+                        // Still running — reuse it
+                        log::debug!("Reusing existing sidecar for '{}'", skill_name);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        log::warn!("Error checking sidecar status for '{}': {}", skill_name, e);
+                        // Issue 3: Abort orphaned reader tasks before removing
+                        if let Some(old) = pool.remove(skill_name) {
+                            cleanup_sidecar(old);
+                        }
+                    }
                 }
-                Ok(None) => {
-                    // Still running — reuse it
-                    log::debug!("Reusing existing sidecar for '{}'", skill_name);
+            }
+        } // pool lock released
+
+        // Phase 2: Mark this skill as "spawning" to prevent duplicate spawns
+        {
+            let mut spawning = self.spawning.lock().await;
+            if spawning.contains(skill_name) {
+                // Another task is already spawning this skill. Wait briefly then
+                // check if it appeared in the pool.
+                drop(spawning);
+                // Poll up to 12 seconds (slightly longer than the 10s ready timeout)
+                for _ in 0..120 {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    let pool = self.sidecars.lock().await;
+                    if pool.contains_key(skill_name) {
+                        return Ok(());
+                    }
+                    let sp = self.spawning.lock().await;
+                    if !sp.contains(skill_name) {
+                        // The other spawner finished (possibly with error) and it's no longer
+                        // in the pool — fall through to try spawning ourselves.
+                        break;
+                    }
+                }
+                // Re-check: maybe it appeared while we were waiting
+                let pool = self.sidecars.lock().await;
+                if pool.contains_key(skill_name) {
                     return Ok(());
                 }
-                Err(e) => {
-                    log::warn!("Error checking sidecar status for '{}': {}", skill_name, e);
-                    pool.remove(skill_name);
+                // Try to claim the spawning slot ourselves
+                let mut spawning = self.spawning.lock().await;
+                if spawning.contains(skill_name) {
+                    return Err(format!(
+                        "Timeout waiting for sidecar '{}' to be spawned by another task",
+                        skill_name
+                    ));
                 }
+                spawning.insert(skill_name.to_string());
+            } else {
+                spawning.insert(skill_name.to_string());
             }
         }
 
-        // Spawn a new persistent sidecar
+        // Phase 3: Spawn the sidecar OUTSIDE the pool lock
+        let result = self.do_spawn(skill_name, app_handle).await;
+
+        // Phase 4: Remove from spawning set regardless of outcome
+        {
+            let mut spawning = self.spawning.lock().await;
+            spawning.remove(skill_name);
+        }
+
+        result
+    }
+
+    /// Internal: actually spawn and register a new persistent sidecar.
+    /// Called with no pool lock held.
+    async fn do_spawn(
+        &self,
+        skill_name: &str,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
         let sidecar_path = resolve_sidecar_path(app_handle)?;
         let node_bin = resolve_node_binary().await?;
 
@@ -135,9 +221,11 @@ impl SidecarPool {
 
         log::info!("Persistent sidecar for '{}' is ready (pid {})", skill_name, pid);
 
+        // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
+
         // Spawn stderr reader for logging
         let skill_name_stderr = skill_name.to_string();
-        tokio::spawn(async move {
+        let stderr_task = tokio::spawn(async move {
             let stderr_reader = BufReader::new(stderr);
             let mut lines = stderr_reader.lines();
 
@@ -150,7 +238,7 @@ impl SidecarPool {
         let stdout_pool = self.sidecars.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
-        tokio::spawn(async move {
+        let stdout_task = tokio::spawn(async move {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
@@ -211,17 +299,24 @@ impl SidecarPool {
 
         let sidecar = PersistentSidecar {
             child,
-            stdin,
+            stdin: Arc::new(Mutex::new(stdin)),
             pid,
-            request_counter: AtomicU64::new(0),
+            stdout_task,
+            stderr_task,
         };
 
+        // Re-acquire pool lock to insert the new sidecar
+        let mut pool = self.sidecars.lock().await;
         pool.insert(skill_name.to_string(), sidecar);
         Ok(())
     }
 
     /// Send an agent request to the persistent sidecar for a skill.
     /// The request_id is set to the agent_id so events route to the correct frontend handler.
+    ///
+    /// Issue 1 fix: stdin writes are serialized via `Mutex<ChildStdin>`.
+    /// Issue 4 fix: on any error after `get_or_spawn`, an `agent_exit` event is emitted
+    /// so the frontend never gets stuck in "running" state.
     pub async fn send_request(
         &self,
         skill_name: &str,
@@ -232,17 +327,34 @@ impl SidecarPool {
         // Ensure we have a sidecar running
         self.get_or_spawn(skill_name, app_handle).await?;
 
-        let mut pool = self.sidecars.lock().await;
-        let sidecar = pool.get_mut(skill_name).ok_or_else(|| {
-            format!(
-                "Sidecar for '{}' not found in pool after get_or_spawn",
-                skill_name
-            )
-        })?;
+        // Issue 4: If anything below fails, emit agent_exit so the frontend doesn't hang.
+        let result = self
+            .do_send_request(skill_name, agent_id, config, app_handle)
+            .await;
 
-        sidecar.request_counter.fetch_add(1, Ordering::SeqCst);
+        if let Err(ref e) = result {
+            log::error!(
+                "send_request failed for agent '{}' on skill '{}': {}",
+                agent_id,
+                skill_name,
+                e
+            );
+            events::handle_sidecar_exit(app_handle, agent_id, false);
+        }
 
-        // Build the request message
+        result
+    }
+
+    /// Internal: perform the actual request send. Separated so `send_request` can
+    /// emit `agent_exit` on error.
+    async fn do_send_request(
+        &self,
+        skill_name: &str,
+        agent_id: &str,
+        config: SidecarConfig,
+        app_handle: &tauri::AppHandle,
+    ) -> Result<(), String> {
+        // Build the request message (before acquiring any lock)
         let request = serde_json::json!({
             "type": "agent_request",
             "request_id": agent_id,
@@ -271,24 +383,39 @@ impl SidecarPool {
             events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
         }
 
-        // Write request to stdin
-        sidecar
-            .stdin
-            .write_all(request_line.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to write to sidecar stdin: {}", e))?;
+        // Get a clone of the Arc<Mutex<ChildStdin>> — hold pool lock only briefly
+        let (stdin_handle, pid) = {
+            let pool = self.sidecars.lock().await;
+            let sidecar = pool.get(skill_name).ok_or_else(|| {
+                format!(
+                    "Sidecar for '{}' not found in pool after get_or_spawn",
+                    skill_name
+                )
+            })?;
+            (sidecar.stdin.clone(), sidecar.pid)
+        };
 
-        sidecar
-            .stdin
-            .flush()
-            .await
-            .map_err(|e| format!("Failed to flush sidecar stdin: {}", e))?;
+        // Issue 1: Write to stdin under the per-sidecar Mutex. This serializes
+        // concurrent writes to the same skill's sidecar while allowing different
+        // skills to write fully in parallel.
+        {
+            let mut stdin = stdin_handle.lock().await;
+            stdin
+                .write_all(request_line.as_bytes())
+                .await
+                .map_err(|e| format!("Failed to write to sidecar stdin: {}", e))?;
+
+            stdin
+                .flush()
+                .await
+                .map_err(|e| format!("Failed to flush sidecar stdin: {}", e))?;
+        }
 
         log::info!(
             "Sent agent request '{}' to persistent sidecar for '{}' (pid {})",
             agent_id,
             skill_name,
-            sidecar.pid
+            pid
         );
 
         Ok(())
@@ -306,10 +433,17 @@ impl SidecarPool {
                 sidecar.pid
             );
 
+            // Issue 3: Abort reader tasks before shutdown
+            sidecar.stdout_task.abort();
+            sidecar.stderr_task.abort();
+
             // Send shutdown message
             let shutdown_msg = "{\"type\":\"shutdown\"}\n";
-            let _ = sidecar.stdin.write_all(shutdown_msg.as_bytes()).await;
-            let _ = sidecar.stdin.flush().await;
+            {
+                let mut stdin = sidecar.stdin.lock().await;
+                let _ = stdin.write_all(shutdown_msg.as_bytes()).await;
+                let _ = stdin.flush().await;
+            }
 
             // Wait up to 3 seconds for graceful exit
             let wait_result = tokio::time::timeout(
@@ -505,6 +639,13 @@ mod tests {
         let pool = SidecarPool::new();
         let sidecars = pool.sidecars.lock().await;
         assert!(sidecars.is_empty(), "Pool should be empty after creation");
+    }
+
+    #[tokio::test]
+    async fn test_spawning_set_empty_after_init() {
+        let pool = SidecarPool::new();
+        let spawning = pool.spawning.lock().await;
+        assert!(spawning.is_empty(), "Spawning set should be empty after creation");
     }
 
     #[tokio::test]
