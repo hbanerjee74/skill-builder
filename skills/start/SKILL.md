@@ -16,7 +16,6 @@ PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
 The shared context file is at: ${PLUGIN_ROOT}/references/shared-context.md
 
 Output layout in the user's CWD:
-- `./workflow-state.md` — session state
 - `./context/` — working files (clarifications, decisions, logs)
 - `./<skillname>/` — the deployable skill (SKILL.md + references/)
 
@@ -56,40 +55,44 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 3. Derive the skill name from the answer (lowercase, kebab-case, e.g., "sales-pipeline")
 4. Confirm with the user: "I'll create the skill as `<skillname>`. Does this name work?"
 
-5. **Detect start mode** by checking the filesystem:
+5. **Detect start mode** by scanning the filesystem for output artifacts:
 
-   **Mode A — Resume** (`./workflow-state.md` exists):
+   Check for these files in order to determine the highest completed step:
+
+   | Step | Output File | Meaning |
+   |------|------------|---------|
+   | 1 | `./context/clarifications-concepts.md` | Research Concepts complete |
+   | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review — Concepts complete |
+   | 3 | `./context/clarifications.md` | Research Patterns & Merge complete |
+   | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Patterns complete |
+   | 5 | `./context/decisions.md` | Reasoning complete |
+   | 6 | `./<skillname>/SKILL.md` | Build complete |
+   | 7 | `./context/agent-validation-log.md` | Validate complete |
+   | 8 | `./context/test-skill.md` | Test complete |
+
+   **Mode A — Resume** (any output files from the table above exist):
    The user is continuing a previous session.
-   - Read `workflow-state.md`, show the last completed step.
-   - Recover `skill_type` from the `## Skill Type:` line in workflow-state.md. If the line is missing (legacy session), ask the user for the skill type using the prompt in item 1 above and write it to workflow-state.md.
-   - Ask: "Continue from step N, or start fresh (this deletes all progress)?"
-   - If continue: skip to the recorded step + 1.
-   - If start fresh: delete `./workflow-state.md`, `./context/`, and `./<skillname>/` then fall through to Mode C.
+   - Scan the output files above from step 8 down to step 1. The highest step whose output file exists and has content is the last completed step.
+   - Show the user which step was last completed.
+   - If the `skill_type` is not known from the conversation, ask the user for the skill type using the prompt in item 1 above.
+   - Ask: "Continue from step N+1, or start fresh (this deletes all progress)?"
+   - If continue: skip to the next step after the highest completed step.
+   - If start fresh: delete `./context/` and `./<skillname>/` then fall through to Mode C.
 
-   **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but `./workflow-state.md` does NOT):
+   **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but NO context/ output files exist):
    The user has a finished skill and wants to improve it.
    - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the reasoning step so you can refine it."
    - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in item 1 above.
    - Create `./context/` if it doesn't exist.
-   - Create `./workflow-state.md` at Step 5 (include the `## Skill Type:` line).
    - Skip to Step 5 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
 
-   **Mode C — Scratch** (no `./<skillname>/` directory and no `./workflow-state.md`):
+   **Mode C — Scratch** (no `./<skillname>/` directory and no output files):
    Fresh start — full workflow.
    - Create the directory structure:
      ```
-     ./workflow-state.md
      ./context/
      ./<skillname>/
      └── references/
-     ```
-   - Write initial `./workflow-state.md`:
-     ```
-     # Workflow State: <skillname>
-     ## Current Step: 0 (Initialization)
-     ## Domain: <domain>
-     ## Skill Type: <skill_type>
-     ## Status: In Progress
      ```
 
 6. Create the agent team:
@@ -99,7 +102,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
 ### Agent Type Prefix
 
-The `skill_type` stored in `workflow-state.md` determines which agent variants to use.
+The `skill_type` collected during initialization (or confirmed on resume) determines which agent variants to use.
 
 Derive the prefix once after initialization (or resume) and use it for all subsequent agent dispatches:
 
@@ -110,12 +113,11 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 
 ### Step 1: Research Concepts
 
-1. Update workflow-state.md: Step 1
-2. Create a task in the team task list:
+1. Create a task in the team task list:
    ```
    TaskCreate(subject: "Research concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./context/clarifications-concepts.md")
    ```
-3. Spawn the research-concepts agent as a teammate:
+2. Spawn the research-concepts agent as a teammate:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-research-concepts",
@@ -131,25 +133,23 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return a 5-10 bullet summary of the key questions you generated."
    )
    ```
-4. Relay the agent's summary to the user.
+3. Relay the agent's summary to the user.
 
 ### Step 2: Human Gate — Concepts Review
 
-1. Update workflow-state.md: Step 2
-2. Tell the user:
+1. Tell the user:
    "Please review and answer the questions in `./context/clarifications-concepts.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
-3. Wait for the user to confirm they've answered the questions.
+2. Wait for the user to confirm they've answered the questions.
 
 ### Step 3: Research Patterns & Merge
 
-1. Update workflow-state.md: Step 3
-2. Create a task in the team task list:
+1. Create a task in the team task list:
    ```
    TaskCreate(subject: "Research patterns and merge for <domain>", description: "Research patterns and data modeling, merge results. Write to ./context/clarifications.md")
    ```
-3. Spawn the research-patterns-and-merge orchestrator:
+2. Spawn the research-patterns-and-merge orchestrator:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-research-patterns-and-merge",
@@ -167,21 +167,19 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return a 5-10 bullet summary of the merged questions."
    )
    ```
-4. Relay the agent's summary to the user.
+3. Relay the agent's summary to the user.
 
 ### Step 4: Human Gate — Merged Questions
 
-1. Update workflow-state.md: Step 4
-2. Tell the user:
+1. Tell the user:
    "Please review and answer the merged questions in `./context/clarifications.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
-3. Wait for the user to confirm.
+2. Wait for the user to confirm.
 
 ### Step 5: Reasoning & Decision Engine
 
-1. Update workflow-state.md: Step 5
-2. Spawn the reasoning agent:
+1. Spawn the reasoning agent:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-reasoning",
@@ -202,16 +200,15 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )
    ```
-3. Relay the reasoning summary to the user.
-4. **Validate** that `./context/decisions.md` exists. If missing, re-run the reasoning agent.
-5. **Human Gate**: "Do you agree with these decisions? Any corrections?"
-6. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
-7. Once confirmed, proceed.
+2. Relay the reasoning summary to the user.
+3. **Validate** that `./context/decisions.md` exists. If missing, re-run the reasoning agent.
+4. **Human Gate**: "Do you agree with these decisions? Any corrections?"
+5. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
+6. Once confirmed, proceed.
 
 ### Step 6: Build Skill
 
-1. Update workflow-state.md: Step 6
-2. Spawn the build agent:
+1. Spawn the build agent:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-build",
@@ -229,13 +226,12 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return the proposed folder structure and a summary of what was created."
    )
    ```
-3. Relay the structure and summary to the user.
-4. **Human Gate**: "Does this structure look right? Any changes needed?"
+2. Relay the structure and summary to the user.
+3. **Human Gate**: "Does this structure look right? Any changes needed?"
 
 ### Step 7: Validate
 
-1. Update workflow-state.md: Step 7
-2. Spawn the validate agent:
+1. Spawn the validate agent:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-validate",
@@ -253,13 +249,12 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return summary: total checks, passed, fixed, needs review."
    )
    ```
-3. Relay pass/fail counts to the user.
-4. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md`. Proceed to testing?"
+2. Relay pass/fail counts to the user.
+3. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md`. Proceed to testing?"
 
 ### Step 8: Test
 
-1. Update workflow-state.md: Step 8
-2. Spawn the test agent:
+1. Spawn the test agent:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-test",
@@ -279,18 +274,17 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Return summary: total tests, passed, partial, failed, and top gaps found."
    )
    ```
-3. Relay test results to the user.
-4. **Human Gate**: "Review test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
-5. If rebuild: go back to Step 6.
+2. Relay test results to the user.
+3. **Human Gate**: "Review test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
+4. If rebuild: go back to Step 6.
 
 ### Step 9: Package
 
-1. Update workflow-state.md: Step 9
-2. Package the skill:
+1. Package the skill:
    ```bash
    cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
    ```
-3. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
+2. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
    ```
    SendMessage(type: "shutdown_request", recipient: "research-concepts", content: "Workflow complete, shutting down.")
    SendMessage(type: "shutdown_request", recipient: "research-patterns-and-merge", content: "Workflow complete, shutting down.")
@@ -300,12 +294,11 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    SendMessage(type: "shutdown_request", recipient: "test", content: "Workflow complete, shutting down.")
    ```
    Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
-4. Clean up the team:
+3. Clean up the team:
    ```
    TeamDelete()
    ```
-5. Update workflow-state.md: Complete
-6. Tell the user:
+4. Tell the user:
    "Skill built successfully!
    - Skill files: `./<skillname>/`
    - Archive: `./<skillname>.skill`
@@ -315,7 +308,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 
 - If any agent fails, inform the user with the error and offer to retry that step.
 - If a retry also fails, offer to skip the step or abort the workflow.
-- Always update workflow-state.md with the error state so session resume knows where things broke.
+- On resume, the coordinator will detect the last completed step from output files and pick up from there.
 
 ## Progress Display
 

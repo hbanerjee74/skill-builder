@@ -148,8 +148,6 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  const debugAutoAnswerRef = useRef<number | null>(null);
-
   // Reasoning step state — phase tracked via callback so header can render Complete button
   const reasoningRef = useRef<ReasoningChatHandle>(null);
   const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
@@ -214,7 +212,6 @@ export default function WorkflowPage() {
 
   // Reset state when moving to a new step
   useEffect(() => {
-    debugAutoAnswerRef.current = null;
     setHasPartialOutput(false);
     setReasoningPhase("not_started");
   }, [currentStep]);
@@ -316,40 +313,8 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps.length, setCurrentStep, updateStepStatus]);
 
-  // Debug mode: auto-answer clarifications with recommendations and advance
-  useEffect(() => {
-    if (
-      !debugMode ||
-      !isHumanReviewStep ||
-      !reviewContent ||
-      loadingReview ||
-      debugAutoAnswerRef.current === currentStep
-    ) {
-      return;
-    }
-
-    debugAutoAnswerRef.current = currentStep;
-
-    // Fill empty Answer fields with the corresponding Recommendation text
-    const filled = reviewContent.replace(
-      /\*\*Recommendation\*\*:\s*([^\n]+)\n\*\*Answer\*\*:\s*$/gm,
-      (_match, rec) => `**Recommendation**: ${rec}\n**Answer**: ${rec.trim()}`
-    );
-
-    const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config) return;
-
-    setReviewContent(filled);
-
-    // Save and advance
-    saveArtifactContent(skillName, currentStep, config.relativePath, filled)
-      .catch(() => {})
-      .finally(() => {
-        updateStepStatus(currentStep, "completed");
-        advanceToNextStep();
-        toast.success(`Step ${currentStep + 1} auto-answered (debug mode)`);
-      });
-  }, [debugMode, isHumanReviewStep, reviewContent, loadingReview, currentStep, skillName, updateStepStatus, advanceToNextStep]);
+  // Debug mode: auto-advance agent steps only (not human review steps)
+  // Human review steps (1 and 3) always require manual review.
 
   // Watch for single agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -460,25 +425,11 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Auto-fill empty Answer fields with the corresponding Recommendation
-    let content = reviewContent;
-    if (content) {
-      content = content.replace(
-        /\*\*Recommendation\*\*:\s*(\w)[^\n]*\n\*\*Answer\*\*:\s*$/gm,
-        (match, letter) =>
-          match.replace(
-            /\*\*Answer\*\*:\s*$/,
-            `**Answer**: ${letter} (auto-selected from recommendation)`
-          )
-      );
-      setReviewContent(content);
-    }
-
-    // Save the (possibly edited) content to DB
+    // Save the content as-is to DB
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && content !== null) {
+    if (config && reviewContent !== null) {
       try {
-        await saveArtifactContent(skillName, currentStep, config.relativePath, content);
+        await saveArtifactContent(skillName, currentStep, config.relativePath, reviewContent);
       } catch {
         // best-effort
       }
@@ -603,8 +554,8 @@ export default function WorkflowPage() {
                   Skip
                 </Button>
                 <Button size="sm" onClick={handleReviewContinue}>
-                  <ArrowRight className="size-3.5" />
-                  Continue
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
                 </Button>
               </div>
             </div>
