@@ -1,6 +1,6 @@
 ---
 name: platform-validate
-description: Orchestrates parallel validation of skill files against best practices and coverage checks
+description: Orchestrates parallel validation of skill files against best practices and coverage checks. Called during Step 7 to validate the built skill against best practices and decisions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---

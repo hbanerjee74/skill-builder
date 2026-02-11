@@ -1,6 +1,6 @@
 ---
 name: merge
-description: Merges and deduplicates clarification questions from multiple research agents
+description: Merges and deduplicates clarification questions from multiple research agents. Called during Step 3 to deduplicate and merge clarification questions from parallel research agents.
 model: haiku
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---

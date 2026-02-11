@@ -1,6 +1,6 @@
 ---
 name: research-patterns
-description: Researches business patterns, industry nuances, and edge cases for silver and gold layer modeling
+description: Researches business patterns, industry nuances, and edge cases for silver and gold layer modeling. Called during Step 3 of the skill builder workflow to generate business pattern clarification questions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---

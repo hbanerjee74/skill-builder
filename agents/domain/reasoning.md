@@ -1,6 +1,6 @@
 ---
 name: domain-reasoning
-description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked
+description: Analyzes PM responses to find gaps, contradictions, and implications before decisions are locked. Called during Step 5 to analyze PM answers and produce decisions.
 model: opus
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---

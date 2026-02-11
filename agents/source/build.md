@@ -1,6 +1,6 @@
 ---
 name: source-build
-description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files
+description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---

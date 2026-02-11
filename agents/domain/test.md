@@ -1,6 +1,6 @@
 ---
 name: domain-test
-description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage
+description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage. Called during Step 8 to generate and run test prompts against the built skill.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---

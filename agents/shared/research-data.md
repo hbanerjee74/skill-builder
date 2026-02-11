@@ -1,6 +1,6 @@
 ---
 name: research-data
-description: Researches silver and gold layer modeling patterns and source system considerations
+description: Researches silver and gold layer modeling patterns and source system considerations. Called during Step 3 of the skill builder workflow to generate data modeling clarification questions.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---

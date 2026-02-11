@@ -1,6 +1,6 @@
 ---
 name: de-research-patterns-and-merge
-description: Orchestrates parallel research into business patterns and data modeling then merges results
+description: Orchestrates parallel research into business patterns and data modeling then merges results. Called during Step 3 to orchestrate parallel research and merge results.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
