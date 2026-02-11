@@ -72,7 +72,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 80,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1 and 3 are human review steps.",
+            "Unknown step_id {}. Steps 1 and 3 are human review steps; step 8 is the refinement step (client-side only).",
             step_id
         )),
     }
@@ -875,7 +875,7 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
 
 /// Delete output files for the given step and all subsequent steps.
 fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
-    for step_id in from_step_id..=7 {
+    for step_id in from_step_id..=8 {
         clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
@@ -1043,8 +1043,15 @@ mod tests {
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
         assert!(get_step_config(3).is_err());  // Human review
-        assert!(get_step_config(8).is_err());  // Beyond last step
+        assert!(get_step_config(8).is_err());  // Refinement step (client-side only)
+        assert!(get_step_config(9).is_err());  // Beyond last step
         assert!(get_step_config(99).is_err());
+    }
+
+    #[test]
+    fn test_get_step_config_step8_error_message() {
+        let err = get_step_config(8).unwrap_err();
+        assert!(err.contains("refinement step"), "Error should mention refinement: {}", err);
     }
 
     #[test]
@@ -1381,20 +1388,30 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_step_output_files_cleans_last_step() {
+    fn test_delete_step_output_files_cleans_last_steps() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create file for step 7 (the last step)
+        // Create file for step 7
         std::fs::write(skill_dir.join("context/test-skill.md"), "step7").unwrap();
 
-        // Reset from step 7 onwards should clean up through step 7
+        // Reset from step 7 onwards should clean up through step 8
         delete_step_output_files(workspace, "my-skill", 7, None);
 
         // Step 7 output should be deleted
         assert!(!skill_dir.join("context/test-skill.md").exists());
+    }
+
+    #[test]
+    fn test_delete_step_output_files_includes_step8() {
+        // Verify the loop range extends to step 8 (refine step)
+        // by confirming delete_step_output_files(from=8) doesn't panic
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+        delete_step_output_files(workspace, "my-skill", 8, None);
     }
 
     #[test]

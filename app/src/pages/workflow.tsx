@@ -12,6 +12,7 @@ import {
   AlertCircle,
   RotateCcw,
   Bug,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat } from "@/components/reasoning-chat";
+import { RefinementChat } from "@/components/refinement-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore } from "@/stores/agent-store";
@@ -47,7 +49,7 @@ import {
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "reasoning";
+  type: "agent" | "human" | "reasoning" | "refinement";
   outputFiles?: string[];
   /** Default model shorthand for display (actual model comes from backend settings) */
   model?: string;
@@ -62,6 +64,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
   6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
   7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
+  8: { type: "refinement" },
 };
 
 // Human review steps: step id -> relative artifact path
@@ -484,6 +487,7 @@ export default function WorkflowPage() {
     stepConfig &&
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
+    stepConfig.type !== "refinement" &&
     !isRunning &&
     workspacePath &&
     currentStepDef?.status !== "completed";
@@ -592,6 +596,17 @@ export default function WorkflowPage() {
     if (stepConfig?.type === "reasoning") {
       return (
         <ReasoningChat
+          skillName={skillName}
+          domain={domain ?? ""}
+          workspacePath={workspacePath ?? ""}
+        />
+      );
+    }
+
+    // Refinement step (Step 8) — open-ended chat for skill polish
+    if (stepConfig?.type === "refinement") {
+      return (
+        <RefinementChat
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
@@ -750,6 +765,31 @@ export default function WorkflowPage() {
                   <FileText className="size-3" />
                   Q&A Review
                 </Badge>
+              )}
+              {stepConfig?.type === "refinement" && currentStepDef?.status !== "completed" && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      updateStepStatus(currentStep, "completed");
+                      toast.success(`Step ${currentStep + 1} skipped`);
+                    }}
+                  >
+                    <SkipForward className="size-3.5" />
+                    Skip
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      updateStepStatus(currentStep, "completed");
+                      toast.success(`Step ${currentStep + 1} marked complete`);
+                    }}
+                  >
+                    <CheckCircle2 className="size-3.5" />
+                    Mark Complete
+                  </Button>
+                </>
               )}
             </div>
           </div>
