@@ -29,7 +29,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningChat } from "@/components/reasoning-chat";
+import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -76,6 +76,7 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
   const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const skillsPath = useSettingsStore((s) => s.skillsPath);
   const debugMode = useSettingsStore((s) => s.debugMode);
 
   const {
@@ -149,6 +150,10 @@ export default function WorkflowPage() {
   const [loadingReview, setLoadingReview] = useState(false);
   const debugAutoAnswerRef = useRef<number | null>(null);
 
+  // Reasoning step state — phase tracked via callback so header can render Complete button
+  const reasoningRef = useRef<ReasoningChatHandle>(null);
+  const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
+
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
 
@@ -211,6 +216,7 @@ export default function WorkflowPage() {
   useEffect(() => {
     debugAutoAnswerRef.current = null;
     setHasPartialOutput(false);
+    setReasoningPhase("not_started");
   }, [currentStep]);
 
   // Detect partial output from interrupted runs
@@ -260,7 +266,8 @@ export default function WorkflowPage() {
     );
   }, [steps, currentStep, skillName, domain, skillType, hydrated]);
 
-  // Load file content when entering a human review step
+  // Load file content when entering a human review step.
+  // Priority: skill output context dir > SQLite artifact > workspace filesystem.
   useEffect(() => {
     if (!isHumanReviewStep || !workspacePath) {
       setReviewContent(null);
@@ -270,23 +277,32 @@ export default function WorkflowPage() {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config) return;
     const relativePath = config.relativePath;
+    const filename = relativePath.split("/").pop() ?? relativePath;
     setReviewFilePath(relativePath);
     setLoadingReview(true);
 
-    const filePath = `${workspacePath}/${skillName}/${relativePath}`;
+    const workspaceFilePath = `${workspacePath}/${skillName}/${relativePath}`;
 
-    // Try SQLite artifact first, then fall back to filesystem.
-    // Both paths are attempted even if one throws.
-    getArtifactContent(skillName, relativePath)
-      .catch(() => null)
-      .then(async (artifact) => {
-        if (artifact?.content) return artifact.content;
-        // Fallback: read from filesystem if not captured in SQLite yet
-        return readFile(filePath).catch(() => null);
+    // 1. Try skill output context directory first (survives workspace clears)
+    const trySkillsPath = skillsPath
+      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
+      : Promise.resolve(null);
+
+    trySkillsPath
+      .then((content) => {
+        if (content) return content;
+        // 2. Try SQLite artifact
+        return getArtifactContent(skillName, relativePath)
+          .catch(() => null)
+          .then(async (artifact) => {
+            if (artifact?.content) return artifact.content;
+            // 3. Fallback: read from workspace filesystem
+            return readFile(workspaceFilePath).catch(() => null);
+          });
       })
       .then((content) => setReviewContent(content ?? null))
       .finally(() => setLoadingReview(false));
-  }, [currentStep, isHumanReviewStep, workspacePath, skillName]);
+  }, [currentStep, isHumanReviewStep, workspacePath, skillsPath, skillName]);
 
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
@@ -464,16 +480,30 @@ export default function WorkflowPage() {
     advanceToNextStep();
   };
 
-  // Reload the file content (after user edits externally)
+  // Reload the file content (after user edits externally).
+  // Same priority as initial load: skill context dir > SQLite > workspace.
   const handleReviewReload = () => {
     if (!reviewFilePath || !workspacePath) return;
     setLoadingReview(true);
-    const filePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
-    getArtifactContent(skillName, reviewFilePath)
-      .catch(() => null)
-      .then(async (artifact) => {
-        if (artifact?.content) return artifact.content;
-        return readFile(filePath).catch(() => null);
+    const workspaceFilePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
+    const filename = reviewFilePath.split("/").pop() ?? reviewFilePath;
+
+    // 1. Try skill output context directory first
+    const trySkillsPath = skillsPath
+      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
+      : Promise.resolve(null);
+
+    trySkillsPath
+      .then((content) => {
+        if (content) return content;
+        // 2. Try SQLite artifact
+        return getArtifactContent(skillName, reviewFilePath)
+          .catch(() => null)
+          .then(async (artifact) => {
+            if (artifact?.content) return artifact.content;
+            // 3. Fallback: workspace filesystem
+            return readFile(workspaceFilePath).catch(() => null);
+          });
       })
       .then((content) => {
         setReviewContent(content ?? null);
@@ -596,9 +626,11 @@ export default function WorkflowPage() {
     if (stepConfig?.type === "reasoning") {
       return (
         <ReasoningChat
+          ref={reasoningRef}
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
+          onPhaseChange={setReasoningPhase}
         />
       );
     }
@@ -765,6 +797,15 @@ export default function WorkflowPage() {
                   <FileText className="size-3" />
                   Q&A Review
                 </Badge>
+              )}
+              {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
+                <Button
+                  size="sm"
+                  onClick={() => reasoningRef.current?.completeStep()}
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Complete Step
+                </Button>
               )}
               {stepConfig?.type === "refinement" && currentStepDef?.status !== "completed" && (
                 <>

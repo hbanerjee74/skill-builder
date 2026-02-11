@@ -112,9 +112,7 @@ app/
 │   │   │   ├── mod.rs
 │   │   │   ├── sidecar.rs           # Spawn Node.js process, pass config as CLI arg
 │   │   │   └── events.rs            # Parse JSON lines → Tauri events
-│   │   └── markdown/                # Markdown parsing
-│   │       ├── clarification.rs     # Q&A format parser/serializer
-│   │       └── workflow_state.rs    # Parse workflow state files
+│   │   └── (markdown/ removed — DB is single source of truth)
 │   ├── Cargo.toml
 │   └── tauri.conf.json              # bundles sidecar/dist/agent-runner.js
 ├── package.json
@@ -145,13 +143,13 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This gives
 
 ### Agent logging
 
-The sidecar creates `.agent-logs/<agent_id>.jsonl` files in the workspace directory. Each log file contains:
+The sidecar creates log files under each skill's `logs/` directory: `{workspace}/{skill-name}/logs/{step_label}-{timestamp}.jsonl`. For example: `~/.vibedata/my-skill/logs/step0-research-concepts-2026-02-11T09-30-00.jsonl`. Each log file contains:
 - First line: redacted config (API key replaced with `[REDACTED]`)
 - Subsequent lines: raw JSON messages from stdout (same as Tauri events)
 - stderr lines logged as `{"type":"stderr","content":"..."}`
 - Final line: `{"type":"agent-exit","success":true|false}`
 
-Useful for debugging agent runs: `tail -f .agent-logs/<agent_id>.jsonl`
+Useful for debugging agent runs: `tail -f ~/.vibedata/my-skill/logs/step0-research-concepts-*.jsonl`
 
 ### Sidecar config (passed as CLI argument)
 
@@ -218,10 +216,10 @@ The app replicates the plugin workflow. Each step is a state in the workflow sta
 ```
 <repo>/
   <skill-name>/
-    workflow.md                    # Session state
     SKILL.md                       # Main skill file
     references/                    # Deep-dive reference files
     <skill-name>.skill             # Packaged zip
+    logs/                          # Agent output logs ({step_label}-{timestamp}.jsonl)
     context/                       # Intermediate working files
       clarifications-concepts.md
       clarifications-patterns.md
@@ -408,8 +406,6 @@ app/
     ├── db.rs
     ├── types.rs
     ├── agents/sidecar.rs
-    ├── markdown/workflow_state.rs
-    ├── markdown/clarification.rs
     ├── commands/clarification.rs
     ├── commands/files.rs
     ├── commands/node.rs
