@@ -59,7 +59,7 @@ vi.mock("@/components/refinement-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, getArtifactContent, readFile } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -709,5 +709,256 @@ describe("WorkflowPage — human review file loading priority", () => {
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
       "/test/skills/test-skill/context/clarifications.md"
     );
+  });
+});
+
+describe("WorkflowPage — VD-410 human review behavior", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getArtifactContent).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(saveArtifactContent).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("Complete Step saves content as-is without auto-fill", async () => {
+    // Content with empty Answer fields — should NOT be auto-filled
+    const reviewContent = [
+      "## Question 1",
+      "**Recommendation**: Use incremental loads for large tables",
+      "**Answer**: ",
+      "",
+      "## Question 2",
+      "**Recommendation**: Partition by date for time-series data",
+      "**Answer**: ",
+    ].join("\n");
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve(reviewContent);
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Set up step 1 (human review for concepts)
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    // Wait for review content to load and Complete Step button to appear
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeTruthy();
+    });
+
+    // Click "Complete Step"
+    act(() => {
+      screen.getByText("Complete Step").click();
+    });
+
+    // saveArtifactContent should be called with the ORIGINAL content (empty answers preserved)
+    await waitFor(() => {
+      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+    });
+
+    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+    expect(savedContent).toBe(reviewContent);
+
+    // Verify no auto-fill happened
+    expect(savedContent).not.toContain("auto-selected from recommendation");
+
+    // Empty answers should still be empty
+    expect(savedContent).toContain("**Answer**: \n");
+
+    // Step should be marked completed and advanced
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(2);
+    });
+  });
+
+  it("debug mode does not auto-advance human review steps", async () => {
+    // Enable debug mode
+    useSettingsStore.getState().setSettings({ debugMode: true });
+
+    const reviewContent = "## Question 1\n**Recommendation**: test\n**Answer**: \n";
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve(reviewContent);
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Set up step 1 (human review)
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    // Wait for review content to load
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeTruthy();
+    });
+
+    // Give effects time to settle — debug auto-advance should NOT trigger
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    // Step should still be waiting_for_user — NOT auto-completed
+    expect(useWorkflowStore.getState().steps[1].status).toBe("waiting_for_user");
+
+    // Should still be on step 1 — NOT advanced
+    expect(useWorkflowStore.getState().currentStep).toBe(1);
+  });
+
+  it("preserves partially filled answers", async () => {
+    // Content with mixed answers — some filled, some empty
+    const reviewContent = [
+      "## Question 1",
+      "**Recommendation**: Use incremental loads",
+      "**Answer**: We use full refresh for this table",
+      "",
+      "## Question 2",
+      "**Recommendation**: Partition by date",
+      "**Answer**: ",
+      "",
+      "## Question 3",
+      "**Recommendation**: Add surrogate keys",
+      "**Answer**: Already using natural keys, no change needed",
+    ].join("\n");
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+        return Promise.resolve(reviewContent);
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeTruthy();
+    });
+
+    act(() => {
+      screen.getByText("Complete Step").click();
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+    });
+
+    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+
+    // User-filled answers should be preserved
+    expect(savedContent).toContain("**Answer**: We use full refresh for this table");
+    expect(savedContent).toContain("**Answer**: Already using natural keys, no change needed");
+
+    // Empty answer should still be empty — not auto-filled
+    expect(savedContent).toContain("**Answer**: \n");
+  });
+
+  it("step 3 human review also saves without auto-fill", async () => {
+    // Step 3 reviews clarifications.md — same behavior expected
+    const reviewContent = [
+      "## Merged Question 1",
+      "**Recommendation**: Normalize customer dimensions",
+      "**Answer**: ",
+      "",
+      "## Merged Question 2",
+      "**Recommendation**: Use SCD Type 2 for slowly changing dims",
+      "**Answer**: ",
+    ].join("\n");
+
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
+        return Promise.resolve(reviewContent);
+      }
+      return Promise.reject("not found");
+    });
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().updateStepStatus(1, "completed");
+    useWorkflowStore.getState().updateStepStatus(2, "completed");
+    useWorkflowStore.getState().setCurrentStep(3);
+    useWorkflowStore.getState().updateStepStatus(3, "waiting_for_user");
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeTruthy();
+    });
+
+    act(() => {
+      screen.getByText("Complete Step").click();
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+    });
+
+    // Verify it saved to the correct artifact path for step 3
+    expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledWith(
+      "test-skill",
+      3,
+      "context/clarifications.md",
+      reviewContent,
+    );
+
+    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+
+    // Empty answers should remain empty — no auto-fill
+    expect(savedContent).not.toContain("auto-selected from recommendation");
+    expect(savedContent).toBe(reviewContent);
+
+    // Step should be marked completed and advanced
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[3].status).toBe("completed");
+      expect(useWorkflowStore.getState().currentStep).toBe(4);
+    });
   });
 });
