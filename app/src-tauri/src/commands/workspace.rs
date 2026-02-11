@@ -105,21 +105,35 @@ pub fn reconcile_on_startup(
                     .map(|s| s as i32)
                     .unwrap_or(0);
                 if run.current_step > disk_step {
-                    // Scenario 2: DB ahead of disk → reset to disk reality
-                    crate::db::save_workflow_run(
-                        conn,
-                        &run.skill_name,
-                        &run.domain,
-                        disk_step,
-                        "pending",
-                        &run.skill_type,
-                    )?;
-                    crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
-                    crate::db::delete_artifacts_from(conn, &run.skill_name, disk_step)?;
-                    notifications.push(format!(
-                        "'{}' was reset from step {} to step {} (disk state behind DB)",
-                        run.skill_name, run.current_step, disk_step
-                    ));
+                    // Steps 1, 3, 8 produce no output files so detect_furthest_step
+                    // can never return them. Only reset if disk evidence is genuinely
+                    // behind — i.e. the prerequisite agent step's output is missing.
+                    let is_non_detectable = matches!(run.current_step, 1 | 3 | 8);
+                    let should_reset = if is_non_detectable {
+                        // Non-detectable step: only reset if disk is more than
+                        // 1 step behind (the preceding agent step output is missing)
+                        disk_step < run.current_step - 1
+                    } else {
+                        true
+                    };
+
+                    if should_reset {
+                        // Scenario 2: DB ahead of disk → reset to disk reality
+                        crate::db::save_workflow_run(
+                            conn,
+                            &run.skill_name,
+                            &run.domain,
+                            disk_step,
+                            "pending",
+                            &run.skill_type,
+                        )?;
+                        crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
+                        crate::db::delete_artifacts_from(conn, &run.skill_name, disk_step)?;
+                        notifications.push(format!(
+                            "'{}' was reset from step {} to step {} (disk state behind DB)",
+                            run.skill_name, run.current_step, disk_step
+                        ));
+                    }
                 }
                 // else: Scenario 5 — normal, no action
             }
@@ -569,6 +583,95 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 2);
+    }
+
+    // --- Non-detectable step tests ---
+
+    #[test]
+    fn test_step_8_not_reset_when_step_7_output_exists() {
+        // Bug: step 8 (refinement) produces no output files, so detect_furthest_step
+        // returns 7 at most. The reconciler was incorrectly resetting from 8 to 7.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // DB at step 8, disk has all agent step outputs through step 7
+        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 8, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "done-skill", "analytics");
+        for step in [0, 2, 4, 5, 6, 7] {
+            create_step_output(tmp.path(), "done-skill", step);
+        }
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // Should NOT reset — step 8 is non-detectable but step 7 output exists
+        assert!(result.notifications.is_empty());
+        let run = crate::db::get_workflow_run(&conn, "done-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 8);
+    }
+
+    #[test]
+    fn test_step_8_reset_when_step_7_output_missing() {
+        // Step 8 in DB but step 7 output is missing — genuine corruption
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 8, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "bad-skill", "analytics");
+        // Only steps 0-6 have output, step 7 is missing
+        for step in [0, 2, 4, 5, 6] {
+            create_step_output(tmp.path(), "bad-skill", step);
+        }
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // Should reset — disk is genuinely behind
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("reset from step 8 to step 6"));
+        let run = crate::db::get_workflow_run(&conn, "bad-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 6);
+    }
+
+    #[test]
+    fn test_step_1_not_reset_when_step_0_output_exists() {
+        // Step 1 (human review) produces no output — should not be reset if step 0 output exists
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "review-skill", "sales", 1, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "review-skill", "sales");
+        create_step_output(tmp.path(), "review-skill", 0);
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert!(result.notifications.is_empty());
+        let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 1);
+    }
+
+    #[test]
+    fn test_step_3_not_reset_when_step_2_output_exists() {
+        // Step 3 (human review) produces no output — should not be reset if step 2 output exists
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "review-skill", "sales", 3, "pending", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "review-skill", "sales");
+        create_step_output(tmp.path(), "review-skill", 0);
+        create_step_output(tmp.path(), "review-skill", 2);
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert!(result.notifications.is_empty());
+        let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 3);
     }
 
     // --- Edge cases ---
