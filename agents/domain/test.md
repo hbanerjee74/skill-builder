@@ -25,9 +25,6 @@ Test prompts should reflect real domain questions: business rule interpretation,
   - The **context directory** path (for writing `test-skill.md`)
   - The **domain name**
 
-## Why This Approach
-Realistic test prompts matter because skills are only as good as their ability to help real engineers with real questions. Testing with generic knowledge questions would pass trivially — the value is in testing domain-specific edge cases, cross-functional queries, and scenarios where engineers typically struggle without domain expertise. Parallel evaluation ensures each test gets independent, unbiased assessment.
-
 </context>
 
 <instructions>

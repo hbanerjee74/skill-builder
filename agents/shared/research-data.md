@@ -23,9 +23,6 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
   - **Where to write** your output file
   - The **path to the domain concepts research** output
 
-## Why This Approach
-Source system specificity matters because generic "model your data" advice is what LLMs already provide — the value of a skill is in the hard-to-find details: which specific fields engineers miss, which source system quirks cause data quality issues, and which modeling patterns match this domain's actual data lifecycle. Anchoring to confirmed entities and metrics from the PM ensures every question produces actionable guidance.
-
 </context>
 
 <instructions>

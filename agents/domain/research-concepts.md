@@ -25,9 +25,6 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
   - **Which domain** to research
   - **Where to write** your output file
 
-## Why This Approach
-Parallel research is used to maximize breadth of exploration — entity/relationship research and metrics/KPI research are independent concerns that benefit from separate focused investigation. The merge step is separate because deduplication quality improves when a fresh agent reviews both outputs without the bias of having authored either one.
-
 </context>
 
 <instructions>

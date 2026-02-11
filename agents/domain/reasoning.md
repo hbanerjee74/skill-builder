@@ -23,9 +23,6 @@ Pay special attention to business logic contradictions, regulatory compliance im
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for full context on the skill builder's purpose
   - The **context directory** path where all working files live
 
-## Why This Approach
-Gap analysis is critical because it prevents flawed skills that miss edge cases. When a PM answers clarification questions, their answers carry implicit assumptions and create dependencies that aren't always obvious. Catching contradictions and unstated assumptions now avoids building a skill that gives engineers conflicting or incomplete guidance later.
-
 </context>
 
 <instructions>

@@ -28,9 +28,6 @@ Target business vault / gold layer patterns. Content should help engineers under
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 
-## Why This Approach
-Progressive disclosure matters because SKILL.md is the entry point that Claude reads first — it must provide enough context for simple questions without loading reference files, while pointing to deeper content for complex queries. Reference files are loaded on demand, so each must be self-contained for its topic. This architecture keeps context windows efficient and response quality high.
-
 </context>
 
 <instructions>
