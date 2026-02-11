@@ -5,7 +5,6 @@ import {
   Send,
   User,
   Bot,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,6 @@ export interface RefinementChatProps {
   skillName: string;
   domain: string;
   workspacePath: string;
-  onDismiss: () => void;
 }
 
 interface ChatMessage {
@@ -54,7 +52,6 @@ export function RefinementChat({
   skillName,
   domain,
   workspacePath,
-  onDismiss,
 }: RefinementChatProps) {
   // Core state
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -88,7 +85,7 @@ export function RefinementChat({
       };
       saveArtifactContent(
         skillName,
-        9, // Refinement chat step
+        8, // Refinement chat step
         SESSION_ARTIFACT,
         JSON.stringify(state, null, 2),
       ).catch(() => {});
@@ -278,14 +275,6 @@ The user will guide the conversation. Ask clarifying questions if their request 
     }
   };
 
-  const handleDismiss = () => {
-    // Save current state before dismissing
-    saveSession(messages, sessionId);
-    // Clear agent runs so workflow page doesn't show stale agent output
-    useAgentStore.getState().clearRuns();
-    onDismiss();
-  };
-
   // Pre-compute turn numbers for streaming messages
   const streamTurnMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -309,19 +298,6 @@ The user will guide the conversation. Ask clarifying questions if their request 
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header with dismiss button */}
-      <div className="flex items-center justify-between border-b bg-background px-4 py-3">
-        <div>
-          <h2 className="text-lg font-semibold">Skill Refinement</h2>
-          <p className="text-sm text-muted-foreground">
-            Chat with an agent to refine your skill
-          </p>
-        </div>
-        <Button variant="ghost" size="icon" onClick={handleDismiss} aria-label="Close refinement chat">
-          <X className="size-4" />
-        </Button>
-      </div>
-
       {/* Agent status header — shown when an agent has been launched */}
       {currentAgentId && (
         <>
