@@ -74,24 +74,23 @@ The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or 
 7. **Test** -- generates and evaluates test prompts
 8. **Refine Skill** -- interactive chat to review, iterate, and polish the skill
 
-## Data Model (repo structure)
+## Directory Layout
 
-```
-<workspace>/
-  <skill-name>/
-    SKILL.md                       # Main skill file
-    references/                    # Deep-dive reference files
-    <skill-name>.skill             # Packaged zip
-    logs/                          # Agent output logs ({step_label}-{timestamp}.jsonl)
-    context/                       # Intermediate working files
-      clarifications-concepts.md
-      clarifications-patterns.md
-      clarifications-data.md
-      clarifications.md
-      decisions.md
-      agent-validation-log.md
-      test-skill.md
-```
+**Workspace** (`~/.vibedata/` by default, configurable in Settings):
+- `agents/`, `references/` — bundled from repo at startup
+- `<skill-name>/context/` — intermediate working files (clarifications, decisions, validation logs)
+- `<skill-name>/logs/` — agent execution logs (JSONL)
+
+**Skill output** (configurable `skills_path` in Settings, falls back to workspace):
+- `<skill-name>/SKILL.md` — final skill entry point
+- `<skill-name>/references/` — deep-dive reference files
+- `<skill-name>/<skill-name>.skill` — packaged zip
+
+**App database** (`~/.local/share/com.skillbuilder.app/skill-builder.db`):
+- Workflow runs, steps, artifacts, agent runs, chat sessions, settings, tags, imported skills
+- DB is the source of truth for skill metadata; filesystem is secondary
+
+The plugin uses the same skill output layout (`SKILL.md` + `references/`) but writes everything to the user's CWD with no separate workspace.
 
 ## Testing
 
