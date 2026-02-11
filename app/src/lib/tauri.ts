@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult } from "@/lib/types";
 
 // --- Settings ---
 
@@ -164,6 +164,14 @@ export const saveArtifactContent = (
   relativePath: string,
   content: string,
 ) => invoke("save_artifact_content", { skillName, stepId, relativePath, content });
+
+// --- Reconciliation ---
+
+export const reconcileStartup = () =>
+  invoke<ReconciliationResult>("reconcile_startup");
+
+export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
+  invoke("resolve_orphan", { skillName, action });
 
 // --- Agent Prompts ---
 

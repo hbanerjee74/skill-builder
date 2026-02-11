@@ -59,3 +59,15 @@ export interface PackageResult {
   size_bytes: number
 }
 
+export interface OrphanSkill {
+  skill_name: string
+  domain: string
+  skill_type: string
+}
+
+export interface ReconciliationResult {
+  orphans: OrphanSkill[]
+  notifications: string[]
+  auto_cleaned: number
+}
+

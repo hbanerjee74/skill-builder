@@ -1,17 +1,22 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
+import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
-import { getSettings } from "@/lib/tauri";
+import { getSettings, reconcileStartup } from "@/lib/tauri";
+import type { OrphanSkill } from "@/lib/types";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const navigate = useNavigate();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
+  const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -30,6 +35,37 @@ export function AppLayout() {
       setSettingsLoaded(true);
     });
   }, [setSettings]);
+
+  // Run reconciliation after settings are loaded
+  useEffect(() => {
+    if (!settingsLoaded) return;
+
+    reconcileStartup()
+      .then((result) => {
+        // Show toasts for auto-cleaned skills
+        if (result.auto_cleaned > 0) {
+          toast.info(
+            `Cleaned up ${result.auto_cleaned} incomplete skill${result.auto_cleaned !== 1 ? "s" : ""}`
+          );
+        }
+
+        // Show toasts for reset notifications (DB-ahead-of-disk)
+        for (const notification of result.notifications) {
+          toast.warning(notification, { duration: 5000 });
+        }
+
+        // Set orphans for dialog
+        if (result.orphans.length > 0) {
+          setOrphans(result.orphans);
+        }
+
+        setReconciled(true);
+      })
+      .catch(() => {
+        // Reconciliation failed (e.g., workspace not set up yet) — proceed anyway
+        setReconciled(true);
+      });
+  }, [settingsLoaded]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -59,18 +95,27 @@ export function AppLayout() {
     setSplashDismissed(true);
   };
 
+  const ready = settingsLoaded && reconciled;
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+          {ready ? <Outlet /> : null}
         </main>
       </div>
       <CloseGuard />
       {settingsLoaded && !splashDismissed && (
         <SplashScreen onDismiss={handleSplashDismiss} />
+      )}
+      {orphans.length > 0 && (
+        <OrphanResolutionDialog
+          orphans={orphans}
+          open={orphans.length > 0}
+          onResolved={() => setOrphans([])}
+        />
       )}
     </div>
   );
