@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import SkillCard, { hasBuildOutput } from "@/components/skill-card";
+import SkillCard, { isWorkflowComplete } from "@/components/skill-card";
 import type { SkillSummary } from "@/lib/types";
 
 const baseSkill: SkillSummary = {
@@ -182,50 +182,65 @@ describe("SkillCard", () => {
   });
 });
 
-describe("hasBuildOutput", () => {
+describe("isWorkflowComplete", () => {
   it("returns false for null current_step", () => {
     const skill = { ...baseSkill, current_step: null, status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(false);
+    expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step less than 6", () => {
+  it("returns false for early steps (step 3)", () => {
     const skill = { ...baseSkill, current_step: "Step 3", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(false);
+    expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step 5 (Build step itself is in progress)", () => {
+  it("returns false for step 5 (Build step)", () => {
     const skill = { ...baseSkill, current_step: "Step 5", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(false);
+    expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns true for step 6 (past Build)", () => {
+  it("returns false for step 6 (Validate -- not yet 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(true);
+    expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns true for step 7", () => {
+  it("returns false for step 7 (Test -- not yet 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 7", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(true);
+    expect(isWorkflowComplete(skill)).toBe(false);
+  });
+
+  it("returns true for step 8 (Refine -- last step, 100%)", () => {
+    const skill = { ...baseSkill, current_step: "Step 8", status: "in_progress" };
+    expect(isWorkflowComplete(skill)).toBe(true);
   });
 
   it("returns true when status is completed", () => {
     const skill = { ...baseSkill, current_step: "Step 3", status: "completed" };
-    expect(hasBuildOutput(skill)).toBe(true);
+    expect(isWorkflowComplete(skill)).toBe(true);
   });
 
   it("returns true when current_step text says completed", () => {
     const skill = { ...baseSkill, current_step: "completed", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(true);
+    expect(isWorkflowComplete(skill)).toBe(true);
   });
 
   it("returns false for initialization step", () => {
     const skill = { ...baseSkill, current_step: "initialization", status: "in_progress" };
-    expect(hasBuildOutput(skill)).toBe(false);
+    expect(isWorkflowComplete(skill)).toBe(false);
   });
 
   it("returns true for completed status even with null step", () => {
     const skill = { ...baseSkill, current_step: null, status: "completed" };
-    expect(hasBuildOutput(skill)).toBe(true);
+    expect(isWorkflowComplete(skill)).toBe(true);
+  });
+
+  it("returns false for step 0 (not started)", () => {
+    const skill = { ...baseSkill, current_step: "Step 0", status: "in_progress" };
+    expect(isWorkflowComplete(skill)).toBe(false);
+  });
+
+  it("returns true for step numbers above 8", () => {
+    const skill = { ...baseSkill, current_step: "Step 9", status: "in_progress" };
+    expect(isWorkflowComplete(skill)).toBe(true);
   });
 });
 
