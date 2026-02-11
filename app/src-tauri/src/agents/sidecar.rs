@@ -183,6 +183,30 @@ pub async fn spawn_sidecar(
     Ok(())
 }
 
+/// Spawn an agent using the persistent sidecar pool instead of a one-shot child process.
+/// Has the same logical flow as `spawn_sidecar` but reuses a long-lived Node.js process
+/// for the given skill, reducing startup latency for subsequent agent invocations.
+pub async fn spawn_sidecar_persistent(
+    agent_id: String,
+    mut config: SidecarConfig,
+    pool: super::sidecar_pool::SidecarPool,
+    app_handle: tauri::AppHandle,
+    skill_name: String,
+    _step_label: String,
+) -> Result<(), String> {
+    // Resolve the SDK cli.js path so the bundled SDK can find it
+    if config.path_to_claude_code_executable.is_none() {
+        if let Ok(cli_path) = resolve_sdk_cli_path(&app_handle) {
+            config.path_to_claude_code_executable = Some(cli_path);
+        }
+    }
+
+    pool.send_request(&skill_name, &agent_id, config, &app_handle)
+        .await?;
+
+    Ok(())
+}
+
 type SharedFile = Arc<std::sync::Mutex<std::fs::File>>;
 
 /// Convert a step name to a filename-safe slug: lowercase, spaces→hyphens.

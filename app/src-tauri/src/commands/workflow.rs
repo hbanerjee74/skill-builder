@@ -2,6 +2,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use crate::agents::sidecar::{self, AgentRegistry, SidecarConfig};
+use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::types::{
     ArtifactRow, PackageResult, StepConfig, StepStatusUpdate,
@@ -527,11 +528,13 @@ fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, Stri
 pub async fn run_review_step(
     app: tauri::AppHandle,
     state: tauri::State<'_, AgentRegistry>,
+    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
     domain: String,
     workspace_path: String,
+    persistent: Option<bool>,
 ) -> Result<String, String> {
     ensure_workspace_prompts(&app, &workspace_path)?;
 
@@ -584,7 +587,29 @@ pub async fn run_review_step(
     };
 
     let step_label = format!("review-step{}", step_id);
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
+
+    if persistent.unwrap_or(false) {
+        sidecar::spawn_sidecar_persistent(
+            agent_id.clone(),
+            config,
+            pool.inner().clone(),
+            app,
+            skill_name,
+            step_label,
+        )
+        .await?;
+    } else {
+        sidecar::spawn_sidecar(
+            agent_id.clone(),
+            config,
+            state.inner().clone(),
+            app,
+            skill_name,
+            step_label,
+        )
+        .await?;
+    }
+
     Ok(agent_id)
 }
 
@@ -650,6 +675,7 @@ fn validate_decisions_exist(
 pub async fn run_workflow_step(
     app: tauri::AppHandle,
     state: tauri::State<'_, AgentRegistry>,
+    pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
@@ -657,6 +683,7 @@ pub async fn run_workflow_step(
     workspace_path: String,
     resume: bool,
     rerun: bool,
+    persistent: Option<bool>,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
@@ -728,7 +755,29 @@ pub async fn run_workflow_step(
     };
 
     let step_label = format!("step{}-{}", step_id, step.name);
-    sidecar::spawn_sidecar(agent_id.clone(), config, state.inner().clone(), app, skill_name, step_label).await?;
+
+    if persistent.unwrap_or(false) {
+        sidecar::spawn_sidecar_persistent(
+            agent_id.clone(),
+            config,
+            pool.inner().clone(),
+            app,
+            skill_name,
+            step_label,
+        )
+        .await?;
+    } else {
+        sidecar::spawn_sidecar(
+            agent_id.clone(),
+            config,
+            state.inner().clone(),
+            app,
+            skill_name,
+            step_label,
+        )
+        .await?;
+    }
+
     Ok(agent_id)
 }
 
