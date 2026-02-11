@@ -301,7 +301,7 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
     // Turn 2: Agent responds with revised analysis
     act(() => {
-      useAgentStore.getState().startRun("agent-2", "opus");
+      useAgentStore.getState().registerRun("agent-2", "opus");
       simulateAgentCompletion("agent-2", REVISED_RESPONSE);
     });
 

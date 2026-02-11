@@ -90,7 +90,7 @@ export function ReasoningChat({
 
   // Stores — granular selector: only re-render when *this* agent's run changes
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
-  const agentStartRun = useAgentStore((s) => s.startRun);
+  const agentRegisterRun = useAgentStore((s) => s.registerRun);
   const { updateStepStatus, setRunning, currentStep, skillType } = useWorkflowStore();
   const skillsPath = useSettingsStore((s) => s.skillsPath);
 
@@ -286,7 +286,7 @@ export function ReasoningChat({
         agentName,
       );
 
-      agentStartRun(agentId, "opus");
+      agentRegisterRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {
       updateStepStatus(currentStep, "error");
@@ -309,7 +309,7 @@ export function ReasoningChat({
       // Use runWorkflowStep which stages artifacts, copies prompts,
       // and builds the proper prompt from agents/reasoning.md
       const agentId = await runWorkflowStep(skillName, 4, domain, workspacePath);
-      agentStartRun(agentId, "opus");
+      agentRegisterRun(agentId, "opus");
       setCurrentAgentId(agentId);
     } catch (err) {
       updateStepStatus(currentStep, "error");

@@ -70,6 +70,9 @@ interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
   startRun: (agentId: string, model: string) => void;
+  /** Register a run for streaming without setting activeAgentId.
+   *  Used by chat components (reasoning, refinement) that manage their own lifecycle. */
+  registerRun: (agentId: string, model: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
   setActiveAgent: (agentId: string | null) => void;
@@ -102,6 +105,30 @@ export const useAgentStore = create<AgentState>((set) => ({
               },
         },
         activeAgentId: agentId,
+      };
+    }),
+
+  registerRun: (agentId, model) =>
+    set((state) => {
+      const existing = state.runs[agentId];
+      const extendedContext = useSettingsStore.getState().extendedContext;
+      return {
+        runs: {
+          ...state.runs,
+          [agentId]: existing
+            ? { ...existing, model, status: "running" as const }
+            : {
+                agentId,
+                model,
+                status: "running" as const,
+                messages: [],
+                startTime: Date.now(),
+                contextHistory: [],
+                contextWindow: extendedContext ? 1_000_000 : 200_000,
+                compactionEvents: [],
+              },
+        },
+        // Do NOT set activeAgentId — chat components manage their own lifecycle
       };
     }),
 

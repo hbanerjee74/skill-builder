@@ -69,7 +69,7 @@ export function RefinementChat({
 
   // Stores
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
-  const agentStartRun = useAgentStore((s) => s.startRun);
+  const agentRegisterRun = useAgentStore((s) => s.registerRun);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
 
   const isAgentRunning = currentRun?.status === "running";
@@ -249,7 +249,7 @@ The user will guide the conversation. Ask clarifying questions if their request 
         "chat",
       );
 
-      agentStartRun(agentId, "sonnet");
+      agentRegisterRun(agentId, "sonnet");
       setCurrentAgentId(agentId);
     } catch (err) {
       setPhase("error");
