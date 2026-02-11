@@ -1,87 +1,49 @@
-# Skill Builder — Developer Guide
+# Skill Builder
 
-This is a merged repo containing **two frontends** for the same skill-building workflow:
+Multi-agent workflow for creating domain-specific Claude skills. Two frontends (CLI plugin + Tauri desktop app) share the same agents and references.
 
-1. **Claude Code Plugin** — Production CLI plugin
-2. **Desktop App** — Tauri 2 + React 19 GUI
+@import CLAUDE-APP.md
+@import CLAUDE-PLUGIN.md
 
-Both share the same agent prompts (`agents/`) and reference material (`references/`).
+## Dev Commands
 
-## Quick Navigation
+```bash
+# Desktop app
+cd app && npm install && npm run sidecar:build
+npm run dev                              # Dev mode (hot reload)
+npm test                                 # Vitest (frontend)
+npm run test:e2e                         # Playwright (E2E)
+cd src-tauri && cargo test               # Rust tests
 
-- **Working on the plugin?** → Read [`CLAUDE-PLUGIN.md`](CLAUDE-PLUGIN.md)
-- **Working on the desktop app?** → Read [`CLAUDE-APP.md`](CLAUDE-APP.md)
+# Plugin
+./scripts/validate.sh                    # Structural validation
+./scripts/test-plugin.sh                 # Full test harness (T1-T5)
+claude --plugin-dir .                    # Load plugin locally
+```
 
-## What is Skill Builder?
+## Code Style
 
-A multi-agent workflow for creating domain-specific Claude skills. Skills are domain knowledge packages that help data/analytics engineers build silver and gold layer models with proper functional context.
+- TypeScript strict mode, no `any`
+- Zustand stores: one file per store in `app/src/stores/`
+- Rust commands: one module per concern in `app/src-tauri/src/commands/`
+- Tailwind 4 + shadcn/ui for all UI components
+- Granular commits: one concern per commit, run tests before each
+
+## Gotchas
+
+- **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
+- **Node.js 18-24 only**: Node 25+ causes SDK crashes. Checked at app startup.
+- **Context conservation (plugin)**: The coordinator must NEVER read agent output files. Agents write to disk; coordinator relays summaries only.
+- **Plugin path resolution**: Use `${CLAUDE_PLUGIN_ROOT}/` for plugin files. Output goes to user's CWD.
+- **Parallel worktrees**: Set `DEV_PORT=<port>` to avoid conflicts (convention: `1000 + issue_number`).
+- **Verify before committing**: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
 
 ## Shared Components
 
-Both frontends use the same agents and references. No conversion needed.
-
-| Directory | Purpose |
-|---|---|
-| `agents/{type}/` | Type-specific agents (domain, platform, source, data-engineering) — 6 per type |
-| `agents/shared/` | Shared agents (merge, research-patterns, research-data) — used by all types |
-| `references/shared-context.md` | Domain definitions, file formats, content principles |
-| `.kiro/steering/` | Kiro IDE steering docs (not actively maintained) |
-
-### Agent Files
-
-Each skill type directory (`domain/`, `platform/`, `source/`, `data-engineering/`) contains these 6 agents:
-
-| File | Role |
-|---|---|
-| `research-concepts.md` | Orchestrator: spawns entity + metrics researchers, merges results |
-| `research-patterns-and-merge.md` | Orchestrator: spawns patterns + data researchers + merger |
-| `reasoning.md` | Gap analysis, contradiction detection, decisions |
-| `build.md` | Skill file creation (spawns reference writers) |
-| `validate.md` | Best practices validation (spawns parallel validators) |
-| `test.md` | Test generation + evaluation (spawns parallel testers) |
-
-Shared agents in `agents/shared/`:
-
-| File | Role |
-|---|---|
-| `research-patterns.md` | Sub-agent: business patterns research |
-| `research-data.md` | Sub-agent: data modeling research |
-| `merge.md` | Sub-agent: question deduplication |
-
-## Platform Differences
-
-### Plugin (CLI)
-- Location: Root directory (`skills/start/SKILL.md`)
-- Workflow: 9 steps + init (research, Q&A, research+merge, Q&A, reasoning, build, validate, test, package)
-- State: File-based (`workflow-state.md`)
-- Model selection: Per-agent (defined in coordinator)
-- Orchestration: Agent teams (TeamCreate/SendMessage/TeamDelete)
-
-### Desktop App (GUI)
-- Location: `app/` directory
-- Workflow: **9 steps** (0-8). Step 2 combines parallel research + merge into one orchestrator agent
-- State: SQLite database
-- Model selection: **Global user preference** in Settings (one model for all agents)
-- Orchestration: Node.js sidecar via Claude Agent SDK
-
-### Workflow Comparison
-
-| App Step | Plugin Step | What Happens |
-|---|---|---|
-| — | Init | User provides domain, skill name, skill type |
-| 0 | 1 | Research concepts (orchestrator) |
-| 1 | 2 | Human reviews concept questions |
-| 2 | 3 | Research patterns + data + merge (single orchestrator) |
-| 3 | 4 | Human reviews merged questions |
-| 4 | 5 | Reasoning |
-| 5 | 6 | Build |
-| 6 | 7 | Validate |
-| 7 | 8 | Test |
-| 8 | 9 | Refine Skill |
-
-The only difference is the Init step — the plugin collects skill name and type via conversation, the app uses the new-skill dialog before the workflow starts.
-
-> **Note:** The app's "Package" action was moved from the workflow to a dashboard right-click action (VD-387). The plugin still has Package as Step 9.
+Both frontends use the same files -- no conversion needed:
+- `agents/{type}/` -- 6 agents per type (domain, platform, source, data-engineering)
+- `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
+- `references/shared-context.md` -- domain definitions, file formats, content principles
 
 ## Custom Skills
 
@@ -92,8 +54,3 @@ or track a feature idea, read and follow the skill at `.claude/skills/create-lin
 ### /implement-issue
 When the user runs /implement-issue or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
-
-## Development
-
-**Plugin**: See [`CLAUDE-PLUGIN.md`](CLAUDE-PLUGIN.md)
-**Desktop App**: See [`CLAUDE-APP.md`](CLAUDE-APP.md)
