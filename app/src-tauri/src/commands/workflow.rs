@@ -318,6 +318,45 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.skills_path
 }
 
+fn read_extended_thinking(db: &tauri::State<'_, Db>) -> bool {
+    let conn = db.0.lock().ok();
+    conn.and_then(|c| crate::db::read_settings(&c).ok())
+        .map(|s| s.extended_thinking)
+        .unwrap_or(false)
+}
+
+fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
+    match step_id {
+        0 => Some(8_000),   // research-concepts orchestrator
+        2 => Some(8_000),   // research-patterns-and-merge orchestrator
+        4 => Some(32_000),  // reasoning — highest priority
+        5 => Some(16_000),  // build — complex synthesis
+        6 => Some(8_000),   // validate
+        7 => Some(8_000),   // test
+        _ => None,
+    }
+}
+
+fn build_betas(extended_context: bool, thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
+    let mut betas = Vec::new();
+    if extended_context {
+        betas.push("context-1m-2025-08-07".to_string());
+    }
+    if thinking_budget.is_some() && !model.contains("opus") {
+        betas.push("interleaved-thinking-2025-05-14".to_string());
+    }
+    if betas.is_empty() { None } else { Some(betas) }
+}
+
+/// Return the default model for a given step (from agent front matter).
+/// Step 4 (reasoning) uses opus; all other agent steps use sonnet.
+fn default_model_for_step(step_id: u32) -> &'static str {
+    match step_id {
+        4 => "opus",
+        _ => "sonnet",
+    }
+}
+
 fn make_agent_id(skill_name: &str, label: &str) -> String {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -575,11 +614,8 @@ pub async fn run_review_step(
         max_turns: Some(10),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
-        betas: if extended_context {
-            Some(vec!["context-1m-2025-08-07".to_string()])
-        } else {
-            None
-        },
+        betas: build_betas(extended_context, None, "haiku"),
+        max_thinking_tokens: None,
         path_to_claude_code_executable: None,
         agent_name: None,
     };
@@ -702,6 +738,12 @@ pub async fn run_workflow_step(
     let api_key = read_api_key(&db)?;
     let extended_context = read_extended_context(&db);
     let debug_mode = read_debug_mode(&db);
+    let extended_thinking = read_extended_thinking(&db);
+    let thinking_budget = if extended_thinking {
+        thinking_budget_for_step(step_id)
+    } else {
+        None
+    };
     let skill_type = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         crate::db::get_skill_type(&conn, &skill_name)?
@@ -717,20 +759,25 @@ pub async fn run_workflow_step(
     let agent_name = derive_agent_name(&skill_type, &step.prompt_template);
     let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
 
+    // Determine the effective model for betas: debug_mode forces sonnet,
+    // otherwise use the agent front-matter default for this step.
+    let model = if debug_mode {
+        resolve_model_id("sonnet")
+    } else {
+        resolve_model_id(default_model_for_step(step_id))
+    };
+
     let config = SidecarConfig {
         prompt,
-        model: if debug_mode { Some(resolve_model_id("sonnet")) } else { None },
+        model: if debug_mode { Some(model.clone()) } else { None },
         api_key,
         cwd: workspace_path,
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
-        betas: if extended_context {
-            Some(vec!["context-1m-2025-08-07".to_string()])
-        } else {
-            None
-        },
+        betas: build_betas(extended_context, thinking_budget, &model),
+        max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
     };
@@ -2554,5 +2601,53 @@ mod tests {
         let artifact = crate::db::get_artifact_by_path(&conn, "my-skill", "SKILL.md")
             .unwrap().unwrap();
         assert_eq!(artifact.content, "# Final version");
+    }
+
+    #[test]
+    fn test_thinking_budget_for_step() {
+        assert_eq!(thinking_budget_for_step(0), Some(8_000));
+        assert_eq!(thinking_budget_for_step(2), Some(8_000));
+        assert_eq!(thinking_budget_for_step(4), Some(32_000));
+        assert_eq!(thinking_budget_for_step(5), Some(16_000));
+        assert_eq!(thinking_budget_for_step(6), Some(8_000));
+        assert_eq!(thinking_budget_for_step(7), Some(8_000));
+        // Human review steps and beyond return None
+        assert_eq!(thinking_budget_for_step(1), None);
+        assert_eq!(thinking_budget_for_step(3), None);
+        assert_eq!(thinking_budget_for_step(8), None);
+    }
+
+    #[test]
+    fn test_build_betas_context_only() {
+        let betas = build_betas(true, None, "claude-sonnet-4-5-20250929");
+        assert_eq!(betas, Some(vec!["context-1m-2025-08-07".to_string()]));
+    }
+
+    #[test]
+    fn test_build_betas_thinking_non_opus() {
+        let betas = build_betas(false, Some(32000), "claude-sonnet-4-5-20250929");
+        assert_eq!(betas, Some(vec!["interleaved-thinking-2025-05-14".to_string()]));
+    }
+
+    #[test]
+    fn test_build_betas_thinking_opus() {
+        // Opus natively supports thinking — no interleaved-thinking beta needed
+        let betas = build_betas(false, Some(32000), "claude-opus-4-6");
+        assert_eq!(betas, None);
+    }
+
+    #[test]
+    fn test_build_betas_both() {
+        let betas = build_betas(true, Some(32000), "claude-sonnet-4-5-20250929");
+        assert_eq!(betas, Some(vec![
+            "context-1m-2025-08-07".to_string(),
+            "interleaved-thinking-2025-05-14".to_string(),
+        ]));
+    }
+
+    #[test]
+    fn test_build_betas_none() {
+        let betas = build_betas(false, None, "claude-sonnet-4-5-20250929");
+        assert_eq!(betas, None);
     }
 }

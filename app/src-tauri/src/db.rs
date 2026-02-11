@@ -660,6 +660,7 @@ mod tests {
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         };
         write_settings(&conn, &settings).unwrap();
@@ -682,6 +683,7 @@ mod tests {
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         };
         write_settings(&conn, &settings).unwrap();
@@ -700,6 +702,7 @@ mod tests {
             preferred_model: None,
             debug_mode: true,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         };
         write_settings(&conn, &settings).unwrap();
@@ -718,6 +721,7 @@ mod tests {
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         };
         write_settings(&conn, &v1).unwrap();
@@ -729,6 +733,7 @@ mod tests {
             preferred_model: Some("opus".to_string()),
             debug_mode: true,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         };
         write_settings(&conn, &v2).unwrap();

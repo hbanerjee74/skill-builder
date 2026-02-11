@@ -18,6 +18,8 @@ pub struct SidecarConfig {
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub betas: Option<Vec<String>>,
+    #[serde(rename = "maxThinkingTokens", skip_serializing_if = "Option::is_none")]
+    pub max_thinking_tokens: Option<u32>,
     #[serde(
         rename = "pathToClaudeCodeExecutable",
         skip_serializing_if = "Option::is_none"
@@ -110,6 +112,7 @@ mod tests {
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
             betas: None,
+            max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("domain-research-concepts".to_string()),
         };
@@ -128,5 +131,30 @@ mod tests {
         assert!(parsed.get("sessionId").is_none());
         // betas is None + skip_serializing_if — should be absent
         assert!(parsed.get("betas").is_none());
+        // max_thinking_tokens is None + skip_serializing_if — should be absent
+        assert!(parsed.get("maxThinkingTokens").is_none());
+    }
+
+    #[test]
+    fn test_sidecar_config_serialization_with_thinking() {
+        let config = SidecarConfig {
+            prompt: "Reason about this".to_string(),
+            model: Some("opus".to_string()),
+            api_key: "sk-ant-test".to_string(),
+            cwd: "/home/user/project".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            session_id: None,
+            betas: None,
+            max_thinking_tokens: Some(32000),
+            path_to_claude_code_executable: None,
+            agent_name: None,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["maxThinkingTokens"], 32000);
     }
 }

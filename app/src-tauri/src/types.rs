@@ -12,6 +12,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub extended_context: bool,
     #[serde(default)]
+    pub extended_thinking: bool,
+    #[serde(default)]
     pub splash_shown: bool,
 }
 
@@ -24,6 +26,7 @@ impl Default for AppSettings {
             preferred_model: None,
             debug_mode: false,
             extended_context: false,
+            extended_thinking: false,
             splash_shown: false,
         }
     }
@@ -161,6 +164,7 @@ mod tests {
         assert!(settings.preferred_model.is_none());
         assert!(!settings.debug_mode);
         assert!(!settings.extended_context);
+        assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
     }
 
@@ -173,6 +177,7 @@ mod tests {
             preferred_model: Some("sonnet".to_string()),
             debug_mode: false,
             extended_context: false,
+            extended_thinking: true,
             splash_shown: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
@@ -197,11 +202,12 @@ mod tests {
 
     #[test]
     fn test_app_settings_deserialize_without_optional_fields() {
-        // Simulates loading settings saved before skills_path / debug_mode existed
+        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking existed
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert!(!settings.debug_mode);
+        assert!(!settings.extended_thinking);
     }
 
     #[test]
@@ -216,6 +222,7 @@ mod tests {
             permission_mode: Some("bypassPermissions".to_string()),
             session_id: None,
             betas: None,
+            max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("domain-research-concepts".to_string()),
         };
@@ -230,5 +237,7 @@ mod tests {
         assert!(!json.contains("\"sessionId\""));
         // betas is None with skip_serializing_if, so should not appear
         assert!(!json.contains("\"betas\""));
+        // max_thinking_tokens is None with skip_serializing_if, so should not appear
+        assert!(!json.contains("\"maxThinkingTokens\""));
     }
 }
