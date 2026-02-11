@@ -1,5 +1,7 @@
 # Shared Context — Skill Builder
 
+> **This file is read by all agents.** Changes affect every agent's behavior. Test with `./scripts/validate.sh` after editing.
+
 ## Domain
 Provided by the user at workflow start. The coordinator asks the user which functional domain the skill covers (e.g., sales pipeline, supply chain, HR analytics, financial planning) and passes it to all agents.
 
@@ -33,9 +35,6 @@ They already know HOW to build tables technically (SQL, dbt, etc.) — the skill
    - Avoid: "Create table `dim_account` with columns..."
    - Rationale: Skills should work across different data platforms, naming conventions, team preferences, and implementation patterns.
    - Exception: Be prescriptive only when exactness matters (e.g., specific metric formulas, business rule logic).
-
-## Prescriptiveness Level
-Focus on what/why, let the engineer decide how.
 
 ## Folder Structure
 
