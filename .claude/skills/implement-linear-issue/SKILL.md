@@ -24,6 +24,10 @@ Do not ask permission for non-destructive work. Only confirm with the user:
 - Scope changes discovered during implementation
 - Final status before moving to review
 
+## Scope Changes
+
+When the user expands or changes scope during the conversation, update the Linear issue immediately — add new ACs, update the description, then continue implementing against the updated issue.
+
 ## Progress Checklist
 
 Copy and track:
@@ -97,7 +101,7 @@ Coding agents checked off ACs incrementally in Phase 4. This is a **completeness
 
 Only enter when all ACs are verified.
 
-1. Write final Implementation Updates to Linear (include PR URL)
+1. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
 2. Move issue to Review via `linear-server:update_issue`
 3. Report to user: what was done, PR URL, worktree path (for manual testing)
 4. **Do NOT remove the worktree**
