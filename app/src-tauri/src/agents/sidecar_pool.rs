@@ -413,7 +413,7 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                log::info!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
             }
         });
 

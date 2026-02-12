@@ -8,6 +8,9 @@ pub use types::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Truncate the log file before the plugin opens it so each session starts fresh.
+    logging::truncate_log_file();
+
     tauri::Builder::default()
         .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
