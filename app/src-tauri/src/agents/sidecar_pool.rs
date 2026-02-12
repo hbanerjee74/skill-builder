@@ -674,47 +674,74 @@ fn node_platform_arch() -> &'static str {
 pub async fn resolve_node_binary(app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
     use tauri::Manager;
 
-    // Step 1: Check for bundled Node.js binary
+    let arch = node_platform_arch();
+    let binary_name = if cfg!(windows) { "node.exe" } else { "node" };
+
+    // Step 1: Check for bundled Node.js via Tauri resource_dir
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
-        let arch = node_platform_arch();
-        let binary_name = if cfg!(windows) { "node.exe" } else { "node" };
         let bundled_path = resource_dir
             .join("node")
             .join(arch)
             .join("bin")
             .join(binary_name);
 
-        if bundled_path.exists() {
-            // Verify it's executable by running --version
-            let path_str = bundled_path.to_string_lossy().to_string();
-            let output = Command::new(&bundled_path).arg("--version").output().await;
-
-            if let Ok(out) = output {
-                if out.status.success() {
-                    let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    let meets_minimum = is_node_compatible(&version);
-                    log::info!(
-                        "Using bundled Node.js {} at {}",
-                        version,
-                        path_str
-                    );
-                    return Ok(NodeResolution {
-                        path: path_str,
-                        source: "bundled".to_string(),
-                        version: Some(version),
-                        meets_minimum,
-                    });
-                }
-            }
-            log::warn!(
-                "Bundled Node.js at {} exists but failed to execute, falling back to system",
-                path_str
-            );
+        if let Some(resolution) = try_bundled_node(&bundled_path).await {
+            return Ok(resolution);
         }
     }
 
-    // Step 2: Fall back to system Node.js
+    // Step 2: Portable exe fallback — check {exe_dir}/resources/node/{arch}/bin/node
+    // This handles Windows portable builds (--no-bundle) where resource_dir() may not
+    // resolve correctly but resources are copied alongside the exe.
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let portable_path = exe_dir
+                .join("resources")
+                .join("node")
+                .join(arch)
+                .join("bin")
+                .join(binary_name);
+
+            if let Some(resolution) = try_bundled_node(&portable_path).await {
+                return Ok(resolution);
+            }
+        }
+    }
+
+    // Step 3: Fall back to system Node.js
     resolve_system_node().await
+}
+
+/// Try to use a bundled Node.js binary at the given path.
+/// Returns `Some(NodeResolution)` if the binary exists and executes successfully.
+async fn try_bundled_node(bundled_path: &std::path::Path) -> Option<NodeResolution> {
+    if !bundled_path.exists() {
+        return None;
+    }
+
+    let path_str = bundled_path.to_string_lossy().to_string();
+    let output = Command::new(bundled_path).arg("--version").output().await;
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let meets_minimum = is_node_compatible(&version);
+            log::info!("Using bundled Node.js {} at {}", version, path_str);
+            Some(NodeResolution {
+                path: path_str,
+                source: "bundled".to_string(),
+                version: Some(version),
+                meets_minimum,
+            })
+        }
+        _ => {
+            log::warn!(
+                "Bundled Node.js at {} exists but failed to execute, trying next candidate",
+                path_str
+            );
+            None
+        }
+    }
 }
 
 /// System Node.js discovery: searches PATH and well-known locations, validates version 18-24.
