@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
+import { openPath } from "@tauri-apps/plugin-opener"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, Database } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -18,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
-import { checkNode, type NodeStatus } from "@/lib/tauri"
+import { checkNode, getDataDir, type NodeStatus } from "@/lib/tauri"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -43,6 +44,7 @@ export default function SettingsPage() {
   const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
+  const [dataDir, setDataDir] = useState<string | null>(null)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
@@ -93,6 +95,12 @@ export default function SettingsPage() {
     getVersion()
       .then((v) => setAppVersion(v))
       .catch(() => setAppVersion("dev"))
+  }, [])
+
+  useEffect(() => {
+    getDataDir()
+      .then((dir) => setDataDir(dir))
+      .catch(() => setDataDir(null))
   }, [])
 
   const autoSave = async (overrides: Partial<{
@@ -388,6 +396,32 @@ export default function SettingsPage() {
                 <Trash2 className="size-4" />
               )}
               Clear
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Data Directory</CardTitle>
+          <CardDescription>
+            Internal storage for the app database and configuration. Not intended for direct editing.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <Database className="size-4 shrink-0 text-muted-foreground" />
+            <code className="select-all text-sm text-muted-foreground flex-1 break-all">
+              {dataDir || "Unknown"}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { if (dataDir) openPath(dataDir) }}
+              disabled={!dataDir}
+            >
+              <FolderOpen className="size-4" />
+              Open
             </Button>
           </div>
         </CardContent>
