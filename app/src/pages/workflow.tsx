@@ -200,9 +200,19 @@ export default function WorkflowPage() {
   // --- Timeout detection ---
   // Start a timer when a step begins running. If agentTimeout seconds elapse
   // with no completion, trigger the timeout state.
+  const timeoutTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!isRunning) {
       stepRunStartRef.current = null;
+      // Clear the timer and timeout state when the step stops running
+      if (timeoutTimerRef.current !== null) {
+        window.clearTimeout(timeoutTimerRef.current);
+        timeoutTimerRef.current = null;
+      }
+      if (useWorkflowStore.getState().isTimedOut) {
+        clearTimeoutState();
+      }
       return;
     }
 
@@ -211,23 +221,21 @@ export default function WorkflowPage() {
       stepRunStartRef.current = Date.now();
     }
 
-    const timer = setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      timeoutTimerRef.current = null;
       // Double-check the step is still running at timeout time
       const store = useWorkflowStore.getState();
       if (store.isRunning && store.steps[store.currentStep]?.status === "in_progress") {
         store.setTimedOut();
       }
     }, agentTimeout * 1000);
+    timeoutTimerRef.current = timer;
 
-    return () => window.clearTimeout(timer);
-  }, [isRunning, agentTimeout, currentStep]);
-
-  // Clear timeout state when step completes or errors
-  useEffect(() => {
-    if (!isRunning && isTimedOut) {
-      clearTimeoutState();
-    }
-  }, [isRunning, isTimedOut, clearTimeoutState]);
+    return () => {
+      window.clearTimeout(timer);
+      timeoutTimerRef.current = null;
+    };
+  }, [isRunning, agentTimeout, currentStep, clearTimeoutState]);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -446,6 +454,11 @@ export default function WorkflowPage() {
       updateStepStatus(step, "error");
       setRunning(false);
       setActiveAgent(null);
+      // Clear initializing state if the agent errored before sending any messages
+      const workflowState = useWorkflowStore.getState();
+      if (workflowState.isInitializing) {
+        workflowState.clearInitializing();
+      }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
@@ -477,6 +490,8 @@ export default function WorkflowPage() {
         domain,
         workspacePath,
         resume,
+        false,
+        agentTimeout,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {

@@ -87,17 +87,12 @@ export function AgentStatusHeader({
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
 
-  // Read initializing state from workflow store (Stream 1 owns these fields).
-  // Use safe optional access — these fields may not exist yet.
-  const workflowIsInitializing = useWorkflowStore(
-    (s) => (s as unknown as Record<string, unknown>).isInitializing as boolean | undefined,
-  );
-  const workflowInitStartTime = useWorkflowStore(
-    (s) => (s as unknown as Record<string, unknown>).initStartTime as number | undefined,
-  );
+  // Read initializing state from workflow store
+  const workflowIsInitializing = useWorkflowStore((s) => s.isInitializing);
+  const workflowInitStartTime = useWorkflowStore((s) => s.initStartTime);
 
   const displayStatus = run
-    ? getDisplayStatus(run.status, run.messages.length, workflowIsInitializing ?? undefined)
+    ? getDisplayStatus(run.status, run.messages.length, workflowIsInitializing)
     : null;
 
   // Force re-render every second while running or initializing so elapsed time updates

@@ -53,7 +53,7 @@ export function TimeoutDialog({
   }, [open, stepStartTime]);
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onCancel(); }}>
+    <Dialog open={open}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
