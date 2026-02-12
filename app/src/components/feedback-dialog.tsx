@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { getVersion } from "@tauri-apps/api/app"
-import { Loader2, MessageSquarePlus } from "lucide-react"
+import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { startAgent, getWorkspacePath } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
@@ -73,7 +75,7 @@ Classify this as either a "bug" or "feature". Then enrich the issue with:
 - Suggested labels (comma-separated, e.g. "area:ui, ux, performance")
 - For bugs: reproducible steps (inferred from the description)
 
-You may use Read, Glob, and Grep tools to look at the codebase if it helps you understand the context of the feedback. The app is a Tauri v2 desktop application with React frontend in src/ and Rust backend in src-tauri/.
+The app is a Tauri v2 desktop application (React + Rust) for building Claude skills.
 
 Respond with ONLY a JSON object (no markdown fencing, no explanation):
 {
@@ -117,7 +119,10 @@ ${data.reproducibleSteps}
 - estimate: ${data.effort}
 - labels: [${labelsList}]
 
-After creating the issue, respond with ONLY the issue identifier (e.g. "VD-500") as plain text.`
+After creating the issue, respond with ONLY the issue identifier and URL in this exact format:
+IDENTIFIER|URL
+For example: VD-500|https://linear.app/acceleratedata/issue/VD-500/issue-title
+No other text.`
 }
 
 // ---------------------------------------------------------------------------
@@ -223,11 +228,26 @@ export function FeedbackDialog() {
     } else if (step === "submitting") {
       if (currentRun.status === "completed") {
         const resultMsg = currentRun.messages.find((m) => m.type === "result")
-        const issueId =
+        const rawResult =
           resultMsg?.content?.trim() ??
           currentRun.messages.filter((m) => m.type === "text").pop()?.content?.trim() ??
-          "Unknown"
-        toast.success(`Feedback submitted (${issueId})`)
+          ""
+        // Parse "VD-500|https://..." format
+        const parts = rawResult.split("|")
+        const issueId = parts[0]?.trim() || "Unknown"
+        const issueUrl = parts[1]?.trim() || ""
+        if (issueUrl) {
+          toast.success(`Feedback submitted — ${issueId}`, {
+            description: issueUrl,
+            action: {
+              label: "Open",
+              onClick: () => window.open(issueUrl, "_blank"),
+            },
+            duration: 8000,
+          })
+        } else {
+          toast.success(`Feedback submitted (${issueId})`)
+        }
         resetForm()
         setOpen(false)
       } else {
@@ -258,10 +278,10 @@ export function FeedbackDialog() {
       await startAgent(
         agentId,
         prompt,
-        "sonnet",
+        "haiku",
         cwd,
-        undefined,
-        10,
+        [],           // No tools — pure text analysis, much faster
+        3,
         undefined,
         "_feedback",
         "Enrich Feedback",
@@ -366,40 +386,52 @@ export function FeedbackDialog() {
     </div>
   )
 
+  const priorityLabel = (p: number) =>
+    ["None", "Urgent", "High", "Normal", "Low"][p] ?? "Normal"
+
+  const effortLabel = (e: number) =>
+    ["", "XS", "S", "M", "L", "XL"][e] ?? "S"
+
   const renderReviewStep = () => {
     if (!enriched) return null
 
     return (
       <>
         <ScrollArea className="max-h-[60vh]">
-          <div className="grid gap-4 py-2 pr-4">
-            {/* Type */}
-            <div className="grid gap-2">
-              <Label>Type</Label>
-              <RadioGroup
-                value={enriched.type}
-                onValueChange={(v) =>
-                  setEnriched({ ...enriched, type: v as "bug" | "feature" })
-                }
-                className="flex gap-4"
-              >
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="bug" id="review-type-bug" />
-                  <Label htmlFor="review-type-bug" className="font-normal">
-                    Bug
-                  </Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RadioGroupItem value="feature" id="review-type-feature" />
-                  <Label htmlFor="review-type-feature" className="font-normal">
-                    Feature
-                  </Label>
-                </div>
-              </RadioGroup>
+          <div className="space-y-5 py-2 pr-4">
+            {/* ── Summary bar ── */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={enriched.type === "bug" ? "destructive" : "default"} className="gap-1">
+                {enriched.type === "bug" ? <Bug className="size-3" /> : <Lightbulb className="size-3" />}
+                {enriched.type === "bug" ? "Bug" : "Feature"}
+              </Badge>
+              <Badge variant="outline">{priorityLabel(enriched.priority)} priority</Badge>
+              <Badge variant="outline">Effort: {effortLabel(enriched.effort)}</Badge>
+              <Badge variant="secondary">v{enriched.version}</Badge>
             </div>
 
-            {/* Title */}
-            <div className="grid gap-2">
+            {/* ── Type toggle ── */}
+            <RadioGroup
+              value={enriched.type}
+              onValueChange={(v) =>
+                setEnriched({ ...enriched, type: v as "bug" | "feature" })
+              }
+              className="flex gap-4"
+            >
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="bug" id="review-type-bug" />
+                <Label htmlFor="review-type-bug" className="font-normal">Bug</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="feature" id="review-type-feature" />
+                <Label htmlFor="review-type-feature" className="font-normal">Feature</Label>
+              </div>
+            </RadioGroup>
+
+            <Separator />
+
+            {/* ── Title ── */}
+            <div className="grid gap-1.5">
               <Label htmlFor="review-title">Title</Label>
               <Input
                 id="review-title"
@@ -410,8 +442,8 @@ export function FeedbackDialog() {
               />
             </div>
 
-            {/* Description */}
-            <div className="grid gap-2">
+            {/* ── Description ── */}
+            <div className="grid gap-1.5">
               <Label htmlFor="review-description">Description</Label>
               <Textarea
                 id="review-description"
@@ -419,76 +451,13 @@ export function FeedbackDialog() {
                 onChange={(e) =>
                   setEnriched({ ...enriched, description: e.target.value })
                 }
-                rows={4}
+                rows={5}
               />
             </div>
 
-            {/* Priority */}
-            <div className="grid gap-2">
-              <Label htmlFor="review-priority">Priority</Label>
-              <select
-                id="review-priority"
-                value={enriched.priority}
-                onChange={(e) =>
-                  setEnriched({
-                    ...enriched,
-                    priority: Number(e.target.value),
-                  })
-                }
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                <option value={0}>None</option>
-                <option value={1}>Urgent</option>
-                <option value={2}>High</option>
-                <option value={3}>Normal</option>
-                <option value={4}>Low</option>
-              </select>
-            </div>
-
-            {/* Effort */}
-            <div className="grid gap-2">
-              <Label htmlFor="review-effort">Effort</Label>
-              <select
-                id="review-effort"
-                value={enriched.effort}
-                onChange={(e) =>
-                  setEnriched({
-                    ...enriched,
-                    effort: Number(e.target.value),
-                  })
-                }
-                className="rounded-md border bg-background px-3 py-2 text-sm"
-              >
-                <option value={1}>XS (1)</option>
-                <option value={2}>S (2)</option>
-                <option value={3}>M (3)</option>
-                <option value={4}>L (4)</option>
-                <option value={5}>XL (5)</option>
-              </select>
-            </div>
-
-            {/* Labels */}
-            <div className="grid gap-2">
-              <Label htmlFor="review-labels">Labels</Label>
-              <Input
-                id="review-labels"
-                value={enriched.labels.join(", ")}
-                onChange={(e) =>
-                  setEnriched({
-                    ...enriched,
-                    labels: e.target.value
-                      .split(",")
-                      .map((l) => l.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder="comma, separated, labels"
-              />
-            </div>
-
-            {/* Reproducible Steps (bugs only) */}
+            {/* ── Reproducible Steps (bugs only) ── */}
             {enriched.type === "bug" && (
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 <Label htmlFor="review-repro">Reproducible Steps</Label>
                 <Textarea
                   id="review-repro"
@@ -504,10 +473,77 @@ export function FeedbackDialog() {
               </div>
             )}
 
-            {/* App Version (read-only) */}
-            <div className="grid gap-2">
-              <Label>App Version</Label>
-              <p className="text-sm text-muted-foreground">{enriched.version}</p>
+            <Separator />
+
+            {/* ── Metadata row ── */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="review-priority">Priority</Label>
+                <select
+                  id="review-priority"
+                  value={enriched.priority}
+                  onChange={(e) =>
+                    setEnriched({
+                      ...enriched,
+                      priority: Number(e.target.value),
+                    })
+                  }
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <option value={0}>None</option>
+                  <option value={1}>Urgent</option>
+                  <option value={2}>High</option>
+                  <option value={3}>Normal</option>
+                  <option value={4}>Low</option>
+                </select>
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label htmlFor="review-effort">Effort</Label>
+                <select
+                  id="review-effort"
+                  value={enriched.effort}
+                  onChange={(e) =>
+                    setEnriched({
+                      ...enriched,
+                      effort: Number(e.target.value),
+                    })
+                  }
+                  className="rounded-md border bg-background px-3 py-2 text-sm"
+                >
+                  <option value={1}>XS</option>
+                  <option value={2}>S</option>
+                  <option value={3}>M</option>
+                  <option value={4}>L</option>
+                  <option value={5}>XL</option>
+                </select>
+              </div>
+            </div>
+
+            {/* ── Labels ── */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="review-labels">Labels</Label>
+              <Input
+                id="review-labels"
+                value={enriched.labels.join(", ")}
+                onChange={(e) =>
+                  setEnriched({
+                    ...enriched,
+                    labels: e.target.value
+                      .split(",")
+                      .map((l) => l.trim())
+                      .filter(Boolean),
+                  })
+                }
+                placeholder="comma, separated, labels"
+              />
+              {enriched.labels.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {enriched.labels.map((l) => (
+                    <Badge key={l} variant="secondary" className="text-xs">{l}</Badge>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </ScrollArea>

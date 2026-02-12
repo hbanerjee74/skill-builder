@@ -218,7 +218,7 @@ describe("FeedbackDialog", () => {
     expect(analyzeBtn).toBeDisabled();
   });
 
-  it("clicking Analyze calls startAgent with enrichment prompt (model: sonnet)", async () => {
+  it("clicking Analyze calls startAgent with enrichment prompt (model: haiku)", async () => {
     const user = userEvent.setup();
     render(<FeedbackDialog />);
 
@@ -243,9 +243,9 @@ describe("FeedbackDialog", () => {
     expect(agentId).toMatch(/^feedback-enrich-\d+$/);
     expect(prompt).toContain("App crashes");
     expect(prompt).toContain("On startup");
-    expect(model).toBe("sonnet");
+    expect(model).toBe("haiku");
     expect(cwd).toBe("/workspace");
-    expect(maxTurns).toBe(10);
+    expect(maxTurns).toBe(3);
   });
 
   it("shows enrichment loading state", async () => {
@@ -288,7 +288,7 @@ describe("FeedbackDialog", () => {
       expect(screen.getByLabelText("Effort")).toBeInTheDocument();
       expect(screen.getByLabelText("Labels")).toBeInTheDocument();
       expect(screen.getByLabelText("Reproducible Steps")).toBeInTheDocument();
-      expect(screen.getByText("1.2.3")).toBeInTheDocument(); // app version
+      expect(screen.getByText("v1.2.3")).toBeInTheDocument(); // app version badge
     });
   });
 
