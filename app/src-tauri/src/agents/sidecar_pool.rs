@@ -109,6 +109,30 @@ impl fmt::Display for SidecarStartupError {
     }
 }
 
+/// Structured error from `resolve_node_binary()` so callers can pattern-match
+/// instead of parsing error strings.
+#[derive(Debug)]
+enum NodeBinaryError {
+    NotFound,
+    Incompatible { version: String },
+}
+
+impl fmt::Display for NodeBinaryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => write!(
+                f,
+                "Node.js not found. Please install Node.js 18-24 from https://nodejs.org"
+            ),
+            Self::Incompatible { version } => write!(
+                f,
+                "Node.js {} is not compatible. This app requires Node.js 18-24.",
+                version
+            ),
+        }
+    }
+}
+
 /// A persistent Node.js sidecar process that stays alive across multiple agent invocations.
 struct PersistentSidecar {
     child: Child,
@@ -270,20 +294,13 @@ impl SidecarPool {
         // 2. Check Node.js is available
         let node_bin = resolve_node_binary()
             .await
-            .map_err(|e| {
-                if e.contains("not compatible") {
-                    // Extract the version from the error message
-                    let version = e
-                        .split("Found: ")
-                        .nth(1)
-                        .unwrap_or("unknown")
-                        .to_string();
+            .map_err(|e| match e {
+                NodeBinaryError::NotFound => SidecarStartupError::NodeMissing,
+                NodeBinaryError::Incompatible { version } => {
                     SidecarStartupError::NodeIncompatible {
                         found: version,
                         required: "18-24".to_string(),
                     }
-                } else {
-                    SidecarStartupError::NodeMissing
                 }
             })?;
 
@@ -800,7 +817,7 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     Err("Could not find agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
 }
 
-async fn resolve_node_binary() -> Result<String, String> {
+async fn resolve_node_binary() -> Result<String, NodeBinaryError> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
         for p in &[
@@ -835,13 +852,10 @@ async fn resolve_node_binary() -> Result<String, String> {
     }
 
     if let Some((_path, version)) = first_available {
-        return Err(format!(
-            "Node.js {} is not compatible. This app requires Node.js 18-24. Found: {}",
-            version, version
-        ));
+        return Err(NodeBinaryError::Incompatible { version });
     }
 
-    Err("Node.js not found. Please install Node.js 18-24 from https://nodejs.org".to_string())
+    Err(NodeBinaryError::NotFound)
 }
 
 fn is_node_compatible(version: &str) -> bool {

@@ -84,11 +84,12 @@ export function initAgentStream() {
 
   listen<AgentInitErrorPayload>("agent-init-error", (event) => {
     if (shuttingDown) return;
-    const { error_type, message, fix_hint } = event.payload;
-    useWorkflowStore.getState().setRuntimeError({
-      error_type,
-      message,
-      fix_hint,
+    const workflowState = useWorkflowStore.getState();
+    workflowState.clearInitializing(); // Fix 3: Clear spinner on preflight errors
+    workflowState.setRuntimeError({
+      error_type: event.payload.error_type,
+      message: event.payload.message,
+      fix_hint: event.payload.fix_hint,
     });
   });
 
@@ -101,6 +102,7 @@ export function initAgentStream() {
     const workflowState = useWorkflowStore.getState();
     if (workflowState.isInitializing) {
       workflowState.clearInitializing();
+      workflowState.clearRuntimeError(); // Fix 2: Clear stale errors if agent actually starts
     }
 
     useAgentStore.getState().addMessage(agent_id, {
