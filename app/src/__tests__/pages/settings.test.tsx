@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
+import { openPath as mockOpenPath } from "@tauri-apps/plugin-opener";
 import type { AppSettings } from "@/lib/types";
 
 // Mock sonner toast
@@ -15,6 +16,11 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock @tauri-apps/plugin-opener
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn(() => Promise.resolve()),
+}));
+
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
   checkNode: vi.fn(() =>
@@ -25,6 +31,7 @@ vi.mock("@/lib/tauri", () => ({
       error: null,
     })
   ),
+  getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
 }));
 
 // Import after mocks are set up
@@ -419,5 +426,63 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("/Users/me/Skills")).toBeInTheDocument();
     });
+  });
+
+  it("renders Data Directory card with path", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Data Directory")).toBeInTheDocument();
+    expect(
+      screen.getByText("/Users/test/Library/Application Support/com.skill-builder.app")
+    ).toBeInTheDocument();
+  });
+
+  it("shows 'Unknown' when get_data_dir fails", async () => {
+    const { getDataDir } = await import("@/lib/tauri");
+    vi.mocked(getDataDir).mockRejectedValueOnce(new Error("no dir"));
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("calls openPath when Open button is clicked", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const openButton = screen.getByRole("button", { name: /Open/i });
+    await user.click(openButton);
+
+    expect(mockOpenPath).toHaveBeenCalledWith(
+      "/Users/test/Library/Application Support/com.skill-builder.app"
+    );
+  });
+
+  it("disables Open button when data dir is unknown", async () => {
+    const { getDataDir } = await import("@/lib/tauri");
+    vi.mocked(getDataDir).mockRejectedValueOnce(new Error("no dir"));
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const openButton = screen.getByRole("button", { name: /Open/i });
+    expect(openButton).toBeDisabled();
   });
 });

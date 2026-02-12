@@ -1,3 +1,5 @@
+use std::fs;
+
 use tauri::Manager;
 
 use crate::db::Db;
@@ -9,6 +11,12 @@ pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get data directory: {}", e))?;
+
+    if !data_dir.exists() {
+        fs::create_dir_all(&data_dir)
+            .map_err(|e| format!("Failed to create data directory: {}", e))?;
+    }
+
     data_dir
         .to_str()
         .map(|s| s.to_string())
