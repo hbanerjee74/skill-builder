@@ -262,7 +262,7 @@ jobs:
                 max_tokens: 1024,
                 messages: [{
                   role: "user",
-                  content: ("You are writing release notes for Skill Builder v" + $version + ".\n\nBelow are the git commit messages since the last release. Summarize them as user-facing release notes.\n\nRules:\n- Write for end users, not developers\n- Group changes under these headings (omit any heading with no items): **New Features**, **Improvements**, **Bug Fixes**\n- Use plain, concise language\n- Do NOT include commit hashes, file paths, or PR numbers\n- Use markdown bullet lists under each heading\n\nCommits:\n" + $commits)
+                  content: ("You are writing release notes for Skill Builder v" + $version + ", a desktop app for building AI skills.\n\nSummarize the git commits below into polished, user-facing release notes.\n\nFormat:\n1. Start with 1-2 sentences highlighting the most notable change(s)\n2. Then group changes under these markdown headings (omit any with no items):\n   ### Highlights\n   ### New\n   ### Improved\n   ### Fixed\n\nOnly add a ### Breaking Changes section if there are changes that require user action.\n\nWriting style:\n- Write for end users, not developers — use \"you\" framing (e.g., \"You can now...\" not \"Added support for...\")\n- Keep each bullet to one concise sentence\n- Describe what changed from the user's perspective, not the code perspective\n- No commit hashes, file paths, PR numbers, or technical jargon\n- If multiple commits relate to the same user-facing change, combine them into one bullet\n\nCommits:\n" + $commits)
                 }]
               }')
 
@@ -280,7 +280,7 @@ jobs:
 
           # Fall back to simple commit list if AI summary is empty
           if [ -z "${NOTES:-}" ]; then
-            NOTES=$(printf "## What's Changed\n\n%s" "$FALLBACK")
+            NOTES=$(printf "### What's Changed\n\n%s" "$FALLBACK")
           fi
 
           # Write multiline output
