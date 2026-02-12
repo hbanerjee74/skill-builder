@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, RefreshCw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNodeValidation } from "@/hooks/use-node-validation";
@@ -45,22 +45,26 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
   const { status, isChecking, error, retry } = useNodeValidation();
 
-  // Once validation passes, signal readiness then start the fade-out.
-  const dismiss = useCallback(() => {
-    onReady();
-    setFading(true);
-    setTimeout(onDismiss, 400);
-  }, [onDismiss, onReady]);
+  // Keep refs so the effect captures the latest callbacks without re-running.
+  const onReadyRef = useRef(onReady);
+  const onDismissRef = useRef(onDismiss);
+  useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
+  useEffect(() => { onDismissRef.current = onDismiss; }, [onDismiss]);
 
+  // Once validation passes, start the fade-out then signal readiness at the end.
   useEffect(() => {
     if (isChecking) return;
     if (status?.available && status.meets_minimum) {
       // Small pause so the splash is visible before fading out
-      const timer = setTimeout(dismiss, 600);
+      const timer = setTimeout(() => {
+        onReadyRef.current();
+        setFading(true);
+        setTimeout(() => onDismissRef.current(), 400);
+      }, 600);
       return () => clearTimeout(timer);
     }
     // Validation failed -- stay on splash (error UI rendered below)
-  }, [isChecking, status, dismiss]);
+  }, [isChecking, status]);
 
   const validationFailed =
     !isChecking && (error !== null || !status?.available || !status?.meets_minimum);
