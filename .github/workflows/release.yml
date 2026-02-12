@@ -76,6 +76,10 @@ jobs:
           echo "Downloading Node.js ${NODE_VERSION} for ${NODE_ARCH}..."
           curl -fsSL "$URL" -o "/tmp/${TARBALL}"
 
+          echo "Verifying SHA256 checksum..."
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" -o "/tmp/SHASUMS256.txt"
+          grep "${TARBALL}" /tmp/SHASUMS256.txt | shasum -a 256 -c -
+
           echo "Extracting node binary..."
           tar -xzf "/tmp/${TARBALL}" -C /tmp "node-${NODE_VERSION}-${NODE_ARCH}/bin/node"
           mv "/tmp/node-${NODE_VERSION}-${NODE_ARCH}/bin/node" "${DEST}/node"
@@ -107,6 +111,10 @@ jobs:
 
           echo "Downloading Node.js ${NODE_VERSION} for ${NODE_ARCH}..."
           curl -fsSL "$URL" -o "/tmp/${ZIPFILE}"
+
+          echo "Verifying SHA256 checksum..."
+          curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/SHASUMS256.txt" -o "/tmp/SHASUMS256.txt"
+          grep "${ZIPFILE}" /tmp/SHASUMS256.txt | sha256sum -c -
 
           echo "Extracting node.exe..."
           unzip -j "/tmp/${ZIPFILE}" "node-${NODE_VERSION}-${NODE_ARCH}/node.exe" -d "${DEST}/"

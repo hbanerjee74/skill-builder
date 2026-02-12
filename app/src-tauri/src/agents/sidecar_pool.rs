@@ -652,12 +652,17 @@ pub struct NodeResolution {
     pub meets_minimum: bool,
 }
 
-/// Map `std::env::consts::ARCH` to the Node.js download directory convention.
+/// Map OS + architecture to the Node.js download directory convention.
 fn node_platform_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "aarch64" => "darwin-arm64",
-        "x86_64" => "darwin-x64",
-        other => other, // fallback — won't match any bundled path
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => "darwin-arm64",
+        ("macos", "x86_64") => "darwin-x64",
+        ("windows", "x86_64") => "win-x64",
+        ("windows", "aarch64") => "win-arm64",
+        (os, arch) => {
+            log::warn!("Unsupported platform: {os}-{arch}");
+            "unknown"
+        }
     }
 }
 
@@ -672,11 +677,12 @@ pub async fn resolve_node_binary(app_handle: &tauri::AppHandle) -> Result<NodeRe
     // Step 1: Check for bundled Node.js binary
     if let Ok(resource_dir) = app_handle.path().resource_dir() {
         let arch = node_platform_arch();
+        let binary_name = if cfg!(windows) { "node.exe" } else { "node" };
         let bundled_path = resource_dir
             .join("node")
             .join(arch)
             .join("bin")
-            .join("node");
+            .join(binary_name);
 
         if bundled_path.exists() {
             // Verify it's executable by running --version
