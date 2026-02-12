@@ -44,6 +44,19 @@ pub struct NodeStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepStatus {
+    pub name: String,
+    pub ok: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StartupDeps {
+    pub all_ok: bool,
+    pub checks: Vec<DepStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillSummary {
     pub name: String,
     pub domain: Option<String>,

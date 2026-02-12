@@ -44,6 +44,17 @@ export interface NodeStatus {
   source: string
 }
 
+export interface DepStatus {
+  name: string
+  ok: boolean
+  detail: string
+}
+
+export interface StartupDeps {
+  all_ok: boolean
+  checks: DepStatus[]
+}
+
 export interface WorkflowStep {
   id: number
   name: string

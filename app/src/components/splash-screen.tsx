@@ -1,83 +1,53 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, RefreshCw, Loader2 } from "lucide-react";
+import { AlertCircle, RefreshCw, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNodeValidation } from "@/hooks/use-node-validation";
+import type { DepStatus } from "@/lib/types";
 
 interface SplashScreenProps {
   onDismiss: () => void;
   onReady: () => void;
 }
 
-/**
- * Derive a user-facing error message based on the validation result.
- *
- * - Bundled runtime failed to load  -> suggest reinstall
- * - System Node found but wrong version -> show found version, expected range
- * - No Node at all                  -> point to nodejs.org
- * - Invoke-level / unexpected error -> show raw error
- */
-function deriveErrorMessage(
-  source: string,
-  available: boolean,
-  version: string | null,
-  meetsMinimum: boolean,
-  invokeError: string | null,
-): string {
-  if (invokeError) {
-    return `Node.js check failed: ${invokeError}`;
-  }
-
-  if (!available) {
-    if (source === "bundled") {
-      return "The bundled Node.js runtime could not be loaded. Please reinstall the app.";
-    }
-    return "Node.js 18\u201324 is required. Install from nodejs.org";
-  }
-
-  if (!meetsMinimum) {
-    return `Node.js 18\u201324 is required for development. Found v${version ?? "unknown"}.`;
-  }
-
-  return "An unexpected error occurred while validating Node.js.";
+function DepRow({ dep }: { dep: DepStatus }) {
+  return (
+    <div className="flex items-start gap-2 text-left text-sm">
+      {dep.ok ? (
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+      ) : (
+        <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+      )}
+      <div className="min-w-0">
+        <span className="font-medium">{dep.name}</span>
+        <span className="ml-2 text-muted-foreground truncate">{dep.detail}</span>
+      </div>
+    </div>
+  );
 }
 
 export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
-  const { status, isChecking, error, retry } = useNodeValidation();
+  const { deps, isChecking, error, retry } = useNodeValidation();
 
-  // Keep refs so the effect captures the latest callbacks without re-running.
   const onReadyRef = useRef(onReady);
   const onDismissRef = useRef(onDismiss);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useEffect(() => { onDismissRef.current = onDismiss; }, [onDismiss]);
 
-  // Once validation passes, start the fade-out then signal readiness at the end.
   useEffect(() => {
     if (isChecking) return;
-    if (status?.available && status.meets_minimum) {
-      // Small pause so the splash is visible before fading out
+    if (deps?.all_ok) {
+      // Small pause so the splash is visible before fading out (5s for testing, revert to 600)
       const timer = setTimeout(() => {
         onReadyRef.current();
         setFading(true);
         setTimeout(() => onDismissRef.current(), 400);
-      }, 600);
+      }, 5000);
       return () => clearTimeout(timer);
     }
-    // Validation failed -- stay on splash (error UI rendered below)
-  }, [isChecking, status]);
+  }, [isChecking, deps]);
 
-  const validationFailed =
-    !isChecking && (error !== null || !status?.available || !status?.meets_minimum);
-
-  const errorMessage = validationFailed
-    ? deriveErrorMessage(
-        status?.source ?? "",
-        status?.available ?? false,
-        status?.version ?? null,
-        status?.meets_minimum ?? false,
-        error,
-      )
-    : null;
+  const hasFailed = !isChecking && (error !== null || (deps !== null && !deps.all_ok));
 
   return (
     <div
@@ -110,31 +80,43 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
           </p>
         </div>
 
-        {/* Loading indicator while checking */}
-        {isChecking && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            <span>Checking Node.js runtime...</span>
+        {/* Dependency checklist */}
+        <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Startup checks
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {isChecking && !deps && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                <span>Checking dependencies...</span>
+              </div>
+            )}
+            {deps?.checks.map((dep) => (
+              <DepRow key={dep.name} dep={dep} />
+            ))}
+          </div>
+        </div>
+
+        {/* Invoke-level error */}
+        {error && (
+          <div className="flex w-full items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-left text-sm">
+            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <p className="text-destructive">{error}</p>
           </div>
         )}
 
-        {/* Error state */}
-        {validationFailed && errorMessage && (
-          <div className="flex w-full flex-col items-center gap-4">
-            <div className="flex w-full items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-left text-sm">
-              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
-              <p className="text-destructive">{errorMessage}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={retry}
-              disabled={isChecking}
-            >
-              <RefreshCw className="size-4" />
-              Retry
-            </Button>
-          </div>
+        {/* Retry button when any check fails */}
+        {hasFailed && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={retry}
+            disabled={isChecking}
+          >
+            <RefreshCw className="size-4" />
+            Retry
+          </Button>
         )}
       </div>
     </div>

@@ -1,5 +1,5 @@
 use crate::agents::sidecar_pool;
-use crate::types::NodeStatus;
+use crate::types::{DepStatus, NodeStatus, StartupDeps};
 
 #[tauri::command]
 pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
@@ -33,6 +33,72 @@ pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
             source: String::new(),
         }),
     }
+}
+
+#[tauri::command]
+pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, String> {
+    let mut checks = Vec::new();
+
+    // 1. Node.js
+    let node = match sidecar_pool::resolve_node_binary(&app).await {
+        Ok(res) if res.meets_minimum => DepStatus {
+            name: "Node.js".to_string(),
+            ok: true,
+            detail: format!(
+                "{} ({})",
+                res.version.unwrap_or_default(),
+                res.source
+            ),
+        },
+        Ok(res) => DepStatus {
+            name: "Node.js".to_string(),
+            ok: false,
+            detail: format!(
+                "{} found ({}) — need 18-24",
+                res.version.unwrap_or("unknown".to_string()),
+                res.source
+            ),
+        },
+        Err(e) => DepStatus {
+            name: "Node.js".to_string(),
+            ok: false,
+            detail: e,
+        },
+    };
+    checks.push(node);
+
+    // 2. Sidecar (agent-runner.js)
+    let sidecar = match sidecar_pool::resolve_sidecar_path_public(&app) {
+        Ok(path) => DepStatus {
+            name: "Agent sidecar".to_string(),
+            ok: true,
+            detail: path,
+        },
+        Err(e) => DepStatus {
+            name: "Agent sidecar".to_string(),
+            ok: false,
+            detail: e,
+        },
+    };
+    checks.push(sidecar);
+
+    // 3. SDK CLI (cli.js)
+    let sdk = match crate::agents::sidecar::resolve_sdk_cli_path_public(&app) {
+        Ok(path) => DepStatus {
+            name: "Claude SDK".to_string(),
+            ok: true,
+            detail: path,
+        },
+        Err(e) => DepStatus {
+            name: "Claude SDK".to_string(),
+            ok: false,
+            detail: e,
+        },
+    };
+    checks.push(sdk);
+
+    let all_ok = checks.iter().all(|c| c.ok);
+    Ok(StartupDeps { all_ok, checks })
 }
 
 /// Parse a version string like "v20.11.0" and check if major >= min_major.

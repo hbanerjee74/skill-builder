@@ -598,6 +598,11 @@ fn scan_skills_dir(cwd: &Path) -> Vec<String> {
 // These are kept as separate functions here to avoid making the private functions
 // in sidecar.rs public (which would change the existing module's API surface).
 
+/// Public accessor for startup dependency checks.
+pub fn resolve_sidecar_path_public(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    resolve_sidecar_path(app_handle)
+}
+
 fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String> {
     use tauri::Manager;
 

@@ -1,33 +1,33 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { NodeStatus } from "@/lib/types";
+import type { StartupDeps } from "@/lib/types";
 
-interface UseNodeValidationReturn {
-  status: NodeStatus | null;
+interface UseStartupDepsReturn {
+  deps: StartupDeps | null;
   isChecking: boolean;
   error: string | null;
   retry: () => void;
 }
 
-export function useNodeValidation(): UseNodeValidationReturn {
-  const [status, setStatus] = useState<NodeStatus | null>(null);
+export function useNodeValidation(): UseStartupDepsReturn {
+  const [deps, setDeps] = useState<StartupDeps | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const check = useCallback(() => {
     setIsChecking(true);
     setError(null);
-    setStatus(null);
+    setDeps(null);
 
-    invoke<NodeStatus>("check_node")
+    invoke<StartupDeps>("check_startup_deps")
       .then((result) => {
-        setStatus(result);
+        setDeps(result);
         setIsChecking(false);
       })
       .catch((err: unknown) => {
         const message =
           err instanceof Error ? err.message : String(err);
-        setError(message || "Failed to check Node.js availability");
+        setError(message || "Failed to check startup dependencies");
         setIsChecking(false);
       });
   }, []);
@@ -36,5 +36,5 @@ export function useNodeValidation(): UseNodeValidationReturn {
     check();
   }, [check]);
 
-  return { status, isChecking, error, retry: check };
+  return { deps, isChecking, error, retry: check };
 }
