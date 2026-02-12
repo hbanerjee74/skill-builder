@@ -226,20 +226,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          CURRENT_TAG="v${RELEASE_VERSION}"
-
           # Fetch all tags to ensure we have the full history
           git fetch --tags
 
           # Determine the previous tag (most recent tag before the current one)
           PREVIOUS_TAG=$(git tag --sort=-creatordate | grep '^v' | head -2 | tail -1)
 
-          # Build the commit log
-          if [ -z "$PREVIOUS_TAG" ] || [ "$PREVIOUS_TAG" = "$CURRENT_TAG" ]; then
-            # No previous tag — use all commits from root
-            COMMITS=$(git log --oneline --format="%s" "$CURRENT_TAG" 2>/dev/null || git log --oneline --format="%s")
+          # Build the commit log (use HEAD since the release tag doesn't exist yet)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # No previous tag — use all commits
+            COMMITS=$(git log --oneline --format="%s" HEAD)
           else
-            COMMITS=$(git log --oneline --format="%s" "${PREVIOUS_TAG}..${CURRENT_TAG}" 2>/dev/null || git log --oneline --format="%s" "${PREVIOUS_TAG}..HEAD")
+            COMMITS=$(git log --oneline --format="%s" "${PREVIOUS_TAG}..HEAD")
           fi
 
           if [ -z "$COMMITS" ]; then
@@ -266,7 +264,7 @@ jobs:
                 }]
               }')
 
-            RESPONSE=$(curl -s --max-time 30 \
+            RESPONSE=$(curl -s --max-time 60 \
               -H "x-api-key: ${ANTHROPIC_API_KEY}" \
               -H "anthropic-version: 2023-06-01" \
               -H "content-type: application/json" \
