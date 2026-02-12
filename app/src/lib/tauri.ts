@@ -188,3 +188,4 @@ export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
 
 export const getAgentPrompt = (skillType: string, phase: string) =>
   invoke<string>("get_agent_prompt", { skillType, phase });
+
