@@ -1,5 +1,19 @@
+use tauri::Manager;
+
 use crate::db::Db;
 use crate::types::AppSettings;
+
+#[tauri::command]
+pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get data directory: {}", e))?;
+    data_dir
+        .to_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Data directory path contains invalid UTF-8".to_string())
+}
 
 #[tauri::command]
 pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
