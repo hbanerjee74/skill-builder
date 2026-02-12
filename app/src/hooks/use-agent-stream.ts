@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useAgentStore } from "@/stores/agent-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 
 interface AgentMessagePayload {
   agent_id: string;
@@ -54,6 +55,13 @@ export function initAgentStream() {
   listen<AgentMessagePayload>("agent-message", (event) => {
     if (shuttingDown) return;
     const { agent_id, message } = event.payload;
+
+    // Clear the "initializing" spinner on the first message from the agent.
+    // This is idempotent — subsequent messages are a no-op when already cleared.
+    const workflowState = useWorkflowStore.getState();
+    if (workflowState.isInitializing) {
+      workflowState.clearInitializing();
+    }
 
     useAgentStore.getState().addMessage(agent_id, {
       type: message.type,

@@ -14,16 +14,29 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  isInitializing: boolean;
+  initStartTime: number | null;
   hydrated: boolean;
+
+  /** Whether the current step has timed out (agent took too long). */
+  isTimedOut: boolean;
+  /** Timestamp (ms) when the timeout was triggered, for elapsed-time display. */
+  timeoutStartTime: number | null;
 
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
+  setInitializing: () => void;
+  clearInitializing: () => void;
   rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
   setHydrated: (hydrated: boolean) => void;
+  /** Mark the current step as timed out and record the timestamp. */
+  setTimedOut: () => void;
+  /** Clear the timeout state (e.g. after retry or cancel). */
+  clearTimeout: () => void;
   reset: () => void;
 }
 
@@ -91,6 +104,10 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  isInitializing: false,
+  initStartTime: null,
+  isTimedOut: false,
+  timeoutStartTime: null,
   hydrated: false,
 
   initWorkflow: (skillName, domain, skillType) =>
@@ -101,6 +118,10 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isInitializing: false,
+      initStartTime: null,
+      isTimedOut: false,
+      timeoutStartTime: null,
       hydrated: false,
     }),
 
@@ -116,6 +137,14 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
     })),
 
   setRunning: (running) => set({ isRunning: running }),
+
+  setInitializing: () => set({ isInitializing: true, initStartTime: Date.now() }),
+
+  clearInitializing: () => set({ isInitializing: false, initStartTime: null }),
+
+  setTimedOut: () => set({ isTimedOut: true, timeoutStartTime: Date.now() }),
+
+  clearTimeout: () => set({ isTimedOut: false, timeoutStartTime: null }),
 
   rerunFromStep: (stepId) =>
     set((state) => ({
@@ -154,6 +183,10 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      isInitializing: false,
+      initStartTime: null,
+      isTimedOut: false,
+      timeoutStartTime: null,
       hydrated: false,
     }),
 }));

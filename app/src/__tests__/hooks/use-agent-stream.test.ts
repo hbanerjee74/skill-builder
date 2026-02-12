@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
 import { useAgentStore } from "@/stores/agent-store";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
 type ListenCallback = (event: { payload: unknown }) => void;
@@ -10,6 +11,7 @@ describe("initAgentStream", () => {
 
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
+    useWorkflowStore.getState().reset();
     _resetForTesting();
     listeners = {};
 
@@ -187,5 +189,90 @@ describe("initAgentStream", () => {
     expect(run.model).toBe("sonnet");
     expect(run.messages).toHaveLength(1);
     expect(run.messages[0].content).toBe("I started early");
+  });
+
+  it("clears initializing state on first agent message", () => {
+    useWorkflowStore.getState().setInitializing();
+    expect(useWorkflowStore.getState().isInitializing).toBe(true);
+
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "First message" }],
+          },
+        },
+      },
+    });
+
+    // After first message, initializing should be cleared
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    expect(useWorkflowStore.getState().initStartTime).toBeNull();
+  });
+
+  it("does not error when clearing initializing on subsequent messages", () => {
+    useWorkflowStore.getState().setInitializing();
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    // First message clears initializing
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "First" }],
+          },
+        },
+      },
+    });
+
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+
+    // Second message — should not error, already cleared
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Second" }],
+          },
+        },
+      },
+    });
+
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(2);
+  });
+
+  it("does not clear initializing when it was not set", () => {
+    // isInitializing starts as false
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Hello" }],
+          },
+        },
+      },
+    });
+
+    // Should still be false (no-op)
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    expect(useWorkflowStore.getState().initStartTime).toBeNull();
   });
 });
