@@ -82,7 +82,7 @@ If FEATURE, use this structure:
 - [ ] [Verifiable criterion 1]
 - [ ] [Verifiable criterion 2]
 
-Also suggest a refined title (concise, actionable) and labels (e.g. "bug", "enhancement", "ui", "agent", "workflow").
+Also suggest a refined title (concise, actionable) and labels for the area affected (e.g. "ui", "agent", "workflow", "editor", "settings"). Do NOT include "bug" or "enhancement" in labels — those are added automatically based on the type classification.
 
 Respond with ONLY a JSON object (no markdown fencing, no explanation):
 {
@@ -95,21 +95,31 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
 
 export function buildSubmissionPrompt(data: EnrichedIssue): string {
   const escapeQuotes = (s: string) => s.replace(/"/g, '\\"')
-  const labelsFlags = data.labels
+  // Auto-add type and version labels
+  const typeLabel = data.type === "bug" ? "bug" : "enhancement"
+  const versionLabel = `v${data.version}`
+  const allLabels = [typeLabel, versionLabel, ...data.labels.filter(
+    (l) => l !== typeLabel && l !== versionLabel,
+  )]
+  const labelsFlags = allLabels
     .map((l) => `--label "${escapeQuotes(l)}"`)
     .join(" ")
   // Sanitize body to prevent here-doc delimiter collision
   const safeBody = data.body.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
+  const owner = GITHUB_REPO.split("/")[0]
 
   return `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.
 
-Run this command:
-gh issue create --repo ${GITHUB_REPO} --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
+First, ensure all labels exist. For EACH label, run:
+gh label create "<label>" --repo ${GITHUB_REPO} --force 2>/dev/null || true
+
+Labels to create: ${allLabels.map((l) => `"${escapeQuotes(l)}"`).join(", ")}
+
+Then create the issue:
+gh issue create --repo ${GITHUB_REPO} --assignee "${owner}" --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
 ${safeBody}
 ISSUE_BODY_EOF
 )" ${labelsFlags}
-
-If a label does not exist yet, remove it from the command and retry without it.
 
 After the issue is created, the gh command will print the issue URL. Respond with ONLY that URL as plain text. Nothing else.`
 }

@@ -84,7 +84,7 @@ describe("buildSubmissionPrompt", () => {
     type: "bug",
     title: "App crashes on startup",
     body: "## Problem\nThe app crashes immediately.\n\n## Expected Behavior\nShould open normally.\n\n## Environment\n- App Version: 1.2.3",
-    labels: ["bug", "crash"],
+    labels: ["crash"],
     version: "1.2.3",
   };
 
@@ -92,24 +92,45 @@ describe("buildSubmissionPrompt", () => {
     type: "feature",
     title: "Add dark mode",
     body: "## Requirement\nUsers want dark mode.\n\n## Acceptance Criteria\n- [ ] Toggle in settings\n- [ ] Persists across sessions",
-    labels: ["enhancement", "ui"],
+    labels: ["ui"],
     version: "1.2.3",
   };
 
-  it("uses gh issue create for bugs with labels", () => {
+  it("auto-adds type and version labels, assigns repo owner", () => {
     const prompt = buildSubmissionPrompt(baseBug);
     expect(prompt).toContain("gh issue create");
     expect(prompt).toContain("hbanerjee74/skill-builder");
-    expect(prompt).toContain("App crashes on startup");
+    expect(prompt).toContain('--assignee "hbanerjee74"');
+    // Auto-added labels: bug (type), v1.2.3 (version), plus user label
     expect(prompt).toContain('--label "bug"');
+    expect(prompt).toContain('--label "v1.2.3"');
     expect(prompt).toContain('--label "crash"');
+    // Ensures labels are created before issue
+    expect(prompt).toContain("gh label create");
   });
 
-  it("uses gh issue create for features", () => {
+  it("uses enhancement label for features", () => {
     const prompt = buildSubmissionPrompt(baseFeature);
-    expect(prompt).toContain("gh issue create");
-    expect(prompt).toContain("hbanerjee74/skill-builder");
     expect(prompt).toContain('--label "enhancement"');
+    expect(prompt).toContain('--label "v1.2.3"');
+    expect(prompt).toContain('--label "ui"');
+  });
+
+  it("deduplicates type and version labels", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "body",
+      labels: ["bug", "v1.2.3", "ui"],
+      version: "1.2.3",
+    };
+    const prompt = buildSubmissionPrompt(issue);
+    // "bug" and "v1.2.3" should appear once each (auto-added, not duplicated)
+    const bugMatches = prompt.match(/--label "bug"/g);
+    const versionMatches = prompt.match(/--label "v1\.2\.3"/g);
+    expect(bugMatches).toHaveLength(1);
+    expect(versionMatches).toHaveLength(1);
+    expect(prompt).toContain('--label "ui"');
   });
 
   it("escapes double quotes in title and labels", () => {
