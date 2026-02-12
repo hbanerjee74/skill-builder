@@ -703,6 +703,7 @@ pub async fn run_workflow_step(
     workspace_path: String,
     resume: bool,
     rerun: bool,
+    timeout_secs: u64,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path)?;
@@ -784,16 +785,17 @@ pub async fn run_workflow_step(
         agent_name: Some(agent_name),
     };
 
-    // Default timeout for workflow steps. The frontend also enforces its own
-    // agentTimeout, but this backend timeout acts as a safety net to ensure
-    // the agent_exit event fires even if the frontend timer misfires.
+    // Use the timeout value passed from the frontend settings. The frontend
+    // also enforces its own agentTimeout, but this backend timeout acts as a
+    // safety net to ensure the agent_exit event fires even if the frontend
+    // timer misfires.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
-        90,
+        timeout_secs,
     )
     .await?;
 
