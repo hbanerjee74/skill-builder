@@ -207,14 +207,89 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Fetch all tags to ensure we have the full history
+          git fetch --tags
+
+          # Determine the previous tag (most recent tag before the current one)
+          PREVIOUS_TAG=$(git tag --sort=-creatordate | grep '^v' | head -2 | tail -1)
+
+          # Build the commit log (use HEAD since the release tag doesn't exist yet)
+          if [ -z "$PREVIOUS_TAG" ]; then
+            # No previous tag — use all commits
+            COMMITS=$(git log --oneline --format="%s" HEAD)
+          else
+            COMMITS=$(git log --oneline --format="%s" "${PREVIOUS_TAG}..HEAD")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="No commits found for this release."
+          fi
+
+          # Build a simple bullet-list fallback from commit subjects
+          FALLBACK=$(echo "$COMMITS" | sed 's/^/- /')
+
+          NOTES=""
+
+          # Attempt AI-generated release notes
+          if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            # Build the JSON payload safely with jq (handles special chars in commits)
+            PAYLOAD=$(jq -n \
+              --arg version "$RELEASE_VERSION" \
+              --arg commits "$COMMITS" \
+              '{
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 1024,
+                messages: [{
+                  role: "user",
+                  content: ("You are writing release notes for Skill Builder v" + $version + ", a desktop app for building AI skills.\n\nSummarize the git commits below into polished, user-facing release notes.\n\nFormat:\n1. Start with 1-2 sentences highlighting the most notable change(s)\n2. Then group changes under these markdown headings (omit any with no items):\n   ### Highlights\n   ### New\n   ### Improved\n   ### Fixed\n\nOnly add a ### Breaking Changes section if there are changes that require user action.\n\nWriting style:\n- Write for end users, not developers — use \"you\" framing (e.g., \"You can now...\" not \"Added support for...\")\n- Keep each bullet to one concise sentence\n- Describe what changed from the user's perspective, not the code perspective\n- No commit hashes, file paths, PR numbers, or technical jargon\n- If multiple commits relate to the same user-facing change, combine them into one bullet\n\nCommits:\n" + $commits)
+                }]
+              }')
+
+            RESPONSE=$(curl -s --max-time 60 \
+              -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              -d "$PAYLOAD" \
+              "https://api.anthropic.com/v1/messages" 2>/dev/null) || true
+
+            if [ -n "${RESPONSE:-}" ]; then
+              NOTES=$(echo "$RESPONSE" | jq -r '.content[0].text // empty' 2>/dev/null) || true
+            fi
+          fi
+
+          # Fall back to simple commit list if AI summary is empty
+          if [ -z "${NOTES:-}" ]; then
+            NOTES=$(printf "### What's Changed\n\n%s" "$FALLBACK")
+          fi
+
+          # Write multiline output
+          echo "release_notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: Skill Builder v${{ github.event.inputs.version }}
+          body: ${{ steps.notes.outputs.release_notes }}
           files: artifacts/**/*.zip
