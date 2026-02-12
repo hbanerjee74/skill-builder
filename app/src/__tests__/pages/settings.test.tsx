@@ -275,6 +275,26 @@ describe("SettingsPage", () => {
     expect(heading).toBeInTheDocument();
   });
 
+  it("displays the app version from Tauri", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Skill Builder v0.1.0")).toBeInTheDocument();
+    });
+  });
+
+  it("shows fallback version when getVersion fails", async () => {
+    const { mockGetVersion } = await import("@/test/mocks/tauri");
+    mockGetVersion.mockRejectedValueOnce(new Error("not available"));
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Skill Builder vdev")).toBeInTheDocument();
+    });
+  });
+
   it("renders Skills Folder card with Browse button", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);

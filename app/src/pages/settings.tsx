@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
@@ -41,6 +42,7 @@ export default function SettingsPage() {
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
   const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>("dev")
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
@@ -85,6 +87,12 @@ export default function SettingsPage() {
       }
     }
     check()
+  }, [])
+
+  useEffect(() => {
+    getVersion()
+      .then((v) => setAppVersion(v))
+      .catch(() => setAppVersion("dev"))
   }, [])
 
   const autoSave = async (overrides: Partial<{
@@ -187,6 +195,7 @@ export default function SettingsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold">Settings</h1>
+        <span className="text-sm text-muted-foreground">Skill Builder v{appVersion}</span>
         {saved && (
           <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
             <CheckCircle2 className="size-3.5" />
