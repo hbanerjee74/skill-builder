@@ -48,9 +48,15 @@ jobs:
           node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
           node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
 
-      - name: Build Tauri app
+      - name: Build Tauri app (macOS)
+        if: matrix.os == 'macos-latest'
         working-directory: app
         run: npx tauri build --bundles app
+
+      - name: Build Tauri app (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: app
+        run: npx tauri build --no-bundle
 
       - name: Zip macOS app bundle
         if: matrix.os == 'macos-latest'
