@@ -3,7 +3,8 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2 } from "lucide-react"
+import { revealItemInDir } from "@tauri-apps/plugin-opener"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -44,6 +45,7 @@ export default function SettingsPage() {
   const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
+  const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
   useEffect(() => {
@@ -100,6 +102,12 @@ export default function SettingsPage() {
     getDataDir()
       .then((dir) => setDataDir(dir))
       .catch(() => setDataDir(null))
+  }, [])
+
+  useEffect(() => {
+    invoke<string>("get_log_file_path")
+      .then(setLogFilePath)
+      .catch(() => setLogFilePath(null))
   }, [])
 
   const autoSave = async (overrides: Partial<{
@@ -306,6 +314,62 @@ export default function SettingsPage() {
               checked={debugMode}
               onCheckedChange={(checked) => { setDebugMode(checked); autoSave({ debugMode: checked }); }}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Verbose Logging</CardTitle>
+          <CardDescription>
+            Enable debug-level logging for detailed Rust backend, sidecar, and frontend activity.
+            Log file is recreated each session.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="verbose-logging">Verbose logging (debug-level output)</Label>
+            <Switch
+              id="verbose-logging"
+              checked={debugMode}
+              onCheckedChange={(checked) => {
+                setDebugMode(checked)
+                autoSave({ debugMode: checked })
+                invoke("set_log_level", { verbose: checked }).catch(() => {})
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Log File</CardTitle>
+          <CardDescription>
+            Application logs are written here. The log file is recreated each time the app starts.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <FileText className="size-4 text-muted-foreground" />
+            <code className="text-sm text-muted-foreground flex-1">
+              {logFilePath || "Not available"}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (logFilePath) {
+                  revealItemInDir(logFilePath).catch(() => {
+                    toast.error("Failed to open log directory")
+                  })
+                }
+              }}
+              disabled={!logFilePath}
+            >
+              <ExternalLink className="size-4" />
+              Open
+            </Button>
           </div>
         </CardContent>
       </Card>
