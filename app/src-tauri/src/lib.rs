@@ -28,6 +28,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::agent::start_agent,
             commands::node::check_node,
+            commands::settings::get_data_dir,
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::test_api_key,

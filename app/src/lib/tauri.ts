@@ -14,6 +14,8 @@ export const saveSettings = (settings: AppSettings) =>
 export const testApiKey = (apiKey: string) =>
   invoke<boolean>("test_api_key", { apiKey });
 
+export const getDataDir = () => invoke<string>("get_data_dir");
+
 // --- Skills ---
 
 export const listSkills = (workspacePath: string) =>
