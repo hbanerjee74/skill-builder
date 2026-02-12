@@ -112,16 +112,33 @@ describe("buildSubmissionPrompt", () => {
     expect(prompt).toContain('--label "enhancement"');
   });
 
-  it("escapes double quotes in title", () => {
+  it("escapes double quotes in title and labels", () => {
     const issue: EnrichedIssue = {
       type: "bug",
       title: 'Click "Save" crashes app',
       body: "## Problem\nCrash on save",
-      labels: ["bug"],
+      labels: ['area:"ui"', "crash"],
       version: "1.2.3",
     };
     const prompt = buildSubmissionPrompt(issue);
     expect(prompt).toContain('Click \\"Save\\" crashes app');
+    expect(prompt).toContain('"area:\\"ui\\""');
+    expect(prompt).toContain('"crash"');
+  });
+
+  it("sanitizes body containing here-doc delimiter", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "## Problem\nSomething broke\nISSUE_BODY_EOF\nMore text",
+      labels: ["bug"],
+      version: "1.2.3",
+    };
+    const prompt = buildSubmissionPrompt(issue);
+    // The user's body occurrence is replaced; template delimiters remain
+    expect(prompt).toContain("ISSUE-BODY-EOF\nMore text");
+    // Body should NOT contain the raw delimiter between content lines
+    expect(prompt).not.toContain("Something broke\nISSUE_BODY_EOF\nMore text");
   });
 });
 
@@ -409,6 +426,52 @@ describe("FeedbackDialog", () => {
           duration: 8000,
         }),
       );
+    });
+  });
+
+  it("shows error toast on submission failure and returns to review", async () => {
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.click(screen.getByRole("button", { name: /Analyze/i }));
+
+    await waitFor(() => {
+      expect(mockStartAgent).toHaveBeenCalledTimes(1);
+    });
+
+    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
+    act(() => {
+      simulateEnrichmentComplete(enrichAgentId);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
+    });
+
+    mockStartAgent.mockReset().mockResolvedValue("feedback-submit-fail");
+
+    await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
+
+    await waitFor(() => {
+      expect(mockStartAgent).toHaveBeenCalledTimes(1);
+    });
+
+    const submitAgentId = mockStartAgent.mock.calls[0][0] as string;
+
+    act(() => {
+      const store = useAgentStore.getState();
+      store.registerRun(submitAgentId, "haiku");
+      store.completeRun(submitAgentId, false);
+    });
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to submit feedback", {
+        duration: 5000,
+      });
+      // Should return to review step
+      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
   });
 

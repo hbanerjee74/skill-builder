@@ -94,13 +94,18 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
 }
 
 export function buildSubmissionPrompt(data: EnrichedIssue): string {
-  const labelsFlags = data.labels.map((l) => `--label "${l}"`).join(" ")
+  const escapeQuotes = (s: string) => s.replace(/"/g, '\\"')
+  const labelsFlags = data.labels
+    .map((l) => `--label "${escapeQuotes(l)}"`)
+    .join(" ")
+  // Sanitize body to prevent here-doc delimiter collision
+  const safeBody = data.body.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
 
   return `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.
 
 Run this command:
-gh issue create --repo ${GITHUB_REPO} --title "${data.title.replace(/"/g, '\\"')}" --body "$(cat <<'ISSUE_BODY_EOF'
-${data.body}
+gh issue create --repo ${GITHUB_REPO} --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
+${safeBody}
 ISSUE_BODY_EOF
 )" ${labelsFlags}
 
@@ -457,7 +462,7 @@ export function FeedbackDialog() {
           <Button variant="outline" onClick={handleBack}>
             Back
           </Button>
-          <Button onClick={handleSubmit}>
+          <Button onClick={handleSubmit} disabled={!enriched.title.trim() || !enriched.body.trim()}>
             Create GitHub Issue
           </Button>
         </DialogFooter>
