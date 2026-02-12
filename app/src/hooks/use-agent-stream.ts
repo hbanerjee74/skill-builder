@@ -28,6 +28,12 @@ interface AgentInitProgressPayload {
   timestamp: number;
 }
 
+interface AgentInitErrorPayload {
+  error_type: string;
+  message: string;
+  fix_hint: string;
+}
+
 /** Map sidecar system event subtypes to user-facing progress messages. */
 const INIT_PROGRESS_MESSAGES: Record<string, string> = {
   init_start: "Loading SDK modules...",
@@ -74,6 +80,16 @@ export function initAgentStream() {
         workflowState.setInitProgressMessage(progressMessage);
       }
     }
+  });
+
+  listen<AgentInitErrorPayload>("agent-init-error", (event) => {
+    if (shuttingDown) return;
+    const { error_type, message, fix_hint } = event.payload;
+    useWorkflowStore.getState().setRuntimeError({
+      error_type,
+      message,
+      fix_hint,
+    });
   });
 
   listen<AgentMessagePayload>("agent-message", (event) => {
