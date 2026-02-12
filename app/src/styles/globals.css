@@ -225,47 +225,177 @@
   --borderColor-neutral-muted: var(--borderColor-muted);
 }
 
-/* Compact markdown for agent output panels */
+/* ------------------------------------------------------------------ */
+/* Compact markdown for agent output panels                           */
+/* Provides readable typography while staying compact enough          */
+/* for streaming agent output and chat message bubbles.               */
+/* ------------------------------------------------------------------ */
+
 .markdown-body.compact {
-  --base-size-4: 0.0625rem;
-  --base-size-8: 0.125rem;
-  --base-size-16: 0.25rem;
-  --base-size-24: 0.375rem;
-  --base-size-40: 0.5rem;
+  /* Override github-markdown-css spacing tokens for tighter layout */
+  --base-size-4: 0.125rem;
+  --base-size-8: 0.25rem;
+  --base-size-16: 0.5rem;
+  --base-size-24: 0.625rem;
+  --base-size-40: 0.75rem;
   font-size: 14px;
-  line-height: 1.3;
+  line-height: 1.55;
 }
 
+/* Strip margins on first/last child to avoid double spacing in cards */
 .markdown-body.compact > :first-child { margin-top: 0; }
 .markdown-body.compact > :last-child { margin-bottom: 0; }
 
-.markdown-body.compact p,
+/* --- Paragraphs --------------------------------------------------- */
+.markdown-body.compact p {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+/* --- Headings: clear size hierarchy + breathing room -------------- */
+.markdown-body.compact h1 {
+  font-size: 1.35em;
+  font-weight: 700;
+  margin: 1.25em 0 0.5em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+  letter-spacing: -0.01em;
+}
+.markdown-body.compact h2 {
+  font-size: 1.2em;
+  font-weight: 650;
+  margin: 1em 0 0.4em;
+  padding-bottom: 0.15em;
+  border-bottom: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+  letter-spacing: -0.01em;
+}
+.markdown-body.compact h3 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 0.85em 0 0.35em;
+}
+.markdown-body.compact h4 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 0.75em 0 0.3em;
+  color: var(--fgColor-muted, oklch(0.556 0 0));
+}
+/* Remove top margin on the very first heading */
+.markdown-body.compact > h1:first-child,
+.markdown-body.compact > h2:first-child,
+.markdown-body.compact > h3:first-child,
+.markdown-body.compact > h4:first-child {
+  margin-top: 0;
+}
+
+/* --- Lists: proper indentation and readable spacing --------------- */
 .markdown-body.compact ul,
-.markdown-body.compact ol,
-.markdown-body.compact blockquote {
-  margin-top: 2px;
-  margin-bottom: 2px;
+.markdown-body.compact ol {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+  padding-left: 1.6em;
+}
+.markdown-body.compact ul {
+  list-style-type: disc;
+}
+.markdown-body.compact ul ul {
+  list-style-type: circle;
+}
+.markdown-body.compact ul ul ul {
+  list-style-type: square;
+}
+.markdown-body.compact ol {
+  list-style-type: decimal;
+}
+.markdown-body.compact li {
+  margin-bottom: 0.15em;
+  line-height: 1.5;
+}
+.markdown-body.compact li > p {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+/* Nested lists: slightly tighter */
+.markdown-body.compact li > ul,
+.markdown-body.compact li > ol {
+  margin-top: 0.15em;
+  margin-bottom: 0.15em;
 }
 
-.markdown-body.compact h1 { font-size: 1.2em; margin: 4px 0 2px; padding-bottom: 0; }
-.markdown-body.compact h2 { font-size: 1.15em; margin: 4px 0 2px; padding-bottom: 0; }
-.markdown-body.compact h3,
-.markdown-body.compact h4 { font-size: 1.05em; margin: 2px 0 1px; }
-
+/* --- Code blocks: distinct background + border -------------------- */
 .markdown-body.compact pre {
-  font-size: 12px;
-  padding: 4px 8px;
-  margin: 2px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 0.65em 0.85em;
+  margin: 0.6em 0;
+  border-radius: 6px;
+  border: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+  overflow-x: auto;
 }
 
-.markdown-body.compact li { margin-bottom: 0; }
+/* --- Inline code: visually distinct ------------------------------- */
+.markdown-body.compact code:not(pre code) {
+  font-size: 0.88em;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-weight: 500;
+}
 
-.markdown-body.compact hr { margin: 4px 0; }
+/* --- Tables: borders, padding, alternating rows ------------------- */
+.markdown-body.compact table {
+  margin: 0.6em 0;
+  border-spacing: 0;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.markdown-body.compact table th {
+  font-weight: 600;
+  text-align: left;
+  padding: 0.45em 0.75em;
+  border: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+  background: var(--bgColor-muted, oklch(0.965 0 0));
+}
+.markdown-body.compact table td {
+  padding: 0.4em 0.75em;
+  border: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+  line-height: 1.45;
+}
+.markdown-body.compact table tr:nth-child(even) td {
+  background: var(--bgColor-muted, oklch(0.965 0 0));
+}
+.markdown-body.compact table tr:nth-child(odd) td {
+  background: transparent;
+}
 
-.markdown-body.compact table { margin: 2px 0; border-spacing: 0; }
-.markdown-body.compact table td,
-.markdown-body.compact table th { padding: 1px 6px; font-size: 12px; line-height: 1.2; }
-.markdown-body.compact table tr { border-top: none; }
+/* --- Blockquotes: left accent bar + muted text -------------------- */
+.markdown-body.compact blockquote {
+  margin: 0.6em 0;
+  padding: 0.35em 0.85em;
+  border-left: 3px solid var(--borderColor-accent-emphasis, oklch(0.585 0.193 277.023));
+  color: var(--fgColor-muted, oklch(0.556 0 0));
+}
+.markdown-body.compact blockquote p {
+  margin: 0.25em 0;
+}
+
+/* --- Horizontal rules: section dividers --------------------------- */
+.markdown-body.compact hr {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid var(--borderColor-muted, oklch(0.922 0 0));
+}
+
+/* --- Strong / emphasis -------------------------------------------- */
+.markdown-body.compact strong {
+  font-weight: 650;
+}
+
+/* --- Links -------------------------------------------------------- */
+.markdown-body.compact a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 /* Safety net for minimum dimensions (Tauri enforces via minWidth/minHeight) */
 html, body, #root {
