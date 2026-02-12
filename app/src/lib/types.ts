@@ -41,6 +41,7 @@ export interface NodeStatus {
   version: string | null
   meets_minimum: boolean
   error: string | null
+  source: string
 }
 
 export interface WorkflowStep {

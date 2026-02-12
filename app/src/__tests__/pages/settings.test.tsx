@@ -23,6 +23,7 @@ vi.mock("@/lib/tauri", () => ({
       version: "20.0.0",
       meets_minimum: true,
       error: null,
+      source: "system",
     })
   ),
 }));
@@ -63,6 +64,7 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
       version: "20.0.0",
       meets_minimum: true,
       error: null,
+      source: "system",
     },
   });
 }

@@ -1,19 +1,79 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { AlertCircle, RefreshCw, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useNodeValidation } from "@/hooks/use-node-validation";
 
 interface SplashScreenProps {
   onDismiss: () => void;
+  onReady: () => void;
 }
 
-export function SplashScreen({ onDismiss }: SplashScreenProps) {
+/**
+ * Derive a user-facing error message based on the validation result.
+ *
+ * - Bundled runtime failed to load  -> suggest reinstall
+ * - System Node found but wrong version -> show found version, expected range
+ * - No Node at all                  -> point to nodejs.org
+ * - Invoke-level / unexpected error -> show raw error
+ */
+function deriveErrorMessage(
+  source: string,
+  available: boolean,
+  version: string | null,
+  meetsMinimum: boolean,
+  invokeError: string | null,
+): string {
+  if (invokeError) {
+    return `Node.js check failed: ${invokeError}`;
+  }
+
+  if (!available) {
+    if (source === "bundled") {
+      return "The bundled Node.js runtime could not be loaded. Please reinstall the app.";
+    }
+    return "Node.js 18\u201324 is required. Install from nodejs.org";
+  }
+
+  if (!meetsMinimum) {
+    return `Node.js 18\u201324 is required for development. Found v${version ?? "unknown"}.`;
+  }
+
+  return "An unexpected error occurred while validating Node.js.";
+}
+
+export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
   const [fading, setFading] = useState(false);
+  const { status, isChecking, error, retry } = useNodeValidation();
+
+  // Once validation passes, signal readiness then start the fade-out.
+  const dismiss = useCallback(() => {
+    onReady();
+    setFading(true);
+    setTimeout(onDismiss, 400);
+  }, [onDismiss, onReady]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setFading(true);
-      setTimeout(onDismiss, 400);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [onDismiss]);
+    if (isChecking) return;
+    if (status?.available && status.meets_minimum) {
+      // Small pause so the splash is visible before fading out
+      const timer = setTimeout(dismiss, 600);
+      return () => clearTimeout(timer);
+    }
+    // Validation failed -- stay on splash (error UI rendered below)
+  }, [isChecking, status, dismiss]);
+
+  const validationFailed =
+    !isChecking && (error !== null || !status?.available || !status?.meets_minimum);
+
+  const errorMessage = validationFailed
+    ? deriveErrorMessage(
+        status?.source ?? "",
+        status?.available ?? false,
+        status?.version ?? null,
+        status?.meets_minimum ?? false,
+        error,
+      )
+    : null;
 
   return (
     <div
@@ -45,6 +105,33 @@ export function SplashScreen({ onDismiss }: SplashScreenProps) {
             without notice. Use at your own risk.
           </p>
         </div>
+
+        {/* Loading indicator while checking */}
+        {isChecking && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            <span>Checking Node.js runtime...</span>
+          </div>
+        )}
+
+        {/* Error state */}
+        {validationFailed && errorMessage && (
+          <div className="flex w-full flex-col items-center gap-4">
+            <div className="flex w-full items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-left text-sm">
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+              <p className="text-destructive">{errorMessage}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={retry}
+              disabled={isChecking}
+            >
+              <RefreshCw className="size-4" />
+              Retry
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

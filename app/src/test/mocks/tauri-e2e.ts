@@ -22,6 +22,7 @@ const mockResponses: Record<string, unknown> = {
     version: "v20.11.0",
     meets_minimum: true,
     error: null,
+    source: "system",
   },
   list_skills: [],
   create_skill: undefined,
