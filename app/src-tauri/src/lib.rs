@@ -77,9 +77,12 @@ pub fn run() {
                 // Shutdown all persistent sidecars on app exit
                 use tauri::Manager;
                 let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
-                // Use a blocking approach since we're in the exit handler
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(pool.shutdown_all());
+                // The Tokio runtime may already be torn down during exit
+                if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                    rt.block_on(pool.shutdown_all());
+                } else if let Ok(rt) = tokio::runtime::Runtime::new() {
+                    rt.block_on(pool.shutdown_all());
+                }
             }
         });
 }
