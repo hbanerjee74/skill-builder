@@ -22,6 +22,18 @@ interface AgentExitPayload {
   success: boolean;
 }
 
+interface AgentInitProgressPayload {
+  agent_id: string;
+  subtype: string;
+  timestamp: number;
+}
+
+/** Map sidecar system event subtypes to user-facing progress messages. */
+const INIT_PROGRESS_MESSAGES: Record<string, string> = {
+  init_start: "Loading SDK modules...",
+  sdk_ready: "Connecting to API...",
+};
+
 function parseContent(message: AgentMessagePayload["message"]): string | undefined {
   if (message.type === "assistant") {
     const textBlocks = message.message?.content?.filter(
@@ -51,6 +63,18 @@ export function markShuttingDown() {
 export function initAgentStream() {
   if (initialized) return;
   initialized = true;
+
+  listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
+    if (shuttingDown) return;
+    const { subtype } = event.payload;
+    const progressMessage = INIT_PROGRESS_MESSAGES[subtype];
+    if (progressMessage) {
+      const workflowState = useWorkflowStore.getState();
+      if (workflowState.isInitializing) {
+        workflowState.setInitProgressMessage(progressMessage);
+      }
+    }
+  });
 
   listen<AgentMessagePayload>("agent-message", (event) => {
     if (shuttingDown) return;

@@ -16,6 +16,8 @@ interface WorkflowState {
   isRunning: boolean;
   isInitializing: boolean;
   initStartTime: number | null;
+  /** Granular progress message shown during initialization (e.g. "Loading SDK modules..."). */
+  initProgressMessage: string | null;
   hydrated: boolean;
 
   /** Whether the current step has timed out (agent took too long). */
@@ -30,6 +32,7 @@ interface WorkflowState {
   setRunning: (running: boolean) => void;
   setInitializing: () => void;
   clearInitializing: () => void;
+  setInitProgressMessage: (message: string) => void;
   rerunFromStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[]) => void;
   setHydrated: (hydrated: boolean) => void;
@@ -106,6 +109,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   isRunning: false,
   isInitializing: false,
   initStartTime: null,
+  initProgressMessage: null,
   isTimedOut: false,
   timeoutStartTime: null,
   hydrated: false,
@@ -120,6 +124,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       isRunning: false,
       isInitializing: false,
       initStartTime: null,
+      initProgressMessage: null,
       isTimedOut: false,
       timeoutStartTime: null,
       hydrated: false,
@@ -138,9 +143,17 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setRunning: (running) => set({ isRunning: running }),
 
-  setInitializing: () => set({ isInitializing: true, initStartTime: Date.now() }),
+  setInitializing: () =>
+    set({
+      isInitializing: true,
+      initStartTime: Date.now(),
+      initProgressMessage: "Spawning agent process...",
+    }),
 
-  clearInitializing: () => set({ isInitializing: false, initStartTime: null }),
+  clearInitializing: () =>
+    set({ isInitializing: false, initStartTime: null, initProgressMessage: null }),
+
+  setInitProgressMessage: (message) => set({ initProgressMessage: message }),
 
   setTimedOut: () => set({ isTimedOut: true, timeoutStartTime: Date.now() }),
 
@@ -185,6 +198,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       isRunning: false,
       isInitializing: false,
       initStartTime: null,
+      initProgressMessage: null,
       isTimedOut: false,
       timeoutStartTime: null,
       hydrated: false,

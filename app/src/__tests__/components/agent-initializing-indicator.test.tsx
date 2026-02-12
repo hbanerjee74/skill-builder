@@ -13,11 +13,22 @@ describe("AgentInitializingIndicator", () => {
     vi.useRealTimers();
   });
 
-  it("renders spinner and initializing text", () => {
+  it("renders spinner and default spawning text", () => {
     useWorkflowStore.getState().setInitializing();
     render(<AgentInitializingIndicator />);
 
     expect(screen.getByTestId("agent-initializing-indicator")).toBeInTheDocument();
+    expect(screen.getByText("Spawning agent process...")).toBeInTheDocument();
+  });
+
+  it("shows fallback text when initProgressMessage is null", () => {
+    useWorkflowStore.setState({
+      isInitializing: true,
+      initStartTime: Date.now(),
+      initProgressMessage: null,
+    });
+    render(<AgentInitializingIndicator />);
+
     expect(screen.getByText("Initializing agent...")).toBeInTheDocument();
   });
 
@@ -85,5 +96,58 @@ describe("AgentInitializingIndicator", () => {
     // Loader2 renders as SVG with animate-spin class
     const svg = container.querySelector("svg.animate-spin");
     expect(svg).toBeInTheDocument();
+  });
+
+  it("shows 'Loading SDK modules...' progress message", () => {
+    useWorkflowStore.setState({
+      isInitializing: true,
+      initStartTime: Date.now(),
+      initProgressMessage: "Loading SDK modules...",
+    });
+    render(<AgentInitializingIndicator />);
+
+    expect(screen.getByTestId("init-progress-message").textContent).toBe(
+      "Loading SDK modules...",
+    );
+  });
+
+  it("shows 'Connecting to API...' progress message", () => {
+    useWorkflowStore.setState({
+      isInitializing: true,
+      initStartTime: Date.now(),
+      initProgressMessage: "Connecting to API...",
+    });
+    render(<AgentInitializingIndicator />);
+
+    expect(screen.getByTestId("init-progress-message").textContent).toBe(
+      "Connecting to API...",
+    );
+  });
+
+  it("updates message reactively when store changes", () => {
+    useWorkflowStore.getState().setInitializing();
+    render(<AgentInitializingIndicator />);
+
+    expect(screen.getByTestId("init-progress-message").textContent).toBe(
+      "Spawning agent process...",
+    );
+
+    // Simulate init_start event updating the store
+    act(() => {
+      useWorkflowStore.getState().setInitProgressMessage("Loading SDK modules...");
+    });
+
+    expect(screen.getByTestId("init-progress-message").textContent).toBe(
+      "Loading SDK modules...",
+    );
+
+    // Simulate sdk_ready event
+    act(() => {
+      useWorkflowStore.getState().setInitProgressMessage("Connecting to API...");
+    });
+
+    expect(screen.getByTestId("init-progress-message").textContent).toBe(
+      "Connecting to API...",
+    );
   });
 });

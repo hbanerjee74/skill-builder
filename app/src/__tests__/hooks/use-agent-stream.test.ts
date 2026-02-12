@@ -23,9 +23,10 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to agent-message and agent-exit events", () => {
+  it("subscribes to agent-message, agent-exit, and agent-init-progress events", () => {
     initAgentStream();
 
+    expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
   });
@@ -140,8 +141,8 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called twice (once for agent-message, once for agent-exit)
-    expect(mockListen).toHaveBeenCalledTimes(2);
+    // listen should only be called 3 times (agent-init-progress, agent-message, agent-exit)
+    expect(mockListen).toHaveBeenCalledTimes(3);
   });
 
   it("auto-creates run for messages arriving before startRun", () => {
@@ -274,5 +275,154 @@ describe("initAgentStream", () => {
     // Should still be false (no-op)
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
     expect(useWorkflowStore.getState().initStartTime).toBeNull();
+  });
+
+  it("updates progress message on init_start event", () => {
+    useWorkflowStore.getState().setInitializing();
+    initAgentStream();
+
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "init_start",
+        timestamp: Date.now(),
+      },
+    });
+
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Loading SDK modules...",
+    );
+  });
+
+  it("updates progress message on sdk_ready event", () => {
+    useWorkflowStore.getState().setInitializing();
+    initAgentStream();
+
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "sdk_ready",
+        timestamp: Date.now(),
+      },
+    });
+
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Connecting to API...",
+    );
+  });
+
+  it("does not update progress message when not initializing", () => {
+    // isInitializing is false by default
+    initAgentStream();
+
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "init_start",
+        timestamp: Date.now(),
+      },
+    });
+
+    expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
+  });
+
+  it("ignores unknown system event subtypes", () => {
+    useWorkflowStore.getState().setInitializing();
+    const initialMessage = useWorkflowStore.getState().initProgressMessage;
+    initAgentStream();
+
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "unknown_subtype",
+        timestamp: Date.now(),
+      },
+    });
+
+    // Message should not have changed
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(initialMessage);
+  });
+
+  it("clears progress message when initializing is cleared", () => {
+    useWorkflowStore.getState().setInitializing();
+    initAgentStream();
+
+    // Simulate init_start
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "init_start",
+        timestamp: Date.now(),
+      },
+    });
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Loading SDK modules...",
+    );
+
+    // First agent message clears initializing
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Hello" }],
+          },
+        },
+      },
+    });
+
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
+  });
+
+  it("progresses through all init stages in order", () => {
+    useWorkflowStore.getState().setInitializing();
+    initAgentStream();
+
+    // Initial state: "Spawning agent process..."
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Spawning agent process...",
+    );
+
+    // Stage 1: init_start
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "init_start",
+        timestamp: Date.now(),
+      },
+    });
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Loading SDK modules...",
+    );
+
+    // Stage 2: sdk_ready
+    listeners["agent-init-progress"]({
+      payload: {
+        agent_id: "agent-1",
+        subtype: "sdk_ready",
+        timestamp: Date.now(),
+      },
+    });
+    expect(useWorkflowStore.getState().initProgressMessage).toBe(
+      "Connecting to API...",
+    );
+
+    // Stage 3: first message clears initializing
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    listeners["agent-message"]({
+      payload: {
+        agent_id: "agent-1",
+        message: {
+          type: "assistant",
+          message: {
+            content: [{ type: "text", text: "Processing..." }],
+          },
+        },
+      },
+    });
+    expect(useWorkflowStore.getState().isInitializing).toBe(false);
+    expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
   });
 });
