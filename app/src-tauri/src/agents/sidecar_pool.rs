@@ -165,9 +165,9 @@ impl SidecarPool {
         app_handle: &tauri::AppHandle,
     ) -> Result<(), String> {
         let sidecar_path = resolve_sidecar_path(app_handle)?;
-        let node_bin = resolve_node_binary().await?;
+        let node_resolution = resolve_node_binary(app_handle).await?;
 
-        let mut child = Command::new(&node_bin)
+        let mut child = Command::new(&node_resolution.path)
             .arg(&sidecar_path)
             .arg("--persistent")
             .stdout(std::process::Stdio::piped())
@@ -644,7 +644,75 @@ fn resolve_sidecar_path(app_handle: &tauri::AppHandle) -> Result<String, String>
     Err("Could not find agent-runner.js -- run 'npm run build' in app/sidecar/ first".to_string())
 }
 
-async fn resolve_node_binary() -> Result<String, String> {
+/// Result of Node.js binary resolution: the path and where it was found.
+pub struct NodeResolution {
+    pub path: String,
+    pub source: String,
+    pub version: Option<String>,
+    pub meets_minimum: bool,
+}
+
+/// Map `std::env::consts::ARCH` to the Node.js download directory convention.
+fn node_platform_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "darwin-arm64",
+        "x86_64" => "darwin-x64",
+        other => other, // fallback — won't match any bundled path
+    }
+}
+
+/// Unified Node.js resolution: bundled-first, then system fallback.
+///
+/// 1. Check bundled path (`{resource_dir}/node/{arch}/bin/node`) — if executable, use it.
+/// 2. Fall back to system Node (PATH search, validate version 18-24) — if found, use it.
+/// 3. Neither found → error.
+pub async fn resolve_node_binary(app_handle: &tauri::AppHandle) -> Result<NodeResolution, String> {
+    use tauri::Manager;
+
+    // Step 1: Check for bundled Node.js binary
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        let arch = node_platform_arch();
+        let bundled_path = resource_dir
+            .join("node")
+            .join(arch)
+            .join("bin")
+            .join("node");
+
+        if bundled_path.exists() {
+            // Verify it's executable by running --version
+            let path_str = bundled_path.to_string_lossy().to_string();
+            let output = Command::new(&bundled_path).arg("--version").output().await;
+
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                    let meets_minimum = is_node_compatible(&version);
+                    log::info!(
+                        "Using bundled Node.js {} at {}",
+                        version,
+                        path_str
+                    );
+                    return Ok(NodeResolution {
+                        path: path_str,
+                        source: "bundled".to_string(),
+                        version: Some(version),
+                        meets_minimum,
+                    });
+                }
+            }
+            log::warn!(
+                "Bundled Node.js at {} exists but failed to execute, falling back to system",
+                path_str
+            );
+        }
+    }
+
+    // Step 2: Fall back to system Node.js
+    resolve_system_node().await
+}
+
+/// System Node.js discovery: searches PATH and well-known locations, validates version 18-24.
+async fn resolve_system_node() -> Result<NodeResolution, String> {
     let candidates: Vec<std::path::PathBuf> = {
         let mut v = vec![std::path::PathBuf::from("node")];
         for p in &[
@@ -657,7 +725,7 @@ async fn resolve_node_binary() -> Result<String, String> {
         v
     };
 
-    let mut first_available: Option<String> = None;
+    let mut first_available: Option<(String, String)> = None; // (path, version)
 
     for candidate in &candidates {
         let output = Command::new(candidate).arg("--version").output().await;
@@ -668,21 +736,38 @@ async fn resolve_node_binary() -> Result<String, String> {
                 let path_str = candidate.to_string_lossy().to_string();
 
                 if first_available.is_none() {
-                    first_available = Some(path_str.clone());
+                    first_available = Some((path_str.clone(), version.clone()));
                 }
 
                 if is_node_compatible(&version) {
-                    return Ok(path_str);
+                    log::info!(
+                        "Using system Node.js {} at {}",
+                        version,
+                        path_str
+                    );
+                    return Ok(NodeResolution {
+                        path: path_str,
+                        source: "system".to_string(),
+                        version: Some(version),
+                        meets_minimum: true,
+                    });
                 }
             }
         }
     }
 
-    if let Some(path) = first_available {
-        return Ok(path);
+    // Found a Node but it doesn't meet version requirements — still return it
+    // (sidecar_pool callers want a best-effort path; check_node reports the mismatch)
+    if let Some((path, version)) = first_available {
+        return Ok(NodeResolution {
+            path,
+            source: "system".to_string(),
+            version: Some(version),
+            meets_minimum: false,
+        });
     }
 
-    Err("Node.js not found. Please install Node.js 18+ from https://nodejs.org".to_string())
+    Err("Node.js not found. Install Node.js 18+ from https://nodejs.org or use the bundled app.".to_string())
 }
 
 fn is_node_compatible(version: &str) -> bool {
@@ -772,6 +857,17 @@ mod tests {
         assert!(is_node_compatible("v24.13.0"));
         assert!(!is_node_compatible("v25.0.0"));
         assert!(!is_node_compatible("v16.0.0"));
+    }
+
+    #[test]
+    fn test_node_platform_arch() {
+        let arch = node_platform_arch();
+        // On macOS, this should be one of the known mappings
+        assert!(
+            arch == "darwin-arm64" || arch == "darwin-x64",
+            "Expected darwin-arm64 or darwin-x64, got: {}",
+            arch
+        );
     }
 
     #[tokio::test]

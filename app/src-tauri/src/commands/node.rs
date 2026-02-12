@@ -1,46 +1,42 @@
+use crate::agents::sidecar_pool;
 use crate::types::NodeStatus;
 
 #[tauri::command]
-pub async fn check_node() -> Result<NodeStatus, String> {
-    let output = tokio::process::Command::new("node")
-        .arg("--version")
-        .output()
-        .await;
-
-    match output {
-        Ok(output) if output.status.success() => {
-            let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let meets_minimum = parse_meets_minimum(&version_str, 18);
+pub async fn check_node(app: tauri::AppHandle) -> Result<NodeStatus, String> {
+    match sidecar_pool::resolve_node_binary(&app).await {
+        Ok(resolution) => {
+            let meets_minimum = resolution.meets_minimum;
+            let error = if !meets_minimum {
+                resolution.version.as_ref().map(|v| {
+                    format!(
+                        "Node.js {} found ({}) but version 18-24 is required",
+                        v, resolution.source
+                    )
+                })
+            } else {
+                None
+            };
 
             Ok(NodeStatus {
                 available: true,
-                version: Some(version_str),
+                version: resolution.version,
                 meets_minimum,
-                error: None,
+                error,
+                source: resolution.source,
             })
         }
-        Ok(output) => Ok(NodeStatus {
+        Err(e) => Ok(NodeStatus {
             available: false,
             version: None,
             meets_minimum: false,
-            error: Some(format!(
-                "Node.js exited with status {}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            )),
-        }),
-        Err(_) => Ok(NodeStatus {
-            available: false,
-            version: None,
-            meets_minimum: false,
-            error: Some(
-                "Node.js not found. Please install Node.js 18+ from https://nodejs.org".to_string(),
-            ),
+            error: Some(e),
+            source: String::new(),
         }),
     }
 }
 
 /// Parse a version string like "v20.11.0" and check if major >= min_major.
+#[cfg(test)]
 fn parse_meets_minimum(version: &str, min_major: u32) -> bool {
     let trimmed = version.strip_prefix('v').unwrap_or(version);
     let parts: Vec<&str> = trimmed.split('.').collect();
