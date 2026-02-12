@@ -62,6 +62,7 @@ pub fn run() {
             commands::imported_skills::toggle_skill_active,
             commands::imported_skills::delete_imported_skill,
             commands::imported_skills::get_skill_content,
+            commands::feedback::submit_feedback,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

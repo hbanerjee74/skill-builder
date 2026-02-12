@@ -188,3 +188,13 @@ export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
 
 export const getAgentPrompt = (skillType: string, phase: string) =>
   invoke<string>("get_agent_prompt", { skillType, phase });
+
+// --- Feedback ---
+
+export type FeedbackType = "bug" | "feature";
+
+export const submitFeedback = (
+  feedbackType: FeedbackType,
+  title: string,
+  description: string,
+) => invoke<string>("submit_feedback", { feedbackType, title, description });
