@@ -40,6 +40,7 @@ const defaultSettings: AppSettings = {
   skills_path: null,
   preferred_model: null,
   debug_mode: false,
+  verbose_logging: false,
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -51,6 +52,7 @@ const populatedSettings: AppSettings = {
   skills_path: null,
   preferred_model: "sonnet",
   debug_mode: false,
+  verbose_logging: false,
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
@@ -481,6 +483,28 @@ describe("SettingsPage", () => {
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("set_log_level", { verbose: true });
+    });
+  });
+
+  it("auto-saves verbose_logging (not debug_mode) when verbose logging toggle is changed", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks(populatedSettings);
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const verboseSwitch = screen.getByRole("switch", { name: /Verbose logging/i });
+    await user.click(verboseSwitch);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
+        settings: expect.objectContaining({
+          verbose_logging: true,
+          debug_mode: false,
+        }),
+      });
     });
   });
 

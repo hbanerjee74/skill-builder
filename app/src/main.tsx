@@ -10,7 +10,9 @@ import "github-markdown-css/github-markdown.css";
 import "./styles/globals.css";
 
 // Route console.log/warn/error to the Rust log backend (writes to log file)
-attachConsole();
+attachConsole().catch((err) => {
+  console.error('Failed to attach console logger:', err);
+});
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

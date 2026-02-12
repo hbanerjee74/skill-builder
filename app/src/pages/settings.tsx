@@ -33,6 +33,7 @@ export default function SettingsPage() {
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [debugMode, setDebugMode] = useState(false)
+  const [verboseLogging, setVerboseLogging] = useState(false)
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -60,6 +61,7 @@ export default function SettingsPage() {
             setSkillsPath(result.skills_path)
             setPreferredModel(result.preferred_model || "sonnet")
             setDebugMode(result.debug_mode ?? false)
+            setVerboseLogging(result.verbose_logging ?? false)
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
             setLoading(false)
@@ -115,6 +117,7 @@ export default function SettingsPage() {
     skillsPath: string | null;
     preferredModel: string;
     debugMode: boolean;
+    verboseLogging: boolean;
     extendedContext: boolean;
     extendedThinking: boolean;
   }>) => {
@@ -124,6 +127,7 @@ export default function SettingsPage() {
       skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
       preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
       debug_mode: overrides.debugMode !== undefined ? overrides.debugMode : debugMode,
+      verbose_logging: overrides.verboseLogging !== undefined ? overrides.verboseLogging : verboseLogging,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
     }
@@ -136,6 +140,7 @@ export default function SettingsPage() {
         skillsPath: settings.skills_path,
         preferredModel: settings.preferred_model,
         debugMode: settings.debug_mode,
+        verboseLogging: settings.verbose_logging,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
       })
@@ -331,10 +336,10 @@ export default function SettingsPage() {
             <Label htmlFor="verbose-logging">Verbose logging (debug-level output)</Label>
             <Switch
               id="verbose-logging"
-              checked={debugMode}
+              checked={verboseLogging}
               onCheckedChange={(checked) => {
-                setDebugMode(checked)
-                autoSave({ debugMode: checked })
+                setVerboseLogging(checked)
+                autoSave({ verboseLogging: checked })
                 invoke("set_log_level", { verbose: checked }).catch(() => {})
               }}
             />
