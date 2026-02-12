@@ -620,12 +620,14 @@ pub async fn run_review_step(
         agent_name: None,
     };
 
+    // Review agents are lightweight (haiku, max 10 turns) — use a shorter timeout.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
+        60,
     )
     .await?;
 
@@ -782,12 +784,16 @@ pub async fn run_workflow_step(
         agent_name: Some(agent_name),
     };
 
+    // Default timeout for workflow steps. The frontend also enforces its own
+    // agentTimeout, but this backend timeout acts as a safety net to ensure
+    // the agent_exit event fires even if the frontend timer misfires.
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
         pool.inner().clone(),
         app,
         skill_name,
+        90,
     )
     .await?;
 
