@@ -17,9 +17,9 @@ function DepRow({ dep }: { dep: DepStatus }) {
       ) : (
         <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
       )}
-      <div className="min-w-0">
-        <span className="font-medium">{dep.name}</span>
-        <span className="ml-2 text-muted-foreground truncate">{dep.detail}</span>
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{dep.name}</p>
+        <p className="text-muted-foreground break-all">{dep.detail}</p>
       </div>
     </div>
   );
