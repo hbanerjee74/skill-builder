@@ -68,6 +68,18 @@ function isTextMimeType(mimeType: string): boolean {
   return mimeType.startsWith("text/") || mimeType === "application/json"
 }
 
+function escapeMarkdownHtml(s: string): string {
+  return s.replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function base64ByteLength(base64: string): number {
+  let len = base64.length
+  // Remove padding
+  if (base64.endsWith("==")) len -= 2
+  else if (base64.endsWith("=")) len -= 1
+  return Math.floor((len * 3) / 4)
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builders
 // ---------------------------------------------------------------------------
@@ -139,14 +151,15 @@ export function buildSubmissionPrompt(data: EnrichedIssue, attachments: Attachme
   let attachmentSection = ""
   if (attachments.length > 0) {
     const parts = attachments.map((att) => {
+      const safeName = escapeMarkdownHtml(att.name)
       if (att.mimeType.startsWith("image/")) {
-        return `### ${att.name}\n![${att.name}](data:${att.mimeType};base64,${att.base64Content})`
+        return `### ${safeName}\n![${safeName}](data:${att.mimeType};base64,${att.base64Content})`
       }
       if (isTextMimeType(att.mimeType)) {
         const decoded = atob(att.base64Content)
-        return `### ${att.name}\n<details>\n<summary>${att.name} (${formatFileSize(att.size)})</summary>\n\n\`\`\`\n${decoded}\n\`\`\`\n\n</details>`
+        return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(att.size)})</summary>\n\n\`\`\`\n${decoded}\n\`\`\`\n\n</details>`
       }
-      return `### ${att.name}\n<details>\n<summary>${att.name} (${formatFileSize(att.size)})</summary>\n\n_Binary file attached as base64_\n\n\`\`\`\n${att.base64Content}\n\`\`\`\n\n</details>`
+      return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(att.size)})</summary>\n\n_Binary file attached as base64_\n\n\`\`\`\n${att.base64Content}\n\`\`\`\n\n</details>`
     })
     attachmentSection = `\n\n## Attachments\n\n${parts.join("\n\n")}`
   }
@@ -332,7 +345,7 @@ export function FeedbackDialog() {
         const name = filePath.split(/[/\\]/).pop() || "file"
         const ext = name.split(".").pop()?.toLowerCase() || ""
         const mimeType = getMimeType(ext)
-        const size = atob(base64Content).length
+        const size = base64ByteLength(base64Content)
         if (size > MAX_FILE_SIZE_BYTES) {
           toast.error(`${name} exceeds 5 MB limit`)
           continue
@@ -351,10 +364,6 @@ export function FeedbackDialog() {
       for (const item of Array.from(items)) {
         if (!item.type.startsWith("image/")) continue
         e.preventDefault()
-        if (attachments.length >= MAX_ATTACHMENTS) {
-          toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
-          return
-        }
         const blob = item.getAsFile()
         if (!blob) continue
         if (blob.size > MAX_FILE_SIZE_BYTES) {
@@ -366,21 +375,27 @@ export function FeedbackDialog() {
           const dataUrl = reader.result as string
           const base64Content = dataUrl.split(",")[1]
           const ext = blob.type.split("/")[1] || "png"
-          setAttachments((prev) => [
-            ...prev,
-            {
-              name: `clipboard-${Date.now()}.${ext}`,
-              size: blob.size,
-              mimeType: blob.type,
-              base64Content,
-            },
-          ])
-          toast.success("Image pasted from clipboard")
+          setAttachments((prev) => {
+            if (prev.length >= MAX_ATTACHMENTS) {
+              toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
+              return prev
+            }
+            toast.success("Image pasted from clipboard")
+            return [
+              ...prev,
+              {
+                name: `clipboard-${Date.now()}.${ext}`,
+                size: blob.size,
+                mimeType: blob.type,
+                base64Content,
+              },
+            ]
+          })
         }
         reader.readAsDataURL(blob)
       }
     },
-    [attachments.length],
+    [],
   )
 
   const handleAnalyze = async () => {
