@@ -704,16 +704,6 @@ impl SidecarPool {
     /// Shutdown a single skill's sidecar. Sends a shutdown message, waits up to 3 seconds,
     /// then kills if necessary.
     pub async fn shutdown_skill(&self, skill_name: &str, app_handle: &tauri::AppHandle) -> Result<(), String> {
-        // Emit agent-shutdown for all pending requests BEFORE aborting reader tasks.
-        // This ensures the frontend learns about the shutdown through a dedicated event
-        // rather than racing the agent-exit event with a module-level flag.
-        {
-            let pending = self.pending_requests.lock().await;
-            for agent_id in pending.iter() {
-                events::handle_agent_shutdown(app_handle, agent_id);
-            }
-        }
-
         let mut pool = self.sidecars.lock().await;
 
         if let Some(mut sidecar) = pool.remove(skill_name) {
@@ -723,9 +713,18 @@ impl SidecarPool {
                 sidecar.pid
             );
 
-            // Issue 3: Abort reader tasks before shutdown
+            // 1. Abort reader tasks first — prevents any new agent-exit events
             sidecar.stdout_task.abort();
             sidecar.stderr_task.abort();
+
+            // 2. Now safely emit agent-shutdown for all pending requests and clear them
+            {
+                let mut pending = self.pending_requests.lock().await;
+                for agent_id in pending.iter() {
+                    events::handle_agent_shutdown(app_handle, agent_id);
+                }
+                pending.clear();
+            }
 
             // Send shutdown message
             let shutdown_msg = "{\"type\":\"shutdown\"}\n";

@@ -276,7 +276,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   completeRun: (agentId, success) =>
     set((state) => {
       const run = state.runs[agentId];
-      if (!run) return state;
+      if (!run || run.status !== "running") return state;
       return {
         runs: {
           ...state.runs,
