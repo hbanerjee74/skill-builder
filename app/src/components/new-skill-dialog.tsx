@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
 import { Plus, Loader2 } from "lucide-react"
@@ -45,6 +46,7 @@ export default function NewSkillDialog({
   onCreated,
   tagSuggestions = [],
 }: NewSkillDialogProps) {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [skillType, setSkillType] = useState<string>("")
   const [domain, setDomain] = useState("")
@@ -74,12 +76,14 @@ export default function NewSkillDialog({
         skillType: skillType || null,
       })
       toast.success(`Skill "${name}" created`)
+      const skillName = name.trim()
       setOpen(false)
       setSkillType("")
       setDomain("")
       setName("")
       setTags([])
       onCreated()
+      navigate({ to: "/skill/$skillName", params: { skillName } })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)

@@ -10,11 +10,18 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock @tanstack/react-router
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 import NewSkillDialog from "@/components/new-skill-dialog";
 
 describe("NewSkillDialog", () => {
   beforeEach(() => {
     resetTauriMocks();
+    mockNavigate.mockReset();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
   });
@@ -151,6 +158,59 @@ describe("NewSkillDialog", () => {
     expect(toast.success).toHaveBeenCalledWith(
       'Skill "sales-pipeline" created'
     );
+  });
+
+  it("navigates to skill editor after successful creation", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    mockInvoke.mockResolvedValue(undefined);
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={onCreated} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    await user.click(screen.getByRole("radio", { name: /Domain/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Sales Pipeline");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled();
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/skill/$skillName",
+      params: { skillName: "sales-pipeline" },
+    });
+  });
+
+  it("does not navigate on failed creation", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockRejectedValue(new Error("Skill already exists"));
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn()} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Test Skill");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Skill already exists")).toBeInTheDocument();
+    });
+
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("shows error message on failed submit", async () => {
