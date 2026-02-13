@@ -27,7 +27,8 @@ pub struct CreateGithubIssueResponse {
 }
 
 /// Create a GitHub issue with optional attachments.
-/// Images are uploaded via GitHub Gist API and linked in the body.
+/// Images are uploaded to the repo's `attachments` branch and embedded inline.
+/// Falls back gracefully for non-collaborators (listed by name instead).
 /// Small text files are included inline as code blocks.
 #[tauri::command]
 pub async fn create_github_issue(
@@ -69,8 +70,10 @@ pub async fn create_github_issue(
                         attachment_markdown.push_str("\n\n## Attachments\n\n");
                         has_attachments = true;
                     }
-                    attachment_markdown
-                        .push_str(&format!("- {} (upload failed: {})\n", att.name, e));
+                    attachment_markdown.push_str(&format!(
+                        "- {} ({} bytes) — _image not embedded (requires repo write access)_\n",
+                        att.name, att.size
+                    ));
                 }
             }
         } else if is_text_type(&att.mime_type) && att.size < 10240 {
