@@ -40,9 +40,10 @@ Copy and track:
 
 ### Phase 1: Setup
 
-1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branch name.
-2. **Assign to me + move to In Progress** in a single `linear-server:update_issue` call (`assignee: "me"`, `state: "In Progress"`).
-3. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
+1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branch name, **status**.
+2. **Guard: status must be Todo.** If the issue is not in Todo, stop and tell the user the current status. Do not proceed.
+3. **Assign to me + move to In Progress** in a single `linear-server:update_issue` call (`assignee: "me"`, `state: "In Progress"`).
+4. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
 
 ### Phase 2: Assess Complexity
 
