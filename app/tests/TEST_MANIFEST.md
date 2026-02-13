@@ -149,6 +149,15 @@ If you change any of these files, run the full test suite (`./tests/run.sh`):
 2. Create `src/__tests__/stores/<name>-store.test.ts`
 3. If the store is used in a page, add integration tests in `src/__tests__/pages/`
 
+### Harness Self-Tests
+
+These scripts validate the test infrastructure itself. Run after modifying `run.sh`, `test-plugin.sh`, or `TEST_MANIFEST.md`.
+
+| Script | Tests | What it validates |
+|---|---|---|
+| `tests/harness-test.sh` | 21 | Arg parsing, level/tier routing, tag mapping, error handling |
+| `tests/manifest-scenarios.sh` | 68 | Source-to-test mapping for app, plugin, and cross-cutting changes |
+
 ## Quick Reference Commands
 
 ```bash
@@ -165,8 +174,17 @@ npm run test:e2e                           # All Playwright tests
 cargo test --manifest-path src-tauri/Cargo.toml   # All Rust tests
 cd sidecar && npx vitest run              # All sidecar tests
 
+# Plugin tests
+./tests/run.sh plugin                    # All plugin tiers
+./tests/run.sh plugin --tag @agents      # Agent prompt changes
+./tests/run.sh plugin --tag @coordinator # Coordinator changes
+
 # Targeted Rust tests
 cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
 cargo test --manifest-path src-tauri/Cargo.toml db
 cargo test --manifest-path src-tauri/Cargo.toml agents::sidecar_pool
+
+# Harness self-tests
+./tests/harness-test.sh                  # Validate harness arg parsing (21 tests)
+./tests/manifest-scenarios.sh            # Validate manifest coverage (68 scenarios)
 ```

@@ -1,6 +1,6 @@
 # Skill Builder Test Guide
 
-Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into three logical levels.
+Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into four logical levels plus a self-test suite.
 
 ## Quick Start
 
@@ -14,12 +14,22 @@ cd app
 ./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust, sidecar
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
+./tests/run.sh plugin          # CLI plugin tests (structural + smoke)
 
 # Run E2E tests by feature area
 ./tests/run.sh e2e --tag @dashboard
 ./tests/run.sh e2e --tag @settings
 ./tests/run.sh e2e --tag @workflow-agent
 ./tests/run.sh e2e --tag @navigation
+
+# Run plugin tests by tag
+./tests/run.sh plugin --tag @agents
+./tests/run.sh plugin --tag @coordinator
+./tests/run.sh plugin --tag @structure
+
+# Validate the harness and manifest themselves
+./tests/harness-test.sh        # Harness arg parsing + error handling (21 tests)
+./tests/manifest-scenarios.sh  # Manifest coverage for all change types (68 scenarios)
 
 # npm script equivalents
 npm run test:unit
@@ -51,13 +61,30 @@ Component rendering with mocked Tauri APIs. Uses `@testing-library/react` to mou
 |---|---|---|
 | Frontend (Vitest) | `npm run test:integration` | `src/__tests__/components/`, `src/__tests__/pages/` |
 
-### Level 3: E2E Tests
+### Level 3: E2E Tests (Playwright)
 
 Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swaps real Tauri APIs for mock implementations. Tests exercise complete user flows.
 
 | Runtime | Command | Location |
 |---|---|---|
 | Playwright | `npm run test:e2e` | `e2e/dashboard/`, `e2e/settings/`, `e2e/workflow/`, `e2e/navigation/` |
+
+### Level 4: Plugin Tests
+
+CLI plugin structural validation and agent smoke tests. Uses the 5-tier harness at `scripts/test-plugin.sh`.
+
+| Runtime | Command | Location |
+|---|---|---|
+| Bash + Claude | `./tests/run.sh plugin` | `scripts/tests/t1-*.sh` through `t5-*.sh` |
+
+### Self-Tests
+
+Validate the test infrastructure itself — argument parsing, tag routing, and manifest completeness.
+
+| Script | Tests | What it validates |
+|---|---|---|
+| `./tests/harness-test.sh` | 21 | run.sh and test-plugin.sh accept valid args, reject invalid ones, show help |
+| `./tests/manifest-scenarios.sh` | 68 | Every source file category maps to the right tests (app, plugin, cross-cutting) |
 
 ## Running by Area
 
@@ -120,7 +147,9 @@ Available tags: `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@nav
 app/tests/
   README.md              # This file
   TEST_MANIFEST.md       # Source-to-test mapping (for AI-assisted test selection)
-  run.sh                 # Unified test runner
+  run.sh                 # Unified test runner (unit, integration, e2e, plugin)
+  harness-test.sh        # Self-tests for run.sh and test-plugin.sh (21 tests)
+  manifest-scenarios.sh  # Manifest coverage validation (68 scenarios)
   unit/
     frontend/            -> ../../src/__tests__/       (symlink)
     sidecar/             -> ../../sidecar/__tests__/   (symlink)
