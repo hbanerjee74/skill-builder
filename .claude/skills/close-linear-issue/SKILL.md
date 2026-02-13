@@ -22,9 +22,8 @@ Copy and track:
 ```
 - [ ] Phase 1: Identify issue, PR, and worktree
 - [ ] Phase 2: Confirm manual testing
-- [ ] Phase 3: Rebase onto main
-- [ ] Phase 4: Merge PR
-- [ ] Phase 5: Close Linear issue + clean up
+- [ ] Phase 3: Rebase + merge
+- [ ] Phase 4: Close Linear issue + clean up
 ```
 
 ## Workflow
@@ -41,7 +40,7 @@ Once both return, use the `gitBranchName` from the Linear issue to:
 1. Find the PR: `gh pr list --head <gitBranchName> --json number,url,title,state`
 2. Find the worktree path: match `gitBranchName` against the worktree list (expected at `../worktrees/<gitBranchName>`)
 
-Verify the issue is in **In Review** or **In Progress**. If already **Done**, skip to Phase 5 (cleanup only). If no PR exists, stop.
+Verify the issue is in **In Review** or **In Progress**. If already **Done**, skip to Phase 4 (cleanup only). If no PR exists, stop.
 
 Report to the user: issue status, PR URL, worktree path.
 
@@ -49,9 +48,9 @@ Report to the user: issue status, PR URL, worktree path.
 
 Ask the user: "Has manual testing passed?" If they report issues, stop — they should fix via the implement skill first.
 
-### Phase 3: Rebase onto Main
+### Phase 3: Rebase + Merge
 
-Spawn a **single `general-purpose` sub-agent** with the worktree path and branch name. It must:
+Spawn a **single `general-purpose` sub-agent** with the worktree path, branch name, and PR number. This one agent handles the full rebase-through-merge flow so it keeps context across all steps:
 
 1. Run in the **worktree directory**:
    ```bash
@@ -63,26 +62,21 @@ Spawn a **single `general-purpose` sub-agent** with the worktree path and branch
    ```bash
    git push --force-with-lease
    ```
-4. Wait for CI: `gh pr checks <number> --watch`. Report pass/fail.
-
-If CI fails, report to user and stop.
-
-### Phase 4: Merge PR
-
-Spawn a **`general-purpose` sub-agent** (model: `haiku`) that:
-
-1. Checks the repo's merge strategy:
+4. Wait for CI: `gh pr checks <number> --watch`. If CI fails, report and stop.
+5. Check the repo's merge strategy:
    ```bash
    gh repo view --json squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed
    ```
-2. Merges using the first allowed strategy (prefer squash > merge > rebase):
+6. Merge using the first allowed strategy (prefer squash > merge > rebase):
    ```bash
    gh pr merge <number> --squash --delete-branch
    ```
    The `--delete-branch` flag removes the remote branch automatically.
-3. Returns: merge commit SHA and confirmation.
+7. Return: merge commit SHA and confirmation.
 
-### Phase 5: Close Linear Issue + Clean Up
+If CI fails or merge fails, report to user and stop.
+
+### Phase 4: Close Linear Issue + Clean Up
 
 These two operations are **independent** — run them in **parallel** as two `Task` calls in a single turn:
 
@@ -114,8 +108,7 @@ Once both return, report to user: issue closed, PR merged, worktree and branches
 |---|---|---|
 | Fetch Linear issue | general-purpose | haiku |
 | List worktrees | Bash | default |
-| Rebase + push | general-purpose | default |
-| Merge PR | general-purpose | haiku |
+| Rebase + merge (single agent) | general-purpose | default |
 | Close Linear issue | general-purpose | haiku |
 | Git cleanup | general-purpose | default |
 
