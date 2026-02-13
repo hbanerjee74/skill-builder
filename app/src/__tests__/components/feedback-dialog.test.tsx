@@ -352,7 +352,7 @@ describe("FeedbackDialog", () => {
       expect(toast.success).toHaveBeenCalledWith(
         "Issue #42 created",
         expect.objectContaining({
-          duration: 8000,
+          duration: Infinity,
         }),
       );
     });

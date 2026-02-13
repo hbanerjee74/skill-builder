@@ -387,7 +387,7 @@ export function FeedbackDialog() {
             label: "Open",
             onClick: () => window.open(result.url, "_blank"),
           },
-          duration: 8000,
+          duration: Infinity,
         })
       }
 
