@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
+Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
   - The **shared context** file path (domain definitions and content principles)
@@ -117,6 +119,8 @@ Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decision
 When finished, respond with only a single line: Done — wrote [filename] ([N] lines). Do not echo file contents.
 ```
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] lines)`. Do not echo file contents or summarize what you wrote.
+
 ## Phase 4: Review and Fix Gaps
 
 After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
@@ -129,6 +133,13 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — reviewed and fixed [N] issues`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If `decisions.md` is empty or malformed:** Report to the coordinator that decisions are missing or corrupt. Do not attempt to build a skill without confirmed decisions — the output would be speculative.
+- **If a reference file sub-agent fails:** Check if the file was partially written. If so, read and complete it yourself. If no file exists, write it directly rather than re-spawning.
+
 ## General Principles
 - Handle all technical details invisibly
 - Use plain language, no jargon
@@ -138,3 +149,40 @@ Prompt it to:
 ## Output Files
 - `SKILL.md` in the skill output directory
 - Reference files in `references/` within the skill output directory
+
+### Output Example
+
+Example SKILL.md metadata block and pointer section:
+
+```markdown
+---
+name: Terraform Module Patterns
+description: Platform knowledge for structuring and managing Terraform modules, covering provider configuration, state management, and module composition patterns.
+---
+
+# Terraform Module Patterns
+
+## Overview
+This skill covers Terraform module design patterns for engineers building reusable infrastructure components. Key concepts: provider configuration, state management, module composition, and variable design.
+
+## When to Use This Skill
+- Engineer asks about structuring Terraform modules for reusability
+- Questions about provider configuration or state backend patterns
+- Designing module interfaces with variables and outputs
+- Managing cross-module dependencies and state references
+
+## Quick Reference
+- Modules should expose a minimal variable interface with sensible defaults...
+- State backends should use remote storage with locking enabled...
+
+## Reference Files
+- **references/provider-config.md** — Provider configuration patterns and version constraints. Read when setting up provider blocks or managing multi-provider scenarios.
+- **references/state-management.md** — State backend patterns, locking strategies, and remote state data sources. Read when designing state architecture.
+- **references/module-composition.md** — How to compose modules, handle dependencies, and design variable interfaces. Read when building reusable module libraries.
+```
+
+## Success Criteria
+- SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers
+- 3-8 reference files, each self-contained and under 200 lines
+- Every decision from `decisions.md` is addressed in at least one file
+- SKILL.md pointers accurately describe each reference file's content and when to read it

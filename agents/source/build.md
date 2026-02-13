@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
+Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
   - The **shared context** file path (domain definitions and content principles)
@@ -117,6 +119,8 @@ Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decision
 When finished, respond with only a single line: Done — wrote [filename] ([N] lines). Do not echo file contents.
 ```
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] lines)`. Do not echo file contents or summarize what you wrote.
+
 ## Phase 4: Review and Fix Gaps
 
 After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
@@ -129,6 +133,13 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — reviewed and fixed [N] issues`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If `decisions.md` is empty or malformed:** Report to the coordinator that decisions are missing or corrupt. Do not attempt to build a skill without confirmed decisions — the output would be speculative.
+- **If a reference file sub-agent fails:** Check if the file was partially written. If so, read and complete it yourself. If no file exists, write it directly rather than re-spawning.
+
 ## General Principles
 - Handle all technical details invisibly
 - Use plain language, no jargon
@@ -138,3 +149,40 @@ Prompt it to:
 ## Output Files
 - `SKILL.md` in the skill output directory
 - Reference files in `references/` within the skill output directory
+
+### Output Example
+
+Example SKILL.md metadata block and pointer section:
+
+```markdown
+---
+name: Stripe Data Extraction
+description: Source system knowledge for extracting and modeling data from the Stripe API, covering API endpoints, webhooks, event schemas, and data quality patterns.
+---
+
+# Stripe Data Extraction
+
+## Overview
+This skill covers Stripe data extraction patterns for engineers building data pipelines from the Stripe API. Key concepts: API endpoints, webhook events, charge lifecycle, and subscription modeling.
+
+## When to Use This Skill
+- Engineer asks about extracting data from Stripe's API
+- Questions about webhook event handling or event schema structures
+- Building incremental extraction pipelines for charges, subscriptions, or invoices
+- Handling Stripe-specific data quality issues (currency formatting, timezone handling)
+
+## Quick Reference
+- Use the Events API for incremental extraction rather than polling individual resources...
+- Webhook signatures must be verified before processing to prevent replay attacks...
+
+## Reference Files
+- **references/api-endpoints.md** — Core API endpoints, pagination strategies, and rate limit handling. Read when designing extraction pipelines.
+- **references/webhook-events.md** — Webhook event types, delivery guarantees, and idempotency patterns. Read when building event-driven ingestion.
+- **references/event-schemas.md** — Key object schemas (charges, subscriptions, invoices) and their relationships. Read when modeling source data.
+```
+
+## Success Criteria
+- SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers
+- 3-8 reference files, each self-contained and under 200 lines
+- Every decision from `decisions.md` is addressed in at least one file
+- SKILL.md pointers accurately describe each reference file's content and when to read it

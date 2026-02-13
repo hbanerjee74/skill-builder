@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
+Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+
 ## Context
 - The coordinator tells you:
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
@@ -56,7 +58,8 @@ Prompt it to:
 - The domain is: [pass the domain]
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-patterns.md` in the context directory
-- When finished, respond with only a single line: Done — wrote clarifications-patterns.md ([N] questions). Do not echo file contents.
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -66,7 +69,8 @@ Prompt it to:
 - The domain is: [pass the domain]
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-data.md` in the context directory
-- When finished, respond with only a single line: Done — wrote clarifications-data.md ([N] questions). Do not echo file contents.
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 ## Phase 2: Merge
 
@@ -77,9 +81,21 @@ Prompt it to:
 - Read the shared context file and the merge agent prompt file (paths provided by coordinator) and follow the instructions
 - The context directory is: [pass the context directory path]
 - Write merged output to: `clarifications.md` in the context directory
-- When finished, respond with only a single line: Done — wrote clarifications.md ([N] questions). Do not echo file contents.
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] questions)`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If one research sub-agent fails:** Check whether its output file was written. If the file is missing or empty, re-spawn the sub-agent once. If it fails again, proceed with the successful sub-agent's output only — pass this context to the merger so it knows only one input file is available.
+- **If the merger fails:** Re-read both research files and attempt the merge yourself directly rather than spawning another sub-agent.
 
 ## Output
 Three files in the context directory: `clarifications-patterns.md`, `clarifications-data.md`, and `clarifications.md`.
 
 When all three sub-agents have completed, respond with only a single line: Done — research and merge complete. Do not echo file contents.
+
+## Success Criteria
+- Both sub-agents produce research files with substantive findings
+- Merged output is organized by topic with deduplicated questions
+- All questions follow the shared context file format
+- No duplicate questions survive the merge

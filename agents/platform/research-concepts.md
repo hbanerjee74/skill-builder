@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
+Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+
 ## Context
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
@@ -54,6 +56,8 @@ Prompt it to:
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-entities.md` in the context directory
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+
 **Sub-agent 2: Metrics & KPI Research** (`name: "metrics-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
 Prompt it to:
@@ -65,9 +69,9 @@ Prompt it to:
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-metrics.md` in the context directory
 
-Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
 
-**IMPORTANT:** Each sub-agent prompt must end with: `"When finished, respond with only a single line: Done — wrote [filename] ([N] questions). Do not echo file contents."`
+Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
 
 ## Phase 2: Merge Results
 
@@ -84,5 +88,37 @@ Prompt it to:
 4. Keep the intermediate research files for reference
 5. Respond with only: `Done — wrote [filename] ([N] questions)`
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] questions)`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If a sub-agent fails or returns no output:** Check whether its output file was written. If the file exists with content, proceed. If the file is missing or empty, log the failure and re-spawn the sub-agent once. If it fails again, proceed with the output from the successful sub-agent only and note the gap in the merge.
+- **If both sub-agents fail:** Report the failure to the coordinator with the error details. Do not produce a partial output file.
+
 ## Output
 The merged clarification file at the output file path provided by the coordinator.
+
+### Output Example
+
+```markdown
+## Domain Concepts & Metrics
+
+### Q1: How should API rate limiting be represented?
+The platform enforces rate limits that affect how integrations consume data. How should the skill represent rate limit handling?
+
+**Choices:**
+a) **Fixed delay between requests** — Simple but wasteful; doesn't adapt to actual limit consumption.
+b) **Token bucket with exponential backoff** — Adapts to rate limit headers and retries intelligently.
+c) **Concurrency-based throttling** — Limits parallel requests rather than spacing sequential ones.
+d) **Other (please specify)**
+
+**Recommendation:** Option (b) — token bucket with backoff handles most platform APIs gracefully and adapts to varying rate limit windows.
+
+**Answer:**
+```
+
+## Success Criteria
+- Both sub-agents produce research files with 5+ clarification questions each
+- Merged output contains 8-15 deduplicated questions organized by topic
+- All questions follow the shared context file format (choices, recommendation, empty answer line)
+- No duplicate or near-duplicate questions survive the merge
