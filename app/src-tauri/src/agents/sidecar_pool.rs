@@ -474,6 +474,16 @@ impl SidecarPool {
             }
         });
 
+        // Helper: wait for the stderr task to finish (process is dead, so stderr
+        // will close quickly) then drain the collected lines. This avoids the race
+        // where we drain the buffer before the tokio task has read any lines.
+        let drain_stderr = |task: tokio::task::JoinHandle<()>, buf: Arc<Mutex<Vec<String>>>| async move {
+            // Give the stderr reader up to 2s to finish reading remaining lines
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), task).await;
+            let buf = buf.lock().await;
+            buf.join("\n")
+        };
+
         // Wait for the sidecar_ready signal on stdout.
         // Uses match instead of map_err so we can .await the stderr buffer drain.
         let mut reader = BufReader::new(stdout);
@@ -487,10 +497,7 @@ impl SidecarPool {
         let bytes_read = match ready_result {
             Err(_) => {
                 // Timeout waiting for sidecar_ready
-                let stderr_lines = {
-                    let buf = early_stderr.lock().await;
-                    buf.join("\n")
-                };
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
                 let err = if stderr_lines.is_empty() {
                     SidecarStartupError::ReadyTimeout { pid }
                 } else {
@@ -506,10 +513,7 @@ impl SidecarPool {
             }
             Ok(Err(e)) => {
                 // IO error reading stdout
-                let stderr_lines = {
-                    let buf = early_stderr.lock().await;
-                    buf.join("\n")
-                };
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
                 let detail = if stderr_lines.is_empty() {
                     format!("Error reading sidecar_ready: {}", e)
                 } else {
@@ -523,10 +527,7 @@ impl SidecarPool {
         };
 
         if bytes_read == 0 {
-            let stderr_lines = {
-                let buf = early_stderr.lock().await;
-                buf.join("\n")
-            };
+            let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
             let detail = if stderr_lines.is_empty() {
                 format!(
                     "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready",
@@ -548,10 +549,7 @@ impl SidecarPool {
         match serde_json::from_str::<serde_json::Value>(ready_line) {
             Ok(val) => {
                 if val.get("type").and_then(|t| t.as_str()) != Some("sidecar_ready") {
-                    let stderr_lines = {
-                        let buf = early_stderr.lock().await;
-                        buf.join("\n")
-                    };
+                    let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
                     let detail = if stderr_lines.is_empty() {
                         format!("Expected sidecar_ready but got: {}", ready_line)
                     } else {
@@ -566,10 +564,7 @@ impl SidecarPool {
                 }
             }
             Err(e) => {
-                let stderr_lines = {
-                    let buf = early_stderr.lock().await;
-                    buf.join("\n")
-                };
+                let stderr_lines = drain_stderr(stderr_task, early_stderr).await;
                 let detail = if stderr_lines.is_empty() {
                     format!(
                         "Failed to parse sidecar_ready signal: {} (line: {})",
