@@ -46,6 +46,10 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: mockOpenFileDialog,
 }));
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: vi.fn(() => Promise.resolve()),
+}));
+
 import {
   FeedbackDialog,
   buildEnrichmentPrompt,

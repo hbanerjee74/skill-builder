@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
+import { openUrl } from "@tauri-apps/plugin-opener"
 import { getVersion } from "@tauri-apps/api/app"
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
 import { Bug, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, X } from "lucide-react"
@@ -376,7 +377,7 @@ export function FeedbackDialog() {
             description: "Open the issue and drag-and-drop your images into a comment.",
             action: {
               label: "Open issue",
-              onClick: () => window.open(result.url, "_blank"),
+              onClick: () => { openUrl(result.url) },
             },
             duration: Infinity,
           },
@@ -385,7 +386,7 @@ export function FeedbackDialog() {
         toast.success(`Issue #${result.number} created`, {
           action: {
             label: "Open",
-            onClick: () => window.open(result.url, "_blank"),
+            onClick: () => { openUrl(result.url) },
           },
           duration: Infinity,
         })
