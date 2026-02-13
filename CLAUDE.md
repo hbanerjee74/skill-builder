@@ -123,7 +123,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 ### Updating the test manifest
 
-When you add, remove, or rename test files, update `app/tests/TEST_MANIFEST.md` to keep the source-to-test mapping current. The manifest has tables per source category (stores, hooks, components, pages, Rust, sidecar, plugin). Each row maps a source file to its unit tests, integration tests, and E2E tag.
+When you add, remove, or rename tests (including adding tests to existing files), update `app/tests/TEST_MANIFEST.md` to keep test counts and source-to-test mappings current. The manifest has tables per source category (stores, hooks, components, pages, Rust, sidecar, plugin). Each row maps a source file to its unit tests, integration tests, and E2E tag with counts in parentheses.
 
 ## Code Style
 
