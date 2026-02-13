@@ -110,6 +110,14 @@ The plugin uses the same skill output layout (`SKILL.md` + `references/`) but wr
 
 Purely cosmetic changes or simple wiring don't require tests. If unclear, ask the user.
 
+### Test discipline
+
+Before writing any test code, read existing tests for the files you changed:
+1. Update tests that broke due to your changes
+2. Remove tests that are now redundant
+3. Add new tests only for genuinely new behavior
+4. Never add tests just to increase count — every test must catch a real regression
+
 ### Choosing which tests to run
 
 Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you changed. The manifest maps every source file to its unit tests, integration tests, and E2E tags.
@@ -125,4 +133,8 @@ Before committing, consult `app/tests/TEST_MANIFEST.md` to determine which tests
 **E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
 
 **Plugin tags:** `@structure`, `@agents`, `@coordinator`, `@workflow`, `@all`
+
+### Updating the test manifest
+
+When you add, remove, or rename test files, update `app/tests/TEST_MANIFEST.md` to keep the source-to-test mapping current. The manifest has tables per source category (stores, hooks, components, pages, Rust, sidecar, plugin). Each row maps a source file to its unit tests, integration tests, and E2E tag.
 
