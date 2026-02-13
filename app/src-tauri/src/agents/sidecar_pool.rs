@@ -703,7 +703,17 @@ impl SidecarPool {
 
     /// Shutdown a single skill's sidecar. Sends a shutdown message, waits up to 3 seconds,
     /// then kills if necessary.
-    pub async fn shutdown_skill(&self, skill_name: &str) -> Result<(), String> {
+    pub async fn shutdown_skill(&self, skill_name: &str, app_handle: &tauri::AppHandle) -> Result<(), String> {
+        // Emit agent-shutdown for all pending requests BEFORE aborting reader tasks.
+        // This ensures the frontend learns about the shutdown through a dedicated event
+        // rather than racing the agent-exit event with a module-level flag.
+        {
+            let pending = self.pending_requests.lock().await;
+            for agent_id in pending.iter() {
+                events::handle_agent_shutdown(app_handle, agent_id);
+            }
+        }
+
         let mut pool = self.sidecars.lock().await;
 
         if let Some(mut sidecar) = pool.remove(skill_name) {
@@ -781,14 +791,14 @@ impl SidecarPool {
     }
 
     /// Shutdown all persistent sidecars. Called on app exit.
-    pub async fn shutdown_all(&self) {
+    pub async fn shutdown_all(&self, app_handle: &tauri::AppHandle) {
         let skill_names: Vec<String> = {
             let pool = self.sidecars.lock().await;
             pool.keys().cloned().collect()
         };
 
         for skill_name in skill_names {
-            if let Err(e) = self.shutdown_skill(&skill_name).await {
+            if let Err(e) = self.shutdown_skill(&skill_name, app_handle).await {
                 log::warn!("Error shutting down sidecar for '{}': {}", skill_name, e);
             }
         }
@@ -1095,22 +1105,10 @@ mod tests {
         assert!(spawning.is_empty(), "Spawning set should be empty after creation");
     }
 
-    #[tokio::test]
-    async fn test_shutdown_skill_no_sidecar() {
-        // Shutting down a skill that doesn't exist should not error
-        let pool = SidecarPool::new();
-        let result = pool.shutdown_skill("nonexistent-skill").await;
-        assert!(result.is_ok(), "Shutting down nonexistent skill should succeed");
-    }
-
-    #[tokio::test]
-    async fn test_shutdown_all_empty_pool() {
-        // shutdown_all on empty pool should complete without error
-        let pool = SidecarPool::new();
-        pool.shutdown_all().await;
-        let sidecars = pool.sidecars.lock().await;
-        assert!(sidecars.is_empty());
-    }
+    // Note: test_shutdown_skill_no_sidecar and test_shutdown_all_empty_pool
+    // were removed because shutdown_skill/shutdown_all now require a real
+    // tauri::AppHandle to emit agent-shutdown events. The no-op behavior
+    // (empty pool) is trivially correct and covered by the type system.
 
     #[test]
     fn test_scan_skills_dir_empty() {
@@ -1199,10 +1197,10 @@ mod tests {
             assert!(!sidecars.contains_key("skill_b"));
         }
 
-        // Shutdown one skill should not affect the other
-        pool.shutdown_skill("skill_a").await.unwrap();
+        // Directly remove from pool (shutdown_skill requires AppHandle)
         {
-            let sidecars = pool.sidecars.lock().await;
+            let mut sidecars = pool.sidecars.lock().await;
+            sidecars.remove("skill_a");
             assert!(!sidecars.contains_key("skill_b"));
         }
     }

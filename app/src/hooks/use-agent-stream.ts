@@ -59,11 +59,9 @@ function parseContent(message: AgentMessagePayload["message"]): string | undefin
 // the race condition where Tauri events arrive before a React effect sets up
 // the listener.
 let initialized = false;
-let shuttingDown = false;
 
-/** Call before destroying the window to suppress late agent-exit error events. */
-export function markShuttingDown() {
-  shuttingDown = true;
+interface AgentShutdownPayload {
+  agent_id: string;
 }
 
 export function initAgentStream() {
@@ -71,7 +69,6 @@ export function initAgentStream() {
   initialized = true;
 
   listen<AgentInitProgressPayload>("agent-init-progress", (event) => {
-    if (shuttingDown) return;
     const { subtype } = event.payload;
     const progressMessage = INIT_PROGRESS_MESSAGES[subtype];
     if (progressMessage) {
@@ -83,7 +80,6 @@ export function initAgentStream() {
   });
 
   listen<AgentInitErrorPayload>("agent-init-error", (event) => {
-    if (shuttingDown) return;
     const workflowState = useWorkflowStore.getState();
     workflowState.clearInitializing(); // Fix 3: Clear spinner on preflight errors
     workflowState.setRuntimeError({
@@ -94,7 +90,6 @@ export function initAgentStream() {
   });
 
   listen<AgentMessagePayload>("agent-message", (event) => {
-    if (shuttingDown) return;
     const { agent_id, message } = event.payload;
 
     // Clear the "initializing" spinner on the first message from the agent.
@@ -114,11 +109,14 @@ export function initAgentStream() {
   });
 
   listen<AgentExitPayload>("agent-exit", (event) => {
-    if (shuttingDown) return;
     useAgentStore.getState().completeRun(
       event.payload.agent_id,
       event.payload.success
     );
+  });
+
+  listen<AgentShutdownPayload>("agent-shutdown", (event) => {
+    useAgentStore.getState().shutdownRun(event.payload.agent_id);
   });
 }
 

@@ -105,9 +105,9 @@ pub fn run() {
                 let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
                 // The Tokio runtime may already be torn down during exit
                 if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                    rt.block_on(pool.shutdown_all());
+                    rt.block_on(pool.shutdown_all(app_handle));
                 } else if let Ok(rt) = tokio::runtime::Runtime::new() {
-                    rt.block_on(pool.shutdown_all());
+                    rt.block_on(pool.shutdown_all(app_handle));
                 }
             }
         });

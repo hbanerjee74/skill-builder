@@ -79,6 +79,17 @@ pub fn handle_sidecar_exit(app_handle: &tauri::AppHandle, agent_id: &str, succes
     }
 }
 
+pub fn handle_agent_shutdown(app_handle: &tauri::AppHandle, agent_id: &str) {
+    if let Err(e) = app_handle.emit(
+        "agent-shutdown",
+        serde_json::json!({
+            "agent_id": agent_id,
+        }),
+    ) {
+        log::warn!("Failed to emit agent-shutdown for {}: {}", agent_id, e);
+    }
+}
+
 /// Emit a structured error event when sidecar startup fails.
 /// The frontend listens for `agent-init-error` to show an actionable dialog.
 pub fn emit_init_error(app_handle: &tauri::AppHandle, error: &SidecarStartupError) {
