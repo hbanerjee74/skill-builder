@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => Promise.resolve("1.2.3")),
 }));
 
-const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockOpenFileDialog } = vi.hoisted(() => ({
+const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockWriteBase64ToTempFile, mockOpenFileDialog } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() =>
     Promise.resolve("feedback-123"),
   ),
@@ -26,6 +26,9 @@ const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockOpenFile
   ),
   mockReadFileAsBase64: vi.fn<(filePath: string) => Promise<string>>(() =>
     Promise.resolve("aGVsbG8gd29ybGQ="),
+  ),
+  mockWriteBase64ToTempFile: vi.fn<(fileName: string, base64Content: string) => Promise<string>>(
+    (fileName: string) => Promise.resolve(`/tmp/skill-builder-attachments/${fileName}`),
   ),
   mockOpenFileDialog: vi.fn<() => Promise<string | string[] | null>>(() =>
     Promise.resolve(null),
@@ -36,6 +39,7 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   readFileAsBase64: mockReadFileAsBase64,
+  writeBase64ToTempFile: mockWriteBase64ToTempFile,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -48,7 +52,7 @@ import {
   buildSubmissionPrompt,
   parseEnrichmentResponse,
 } from "@/components/feedback-dialog";
-import type { EnrichedIssue, Attachment } from "@/components/feedback-dialog";
+import type { EnrichedIssue, AttachmentRef } from "@/components/feedback-dialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -173,7 +177,7 @@ describe("buildSubmissionPrompt", () => {
     expect(prompt).not.toContain("Something broke\nISSUE_BODY_EOF\nMore text");
   });
 
-  it("includes image attachments as data URI markdown images", () => {
+  it("includes image attachments as file path references (no base64)", () => {
     const issue: EnrichedIssue = {
       type: "bug",
       title: "Test",
@@ -181,16 +185,18 @@ describe("buildSubmissionPrompt", () => {
       labels: [],
       version: "1.0.0",
     };
-    const attachments: Attachment[] = [
-      { name: "screenshot.png", size: 1024, mimeType: "image/png", base64Content: "iVBOR..." },
+    const refs: AttachmentRef[] = [
+      { name: "screenshot.png", size: 1024, mimeType: "image/png", filePath: "/tmp/skill-builder-attachments/screenshot.png" },
     ];
-    const prompt = buildSubmissionPrompt(issue, attachments);
+    const prompt = buildSubmissionPrompt(issue, refs);
     expect(prompt).toContain("## Attachments");
     expect(prompt).toContain("### screenshot.png");
-    expect(prompt).toContain("![screenshot.png](data:image/png;base64,iVBOR...)");
+    expect(prompt).toContain("Image saved at: `/tmp/skill-builder-attachments/screenshot.png`");
+    // Must NOT contain base64 data URIs
+    expect(prompt).not.toContain("data:image/");
   });
 
-  it("includes text attachments as decoded code blocks", () => {
+  it("includes small text attachments as decoded code blocks", () => {
     const issue: EnrichedIssue = {
       type: "bug",
       title: "Test",
@@ -198,15 +204,31 @@ describe("buildSubmissionPrompt", () => {
       labels: [],
       version: "1.0.0",
     };
-    // btoa("error log content") = "ZXJyb3IgbG9nIGNvbnRlbnQ="
-    const attachments: Attachment[] = [
-      { name: "error.log", size: 17, mimeType: "text/plain", base64Content: "ZXJyb3IgbG9nIGNvbnRlbnQ=" },
+    const refs: AttachmentRef[] = [
+      { name: "error.log", size: 17, mimeType: "text/plain", textContent: "error log content" },
     ];
-    const prompt = buildSubmissionPrompt(issue, attachments);
+    const prompt = buildSubmissionPrompt(issue, refs);
     expect(prompt).toContain("## Attachments");
     expect(prompt).toContain("### error.log");
     expect(prompt).toContain("error log content");
     expect(prompt).toContain("<details>");
+  });
+
+  it("shows name and size for large/binary files without content", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "## Problem\nCrash",
+      labels: [],
+      version: "1.0.0",
+    };
+    const refs: AttachmentRef[] = [
+      { name: "large-dump.bin", size: 2_000_000, mimeType: "application/octet-stream" },
+    ];
+    const prompt = buildSubmissionPrompt(issue, refs);
+    expect(prompt).toContain("## Attachments");
+    expect(prompt).toContain("### large-dump.bin");
+    expect(prompt).toContain("1.9 MB - file omitted from issue body");
   });
 
   it("does not include attachment section when no attachments", () => {
@@ -279,6 +301,9 @@ describe("FeedbackDialog", () => {
     mockStartAgent.mockReset().mockResolvedValue("feedback-123");
     mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
     mockReadFileAsBase64.mockReset().mockResolvedValue("aGVsbG8gd29ybGQ=");
+    mockWriteBase64ToTempFile.mockReset().mockImplementation(
+      (fileName: string) => Promise.resolve(`/tmp/skill-builder-attachments/${fileName}`),
+    );
     mockOpenFileDialog.mockReset().mockResolvedValue(null);
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();

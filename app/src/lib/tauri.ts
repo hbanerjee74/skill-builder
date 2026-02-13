@@ -139,6 +139,9 @@ export const readFileAsBase64 = (filePath: string) =>
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_file", { path, content });
 
+export const writeBase64ToTempFile = (fileName: string, base64Content: string) =>
+  invoke<string>("write_base64_to_temp_file", { fileName, base64Content });
+
 // --- Lifecycle ---
 
 export const hasRunningAgents = () =>

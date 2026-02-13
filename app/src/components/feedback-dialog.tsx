@@ -20,7 +20,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startAgent, getWorkspacePath, readFileAsBase64 } from "@/lib/tauri"
+import { startAgent, getWorkspacePath, readFileAsBase64, writeBase64ToTempFile } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
 
 // ---------------------------------------------------------------------------
@@ -42,11 +42,20 @@ export interface Attachment {
   base64Content: string
 }
 
+export interface AttachmentRef {
+  name: string
+  size: number
+  mimeType: string
+  textContent?: string  // decoded text for small text files
+  filePath?: string     // path on disk for images
+}
+
 type DialogStep = "input" | "enriching" | "review" | "submitting"
 
 const GITHUB_REPO = "hbanerjee74/skill-builder"
 const MAX_FILE_SIZE_BYTES = 5_242_880 // 5 MB
 const MAX_ATTACHMENTS = 5
+const MAX_INLINE_TEXT_SIZE = 10_240 // 10 KB — text files smaller than this are inlined
 
 function getMimeType(ext: string): string {
   const map: Record<string, string> = {
@@ -135,7 +144,7 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
 }`
 }
 
-export function buildSubmissionPrompt(data: EnrichedIssue, attachments: Attachment[] = []): string {
+export function buildSubmissionPrompt(data: EnrichedIssue, attachmentRefs: AttachmentRef[] = []): string {
   const escapeQuotes = (s: string) => s.replace(/"/g, '\\"')
   // Auto-add type and version labels
   const typeLabel = data.type === "bug" ? "bug" : "enhancement"
@@ -149,17 +158,16 @@ export function buildSubmissionPrompt(data: EnrichedIssue, attachments: Attachme
 
   // Build attachment section for the issue body
   let attachmentSection = ""
-  if (attachments.length > 0) {
-    const parts = attachments.map((att) => {
-      const safeName = escapeMarkdownHtml(att.name)
-      if (att.mimeType.startsWith("image/")) {
-        return `### ${safeName}\n![${safeName}](data:${att.mimeType};base64,${att.base64Content})`
+  if (attachmentRefs.length > 0) {
+    const parts = attachmentRefs.map((ref) => {
+      const safeName = escapeMarkdownHtml(ref.name)
+      if (ref.textContent) {
+        return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(ref.size)})</summary>\n\n\`\`\`\n${ref.textContent}\n\`\`\`\n\n</details>`
       }
-      if (isTextMimeType(att.mimeType)) {
-        const decoded = atob(att.base64Content)
-        return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(att.size)})</summary>\n\n\`\`\`\n${decoded}\n\`\`\`\n\n</details>`
+      if (ref.filePath) {
+        return `### ${safeName}\n*Image saved at: \`${ref.filePath}\`*`
       }
-      return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(att.size)})</summary>\n\n_Binary file attached as base64_\n\n\`\`\`\n${att.base64Content}\n\`\`\`\n\n</details>`
+      return `### ${safeName}\n*${formatFileSize(ref.size)} - file omitted from issue body*`
     })
     attachmentSection = `\n\n## Attachments\n\n${parts.join("\n\n")}`
   }
@@ -433,10 +441,25 @@ export function FeedbackDialog() {
     if (!enriched) return
     setStep("submitting")
 
-    const agentId = `feedback-submit-${Date.now()}`
-    const prompt = buildSubmissionPrompt(enriched, attachments)
-
     try {
+      // Build lightweight attachment references — no base64 in the prompt
+      const attachmentRefs: AttachmentRef[] = await Promise.all(
+        attachments.map(async (att): Promise<AttachmentRef> => {
+          if (att.mimeType.startsWith("image/")) {
+            const filePath = await writeBase64ToTempFile(att.name, att.base64Content)
+            return { name: att.name, size: att.size, mimeType: att.mimeType, filePath }
+          }
+          if (isTextMimeType(att.mimeType) && att.size < MAX_INLINE_TEXT_SIZE) {
+            const textContent = atob(att.base64Content)
+            return { name: att.name, size: att.size, mimeType: att.mimeType, textContent }
+          }
+          return { name: att.name, size: att.size, mimeType: att.mimeType }
+        }),
+      )
+
+      const agentId = `feedback-submit-${Date.now()}`
+      const prompt = buildSubmissionPrompt(enriched, attachmentRefs)
+
       await startAgent(
         agentId,
         prompt,
