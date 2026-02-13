@@ -192,6 +192,30 @@ export const reconcileStartup = () =>
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
 
+// --- Feedback ---
+
+export interface CreateGithubIssueRequest {
+  title: string;
+  body: string;
+  labels: string[];
+  attachments: FeedbackAttachment[];
+}
+
+export interface FeedbackAttachment {
+  name: string;
+  base64Content: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface CreateGithubIssueResponse {
+  url: string;
+  number: number;
+}
+
+export const createGithubIssue = (request: CreateGithubIssueRequest) =>
+  invoke<CreateGithubIssueResponse>("create_github_issue", { request });
+
 // --- Agent Prompts ---
 
 export const getAgentPrompt = (skillType: string, phase: string) =>

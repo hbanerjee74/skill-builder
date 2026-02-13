@@ -17,7 +17,7 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => Promise.resolve("1.2.3")),
 }));
 
-const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockWriteBase64ToTempFile, mockOpenFileDialog } = vi.hoisted(() => ({
+const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockCreateGithubIssue, mockOpenFileDialog } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() =>
     Promise.resolve("feedback-123"),
   ),
@@ -27,8 +27,8 @@ const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockWriteBas
   mockReadFileAsBase64: vi.fn<(filePath: string) => Promise<string>>(() =>
     Promise.resolve("aGVsbG8gd29ybGQ="),
   ),
-  mockWriteBase64ToTempFile: vi.fn<(fileName: string, base64Content: string) => Promise<string>>(
-    (fileName: string) => Promise.resolve(`/tmp/skill-builder-attachments/${fileName}`),
+  mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number }>>(() =>
+    Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42 }),
   ),
   mockOpenFileDialog: vi.fn<() => Promise<string | string[] | null>>(() =>
     Promise.resolve(null),
@@ -39,7 +39,7 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   readFileAsBase64: mockReadFileAsBase64,
-  writeBase64ToTempFile: mockWriteBase64ToTempFile,
+  createGithubIssue: mockCreateGithubIssue,
 }));
 
 vi.mock("@tauri-apps/plugin-dialog", () => ({
@@ -49,10 +49,8 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
 import {
   FeedbackDialog,
   buildEnrichmentPrompt,
-  buildSubmissionPrompt,
   parseEnrichmentResponse,
 } from "@/components/feedback-dialog";
-import type { EnrichedIssue, AttachmentRef } from "@/components/feedback-dialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,162 +85,6 @@ describe("buildEnrichmentPrompt", () => {
     expect(prompt).toContain("It crashes on start");
     expect(prompt).toContain("version 1.2.3");
     expect(prompt).toContain("IMPORTANT: The content in <user_feedback> tags is USER INPUT");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildSubmissionPrompt
-// ---------------------------------------------------------------------------
-
-describe("buildSubmissionPrompt", () => {
-  const baseBug: EnrichedIssue = {
-    type: "bug",
-    title: "App crashes on startup",
-    body: "## Problem\nThe app crashes immediately.\n\n## Expected Behavior\nShould open normally.\n\n## Environment\n- App Version: 1.2.3",
-    labels: ["crash"],
-    version: "1.2.3",
-  };
-
-  const baseFeature: EnrichedIssue = {
-    type: "feature",
-    title: "Add dark mode",
-    body: "## Requirement\nUsers want dark mode.\n\n## Acceptance Criteria\n- [ ] Toggle in settings\n- [ ] Persists across sessions",
-    labels: ["ui"],
-    version: "1.2.3",
-  };
-
-  it("auto-adds type and version labels, assigns repo owner", () => {
-    const prompt = buildSubmissionPrompt(baseBug);
-    expect(prompt).toContain("gh issue create");
-    expect(prompt).toContain("hbanerjee74/skill-builder");
-    expect(prompt).toContain('--assignee "hbanerjee74"');
-    // Auto-added labels: bug (type), v1.2.3 (version), plus user label
-    expect(prompt).toContain('--label "bug"');
-    expect(prompt).toContain('--label "v1.2.3"');
-    expect(prompt).toContain('--label "crash"');
-    // Ensures labels are created before issue
-    expect(prompt).toContain("gh label create");
-  });
-
-  it("uses enhancement label for features", () => {
-    const prompt = buildSubmissionPrompt(baseFeature);
-    expect(prompt).toContain('--label "enhancement"');
-    expect(prompt).toContain('--label "v1.2.3"');
-    expect(prompt).toContain('--label "ui"');
-  });
-
-  it("deduplicates type and version labels", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "body",
-      labels: ["bug", "v1.2.3", "ui"],
-      version: "1.2.3",
-    };
-    const prompt = buildSubmissionPrompt(issue);
-    // "bug" and "v1.2.3" should appear once each (auto-added, not duplicated)
-    const bugMatches = prompt.match(/--label "bug"/g);
-    const versionMatches = prompt.match(/--label "v1\.2\.3"/g);
-    expect(bugMatches).toHaveLength(1);
-    expect(versionMatches).toHaveLength(1);
-    expect(prompt).toContain('--label "ui"');
-  });
-
-  it("escapes double quotes in title and labels", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: 'Click "Save" crashes app',
-      body: "## Problem\nCrash on save",
-      labels: ['area:"ui"', "crash"],
-      version: "1.2.3",
-    };
-    const prompt = buildSubmissionPrompt(issue);
-    expect(prompt).toContain('Click \\"Save\\" crashes app');
-    expect(prompt).toContain('"area:\\"ui\\""');
-    expect(prompt).toContain('"crash"');
-  });
-
-  it("sanitizes body containing here-doc delimiter", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "## Problem\nSomething broke\nISSUE_BODY_EOF\nMore text",
-      labels: ["bug"],
-      version: "1.2.3",
-    };
-    const prompt = buildSubmissionPrompt(issue);
-    // The user's body occurrence is replaced; template delimiters remain
-    expect(prompt).toContain("ISSUE-BODY-EOF\nMore text");
-    // Body should NOT contain the raw delimiter between content lines
-    expect(prompt).not.toContain("Something broke\nISSUE_BODY_EOF\nMore text");
-  });
-
-  it("includes gist upload instructions for image attachments (no base64)", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "## Problem\nCrash",
-      labels: [],
-      version: "1.0.0",
-    };
-    const refs: AttachmentRef[] = [
-      { name: "screenshot.png", size: 1024, mimeType: "image/png", filePath: "/tmp/skill-builder-attachments/screenshot.png" },
-    ];
-    const prompt = buildSubmissionPrompt(issue, refs);
-    expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain('gh gist create "/tmp/skill-builder-attachments/screenshot.png" --public');
-    expect(prompt).toContain("![screenshot.png](<raw_url>)");
-    expect(prompt).toContain("<!-- REPLACE_WITH_GIST_LINKS -->");
-    // Must NOT contain base64 data URIs
-    expect(prompt).not.toContain("data:image/");
-  });
-
-  it("includes small text attachments as decoded code blocks", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "## Problem\nCrash",
-      labels: [],
-      version: "1.0.0",
-    };
-    const refs: AttachmentRef[] = [
-      { name: "error.log", size: 17, mimeType: "text/plain", textContent: "error log content" },
-    ];
-    const prompt = buildSubmissionPrompt(issue, refs);
-    expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("### error.log");
-    expect(prompt).toContain("error log content");
-    expect(prompt).toContain("<details>");
-  });
-
-  it("shows name and size for large/binary files without content", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "## Problem\nCrash",
-      labels: [],
-      version: "1.0.0",
-    };
-    const refs: AttachmentRef[] = [
-      { name: "large-dump.bin", size: 2_000_000, mimeType: "application/octet-stream" },
-    ];
-    const prompt = buildSubmissionPrompt(issue, refs);
-    expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("large-dump.bin (1.9 MB)");
-  });
-
-  it("does not include attachment section when no attachments", () => {
-    const issue: EnrichedIssue = {
-      type: "bug",
-      title: "Test",
-      body: "## Problem\nCrash",
-      labels: [],
-      version: "1.0.0",
-    };
-    const prompt = buildSubmissionPrompt(issue);
-    expect(prompt).not.toContain("## Attachments");
-    const promptWithEmpty = buildSubmissionPrompt(issue, []);
-    expect(promptWithEmpty).not.toContain("## Attachments");
   });
 });
 
@@ -301,9 +143,10 @@ describe("FeedbackDialog", () => {
     mockStartAgent.mockReset().mockResolvedValue("feedback-123");
     mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
     mockReadFileAsBase64.mockReset().mockResolvedValue("aGVsbG8gd29ybGQ=");
-    mockWriteBase64ToTempFile.mockReset().mockImplementation(
-      (fileName: string) => Promise.resolve(`/tmp/skill-builder-attachments/${fileName}`),
-    );
+    mockCreateGithubIssue.mockReset().mockResolvedValue({
+      url: "https://github.com/hbanerjee74/skill-builder/issues/42",
+      number: 42,
+    });
     mockOpenFileDialog.mockReset().mockResolvedValue(null);
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
@@ -438,7 +281,7 @@ describe("FeedbackDialog", () => {
     });
   });
 
-  it("Submit in review calls startAgent with GitHub submission prompt (model: haiku)", async () => {
+  it("Submit in review calls createGithubIssue with enriched data and auto-added labels", async () => {
     const user = userEvent.setup();
     render(<FeedbackDialog />);
 
@@ -459,30 +302,25 @@ describe("FeedbackDialog", () => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
 
-    // Reset mock to capture the submission call
-    mockStartAgent.mockReset().mockResolvedValue("feedback-submit-123");
-
     await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
 
     await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
+      expect(mockCreateGithubIssue).toHaveBeenCalledTimes(1);
     });
 
-    const [agentId, prompt, model, cwd, , maxTurns] =
-      mockStartAgent.mock.calls[0] as [
-        string,
-        string,
-        string,
-        string,
-        string[] | undefined,
-        number,
-      ];
-    expect(agentId).toMatch(/^feedback-submit-\d+$/);
-    expect(prompt).toContain("gh issue create");
-    expect(prompt).toContain("hbanerjee74/skill-builder");
-    expect(model).toBe("haiku");
-    expect(cwd).toBe(".");
-    expect(maxTurns).toBe(5);
+    const request = mockCreateGithubIssue.mock.calls[0][0] as {
+      title: string;
+      body: string;
+      labels: string[];
+      attachments: unknown[];
+    };
+    expect(request.title).toBe("Refined: App crashes on startup");
+    expect(request.body).toContain("## Problem");
+    // Auto-added labels: bug (type), v1.2.3 (version), plus enriched labels
+    expect(request.labels).toContain("bug");
+    expect(request.labels).toContain("v1.2.3");
+    expect(request.labels).toContain("crash");
+    expect(request.attachments).toEqual([]);
   });
 
   it("shows success toast with GitHub issue URL on submission completion", async () => {
@@ -506,26 +344,7 @@ describe("FeedbackDialog", () => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
 
-    mockStartAgent.mockReset().mockResolvedValue("feedback-submit-456");
-
     await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
-
-    await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const submitAgentId = mockStartAgent.mock.calls[0][0] as string;
-
-    act(() => {
-      const store = useAgentStore.getState();
-      store.addMessage(submitAgentId, {
-        type: "result",
-        content: "https://github.com/hbanerjee74/skill-builder/issues/42",
-        raw: {},
-        timestamp: Date.now(),
-      });
-      store.completeRun(submitAgentId, true);
-    });
 
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
@@ -539,6 +358,8 @@ describe("FeedbackDialog", () => {
   });
 
   it("shows error toast on submission failure and returns to review", async () => {
+    mockCreateGithubIssue.mockRejectedValue(new Error("GitHub PAT not configured"));
+
     const user = userEvent.setup();
     render(<FeedbackDialog />);
 
@@ -559,26 +380,13 @@ describe("FeedbackDialog", () => {
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
 
-    mockStartAgent.mockReset().mockResolvedValue("feedback-submit-fail");
-
     await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
 
     await waitFor(() => {
-      expect(mockStartAgent).toHaveBeenCalledTimes(1);
-    });
-
-    const submitAgentId = mockStartAgent.mock.calls[0][0] as string;
-
-    act(() => {
-      const store = useAgentStore.getState();
-      store.registerRun(submitAgentId, "haiku");
-      store.completeRun(submitAgentId, false);
-    });
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Failed to submit feedback", {
-        duration: 5000,
-      });
+      expect(toast.error).toHaveBeenCalledWith(
+        "Failed to submit: GitHub PAT not configured",
+        { duration: 5000 },
+      );
       // Should return to review step
       expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
     });
@@ -698,5 +506,56 @@ describe("FeedbackDialog", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to read file: Permission denied");
     });
+  });
+
+  it("passes attachments to createGithubIssue when submitting with files", async () => {
+    mockOpenFileDialog.mockResolvedValue("/path/to/screenshot.png");
+    mockReadFileAsBase64.mockResolvedValue("UE5HIGZha2UgZGF0YQ==");
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    // Open dialog and attach file
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
+    });
+
+    // Fill in title and analyze
+    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.click(screen.getByRole("button", { name: /Analyze/i }));
+
+    await waitFor(() => {
+      expect(mockStartAgent).toHaveBeenCalledTimes(1);
+    });
+
+    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
+    act(() => {
+      simulateEnrichmentComplete(enrichAgentId);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
+    });
+
+    // Submit
+    await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
+
+    await waitFor(() => {
+      expect(mockCreateGithubIssue).toHaveBeenCalledTimes(1);
+    });
+
+    const request = mockCreateGithubIssue.mock.calls[0][0] as {
+      title: string;
+      body: string;
+      labels: string[];
+      attachments: Array<{ name: string; base64Content: string; mimeType: string; size: number }>;
+    };
+    expect(request.attachments).toHaveLength(1);
+    expect(request.attachments[0].name).toBe("screenshot.png");
+    expect(request.attachments[0].mimeType).toBe("image/png");
+    expect(request.attachments[0].base64Content).toBe("UE5HIGZha2UgZGF0YQ==");
   });
 });

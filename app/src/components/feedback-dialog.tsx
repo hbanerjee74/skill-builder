@@ -20,7 +20,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startAgent, getWorkspacePath, readFileAsBase64, writeBase64ToTempFile } from "@/lib/tauri"
+import { startAgent, getWorkspacePath, readFileAsBase64, createGithubIssue } from "@/lib/tauri"
+import type { FeedbackAttachment as TauriFeedbackAttachment } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
 
 // ---------------------------------------------------------------------------
@@ -42,20 +43,10 @@ export interface Attachment {
   base64Content: string
 }
 
-export interface AttachmentRef {
-  name: string
-  size: number
-  mimeType: string
-  textContent?: string  // decoded text for small text files
-  filePath?: string     // path on disk for images
-}
-
 type DialogStep = "input" | "enriching" | "review" | "submitting"
 
-const GITHUB_REPO = "hbanerjee74/skill-builder"
 const MAX_FILE_SIZE_BYTES = 5_242_880 // 5 MB
 const MAX_ATTACHMENTS = 5
-const MAX_INLINE_TEXT_SIZE = 10_240 // 10 KB — text files smaller than this are inlined
 
 function getMimeType(ext: string): string {
   const map: Record<string, string> = {
@@ -71,14 +62,6 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function isTextMimeType(mimeType: string): boolean {
-  return mimeType.startsWith("text/") || mimeType === "application/json"
-}
-
-function escapeMarkdownHtml(s: string): string {
-  return s.replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
 function base64ByteLength(base64: string): number {
@@ -142,117 +125,6 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
   "body": "the full structured markdown body",
   "labels": "comma, separated, labels"
 }`
-}
-
-export function buildSubmissionPrompt(data: EnrichedIssue, attachmentRefs: AttachmentRef[] = []): string {
-  const escapeQuotes = (s: string) => s.replace(/"/g, '\\"')
-  // Auto-add type and version labels
-  const typeLabel = data.type === "bug" ? "bug" : "enhancement"
-  const versionLabel = `v${data.version}`
-  const allLabels = [typeLabel, versionLabel, ...data.labels.filter(
-    (l) => l !== typeLabel && l !== versionLabel,
-  )]
-  const labelsFlags = allLabels
-    .map((l) => `--label "${escapeQuotes(l)}"`)
-    .join(" ")
-
-  // Separate attachment refs into categories
-  const refs = attachmentRefs
-  const fileUploadRefs = refs.filter((ref) => ref.filePath)
-  const inlineTextRefs = refs.filter((ref) => ref.textContent)
-  const nameOnlyRefs = refs.filter((ref) => !ref.filePath && !ref.textContent)
-
-  // Build gist upload instructions for files on disk (images, large binaries)
-  const uploadInstructions = fileUploadRefs
-    .map((ref) => {
-      const safeName = escapeMarkdownHtml(ref.name)
-      const isImage = ref.mimeType.startsWith("image/")
-      return `- Upload \`${ref.filePath}\` with: \`gh gist create "${ref.filePath}" --public\`
-  From the output, extract the gist URL (e.g., https://gist.github.com/user/abc123)
-  The raw file URL will be: <gist_url>/raw/${ref.name}
-  Add to the Attachments section: ${isImage ? `![${safeName}](<raw_url>)` : `[${safeName}](<raw_url>)`}`
-    })
-    .join("\n")
-
-  // Build inline text content for small text files (included directly in the body)
-  const inlineContent = inlineTextRefs
-    .map((ref) => {
-      const safeName = escapeMarkdownHtml(ref.name)
-      return `\n### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(ref.size)})</summary>\n\n\`\`\`\n${ref.textContent}\n\`\`\`\n\n</details>`
-    })
-    .join("\n")
-
-  // Build name-only references for files that couldn't be uploaded
-  const nameOnlyContent = nameOnlyRefs
-    .map((ref) => `- ${escapeMarkdownHtml(ref.name)} (${formatFileSize(ref.size)})`)
-    .join("\n")
-
-  // Build the static attachment section (inline text + name-only refs)
-  let staticAttachmentSection = ""
-  if (inlineTextRefs.length > 0 || nameOnlyRefs.length > 0) {
-    const parts: string[] = []
-    if (inlineContent) parts.push(inlineContent)
-    if (nameOnlyContent) parts.push(nameOnlyContent)
-    staticAttachmentSection = parts.join("\n\n")
-  }
-
-  // Sanitize body to prevent here-doc delimiter collision
-  const safeBody = data.body.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
-  const owner = GITHUB_REPO.split("/")[0]
-
-  // Build the prompt with gist upload step before issue creation
-  let prompt = `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.\n\n`
-
-  prompt += `First, ensure all labels exist. For EACH label, run:\ngh label create "<label>" --repo ${GITHUB_REPO} --force 2>/dev/null || true\n\n`
-  prompt += `Labels to create: ${allLabels.map((l) => `"${escapeQuotes(l)}"`).join(", ")}\n\n`
-
-  // Add gist upload step if there are files to upload
-  if (fileUploadRefs.length > 0) {
-    prompt += `Next, upload attachment files to GitHub Gists. For each file, run the gh gist create command, then note the raw URL for use in the issue body.
-
-${uploadInstructions}
-
-IMPORTANT: The raw URL format is https://gist.githubusercontent.com/<user>/<gist_id>/raw/<filename>
-You can construct it from the gist URL returned by gh gist create. For example, if the output is:
-  https://gist.github.com/octocat/abc123
-Then the raw URL for a file named screenshot.png is:
-  https://gist.githubusercontent.com/octocat/abc123/raw/screenshot.png
-
-After uploading all files, build an "## Attachments" section with the image/file links.\n\n`
-  }
-
-  // Build the issue body template
-  let bodyTemplate = safeBody
-  if (staticAttachmentSection || fileUploadRefs.length > 0) {
-    bodyTemplate += "\n\n## Attachments\n"
-    if (fileUploadRefs.length > 0) {
-      bodyTemplate += "\n<!-- REPLACE_WITH_GIST_LINKS -->"
-    }
-    if (staticAttachmentSection) {
-      bodyTemplate += `\n${staticAttachmentSection}`
-    }
-  }
-
-  const safeBodyTemplate = bodyTemplate.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
-
-  if (fileUploadRefs.length > 0) {
-    prompt += `Then create the issue. In the body below, replace <!-- REPLACE_WITH_GIST_LINKS --> with the actual markdown links/images from the gist uploads above.
-
-gh issue create --repo ${GITHUB_REPO} --assignee "${owner}" --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
-${safeBodyTemplate}
-ISSUE_BODY_EOF
-)" ${labelsFlags}`
-  } else {
-    prompt += `Then create the issue:
-gh issue create --repo ${GITHUB_REPO} --assignee "${owner}" --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
-${safeBodyTemplate}
-ISSUE_BODY_EOF
-)" ${labelsFlags}`
-  }
-
-  prompt += `\n\nAfter the issue is created, the gh command will print the issue URL. Respond with ONLY that URL as plain text. Nothing else.`
-
-  return prompt
 }
 
 // ---------------------------------------------------------------------------
@@ -352,35 +224,6 @@ export function FeedbackDialog() {
       } else {
         toast.error("Failed to analyze feedback", { duration: 5000 })
         setStep("input")
-      }
-      setPendingAgentId(null)
-    } else if (step === "submitting") {
-      if (currentRun.status === "completed") {
-        const resultMsg = currentRun.messages.find((m) => m.type === "result")
-        const rawResult =
-          resultMsg?.content?.trim() ??
-          currentRun.messages.filter((m) => m.type === "text").pop()?.content?.trim() ??
-          ""
-        // gh issue create outputs the URL directly
-        const issueUrl = rawResult.match(/https:\/\/github\.com\/[^\s]+/)?.[0] ?? ""
-        const issueNum = issueUrl.match(/#?(\d+)$/)?.[1] ?? ""
-        if (issueUrl) {
-          toast.success(`Issue #${issueNum} created`, {
-            description: issueUrl,
-            action: {
-              label: "Open",
-              onClick: () => window.open(issueUrl, "_blank"),
-            },
-            duration: 8000,
-          })
-        } else {
-          toast.success("Issue created")
-        }
-        resetForm()
-        setOpen(false)
-      } else {
-        toast.error("Failed to submit feedback", { duration: 5000 })
-        setStep("review")
       }
       setPendingAgentId(null)
     }
@@ -504,40 +347,41 @@ export function FeedbackDialog() {
     setStep("submitting")
 
     try {
-      // Build lightweight attachment references — no base64 in the prompt
-      const attachmentRefs: AttachmentRef[] = await Promise.all(
-        attachments.map(async (att): Promise<AttachmentRef> => {
-          if (att.mimeType.startsWith("image/")) {
-            const filePath = await writeBase64ToTempFile(att.name, att.base64Content)
-            return { name: att.name, size: att.size, mimeType: att.mimeType, filePath }
-          }
-          if (isTextMimeType(att.mimeType) && att.size < MAX_INLINE_TEXT_SIZE) {
-            const textContent = atob(att.base64Content)
-            return { name: att.name, size: att.size, mimeType: att.mimeType, textContent }
-          }
-          return { name: att.name, size: att.size, mimeType: att.mimeType }
-        }),
-      )
+      // Auto-add type and version labels
+      const typeLabel = enriched.type === "bug" ? "bug" : "enhancement"
+      const versionLabel = `v${enriched.version}`
+      const allLabels = [typeLabel, versionLabel, ...enriched.labels.filter(
+        (l) => l !== typeLabel && l !== versionLabel,
+      )]
 
-      const agentId = `feedback-submit-${Date.now()}`
-      const prompt = buildSubmissionPrompt(enriched, attachmentRefs)
+      const feedbackAttachments: TauriFeedbackAttachment[] = attachments.map((att) => ({
+        name: att.name,
+        base64Content: att.base64Content,
+        mimeType: att.mimeType,
+        size: att.size,
+      }))
 
-      await startAgent(
-        agentId,
-        prompt,
-        "haiku",
-        ".",
-        undefined,    // Needs Bash tool for gh CLI
-        5,
-        undefined,
-        "_feedback",
-        "Submit Feedback",
-        undefined,
-      )
-      setPendingAgentId(agentId)
+      const result = await createGithubIssue({
+        title: enriched.title,
+        body: enriched.body,
+        labels: allLabels,
+        attachments: feedbackAttachments,
+      })
+
+      toast.success(`Issue #${result.number} created`, {
+        description: result.url,
+        action: {
+          label: "Open",
+          onClick: () => window.open(result.url, "_blank"),
+        },
+        duration: 8000,
+      })
+
+      resetForm()
+      setOpen(false)
     } catch (err) {
       toast.error(
-        `Failed to submit feedback: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to submit: ${err instanceof Error ? err.message : String(err)}`,
         { duration: 5000 },
       )
       setStep("review")

@@ -44,6 +44,7 @@ const defaultSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
+  github_pat: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -56,6 +57,7 @@ const populatedSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
+  github_pat: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
