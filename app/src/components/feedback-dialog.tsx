@@ -156,41 +156,103 @@ export function buildSubmissionPrompt(data: EnrichedIssue, attachmentRefs: Attac
     .map((l) => `--label "${escapeQuotes(l)}"`)
     .join(" ")
 
-  // Build attachment section for the issue body
-  let attachmentSection = ""
-  if (attachmentRefs.length > 0) {
-    const parts = attachmentRefs.map((ref) => {
+  // Separate attachment refs into categories
+  const refs = attachmentRefs
+  const fileUploadRefs = refs.filter((ref) => ref.filePath)
+  const inlineTextRefs = refs.filter((ref) => ref.textContent)
+  const nameOnlyRefs = refs.filter((ref) => !ref.filePath && !ref.textContent)
+
+  // Build gist upload instructions for files on disk (images, large binaries)
+  const uploadInstructions = fileUploadRefs
+    .map((ref) => {
       const safeName = escapeMarkdownHtml(ref.name)
-      if (ref.textContent) {
-        return `### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(ref.size)})</summary>\n\n\`\`\`\n${ref.textContent}\n\`\`\`\n\n</details>`
-      }
-      if (ref.filePath) {
-        return `### ${safeName}\n*Image saved at: \`${ref.filePath}\`*`
-      }
-      return `### ${safeName}\n*${formatFileSize(ref.size)} - file omitted from issue body*`
+      const isImage = ref.mimeType.startsWith("image/")
+      return `- Upload \`${ref.filePath}\` with: \`gh gist create "${ref.filePath}" --public\`
+  From the output, extract the gist URL (e.g., https://gist.github.com/user/abc123)
+  The raw file URL will be: <gist_url>/raw/${ref.name}
+  Add to the Attachments section: ${isImage ? `![${safeName}](<raw_url>)` : `[${safeName}](<raw_url>)`}`
     })
-    attachmentSection = `\n\n## Attachments\n\n${parts.join("\n\n")}`
+    .join("\n")
+
+  // Build inline text content for small text files (included directly in the body)
+  const inlineContent = inlineTextRefs
+    .map((ref) => {
+      const safeName = escapeMarkdownHtml(ref.name)
+      return `\n### ${safeName}\n<details>\n<summary>${safeName} (${formatFileSize(ref.size)})</summary>\n\n\`\`\`\n${ref.textContent}\n\`\`\`\n\n</details>`
+    })
+    .join("\n")
+
+  // Build name-only references for files that couldn't be uploaded
+  const nameOnlyContent = nameOnlyRefs
+    .map((ref) => `- ${escapeMarkdownHtml(ref.name)} (${formatFileSize(ref.size)})`)
+    .join("\n")
+
+  // Build the static attachment section (inline text + name-only refs)
+  let staticAttachmentSection = ""
+  if (inlineTextRefs.length > 0 || nameOnlyRefs.length > 0) {
+    const parts: string[] = []
+    if (inlineContent) parts.push(inlineContent)
+    if (nameOnlyContent) parts.push(nameOnlyContent)
+    staticAttachmentSection = parts.join("\n\n")
   }
 
   // Sanitize body to prevent here-doc delimiter collision
-  const fullBody = data.body + attachmentSection
-  const safeBody = fullBody.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
+  const safeBody = data.body.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
   const owner = GITHUB_REPO.split("/")[0]
 
-  return `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.
+  // Build the prompt with gist upload step before issue creation
+  let prompt = `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.\n\n`
 
-First, ensure all labels exist. For EACH label, run:
-gh label create "<label>" --repo ${GITHUB_REPO} --force 2>/dev/null || true
+  prompt += `First, ensure all labels exist. For EACH label, run:\ngh label create "<label>" --repo ${GITHUB_REPO} --force 2>/dev/null || true\n\n`
+  prompt += `Labels to create: ${allLabels.map((l) => `"${escapeQuotes(l)}"`).join(", ")}\n\n`
 
-Labels to create: ${allLabels.map((l) => `"${escapeQuotes(l)}"`).join(", ")}
+  // Add gist upload step if there are files to upload
+  if (fileUploadRefs.length > 0) {
+    prompt += `Next, upload attachment files to GitHub Gists. For each file, run the gh gist create command, then note the raw URL for use in the issue body.
 
-Then create the issue:
+${uploadInstructions}
+
+IMPORTANT: The raw URL format is https://gist.githubusercontent.com/<user>/<gist_id>/raw/<filename>
+You can construct it from the gist URL returned by gh gist create. For example, if the output is:
+  https://gist.github.com/octocat/abc123
+Then the raw URL for a file named screenshot.png is:
+  https://gist.githubusercontent.com/octocat/abc123/raw/screenshot.png
+
+After uploading all files, build an "## Attachments" section with the image/file links.\n\n`
+  }
+
+  // Build the issue body template
+  let bodyTemplate = safeBody
+  if (staticAttachmentSection || fileUploadRefs.length > 0) {
+    bodyTemplate += "\n\n## Attachments\n"
+    if (fileUploadRefs.length > 0) {
+      bodyTemplate += "\n<!-- REPLACE_WITH_GIST_LINKS -->"
+    }
+    if (staticAttachmentSection) {
+      bodyTemplate += `\n${staticAttachmentSection}`
+    }
+  }
+
+  const safeBodyTemplate = bodyTemplate.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
+
+  if (fileUploadRefs.length > 0) {
+    prompt += `Then create the issue. In the body below, replace <!-- REPLACE_WITH_GIST_LINKS --> with the actual markdown links/images from the gist uploads above.
+
 gh issue create --repo ${GITHUB_REPO} --assignee "${owner}" --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
-${safeBody}
+${safeBodyTemplate}
 ISSUE_BODY_EOF
-)" ${labelsFlags}
+)" ${labelsFlags}`
+  } else {
+    prompt += `Then create the issue:
+gh issue create --repo ${GITHUB_REPO} --assignee "${owner}" --title "${escapeQuotes(data.title)}" --body "$(cat <<'ISSUE_BODY_EOF'
+${safeBodyTemplate}
+ISSUE_BODY_EOF
+)" ${labelsFlags}`
+  }
 
-After the issue is created, the gh command will print the issue URL. Respond with ONLY that URL as plain text. Nothing else.`
+  prompt += `\n\nAfter the issue is created, the gh command will print the issue URL. Respond with ONLY that URL as plain text. Nothing else.`
+
+  return prompt
 }
 
 // ---------------------------------------------------------------------------

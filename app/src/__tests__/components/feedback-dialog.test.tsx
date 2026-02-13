@@ -177,7 +177,7 @@ describe("buildSubmissionPrompt", () => {
     expect(prompt).not.toContain("Something broke\nISSUE_BODY_EOF\nMore text");
   });
 
-  it("includes image attachments as file path references (no base64)", () => {
+  it("includes gist upload instructions for image attachments (no base64)", () => {
     const issue: EnrichedIssue = {
       type: "bug",
       title: "Test",
@@ -190,8 +190,9 @@ describe("buildSubmissionPrompt", () => {
     ];
     const prompt = buildSubmissionPrompt(issue, refs);
     expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("### screenshot.png");
-    expect(prompt).toContain("Image saved at: `/tmp/skill-builder-attachments/screenshot.png`");
+    expect(prompt).toContain('gh gist create "/tmp/skill-builder-attachments/screenshot.png" --public');
+    expect(prompt).toContain("![screenshot.png](<raw_url>)");
+    expect(prompt).toContain("<!-- REPLACE_WITH_GIST_LINKS -->");
     // Must NOT contain base64 data URIs
     expect(prompt).not.toContain("data:image/");
   });
@@ -227,8 +228,7 @@ describe("buildSubmissionPrompt", () => {
     ];
     const prompt = buildSubmissionPrompt(issue, refs);
     expect(prompt).toContain("## Attachments");
-    expect(prompt).toContain("### large-dump.bin");
-    expect(prompt).toContain("1.9 MB - file omitted from issue body");
+    expect(prompt).toContain("large-dump.bin (1.9 MB)");
   });
 
   it("does not include attachment section when no attachments", () => {
