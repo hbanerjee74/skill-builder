@@ -321,7 +321,7 @@ export default function SettingsPage() {
             >
               github.com/settings/tokens
             </a>
-            {" "}with <code className="text-xs">public_repo</code> and <code className="text-xs">gist</code> scopes (classic token required — fine-grained tokens don't support gists).
+            {" "}with the <code className="text-xs">public_repo</code> scope (classic token required).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">

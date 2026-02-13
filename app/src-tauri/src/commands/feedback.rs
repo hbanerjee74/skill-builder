@@ -51,16 +51,16 @@ pub async fn create_github_issue(
 
     for att in &request.attachments {
         if att.mime_type.starts_with("image/") {
-            // Upload image to a gist and link it
-            match upload_to_gist(&client, &github_pat, &att.name, &att.base64_content).await {
-                Ok(gist_url) => {
+            // Upload image to repo and embed inline
+            match upload_attachment_to_repo(&client, &github_pat, &att.name, &att.base64_content).await {
+                Ok(image_url) => {
                     if !has_attachments {
                         attachment_markdown.push_str("\n\n## Attachments\n\n");
                         has_attachments = true;
                     }
                     attachment_markdown.push_str(&format!(
-                        "**{}**: [View on Gist]({})\n\n",
-                        att.name, gist_url
+                        "![{}]({})\n\n",
+                        att.name, image_url
                     ));
                 }
                 Err(e) => {
@@ -149,50 +149,154 @@ pub async fn create_github_issue(
     Ok(CreateGithubIssueResponse { url, number })
 }
 
-/// Upload content to a GitHub Gist and return the gist HTML URL.
-/// The base64 content is stored as text in the gist file.
-async fn upload_to_gist(
+/// Upload a file to the repo's `attachments` branch via the GitHub Contents API.
+/// Returns the raw URL that serves the actual binary file with correct MIME type.
+/// This lets images render inline in GitHub issues.
+async fn upload_attachment_to_repo(
     client: &reqwest::Client,
     pat: &str,
     filename: &str,
     base64_content: &str,
 ) -> Result<String, String> {
+    let branch = "attachments";
+
+    // Ensure the attachments branch exists
+    ensure_attachments_branch(client, pat, branch).await?;
+
+    // Use a unique path to avoid collisions: attachments/{timestamp}-{filename}
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let path = format!("feedback/{}-{}", timestamp, filename);
+
     let response = client
-        .post("https://api.github.com/gists")
+        .put(format!(
+            "https://api.github.com/repos/{}/contents/{}",
+            GITHUB_REPO, path
+        ))
         .header("Authorization", format!("Bearer {}", pat))
         .header("Accept", "application/vnd.github+json")
         .header("User-Agent", "SkillBuilder")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .json(&serde_json::json!({
-            "description": format!("Skill Builder feedback attachment: {}", filename),
-            "public": false,
-            "files": {
-                filename: {
-                    "content": base64_content
-                }
-            }
+            "message": format!("feedback attachment: {}", filename),
+            "content": base64_content,
+            "branch": branch,
         }))
         .send()
         .await
-        .map_err(|e| format!("Gist upload failed: {e}"))?;
+        .map_err(|e| format!("Upload failed: {e}"))?;
 
     let status = response.status();
     let body: serde_json::Value = response
         .json()
         .await
-        .map_err(|e| format!("Failed to parse gist response: {e}"))?;
+        .map_err(|e| format!("Failed to parse upload response: {e}"))?;
 
     if !status.is_success() {
         let msg = body["message"].as_str().unwrap_or("Unknown error");
-        return Err(format!("Gist API error ({}): {}", status, msg));
+        return Err(format!("Upload error ({}): {}", status, msg));
     }
 
-    let html_url = body["html_url"]
+    let download_url = body["content"]["download_url"]
         .as_str()
-        .ok_or("Missing html_url in gist response")?
+        .ok_or("Missing download_url in response")?
         .to_string();
 
-    Ok(html_url)
+    Ok(download_url)
+}
+
+/// Ensure the `attachments` branch exists in the repo. Creates it from the default
+/// branch HEAD if it doesn't exist yet.
+async fn ensure_attachments_branch(
+    client: &reqwest::Client,
+    pat: &str,
+    branch: &str,
+) -> Result<(), String> {
+    // Check if branch exists
+    let check = client
+        .get(format!(
+            "https://api.github.com/repos/{}/branches/{}",
+            GITHUB_REPO, branch
+        ))
+        .header("Authorization", format!("Bearer {}", pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Branch check failed: {e}"))?;
+
+    if check.status().is_success() {
+        return Ok(());
+    }
+
+    // Get the default branch SHA to branch from
+    let repo_response = client
+        .get(format!("https://api.github.com/repos/{}", GITHUB_REPO))
+        .header("Authorization", format!("Bearer {}", pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Repo fetch failed: {e}"))?;
+
+    let repo: serde_json::Value = repo_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse repo: {e}"))?;
+
+    let default_branch = repo["default_branch"]
+        .as_str()
+        .unwrap_or("main");
+
+    let ref_response = client
+        .get(format!(
+            "https://api.github.com/repos/{}/git/ref/heads/{}",
+            GITHUB_REPO, default_branch
+        ))
+        .header("Authorization", format!("Bearer {}", pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Ref fetch failed: {e}"))?;
+
+    let ref_data: serde_json::Value = ref_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse ref: {e}"))?;
+
+    let sha = ref_data["object"]["sha"]
+        .as_str()
+        .ok_or("Missing SHA for default branch")?;
+
+    // Create the branch
+    let create = client
+        .post(format!(
+            "https://api.github.com/repos/{}/git/refs",
+            GITHUB_REPO
+        ))
+        .header("Authorization", format!("Bearer {}", pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .json(&serde_json::json!({
+            "ref": format!("refs/heads/{}", branch),
+            "sha": sha,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Branch creation failed: {e}"))?;
+
+    if create.status().is_success() || create.status() == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+        Ok(())
+    } else {
+        Err(format!("Failed to create branch: {}", create.status()))
+    }
 }
 
 /// Ensure a label exists on the repo (best-effort, 422 = already exists).
@@ -256,16 +360,9 @@ pub async fn test_github_pat(github_pat: String) -> Result<String, String> {
 
     let scope_list: Vec<&str> = scopes.split(',').map(|s| s.trim()).collect();
     let has_repo = scope_list.iter().any(|s| *s == "repo" || *s == "public_repo");
-    let has_gist = scope_list.iter().any(|s| *s == "gist");
 
-    if !has_repo && !has_gist {
-        return Err("Token is missing both 'public_repo' and 'gist' scopes. Edit your classic token at github.com/settings/tokens and enable these scopes.".to_string());
-    }
     if !has_repo {
         return Err("Token is missing the 'public_repo' scope. Edit your classic token at github.com/settings/tokens and enable it.".to_string());
-    }
-    if !has_gist {
-        return Err("Token is missing the 'gist' scope. Edit your classic token at github.com/settings/tokens and enable it.".to_string());
     }
 
     let user: serde_json::Value = user_response
