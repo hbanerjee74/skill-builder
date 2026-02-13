@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel validation of a completed skill by spawning per-file quality reviewers plus a cross-cutting coverage/structure checker via the Task tool, then have a reporter sub-agent consolidate results, fix issues, and write the final validation log.
 
+Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+
 ## Context
 - The coordinator will tell you:
   - The **skill output directory** path (containing SKILL.md and reference files to validate)
@@ -32,7 +34,7 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 ## Phase 1: Inventory and Prepare
 
 1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
-   - If fetch fails: retry once. If still fails, stop with message: "Cannot reach best practices documentation. Check internet and retry."
+   - If fetch fails: retry once. If still fails, proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
 2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
@@ -55,7 +57,8 @@ This is the cross-cutting checker. Prompt it to:
 - Check for orphaned reference files (not pointed to from SKILL.md)
 - Check for unnecessary files (README, CHANGELOG, etc.)
 - Write findings to `validation-coverage-structure.md` in the context directory
-- Respond with only: `Done — wrote validation-coverage-structure.md`
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-coverage-structure.md`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
@@ -65,8 +68,10 @@ Prompt it to:
 - Read the best practices URL for content guidelines
 - Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
 - Focus on content quality, not structure (the coverage-structure checker handles that)
+- Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-skill-md.md` in the context directory with PASS/FAIL per section and specific improvement suggestions for any FAIL
-- Respond with only: `Done — wrote validation-skill-md.md`
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-skill-md.md`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
@@ -75,8 +80,10 @@ For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Read `decisions.md` from [context directory path] for context
 - Read the best practices URL for content guidelines
 - Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
+- Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
-- Respond with only: `Done — wrote validation-<filename>.md`
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-<filename>.md`. Do not echo file contents or summarize what you wrote.
 
 **IMPORTANT: Launch ALL sub-agents (A + B + C1..CN) in the SAME turn so they run in parallel.**
 
@@ -133,8 +140,62 @@ Prompt it to:
 ```
 
 6. Delete all temporary `validation-*.md` files from the context directory when done
-7. Respond with only: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If best practices URL fetch fails (even after retry):** Use the fallback criteria listed in Phase 1. Do not skip validation — the structural and coverage checks are the most valuable parts and don't require the URL.
+- **If a validator sub-agent fails:** Note the failure in the reporter prompt so it knows which file was not independently reviewed. The reporter should review that file itself as part of consolidation.
 
 ## Output Files
 - `agent-validation-log.md` in the context directory
 - Updated skill files in the skill output directory (if fixes were applied)
+
+### Output Example
+
+```markdown
+# Validation Log
+
+## Summary
+- **Decisions covered**: 12/12
+- **Clarifications covered**: 15/15
+- **Structural checks**: 6 passed, 1 failed
+- **Content checks**: 4 passed, 1 failed
+- **Auto-fixed**: 2 issues
+- **Needs manual review**: 0 issues
+
+## Coverage Results
+
+### D1: Two-level customer hierarchy
+- **Status**: COVERED
+- **Location**: references/entity-model.md:Customer Hierarchy
+
+### D2: Revenue split (gross/net/recurring)
+- **Status**: COVERED
+- **Location**: references/pipeline-metrics.md:Revenue Metrics
+
+## Structural Results
+
+### SKILL.md line count
+- **Status**: PASS
+- **Details**: 342 lines (limit: 500)
+
+### Orphaned reference files
+- **Status**: FIXED
+- **Details**: references/legacy-fields.md not referenced from SKILL.md
+- **Fix applied**: Added pointer in SKILL.md Reference Files section
+
+## Content Results
+
+### references/entity-model.md
+- **Status**: PASS
+- **Details**: Actionability: 5, Specificity: 4, Domain depth: 5, Self-containment: 5
+```
+
+## Success Criteria
+- Every decision in `decisions.md` is mapped to a specific file and section
+- Every answered clarification is reflected in the skill content
+- All structural checks pass (line count, folder structure, metadata, pointers)
+- Each content file scores 3+ on all four quality dimensions (actionability, specificity, domain depth, self-containment)
+- All auto-fixable issues are fixed and verified

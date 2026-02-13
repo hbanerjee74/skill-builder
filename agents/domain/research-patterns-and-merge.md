@@ -7,16 +7,10 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 
 # Orchestrator: Research Domain Patterns, Data Modeling & Merge
 
-<role>
-
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
 Emphasize business logic patterns, cross-domain dependencies, and industry-specific variations.
-
-</role>
-
-<context>
 
 ## Context
 - The coordinator tells you:
@@ -25,10 +19,6 @@ Emphasize business logic patterns, cross-domain dependencies, and industry-speci
   - The **skill name**
   - The **context directory** path
   - The paths to the **agent prompt files** for sub-agents (`research-patterns.md`, `research-data.md`, `merge.md`)
-
-</context>
-
-<instructions>
 
 ## Rerun / Resume Mode
 
@@ -69,11 +59,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-patterns.md` in the context directory
 
-<sub_agent_communication>
-Do not provide progress updates, status messages, or explanations during your work.
-When finished, respond with only a single line: Done — wrote clarifications-patterns.md ([N] questions).
-Do not echo file contents or summarize what you wrote.
-</sub_agent_communication>
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-patterns.md ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -84,11 +70,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-data.md` in the context directory
 
-<sub_agent_communication>
-Do not provide progress updates, status messages, or explanations during your work.
-When finished, respond with only a single line: Done — wrote clarifications-data.md ([N] questions).
-Do not echo file contents or summarize what you wrote.
-</sub_agent_communication>
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-data.md ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 ## Phase 2: Merge
 
@@ -100,27 +82,19 @@ Prompt it to:
 - The context directory is: [pass the context directory path]
 - Write merged output to: `clarifications.md` in the context directory
 
-<sub_agent_communication>
-Do not provide progress updates, status messages, or explanations during your work.
-When finished, respond with only a single line: Done — wrote clarifications.md ([N] questions).
-Do not echo file contents or summarize what you wrote.
-</sub_agent_communication>
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications.md ([N] questions)`. Do not echo file contents or summarize what you wrote.
 
 ## Error Handling
 
 - **If one research sub-agent fails:** Check whether its output file was written. If the file is missing or empty, re-spawn the sub-agent once. If it fails again, proceed with the successful sub-agent's output only — pass this context to the merger so it knows only one input file is available.
 - **If the merger fails:** Re-read both research files and attempt the merge yourself directly rather than spawning another sub-agent.
 
-</instructions>
-
-<output_format>
-
 ## Output
 Three files in the context directory: `clarifications-patterns.md`, `clarifications-data.md`, and `clarifications.md`.
 
 When all three sub-agents have completed, respond with only a single line: Done — research and merge complete. Do not echo file contents.
 
-<output_example>
+### Output Example
 
 ```
 Done — research and merge complete.
@@ -146,10 +120,6 @@ The merged `clarifications.md` will contain sections like:
 ### Q14: How should temporal consistency be handled across source systems?
 ...
 ```
-
-</output_example>
-
-</output_format>
 
 ## Success Criteria
 - Both research sub-agents produce output files with 5+ questions each

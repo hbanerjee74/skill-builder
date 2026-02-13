@@ -4,13 +4,6 @@ description: |
   Implements a Linear issue end-to-end: worktree setup, dependency-aware planning, parallel execution
   via agent teams, code review, targeted testing, PR creation, and Linear status management.
   Triggers on "implement VD-123", "work on VD-123", "build VD-123", "fix VD-123", or "/implement-issue".
-compatibility:
-  requires:
-    - Task (sub-agent spawning)
-    - AskUserQuestion
-    - Bash (git worktree, test runners, gh CLI)
-    - Read, Grep, Glob
-    - Linear MCP (linear-server:get_issue, linear-server:update_issue)
 ---
 
 # Implement Linear Issue

@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
+Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+
 ## Context
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
@@ -48,11 +50,13 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 
 Prompt it to:
 - **Before starting research:** Check if `research-entities.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Research key entities and their relationships for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory)
+- Research key entities and their relationships for the domain (e.g., for Stripe: charges, subscriptions, events; for Salesforce: accounts, opportunities, custom objects)
 - Research common analysis patterns (trend analysis, cohort analysis, forecasting)
 - Research cross-functional dependencies between entities
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-entities.md` in the context directory
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agent 2: Metrics & KPI Research** (`name: "metrics-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -65,9 +69,9 @@ Prompt it to:
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
 - Write output to `research-metrics.md` in the context directory
 
-Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
 
-**IMPORTANT:** Each sub-agent prompt must end with: `"When finished, respond with only a single line: Done — wrote [filename] ([N] questions). Do not echo file contents."`
+Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
 
 ## Phase 2: Merge Results
 
@@ -84,5 +88,37 @@ Prompt it to:
 4. Keep the intermediate research files for reference
 5. Respond with only: `Done — wrote [filename] ([N] questions)`
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] questions)`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If a sub-agent fails or returns no output:** Check whether its output file was written. If the file exists with content, proceed. If the file is missing or empty, log the failure and re-spawn the sub-agent once. If it fails again, proceed with the output from the successful sub-agent only and note the gap in the merge.
+- **If both sub-agents fail:** Report the failure to the coordinator with the error details. Do not produce a partial output file.
+
 ## Output
 The merged clarification file at the output file path provided by the coordinator.
+
+### Output Example
+
+```markdown
+## Domain Concepts & Metrics
+
+### Q1: How should source system pagination be modeled?
+The source API returns paginated results with varying page sizes and cursor strategies. How should the skill represent pagination handling?
+
+**Choices:**
+a) **Offset-based pagination** — Simple but risks missing or duplicating records when data changes between pages.
+b) **Cursor-based pagination** — Handles concurrent modifications gracefully; requires storing cursor state.
+c) **Timestamp-based incremental extraction** — Uses last-modified timestamps to fetch only changed records.
+d) **Other (please specify)**
+
+**Recommendation:** Option (b) — cursor-based pagination is the most reliable for source systems with frequent data changes and avoids duplication issues.
+
+**Answer:**
+```
+
+## Success Criteria
+- Both sub-agents produce research files with 5+ clarification questions each
+- Merged output contains 8-15 deduplicated questions organized by topic
+- All questions follow the shared context file format (choices, recommendation, empty answer line)
+- No duplicate or near-duplicate questions survive the merge

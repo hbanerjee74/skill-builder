@@ -10,6 +10,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
+Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
   - The **shared context** file path (domain definitions and content principles)
@@ -117,6 +119,8 @@ Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decision
 When finished, respond with only a single line: Done — wrote [filename] ([N] lines). Do not echo file contents.
 ```
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] lines)`. Do not echo file contents or summarize what you wrote.
+
 ## Phase 4: Review and Fix Gaps
 
 After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
@@ -129,6 +133,13 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — reviewed and fixed [N] issues`. Do not echo file contents or summarize what you wrote.
+
+## Error Handling
+
+- **If `decisions.md` is empty or malformed:** Report to the coordinator that decisions are missing or corrupt. Do not attempt to build a skill without confirmed decisions — the output would be speculative.
+- **If a reference file sub-agent fails:** Check if the file was partially written. If so, read and complete it yourself. If no file exists, write it directly rather than re-spawning.
+
 ## General Principles
 - Handle all technical details invisibly
 - Use plain language, no jargon
@@ -138,3 +149,40 @@ Prompt it to:
 ## Output Files
 - `SKILL.md` in the skill output directory
 - Reference files in `references/` within the skill output directory
+
+### Output Example
+
+Example SKILL.md metadata block and pointer section:
+
+```markdown
+---
+name: Streaming Pipeline Patterns
+description: Data engineering knowledge for building and operating streaming data pipelines, covering exactly-once semantics, windowing strategies, backpressure handling, and state management.
+---
+
+# Streaming Pipeline Patterns
+
+## Overview
+This skill covers streaming pipeline design patterns for engineers building real-time data processing systems. Key concepts: exactly-once semantics, windowing, backpressure, and stateful processing.
+
+## When to Use This Skill
+- Engineer asks about designing streaming data pipelines
+- Questions about exactly-once processing guarantees or deduplication strategies
+- Choosing windowing strategies for time-series aggregations
+- Handling backpressure and flow control in high-throughput pipelines
+
+## Quick Reference
+- Exactly-once semantics require idempotent writes and transactional checkpointing...
+- Tumbling windows are simplest but late-arriving data requires watermark strategies...
+
+## Reference Files
+- **references/exactly-once-semantics.md** — Delivery guarantees, checkpoint strategies, and idempotent sink patterns. Read when designing pipeline reliability.
+- **references/windowing-strategies.md** — Tumbling, sliding, and session windows with watermark and late data handling. Read when building time-based aggregations.
+- **references/backpressure-handling.md** — Flow control patterns, buffer management, and scaling strategies. Read when handling variable throughput.
+```
+
+## Success Criteria
+- SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers
+- 3-8 reference files, each self-contained and under 200 lines
+- Every decision from `decisions.md` is addressed in at least one file
+- SKILL.md pointers accurately describe each reference file's content and when to read it
