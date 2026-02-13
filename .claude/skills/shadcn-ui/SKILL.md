@@ -1,7 +1,6 @@
 ---
 name: shadcn-ui
 description: shadcn/ui component library with Tailwind CSS 4. Use when adding new components, customizing variants, building UI layouts, or debugging component issues.
-allowed-tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 
 # shadcn/ui Skill

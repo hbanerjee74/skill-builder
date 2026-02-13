@@ -153,8 +153,8 @@ on:
 
 This skill includes comprehensive documentation organized into categories:
 
-- **core_concepts.md** - Process model, IPC, debugging, architecture
-- **getting_started.md** - Project setup and first app tutorials
+- **core-concepts.md** - Process model, IPC, debugging, architecture
+- **getting-started.md** - Project setup and first app tutorials
 - **plugins.md** - Plugin development and integration
 - **reference.md** - API references and configuration schemas
 - **security.md** - CSP, secure IPC, permissions, WebView security
@@ -196,4 +196,3 @@ window.close_devtools();
 ## Resources
 
 - Official docs: https://tauri.app/
-- Last updated: October 2025

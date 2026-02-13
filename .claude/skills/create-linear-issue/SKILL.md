@@ -5,12 +5,6 @@ description: |
   Triggers on "create issue", "log a bug", "file a ticket", "new feature", "something is broken",
   or "/create-issue". Classifies as feature or bug, explores the codebase for feasibility,
   and produces product-level issues with no implementation details.
-compatibility:
-  requires:
-    - Task (sub-agent spawning)
-    - AskUserQuestion
-    - Bash, Read, Grep, Glob, WebSearch
-    - Linear MCP (linear-server:create_issue, linear-server:list_projects, linear-server:list_issue_labels)
 ---
 
 # Create Linear Issue
