@@ -10,6 +10,17 @@ const state = createAbortState();
 process.on("SIGTERM", () => handleShutdown(state));
 process.on("SIGINT", () => handleShutdown(state));
 
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`[sidecar] Uncaught exception: ${err.stack || err.message}\n`);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+  process.stderr.write(`[sidecar] Unhandled rejection: ${msg}\n`);
+  process.exit(1);
+});
+
 /**
  * One-shot mode: parse config from argv[2], run the agent, exit.
  * This is the original behavior, preserved for backward compatibility.

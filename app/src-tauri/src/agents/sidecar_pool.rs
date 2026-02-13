@@ -96,10 +96,10 @@ impl SidecarStartupError {
                 "Check file permissions and ensure the sidecar bundle exists. Try running `npm run sidecar:build` in the app/ directory.".to_string()
             }
             SidecarStartupError::ReadyTimeout { .. } => {
-                "Check the app logs for details (Help > Open Log Directory). The sidecar process may have crashed during initialization.".to_string()
+                "Check the app logs for details (Settings > Log File). The sidecar process may have crashed during initialization.".to_string()
             }
             SidecarStartupError::Other { .. } => {
-                "Check the app logs for details (Help > Open Log Directory).".to_string()
+                "Check the app logs for details (Settings > Log File).".to_string()
             }
         }
     }
