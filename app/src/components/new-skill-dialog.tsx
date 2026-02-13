@@ -28,7 +28,7 @@ const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
 
 interface NewSkillDialogProps {
   workspacePath: string
-  onCreated: () => void
+  onCreated: () => Promise<void>
   tagSuggestions?: string[]
 }
 
@@ -77,13 +77,13 @@ export default function NewSkillDialog({
       })
       toast.success(`Skill "${name}" created`)
       const skillName = name.trim()
+      await onCreated()
+      navigate({ to: "/skill/$skillName", params: { skillName } })
       setOpen(false)
       setSkillType("")
       setDomain("")
       setName("")
       setTags([])
-      onCreated()
-      navigate({ to: "/skill/$skillName", params: { skillName } })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
