@@ -468,7 +468,9 @@ impl SidecarPool {
                 }
 
                 let mut buf = early_stderr_clone.lock().await;
-                buf.push(line);
+                if buf.len() < 50 {
+                    buf.push(line);
+                }
             }
         });
 
