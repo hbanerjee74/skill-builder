@@ -1,6 +1,10 @@
 use crate::types::SkillFileEntry;
+use base64::Engine;
 use std::fs;
 use std::path::Path;
+
+/// Maximum file size for base64 reading (5 MB).
+const MAX_BASE64_FILE_SIZE: u64 = 5_242_880;
 
 #[tauri::command]
 pub fn list_skill_files(
@@ -82,6 +86,17 @@ pub fn copy_file(src: String, dest: String) -> Result<(), String> {
     fs::copy(&src, &dest)
         .map(|_| ())
         .map_err(|e| format!("Failed to copy {} to {}: {}", src, dest, e))
+}
+
+#[tauri::command]
+pub fn read_file_as_base64(file_path: String) -> Result<String, String> {
+    let metadata =
+        std::fs::metadata(&file_path).map_err(|e| format!("Cannot read file: {e}"))?;
+    if metadata.len() > MAX_BASE64_FILE_SIZE {
+        return Err("File exceeds 5 MB limit".to_string());
+    }
+    let bytes = std::fs::read(&file_path).map_err(|e| format!("Failed to read file: {e}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 #[cfg(test)]
@@ -306,5 +321,48 @@ mod tests {
 
         let content = fs::read_to_string(&dest).unwrap();
         assert_eq!(content, "new content");
+    }
+
+    #[test]
+    fn test_read_file_as_base64_success() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.bin");
+        fs::write(&file, b"hello world").unwrap();
+
+        let result = read_file_as_base64(file.to_str().unwrap().to_string()).unwrap();
+        // "hello world" in base64
+        assert_eq!(result, "aGVsbG8gd29ybGQ=");
+    }
+
+    #[test]
+    fn test_read_file_as_base64_not_found() {
+        let result = read_file_as_base64("/tmp/nonexistent-base64-file-xyz".to_string());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Cannot read file"));
+    }
+
+    #[test]
+    fn test_read_file_as_base64_exceeds_size_limit() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("large.bin");
+        // Create a file just over the 5 MB limit
+        let data = vec![0u8; 5_242_881];
+        fs::write(&file, &data).unwrap();
+
+        let result = read_file_as_base64(file.to_str().unwrap().to_string());
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "File exceeds 5 MB limit");
+    }
+
+    #[test]
+    fn test_read_file_as_base64_at_size_limit() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("exact.bin");
+        // Exactly 5 MB — should succeed
+        let data = vec![0u8; 5_242_880];
+        fs::write(&file, &data).unwrap();
+
+        let result = read_file_as_base64(file.to_str().unwrap().to_string());
+        assert!(result.is_ok());
     }
 }

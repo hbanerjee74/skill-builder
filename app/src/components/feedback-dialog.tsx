@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { getVersion } from "@tauri-apps/api/app"
-import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog"
+import { Bug, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -19,7 +20,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
-import { startAgent, getWorkspacePath } from "@/lib/tauri"
+import { startAgent, getWorkspacePath, readFileAsBase64 } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
 
 // ---------------------------------------------------------------------------
@@ -34,9 +35,38 @@ export interface EnrichedIssue {
   version: string
 }
 
+export interface Attachment {
+  name: string
+  size: number
+  mimeType: string
+  base64Content: string
+}
+
 type DialogStep = "input" | "enriching" | "review" | "submitting"
 
 const GITHUB_REPO = "hbanerjee74/skill-builder"
+const MAX_FILE_SIZE_BYTES = 5_242_880 // 5 MB
+const MAX_ATTACHMENTS = 5
+
+function getMimeType(ext: string): string {
+  const map: Record<string, string> = {
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
+    txt: "text/plain", log: "text/plain", md: "text/markdown",
+    json: "application/json", csv: "text/csv",
+  }
+  return map[ext] || "application/octet-stream"
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function isTextMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("text/") || mimeType === "application/json"
+}
 
 // ---------------------------------------------------------------------------
 // Prompt builders
@@ -93,7 +123,7 @@ Respond with ONLY a JSON object (no markdown fencing, no explanation):
 }`
 }
 
-export function buildSubmissionPrompt(data: EnrichedIssue): string {
+export function buildSubmissionPrompt(data: EnrichedIssue, attachments: Attachment[] = []): string {
   const escapeQuotes = (s: string) => s.replace(/"/g, '\\"')
   // Auto-add type and version labels
   const typeLabel = data.type === "bug" ? "bug" : "enhancement"
@@ -104,8 +134,26 @@ export function buildSubmissionPrompt(data: EnrichedIssue): string {
   const labelsFlags = allLabels
     .map((l) => `--label "${escapeQuotes(l)}"`)
     .join(" ")
+
+  // Build attachment section for the issue body
+  let attachmentSection = ""
+  if (attachments.length > 0) {
+    const parts = attachments.map((att) => {
+      if (att.mimeType.startsWith("image/")) {
+        return `### ${att.name}\n![${att.name}](data:${att.mimeType};base64,${att.base64Content})`
+      }
+      if (isTextMimeType(att.mimeType)) {
+        const decoded = atob(att.base64Content)
+        return `### ${att.name}\n<details>\n<summary>${att.name} (${formatFileSize(att.size)})</summary>\n\n\`\`\`\n${decoded}\n\`\`\`\n\n</details>`
+      }
+      return `### ${att.name}\n<details>\n<summary>${att.name} (${formatFileSize(att.size)})</summary>\n\n_Binary file attached as base64_\n\n\`\`\`\n${att.base64Content}\n\`\`\`\n\n</details>`
+    })
+    attachmentSection = `\n\n## Attachments\n\n${parts.join("\n\n")}`
+  }
+
   // Sanitize body to prevent here-doc delimiter collision
-  const safeBody = data.body.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
+  const fullBody = data.body + attachmentSection
+  const safeBody = fullBody.replace(/^ISSUE_BODY_EOF$/gm, "ISSUE-BODY-EOF")
   const owner = GITHUB_REPO.split("/")[0]
 
   return `Create a GitHub issue on the repository ${GITHUB_REPO} using the Bash tool.
@@ -175,6 +223,9 @@ export function FeedbackDialog() {
   // --- Enrichment result ---
   const [enriched, setEnriched] = useState<EnrichedIssue | null>(null)
 
+  // --- Attachments ---
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+
   // --- Agent tracking ---
   const [pendingAgentId, setPendingAgentId] = useState<string | null>(null)
 
@@ -182,6 +233,7 @@ export function FeedbackDialog() {
     setTitle("")
     setDescription("")
     setEnriched(null)
+    setAttachments([])
     setStep("input")
     setPendingAgentId(null)
   }
@@ -259,6 +311,78 @@ export function FeedbackDialog() {
   // Handlers
   // -----------------------------------------------------------------------
 
+  const handleAttachFile = async () => {
+    const result = await openFileDialog({
+      multiple: true,
+      filters: [
+        { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] },
+        { name: "Text & Logs", extensions: ["txt", "log", "md", "json", "csv"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    })
+    if (!result) return
+    const paths = Array.isArray(result) ? result : [result]
+    for (const filePath of paths) {
+      if (attachments.length >= MAX_ATTACHMENTS) {
+        toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
+        break
+      }
+      try {
+        const base64Content = await readFileAsBase64(filePath)
+        const name = filePath.split(/[/\\]/).pop() || "file"
+        const ext = name.split(".").pop()?.toLowerCase() || ""
+        const mimeType = getMimeType(ext)
+        const size = atob(base64Content).length
+        if (size > MAX_FILE_SIZE_BYTES) {
+          toast.error(`${name} exceeds 5 MB limit`)
+          continue
+        }
+        setAttachments((prev) => [...prev, { name, size, mimeType, base64Content }])
+      } catch (e) {
+        toast.error(`Failed to read file: ${e}`)
+      }
+    }
+  }
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of Array.from(items)) {
+        if (!item.type.startsWith("image/")) continue
+        e.preventDefault()
+        if (attachments.length >= MAX_ATTACHMENTS) {
+          toast.error(`Maximum ${MAX_ATTACHMENTS} attachments allowed`)
+          return
+        }
+        const blob = item.getAsFile()
+        if (!blob) continue
+        if (blob.size > MAX_FILE_SIZE_BYTES) {
+          toast.error("Pasted image exceeds 5 MB limit")
+          return
+        }
+        const reader = new FileReader()
+        reader.onload = () => {
+          const dataUrl = reader.result as string
+          const base64Content = dataUrl.split(",")[1]
+          const ext = blob.type.split("/")[1] || "png"
+          setAttachments((prev) => [
+            ...prev,
+            {
+              name: `clipboard-${Date.now()}.${ext}`,
+              size: blob.size,
+              mimeType: blob.type,
+              base64Content,
+            },
+          ])
+          toast.success("Image pasted from clipboard")
+        }
+        reader.readAsDataURL(blob)
+      }
+    },
+    [attachments.length],
+  )
+
   const handleAnalyze = async () => {
     if (!title.trim()) return
     setStep("enriching")
@@ -295,7 +419,7 @@ export function FeedbackDialog() {
     setStep("submitting")
 
     const agentId = `feedback-submit-${Date.now()}`
-    const prompt = buildSubmissionPrompt(enriched)
+    const prompt = buildSubmissionPrompt(enriched, attachments)
 
     try {
       await startAgent(
@@ -335,6 +459,46 @@ export function FeedbackDialog() {
   // Render helpers
   // -----------------------------------------------------------------------
 
+  const renderAttachmentPreviews = (readOnly = false) => {
+    if (attachments.length === 0) return null
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-muted-foreground">
+          Attachments ({attachments.length}/{MAX_ATTACHMENTS})
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {attachments.map((att, i) => (
+            <div key={i} className="group relative flex items-center gap-2 rounded-md border p-2">
+              {att.mimeType.startsWith("image/") ? (
+                <img
+                  src={`data:${att.mimeType};base64,${att.base64Content}`}
+                  alt={att.name}
+                  className="h-12 w-12 rounded object-cover"
+                />
+              ) : (
+                <FileText className="h-12 w-12 text-muted-foreground" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm">{att.name}</p>
+                <p className="text-xs text-muted-foreground">{formatFileSize(att.size)}</p>
+              </div>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-destructive-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                  aria-label={`Remove ${att.name}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const renderInputStep = () => (
     <>
       <div className="grid gap-4 py-2">
@@ -355,9 +519,22 @@ export function FeedbackDialog() {
             placeholder="Provide additional details, steps to reproduce, or expected behavior"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            onPaste={handlePaste}
             rows={4}
           />
         </div>
+
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={handleAttachFile}>
+            <Paperclip className="mr-1.5 h-4 w-4" />
+            Attach file
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            or paste an image into the description
+          </span>
+        </div>
+
+        {renderAttachmentPreviews()}
       </div>
 
       <DialogFooter>
@@ -465,6 +642,14 @@ export function FeedbackDialog() {
                 placeholder="comma, separated, labels"
               />
             </div>
+
+            {/* ── Attachments (read-only) ── */}
+            {attachments.length > 0 && (
+              <>
+                <Separator />
+                {renderAttachmentPreviews(true)}
+              </>
+            )}
           </div>
         </ScrollArea>
 

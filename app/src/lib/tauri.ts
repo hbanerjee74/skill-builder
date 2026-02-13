@@ -133,6 +133,9 @@ export const saveWorkflowState = (
 export const readFile = (filePath: string) =>
   invoke<string>("read_file", { filePath });
 
+export const readFileAsBase64 = (filePath: string) =>
+  invoke<string>("read_file_as_base64", { filePath });
+
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_file", { path, content });
 

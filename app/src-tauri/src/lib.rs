@@ -62,6 +62,7 @@ pub fn run() {
             commands::files::read_file,
             commands::files::write_file,
             commands::files::copy_file,
+            commands::files::read_file_as_base64,
             commands::workflow::run_workflow_step,
             commands::workflow::run_review_step,
             commands::workflow::package_skill,

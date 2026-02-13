@@ -17,18 +17,29 @@ vi.mock("@tauri-apps/api/app", () => ({
   getVersion: vi.fn(() => Promise.resolve("1.2.3")),
 }));
 
-const { mockStartAgent, mockGetWorkspacePath } = vi.hoisted(() => ({
+const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockOpenFileDialog } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() =>
     Promise.resolve("feedback-123"),
   ),
   mockGetWorkspacePath: vi.fn<() => Promise<string>>(() =>
     Promise.resolve("/workspace"),
   ),
+  mockReadFileAsBase64: vi.fn<(filePath: string) => Promise<string>>(() =>
+    Promise.resolve("aGVsbG8gd29ybGQ="),
+  ),
+  mockOpenFileDialog: vi.fn<() => Promise<string | string[] | null>>(() =>
+    Promise.resolve(null),
+  ),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
+  readFileAsBase64: mockReadFileAsBase64,
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: mockOpenFileDialog,
 }));
 
 import {
@@ -37,7 +48,7 @@ import {
   buildSubmissionPrompt,
   parseEnrichmentResponse,
 } from "@/components/feedback-dialog";
-import type { EnrichedIssue } from "@/components/feedback-dialog";
+import type { EnrichedIssue, Attachment } from "@/components/feedback-dialog";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -161,6 +172,56 @@ describe("buildSubmissionPrompt", () => {
     // Body should NOT contain the raw delimiter between content lines
     expect(prompt).not.toContain("Something broke\nISSUE_BODY_EOF\nMore text");
   });
+
+  it("includes image attachments as data URI markdown images", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "## Problem\nCrash",
+      labels: [],
+      version: "1.0.0",
+    };
+    const attachments: Attachment[] = [
+      { name: "screenshot.png", size: 1024, mimeType: "image/png", base64Content: "iVBOR..." },
+    ];
+    const prompt = buildSubmissionPrompt(issue, attachments);
+    expect(prompt).toContain("## Attachments");
+    expect(prompt).toContain("### screenshot.png");
+    expect(prompt).toContain("![screenshot.png](data:image/png;base64,iVBOR...)");
+  });
+
+  it("includes text attachments as decoded code blocks", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "## Problem\nCrash",
+      labels: [],
+      version: "1.0.0",
+    };
+    // btoa("error log content") = "ZXJyb3IgbG9nIGNvbnRlbnQ="
+    const attachments: Attachment[] = [
+      { name: "error.log", size: 17, mimeType: "text/plain", base64Content: "ZXJyb3IgbG9nIGNvbnRlbnQ=" },
+    ];
+    const prompt = buildSubmissionPrompt(issue, attachments);
+    expect(prompt).toContain("## Attachments");
+    expect(prompt).toContain("### error.log");
+    expect(prompt).toContain("error log content");
+    expect(prompt).toContain("<details>");
+  });
+
+  it("does not include attachment section when no attachments", () => {
+    const issue: EnrichedIssue = {
+      type: "bug",
+      title: "Test",
+      body: "## Problem\nCrash",
+      labels: [],
+      version: "1.0.0",
+    };
+    const prompt = buildSubmissionPrompt(issue);
+    expect(prompt).not.toContain("## Attachments");
+    const promptWithEmpty = buildSubmissionPrompt(issue, []);
+    expect(promptWithEmpty).not.toContain("## Attachments");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -217,6 +278,8 @@ describe("FeedbackDialog", () => {
     useAgentStore.getState().clearRuns();
     mockStartAgent.mockReset().mockResolvedValue("feedback-123");
     mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
+    mockReadFileAsBase64.mockReset().mockResolvedValue("aGVsbG8gd29ybGQ=");
+    mockOpenFileDialog.mockReset().mockResolvedValue(null);
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
   });
@@ -520,6 +583,95 @@ describe("FeedbackDialog", () => {
       expect(toast.error).toHaveBeenCalledWith("Failed to analyze feedback", {
         duration: 5000,
       });
+    });
+  });
+
+  it("renders Attach file button in input step", async () => {
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    expect(screen.getByRole("button", { name: /Attach file/i })).toBeInTheDocument();
+  });
+
+  it("opens file dialog when Attach file is clicked", async () => {
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    expect(mockOpenFileDialog).toHaveBeenCalledTimes(1);
+    expect(mockOpenFileDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ multiple: true }),
+    );
+  });
+
+  it("shows attachment preview after file is attached", async () => {
+    mockOpenFileDialog.mockResolvedValue("/path/to/screenshot.png");
+    // Must be valid base64 since atob() is called to compute size
+    mockReadFileAsBase64.mockResolvedValue("UE5HIGZha2UgZGF0YQ==");
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
+      expect(screen.getByText("Attachments (1/5)")).toBeInTheDocument();
+    });
+  });
+
+  it("shows remove button on attachment hover", async () => {
+    mockOpenFileDialog.mockResolvedValue("/path/to/file.txt");
+    mockReadFileAsBase64.mockResolvedValue("aGVsbG8="); // "hello"
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove file.txt")).toBeInTheDocument();
+    });
+  });
+
+  it("removes attachment when remove button is clicked", async () => {
+    mockOpenFileDialog.mockResolvedValue("/path/to/file.txt");
+    mockReadFileAsBase64.mockResolvedValue("aGVsbG8=");
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("file.txt")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Remove file.txt"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("file.txt")).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows error toast when file read fails", async () => {
+    mockOpenFileDialog.mockResolvedValue("/path/to/bad-file.txt");
+    mockReadFileAsBase64.mockRejectedValue("Permission denied");
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.click(screen.getByRole("button", { name: /Attach file/i }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Failed to read file: Permission denied");
     });
   });
 });
