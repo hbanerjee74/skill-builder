@@ -443,34 +443,100 @@ impl SidecarPool {
             pid
         );
 
-        // Wait for the sidecar_ready signal on stdout
+        // Start early stderr capture for startup diagnostics.
+        // Lines are collected in a shared buffer so that if startup fails (timeout,
+        // stdout closes, parse error) we can surface the actual Node.js crash reason
+        // in the error message shown to the user.
+        let early_stderr = Arc::new(Mutex::new(Vec::<String>::new()));
+        let early_stderr_clone = early_stderr.clone();
+        let skill_name_stderr = skill_name.to_string();
+        let stderr_task = tokio::spawn(async move {
+            let stderr_reader = BufReader::new(stderr);
+            let mut lines = stderr_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let result = AssertUnwindSafe(async {
+                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                })
+                .catch_unwind()
+                .await;
+
+                if let Err(panic_info) = result {
+                    eprintln!(
+                        "stderr reader panicked for skill '{}': {:?} (line: {})",
+                        skill_name_stderr, panic_info, line
+                    );
+                }
+
+                let mut buf = early_stderr_clone.lock().await;
+                buf.push(line);
+            }
+        });
+
+        // Wait for the sidecar_ready signal on stdout.
+        // Uses match instead of map_err so we can .await the stderr buffer drain.
         let mut reader = BufReader::new(stdout);
         let mut ready_line = String::new();
-        let ready_timeout = tokio::time::timeout(
+        let ready_result = tokio::time::timeout(
             std::time::Duration::from_secs(10),
             reader.read_line(&mut ready_line),
         )
-        .await
-        .map_err(|_| {
-            let err = SidecarStartupError::ReadyTimeout { pid };
-            events::emit_init_error(app_handle, &err);
-            err.to_string()
-        })?
-        .map_err(|e| {
-            let err = SidecarStartupError::Other {
-                detail: format!("Error reading sidecar_ready: {}", e),
-            };
-            events::emit_init_error(app_handle, &err);
-            err.to_string()
-        })?;
+        .await;
 
-        if ready_timeout == 0 {
-            let err = SidecarStartupError::Other {
-                detail: format!(
+        let bytes_read = match ready_result {
+            Err(_) => {
+                // Timeout waiting for sidecar_ready
+                let stderr_lines = {
+                    let buf = early_stderr.lock().await;
+                    buf.join("\n")
+                };
+                let err = if stderr_lines.is_empty() {
+                    SidecarStartupError::ReadyTimeout { pid }
+                } else {
+                    SidecarStartupError::Other {
+                        detail: format!(
+                            "Agent runtime started (pid {}) but failed to initialize within 10 seconds. Stderr:\n{}",
+                            pid, stderr_lines
+                        ),
+                    }
+                };
+                events::emit_init_error(app_handle, &err);
+                return Err(err.to_string());
+            }
+            Ok(Err(e)) => {
+                // IO error reading stdout
+                let stderr_lines = {
+                    let buf = early_stderr.lock().await;
+                    buf.join("\n")
+                };
+                let detail = if stderr_lines.is_empty() {
+                    format!("Error reading sidecar_ready: {}", e)
+                } else {
+                    format!("Error reading sidecar_ready: {}. Stderr:\n{}", e, stderr_lines)
+                };
+                let err = SidecarStartupError::Other { detail };
+                events::emit_init_error(app_handle, &err);
+                return Err(err.to_string());
+            }
+            Ok(Ok(n)) => n,
+        };
+
+        if bytes_read == 0 {
+            let stderr_lines = {
+                let buf = early_stderr.lock().await;
+                buf.join("\n")
+            };
+            let detail = if stderr_lines.is_empty() {
+                format!(
                     "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready",
                     pid
-                ),
+                )
+            } else {
+                format!(
+                    "Persistent sidecar (pid {}) closed stdout before sending sidecar_ready. Stderr:\n{}",
+                    pid, stderr_lines
+                )
             };
+            let err = SidecarStartupError::Other { detail };
             events::emit_init_error(app_handle, &err);
             return Err(err.to_string());
         }
@@ -480,20 +546,40 @@ impl SidecarPool {
         match serde_json::from_str::<serde_json::Value>(ready_line) {
             Ok(val) => {
                 if val.get("type").and_then(|t| t.as_str()) != Some("sidecar_ready") {
-                    let err = SidecarStartupError::Other {
-                        detail: format!("Expected sidecar_ready but got: {}", ready_line),
+                    let stderr_lines = {
+                        let buf = early_stderr.lock().await;
+                        buf.join("\n")
                     };
+                    let detail = if stderr_lines.is_empty() {
+                        format!("Expected sidecar_ready but got: {}", ready_line)
+                    } else {
+                        format!(
+                            "Expected sidecar_ready but got: {}. Stderr:\n{}",
+                            ready_line, stderr_lines
+                        )
+                    };
+                    let err = SidecarStartupError::Other { detail };
                     events::emit_init_error(app_handle, &err);
                     return Err(err.to_string());
                 }
             }
             Err(e) => {
-                let err = SidecarStartupError::Other {
-                    detail: format!(
+                let stderr_lines = {
+                    let buf = early_stderr.lock().await;
+                    buf.join("\n")
+                };
+                let detail = if stderr_lines.is_empty() {
+                    format!(
                         "Failed to parse sidecar_ready signal: {} (line: {})",
                         e, ready_line
-                    ),
+                    )
+                } else {
+                    format!(
+                        "Failed to parse sidecar_ready signal: {} (line: {}). Stderr:\n{}",
+                        e, ready_line, stderr_lines
+                    )
                 };
+                let err = SidecarStartupError::Other { detail };
                 events::emit_init_error(app_handle, &err);
                 return Err(err.to_string());
             }
@@ -502,29 +588,8 @@ impl SidecarPool {
         log::info!("Persistent sidecar for '{}' is ready (pid {})", skill_name, pid);
 
         // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
-
-        // Spawn stderr reader for logging (panic-safe: log and continue on panic)
-        let skill_name_stderr = skill_name.to_string();
-        let stderr_task = tokio::spawn(async move {
-            let stderr_reader = BufReader::new(stderr);
-            let mut lines = stderr_reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                let result = AssertUnwindSafe(async {
-                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
-                })
-                .catch_unwind()
-                .await;
-
-                if let Err(panic_info) = result {
-                    // stderr panics are non-fatal — log and continue
-                    eprintln!(
-                        "stderr reader panicked for skill '{}': {:?} (line: {})",
-                        skill_name_stderr, panic_info, line
-                    );
-                }
-            }
-        });
+        // The stderr_task is already spawned above and will keep running,
+        // draining to log::debug for the lifetime of the sidecar process.
 
         // Create last_pong timestamp for heartbeat tracking
         let last_pong = Arc::new(Mutex::new(tokio::time::Instant::now()));
