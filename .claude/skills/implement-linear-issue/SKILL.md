@@ -65,6 +65,8 @@ Only enter when all ACs are verified and PR is created.
 
 ## Sub-agent Type Selection
 
+These are `subagent_type` values for the `Task` tool — not MCP tools.
+
 | Task | subagent_type | model |
 |---|---|---|
 | Planning | feature-dev:code-architect | sonnet |

@@ -61,6 +61,8 @@ Report to user: issue closed, PR merged, worktree and branches removed.
 
 ## Sub-agent Type Selection
 
+These are `subagent_type` values for the `Task` tool — not MCP tools.
+
 | Task | subagent_type | model |
 |---|---|---|
 | Fetch Linear issue | general-purpose | haiku |

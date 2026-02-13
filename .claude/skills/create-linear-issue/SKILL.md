@@ -58,6 +58,8 @@ Triggered when the user provides an existing issue ID with intent to break it do
 
 ## Sub-agent Type Selection
 
+These are `subagent_type` values for the `Task` tool — not MCP tools.
+
 | Task | subagent_type | model |
 |---|---|---|
 | Codebase feasibility | feature-dev:code-explorer | default |
