@@ -243,7 +243,29 @@ pub async fn test_github_pat(github_pat: String) -> Result<String, String> {
         .map_err(|e| format!("Request failed: {e}"))?;
 
     if !user_response.status().is_success() {
-        return Err("Invalid token — authentication failed".to_string());
+        return Err("Invalid token — authentication failed. Make sure you created a classic token (not fine-grained).".to_string());
+    }
+
+    // Check token scopes from response header
+    let scopes = user_response
+        .headers()
+        .get("x-oauth-scopes")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let scope_list: Vec<&str> = scopes.split(',').map(|s| s.trim()).collect();
+    let has_repo = scope_list.iter().any(|s| *s == "repo" || *s == "public_repo");
+    let has_gist = scope_list.iter().any(|s| *s == "gist");
+
+    if !has_repo && !has_gist {
+        return Err("Token is missing both 'public_repo' and 'gist' scopes. Edit your classic token at github.com/settings/tokens and enable these scopes.".to_string());
+    }
+    if !has_repo {
+        return Err("Token is missing the 'public_repo' scope. Edit your classic token at github.com/settings/tokens and enable it.".to_string());
+    }
+    if !has_gist {
+        return Err("Token is missing the 'gist' scope. Edit your classic token at github.com/settings/tokens and enable it.".to_string());
     }
 
     let user: serde_json::Value = user_response
