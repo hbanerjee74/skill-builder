@@ -86,6 +86,7 @@ pub fn run() {
             commands::imported_skills::delete_imported_skill,
             commands::imported_skills::get_skill_content,
             commands::feedback::create_github_issue,
+            commands::feedback::test_github_pat,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

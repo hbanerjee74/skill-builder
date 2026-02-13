@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
-import { checkNode, getDataDir, type NodeStatus } from "@/lib/tauri"
+import { checkNode, getDataDir, testGithubPat, type NodeStatus } from "@/lib/tauri"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -43,6 +43,8 @@ export default function SettingsPage() {
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [showGithubPat, setShowGithubPat] = useState(false)
+  const [testingPat, setTestingPat] = useState(false)
+  const [patValid, setPatValid] = useState<boolean | null>(null)
   const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
   const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
@@ -209,6 +211,28 @@ export default function SettingsPage() {
     }
   }
 
+  const handleTestGithubPat = async () => {
+    if (!githubPat) {
+      toast.error("Enter a GitHub token first", { duration: Infinity })
+      return
+    }
+    setTestingPat(true)
+    setPatValid(null)
+    try {
+      const message = await testGithubPat(githubPat)
+      setPatValid(true)
+      toast.success(message)
+    } catch (err) {
+      setPatValid(false)
+      toast.error(
+        `GitHub PAT error: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
+      )
+    } finally {
+      setTestingPat(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -327,6 +351,20 @@ export default function SettingsPage() {
                   )}
                 </Button>
               </div>
+              <Button
+                variant={patValid ? "default" : "outline"}
+                size="sm"
+                onClick={handleTestGithubPat}
+                disabled={testingPat || !githubPat}
+                className={patValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+              >
+                {testingPat ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : patValid ? (
+                  <CheckCircle2 className="size-3.5" />
+                ) : null}
+                {patValid ? "Valid" : "Test"}
+              </Button>
             </div>
           </div>
         </CardContent>

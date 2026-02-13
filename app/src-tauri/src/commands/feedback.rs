@@ -226,6 +226,67 @@ async fn ensure_label(
     }
 }
 
+/// Test a GitHub PAT by verifying authentication, repo access, and issues enabled.
+#[tauri::command]
+pub async fn test_github_pat(github_pat: String) -> Result<String, String> {
+    let client = reqwest::Client::new();
+
+    // 1. Verify token is valid by getting the authenticated user
+    let user_response = client
+        .get("https://api.github.com/user")
+        .header("Authorization", format!("Bearer {}", github_pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if !user_response.status().is_success() {
+        return Err("Invalid token — authentication failed".to_string());
+    }
+
+    let user: serde_json::Value = user_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {e}"))?;
+    let username = user["login"].as_str().unwrap_or("unknown");
+
+    // 2. Verify the token can access the target repo
+    let repo_response = client
+        .get(format!("https://api.github.com/repos/{}", GITHUB_REPO))
+        .header("Authorization", format!("Bearer {}", github_pat))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {e}"))?;
+
+    if !repo_response.status().is_success() {
+        return Err(format!(
+            "Token valid for user '{}' but cannot access repo {}",
+            username, GITHUB_REPO
+        ));
+    }
+
+    let repo: serde_json::Value = repo_response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {e}"))?;
+
+    // Check if issues are enabled on the repo
+    let has_issues = repo["has_issues"].as_bool().unwrap_or(false);
+    if !has_issues {
+        return Err(format!("Repository {} has issues disabled", GITHUB_REPO));
+    }
+
+    Ok(format!(
+        "Authenticated as '{}' — can access {}",
+        username, GITHUB_REPO
+    ))
+}
+
 fn is_text_type(mime: &str) -> bool {
     mime.starts_with("text/") || mime == "application/json"
 }

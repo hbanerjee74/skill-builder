@@ -216,6 +216,9 @@ export interface CreateGithubIssueResponse {
 export const createGithubIssue = (request: CreateGithubIssueRequest) =>
   invoke<CreateGithubIssueResponse>("create_github_issue", { request });
 
+export const testGithubPat = (githubPat: string) =>
+  invoke<string>("test_github_pat", { githubPat });
+
 // --- Agent Prompts ---
 
 export const getAgentPrompt = (skillType: string, phase: string) =>
