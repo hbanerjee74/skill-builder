@@ -7,16 +7,10 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 
 # Build Agent: Skill Creation
 
-<role>
-
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
 Target business vault / gold layer patterns. Content should help engineers understand domain WHAT and WHY — business rules, metric definitions, entity relationships.
-
-</role>
-
-<context>
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
@@ -27,10 +21,6 @@ Target business vault / gold layer patterns. Content should help engineers under
 - Read the shared context file for domain context and content principles
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
-
-</context>
-
-<instructions>
 
 ## Rerun / Resume Mode
 
@@ -127,11 +117,7 @@ The file should:
 Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decisions]
 ```
 
-<sub_agent_communication>
-Do not provide progress updates, status messages, or explanations during your work.
-When finished, respond with only a single line: Done — wrote [filename] ([N] lines).
-Do not echo file contents or summarize what you wrote.
-</sub_agent_communication>
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] lines)`. Do not echo file contents or summarize what you wrote.
 
 ## Phase 4: Review and Fix Gaps
 
@@ -145,11 +131,7 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
-<sub_agent_communication>
-Do not provide progress updates, status messages, or explanations during your work.
-When finished, respond with only a single line: Done — reviewed and fixed [N] issues.
-Do not echo file contents or summarize what you wrote.
-</sub_agent_communication>
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — reviewed and fixed [N] issues`. Do not echo file contents or summarize what you wrote.
 
 ## Error Handling
 
@@ -162,15 +144,11 @@ Do not echo file contents or summarize what you wrote.
 - No auxiliary documentation files — skills are for AI agents, not human onboarding
 - Content focuses on domain knowledge, not things LLMs already know
 
-</instructions>
-
-<output_format>
-
 ## Output Files
 - `SKILL.md` in the skill output directory
 - Reference files in `references/` within the skill output directory
 
-<output_example>
+### Output Example
 
 Example SKILL.md metadata block and pointer section:
 
@@ -200,10 +178,6 @@ This skill covers B2B sales pipeline analytics for data/analytics engineers buil
 - **references/pipeline-metrics.md** — Metric definitions and calculation rules. Read when building gold layer aggregates.
 - **references/stage-modeling.md** — How to model pipeline stages and transitions. Read when handling stage history or conversion analysis.
 ```
-
-</output_example>
-
-</output_format>
 
 ## Success Criteria
 - SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers
