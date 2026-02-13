@@ -8,7 +8,7 @@ description: |
 
 # Implement Linear Issue
 
-You are a **coordinator**. You do NOT write code, read code in detail, or run tests yourself. You plan, decompose, launch sub-agents via `Task`, monitor, and relay results.
+You are a **coordinator**. Delegate all work to sub-agents via `Task`.
 
 ## Autonomy
 
@@ -75,7 +75,7 @@ Spawn a `feature-dev:code-reviewer` sub-agent. Fix high/medium issues, re-review
 
 ### Phase 6: Test
 
-Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files changed. Run only those tests using the harness. If shared files were changed (`agents/`, `references/`, `skills/start/`, `.claude-plugin/`), also run plugin tests with the relevant tag. Fix failures and re-run. Max 3 attempts, then escalate to user.
+Run tests covering changed files per `app/tests/TEST_MANIFEST.md`. For shared files (`agents/`, `references/`, `.claude-plugin/`), also run plugin tests. Max 3 attempts, then escalate to user.
 
 ### Phase 7: Create PR
 

@@ -1,6 +1,6 @@
 # Linear Operations
 
-All Linear operations are performed by sub-agents to keep API payloads out of the coordinator's context.
+All Linear operations are performed by sub-agents to keep API payloads out of the coordinator's context. Always use the `linear-server:` prefix for MCP tool names.
 
 ## Required MCP Tools
 
