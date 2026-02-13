@@ -58,8 +58,9 @@ See [linear-operations.md](references/linear-operations.md) for the estimate tab
 
 See [linear-operations.md](references/linear-operations.md) for MCP tools.
 
-1. Fetch projects and labels from Linear (parallel sub-agents). Present to user via `AskUserQuestion`: project, labels, estimate confirmation.
-2. Compose the issue:
+1. Fetch projects and labels from Linear (parallel sub-agents).
+2. **Confirm details**: Single `AskUserQuestion` with questions for project (up to 4, best-fit first with "(Recommended)"), labels (multi-select), and estimate. Do NOT proceed until confirmed.
+3. Compose the issue:
 
 **Title**: short, action-oriented, under 80 characters.
 
@@ -76,4 +77,4 @@ See [linear-operations.md](references/linear-operations.md) for MCP tools.
 - [ ] [Testable from product perspective — no implementation details]
 ```
 
-3. Spawn a sub-agent with the full payload to create the issue (`assignee: "me"`). It returns the issue ID/URL.
+4. Spawn a sub-agent with the full payload to create the issue (`assignee: "me"`). It returns the issue ID/URL.
