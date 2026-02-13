@@ -72,7 +72,7 @@ Read `decisions.md` and `clarifications.md`. Then plan the folder structure:
 - Each reference file should be self-contained for its topic.
 - No files outside of `SKILL.md` and `references/`. No README, CHANGELOG, or other auxiliary docs.
 
-Create 3-8 reference files. Each should cover one cohesive topic area. If a topic needs more than 200 lines, split it. Write out the proposed structure (file names + one-line descriptions).
+Decide how many reference files are needed based on the decisions. Write out the proposed structure (file names + one-line descriptions).
 
 ## Phase 2: Write SKILL.md
 

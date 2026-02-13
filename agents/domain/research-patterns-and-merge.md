@@ -59,7 +59,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-patterns.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-patterns.md ([N] questions)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-patterns.md ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 **Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
 
@@ -70,7 +70,7 @@ Prompt it to:
 - The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
 - Write output to: `clarifications-data.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-data.md ([N] questions)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote clarifications-data.md ([N] items)`. Do not echo file contents or summarize what you wrote.
 
 ## Phase 2: Merge
 

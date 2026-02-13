@@ -50,7 +50,7 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 
 Prompt it to:
 - **Before starting research:** Check if `research-entities.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Research key entities and their relationships for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory)
+- Research key entities and their relationships for the domain (e.g., for batch pipelines: stages, checkpoints, transformations; for streaming: sources, sinks, windows)
 - Research common analysis patterns (trend analysis, cohort analysis, forecasting)
 - Research cross-functional dependencies between entities
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line

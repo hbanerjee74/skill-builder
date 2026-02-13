@@ -68,6 +68,7 @@ Prompt it to:
 - Read the best practices URL for content guidelines
 - Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
 - Focus on content quality, not structure (the coverage-structure checker handles that)
+- Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-skill-md.md` in the context directory with PASS/FAIL per section and specific improvement suggestions for any FAIL
 
 **Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-skill-md.md`. Do not echo file contents or summarize what you wrote.
@@ -79,6 +80,7 @@ For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Read `decisions.md` from [context directory path] for context
 - Read the best practices URL for content guidelines
 - Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
+- Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
 
 **Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-<filename>.md`. Do not echo file contents or summarize what you wrote.

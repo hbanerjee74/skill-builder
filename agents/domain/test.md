@@ -37,7 +37,7 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 1. Read `SKILL.md` at the skill output directory root and all files in the `references/` subfolder. Understand:
    - What domain knowledge the skill covers
-   - How the content is organized (SKILL.md entry point -> `references/` for depth)
+   - How the content is organized (SKILL.md entry point → `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
 
@@ -108,7 +108,7 @@ Prompt it to:
    - Are there entire topic areas the skill doesn't cover?
    - Are there areas where the skill is too vague to be actionable?
    - Are there areas where content exists in reference files but SKILL.md doesn't point to them?
-4. Suggest 5-8 additional prompt categories the PM should write based on their domain expertise
+4. Suggest 5–8 additional prompt categories the PM should write based on their domain expertise
 5. Write `test-skill.md` to the context directory with this format:
 
 ```
