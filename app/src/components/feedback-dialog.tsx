@@ -368,14 +368,28 @@ export function FeedbackDialog() {
         attachments: feedbackAttachments,
       })
 
-      toast.success(`Issue #${result.number} created`, {
-        description: result.url,
-        action: {
-          label: "Open",
-          onClick: () => window.open(result.url, "_blank"),
-        },
-        duration: 8000,
-      })
+      if (result.failedUploads.length > 0) {
+        const count = result.failedUploads.length
+        toast.warning(
+          `Issue #${result.number} created — ${count} image${count > 1 ? "s" : ""} could not be uploaded`,
+          {
+            description: "Open the issue and drag-and-drop your images into a comment.",
+            action: {
+              label: "Open issue",
+              onClick: () => window.open(result.url, "_blank"),
+            },
+            duration: Infinity,
+          },
+        )
+      } else {
+        toast.success(`Issue #${result.number} created`, {
+          action: {
+            label: "Open",
+            onClick: () => window.open(result.url, "_blank"),
+          },
+          duration: 8000,
+        })
+      }
 
       resetForm()
       setOpen(false)

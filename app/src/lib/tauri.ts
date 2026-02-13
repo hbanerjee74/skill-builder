@@ -211,6 +211,7 @@ export interface FeedbackAttachment {
 export interface CreateGithubIssueResponse {
   url: string;
   number: number;
+  failedUploads: string[];
 }
 
 export const createGithubIssue = (request: CreateGithubIssueRequest) =>

@@ -24,6 +24,8 @@ pub struct FeedbackAttachment {
 pub struct CreateGithubIssueResponse {
     pub url: String,
     pub number: u64,
+    #[serde(rename = "failedUploads")]
+    pub failed_uploads: Vec<String>,
 }
 
 /// Create a GitHub issue with optional attachments.
@@ -49,6 +51,7 @@ pub async fn create_github_issue(
     // 2. Process attachments into markdown
     let mut attachment_markdown = String::new();
     let mut has_attachments = false;
+    let mut failed_uploads: Vec<String> = Vec::new();
 
     for att in &request.attachments {
         if att.mime_type.starts_with("image/") {
@@ -66,12 +69,13 @@ pub async fn create_github_issue(
                 }
                 Err(e) => {
                     log::warn!("Failed to upload image {}: {}", att.name, e);
+                    failed_uploads.push(att.name.clone());
                     if !has_attachments {
                         attachment_markdown.push_str("\n\n## Attachments\n\n");
                         has_attachments = true;
                     }
                     attachment_markdown.push_str(&format!(
-                        "- {} ({} bytes) — _image not embedded (requires repo write access)_\n",
+                        "- {} ({} bytes) — _image not embedded, please add via comment below_\n",
                         att.name, att.size
                     ));
                 }
@@ -149,7 +153,7 @@ pub async fn create_github_issue(
         .as_u64()
         .ok_or("Missing number in response")?;
 
-    Ok(CreateGithubIssueResponse { url, number })
+    Ok(CreateGithubIssueResponse { url, number, failed_uploads })
 }
 
 /// Upload a file to the repo's `attachments` branch via the GitHub Contents API.

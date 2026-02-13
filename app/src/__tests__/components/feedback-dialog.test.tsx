@@ -9,7 +9,7 @@ import { toast } from "sonner";
 // ---------------------------------------------------------------------------
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
   Toaster: () => null,
 }));
 
@@ -27,8 +27,8 @@ const { mockStartAgent, mockGetWorkspacePath, mockReadFileAsBase64, mockCreateGi
   mockReadFileAsBase64: vi.fn<(filePath: string) => Promise<string>>(() =>
     Promise.resolve("aGVsbG8gd29ybGQ="),
   ),
-  mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number }>>(() =>
-    Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42 }),
+  mockCreateGithubIssue: vi.fn<(request: unknown) => Promise<{ url: string; number: number; failedUploads: string[] }>>(() =>
+    Promise.resolve({ url: "https://github.com/hbanerjee74/skill-builder/issues/42", number: 42, failedUploads: [] }),
   ),
   mockOpenFileDialog: vi.fn<() => Promise<string | string[] | null>>(() =>
     Promise.resolve(null),
@@ -146,9 +146,11 @@ describe("FeedbackDialog", () => {
     mockCreateGithubIssue.mockReset().mockResolvedValue({
       url: "https://github.com/hbanerjee74/skill-builder/issues/42",
       number: 42,
+      failedUploads: [],
     });
     mockOpenFileDialog.mockReset().mockResolvedValue(null);
     vi.mocked(toast.success).mockReset();
+    vi.mocked(toast.warning).mockReset();
     vi.mocked(toast.error).mockReset();
   });
 
@@ -350,10 +352,50 @@ describe("FeedbackDialog", () => {
       expect(toast.success).toHaveBeenCalledWith(
         "Issue #42 created",
         expect.objectContaining({
-          description: "https://github.com/hbanerjee74/skill-builder/issues/42",
           duration: 8000,
         }),
       );
+    });
+  });
+
+  it("shows persistent warning toast with issue link when image uploads fail", async () => {
+    mockCreateGithubIssue.mockResolvedValue({
+      url: "https://github.com/hbanerjee74/skill-builder/issues/42",
+      number: 42,
+      failedUploads: ["screenshot.png"],
+    });
+
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+    await user.type(screen.getByLabelText("Title"), "App crashes");
+    await user.click(screen.getByRole("button", { name: /Analyze/i }));
+
+    await waitFor(() => {
+      expect(mockStartAgent).toHaveBeenCalledTimes(1);
+    });
+
+    const enrichAgentId = mockStartAgent.mock.calls[0][0] as string;
+    act(() => {
+      simulateEnrichmentComplete(enrichAgentId);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Create GitHub Issue/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Create GitHub Issue/i }));
+
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith(
+        "Issue #42 created — 1 image could not be uploaded",
+        expect.objectContaining({
+          description: "Open the issue and drag-and-drop your images into a comment.",
+          duration: Infinity,
+        }),
+      );
+      expect(toast.success).not.toHaveBeenCalled();
     });
   });
 
