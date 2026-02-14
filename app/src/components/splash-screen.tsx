@@ -66,7 +66,7 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
 
         {/* Dependency checklist */}
         <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mb-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Startup checks
           </p>
           <div className="flex flex-col gap-1.5">
