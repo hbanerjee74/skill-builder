@@ -966,8 +966,8 @@ pub async fn run_workflow_step(
 /// and all agents run in parallel on the same sidecar process (per-skill).
 ///
 /// Returns a list of agent_ids, one per step, in the same order as `step_ids`.
-/// If any step fails to launch, the error is returned immediately and already-spawned
-/// agents continue running (they will complete or be cancelled by the frontend).
+/// If any step fails to launch, successfully spawned agents are cleaned up via
+/// `shutdown_skill` before returning the error.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_steps_parallel(
@@ -1031,10 +1031,29 @@ pub async fn run_workflow_steps_parallel(
 
     let results = futures::future::join_all(futures).await;
 
-    // Collect results, returning all agent_ids or the first error
-    let mut agent_ids = Vec::with_capacity(results.len());
-    for result in results {
-        agent_ids.push(result?);
+    // Collect results separately so a partial failure doesn't orphan agents
+    let mut agent_ids = Vec::new();
+    let mut errors = Vec::new();
+
+    for (idx, result) in results.into_iter().enumerate() {
+        match result {
+            Ok(id) => agent_ids.push(id),
+            Err(e) => errors.push((step_ids[idx], e)),
+        }
+    }
+
+    if !errors.is_empty() {
+        // Shut down the skill's sidecar so successfully spawned agents
+        // don't continue running untracked. shutdown_skill also emits
+        // agent-shutdown events for each pending request on this skill.
+        let _ = pool.shutdown_skill(&skill_name, &app).await;
+
+        let error_msg = errors
+            .iter()
+            .map(|(sid, e)| format!("Step {}: {}", sid, e))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!("Failed to start steps: {}", error_msg));
     }
 
     Ok(agent_ids)
