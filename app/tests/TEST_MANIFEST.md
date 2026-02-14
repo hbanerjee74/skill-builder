@@ -8,10 +8,10 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
-| `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (19) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
+| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
+| `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (19) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-review.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
-| `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
+| `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
 | `src/stores/imported-skills-store.ts` | `stores/imported-skills-store.test.ts` (13) | `components/imported-skill-card.test.tsx`, `pages/skills.test.tsx` | -- |
 | `src/stores/auth-store.ts` | -- | `components/feedback-dialog.test.tsx`, `components/github-login-dialog.test.tsx`, `pages/settings.test.tsx` | `@settings` |
 
@@ -27,7 +27,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/lib/utils.ts` | `lib/utils.test.ts` (3) | -- | -- |
-| `src/lib/reasoning-parser.ts` | `lib/reasoning-parser.test.ts` (23) | `components/reasoning-chat.test.tsx` | -- |
+| `src/lib/reasoning-parser.ts` | `lib/reasoning-parser.test.ts` (23) | `components/reasoning-review.test.tsx` | -- |
 | `src/lib/chat-storage.ts` | `lib/chat-storage.test.ts` (8) | -- | -- |
 | `src/lib/types.ts` | -- | _(used by many integration tests)_ | -- |
 | `src/lib/tauri.ts` | -- | -- | _all tags_ |
@@ -56,7 +56,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/reset-step-dialog.tsx` | -- | `components/reset-step-dialog.test.tsx` (7) | `@workflow` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
-| `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (19) | `@workflow` |
+| `src/components/reasoning-review.tsx` | -- | `components/reasoning-review.test.tsx` (11) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
