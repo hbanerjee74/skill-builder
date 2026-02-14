@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "sidecar:install": "cd sidecar && npm install",
-    "sidecar:build": "cd sidecar && npm install && npm run build",
+    "sidecar:build": "cd sidecar && npm ci && npm run build",
     "postinstall": "cd sidecar && npm install",
     "test": "vitest run",
     "test:watch": "vitest",
