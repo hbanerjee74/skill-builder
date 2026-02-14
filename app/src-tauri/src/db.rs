@@ -670,41 +670,54 @@ pub fn acquire_skill_lock(
     instance_id: &str,
     pid: u32,
 ) -> Result<(), String> {
-    // First try to reclaim if held by a dead process
-    if let Some(existing) = get_skill_lock(conn, skill_name)? {
-        if existing.instance_id == instance_id {
-            return Ok(()); // Already locked by us
-        }
-        if !check_pid_alive(existing.pid) {
-            // Dead process — reclaim
-            conn.execute(
-                "DELETE FROM skill_locks WHERE skill_name = ?1",
-                [skill_name],
-            )
-            .map_err(|e| e.to_string())?;
-        } else {
-            return Err(format!(
-                "Skill '{}' is being edited in another instance",
-                skill_name
-            ));
-        }
-    }
+    // Use BEGIN IMMEDIATE to prevent race conditions between instances
+    // both detecting a dead lock and trying to reclaim it simultaneously.
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
 
-    conn.execute(
-        "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES (?1, ?2, ?3)",
-        rusqlite::params![skill_name, instance_id, pid as i64],
-    )
-    .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            format!(
-                "Skill '{}' is being edited in another instance",
-                skill_name
-            )
-        } else {
-            e.to_string()
+    let result = (|| -> Result<(), String> {
+        if let Some(existing) = get_skill_lock(conn, skill_name)? {
+            if existing.instance_id == instance_id {
+                return Ok(()); // Already locked by us
+            }
+            if !check_pid_alive(existing.pid) {
+                // Dead process — reclaim
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_name = ?1",
+                    [skill_name],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                return Err(format!(
+                    "Skill '{}' is being edited in another instance",
+                    skill_name
+                ));
+            }
         }
-    })?;
-    Ok(())
+
+        conn.execute(
+            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES (?1, ?2, ?3)",
+            rusqlite::params![skill_name, instance_id, pid as i64],
+        )
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                format!(
+                    "Skill '{}' is being edited in another instance",
+                    skill_name
+                )
+            } else {
+                e.to_string()
+            }
+        })?;
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    } else {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 pub fn release_skill_lock(
@@ -808,12 +821,15 @@ pub fn check_pid_alive(pid: u32) -> bool {
 #[cfg(not(unix))]
 pub fn check_pid_alive(pid: u32) -> bool {
     use std::process::Command;
+    // tasklist /FI "PID eq N" /NH outputs "INFO: No tasks are running..."
+    // when the PID doesn't exist, or a process row when it does.
     Command::new("tasklist")
         .args(["/FI", &format!("PID eq {}", pid), "/NH"])
         .output()
         .map(|out| {
             let stdout = String::from_utf8_lossy(&out.stdout);
-            stdout.contains(&pid.to_string())
+            let trimmed = stdout.trim();
+            !trimmed.is_empty() && !trimmed.contains("No tasks")
         })
         .unwrap_or(false)
 }
