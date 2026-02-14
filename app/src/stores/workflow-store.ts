@@ -24,6 +24,9 @@ interface WorkflowState {
   /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
 
+  /** Steps currently executing in parallel (e.g. validate + test). */
+  activeSteps: Set<number>;
+
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
   setCurrentStep: (step: number) => void;
@@ -39,6 +42,12 @@ interface WorkflowState {
   setRuntimeError: (error: RuntimeError) => void;
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
+  /** Add a step to the set of actively executing steps. */
+  addActiveStep: (stepId: number) => void;
+  /** Remove a step from the set of actively executing steps. */
+  removeActiveStep: (stepId: number) => void;
+  /** Clear all active steps. */
+  clearActiveSteps: () => void;
   reset: () => void;
 }
 
@@ -111,6 +120,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   initProgressMessage: null,
   runtimeError: null,
   hydrated: false,
+  activeSteps: new Set<number>(),
 
   initWorkflow: (skillName, domain, skillType) =>
     set({
@@ -125,6 +135,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       initProgressMessage: null,
       runtimeError: null,
       hydrated: false,
+      activeSteps: new Set<number>(),
     }),
 
   setSkillType: (skillType) => set({ skillType }),
@@ -185,6 +196,22 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setHydrated: (hydrated) => set({ hydrated }),
 
+  addActiveStep: (stepId) =>
+    set((state) => {
+      const next = new Set(state.activeSteps);
+      next.add(stepId);
+      return { activeSteps: next };
+    }),
+
+  removeActiveStep: (stepId) =>
+    set((state) => {
+      const next = new Set(state.activeSteps);
+      next.delete(stepId);
+      return { activeSteps: next };
+    }),
+
+  clearActiveSteps: () => set({ activeSteps: new Set<number>() }),
+
   reset: () =>
     set({
       skillName: null,
@@ -198,5 +225,6 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       initProgressMessage: null,
       runtimeError: null,
       hydrated: false,
+      activeSteps: new Set<number>(),
     }),
 }));

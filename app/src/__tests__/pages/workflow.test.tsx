@@ -33,6 +33,7 @@ vi.mock("sonner", () => ({
 // Mock @/lib/tauri
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
+  runWorkflowStepsParallel: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
@@ -72,7 +73,7 @@ vi.mock("@/components/step-rerun-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, runWorkflowStepsParallel, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -1426,5 +1427,264 @@ describe("WorkflowPage — rerun integration", () => {
 
     // Verify step status changed from error → completed
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
+  });
+});
+
+describe("WorkflowPage — parallel step execution", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(getArtifactContent).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(runWorkflowStep).mockClear();
+    vi.mocked(runWorkflowStepsParallel).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("auto-starts parallel steps (6 + 7) when advancing from step 5 to 6", async () => {
+    // Mock the parallel command to return two agent IDs
+    vi.mocked(runWorkflowStepsParallel).mockResolvedValue([
+      "test-skill-step6",
+      "test-skill-step7",
+    ]);
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Simulate: steps 0-4 completed, step 5 running
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 5; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(5);
+    useWorkflowStore.getState().updateStepStatus(5, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useAgentStore.getState().startRun("agent-build", "sonnet");
+
+    render(<WorkflowPage />);
+
+    // Agent completes step 5 (build) — should trigger parallel execution of 6 + 7
+    act(() => {
+      useAgentStore.getState().completeRun("agent-build", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[5].status).toBe("completed");
+    });
+
+    // The parallel auto-start effect should fire
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStepsParallel)).toHaveBeenCalledTimes(1);
+    });
+
+    // Verify parallel command was called with correct arguments
+    expect(vi.mocked(runWorkflowStepsParallel)).toHaveBeenCalledWith(
+      "test-skill",
+      [6, 7],
+      "test domain",
+      "/test/workspace",
+      false,
+      false,
+    );
+
+    // Both steps should be in_progress
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[6].status).toBe("in_progress");
+      expect(useWorkflowStore.getState().steps[7].status).toBe("in_progress");
+    });
+
+    // Both steps should be in activeSteps
+    const wf = useWorkflowStore.getState();
+    expect(wf.activeSteps.has(6)).toBe(true);
+    expect(wf.activeSteps.has(7)).toBe(true);
+    expect(wf.isRunning).toBe(true);
+  });
+
+  it("parallel completion watcher marks individual steps complete", async () => {
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Simulate: steps 0-5 completed, steps 6 and 7 running in parallel
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 6; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(7, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().addActiveStep(6);
+    useWorkflowStore.getState().addActiveStep(7);
+
+    // Set up agent runs
+    useAgentStore.getState().startRun("test-skill-step6", "sonnet");
+    useAgentStore.getState().startRun("test-skill-step7", "sonnet");
+    useAgentStore.getState().addActiveAgent("test-skill-step6");
+    useAgentStore.getState().addActiveAgent("test-skill-step7");
+    useAgentStore.getState().setActiveAgent("test-skill-step6");
+
+    render(<WorkflowPage />);
+
+    // Complete step 6 first
+    act(() => {
+      useAgentStore.getState().completeRun("test-skill-step6", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
+    });
+
+    // Step 7 should still be in_progress
+    expect(useWorkflowStore.getState().steps[7].status).toBe("in_progress");
+
+    // isRunning should still be true (step 7 still running)
+    // Note: allDone check happens after remove, so check activeAgentIds
+    expect(mockToast.success).toHaveBeenCalledWith("Step 7 completed");
+  });
+
+  it("auto-advances to step 8 (refine) when all parallel steps complete", async () => {
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Simulate: steps 0-5 completed, steps 6 and 7 running in parallel
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 6; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(7, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().addActiveStep(6);
+    useWorkflowStore.getState().addActiveStep(7);
+
+    useAgentStore.getState().startRun("test-skill-step6", "sonnet");
+    useAgentStore.getState().startRun("test-skill-step7", "sonnet");
+    useAgentStore.getState().addActiveAgent("test-skill-step6");
+    useAgentStore.getState().addActiveAgent("test-skill-step7");
+    useAgentStore.getState().setActiveAgent("test-skill-step6");
+
+    render(<WorkflowPage />);
+
+    // Complete both agents
+    act(() => {
+      useAgentStore.getState().completeRun("test-skill-step6", true);
+      useAgentStore.getState().completeRun("test-skill-step7", true);
+    });
+
+    // Both steps should be completed and we should advance to step 8
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().currentStep).toBe(8);
+    });
+
+    expect(useWorkflowStore.getState().isRunning).toBe(false);
+  });
+
+  it("handles mixed success/error in parallel steps", async () => {
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Simulate: steps 0-5 completed, steps 6 and 7 running in parallel
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 6; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(7, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().addActiveStep(6);
+    useWorkflowStore.getState().addActiveStep(7);
+
+    useAgentStore.getState().startRun("test-skill-step6", "sonnet");
+    useAgentStore.getState().startRun("test-skill-step7", "sonnet");
+    useAgentStore.getState().addActiveAgent("test-skill-step6");
+    useAgentStore.getState().addActiveAgent("test-skill-step7");
+    useAgentStore.getState().setActiveAgent("test-skill-step6");
+
+    render(<WorkflowPage />);
+
+    // Step 6 succeeds, step 7 fails
+    act(() => {
+      useAgentStore.getState().completeRun("test-skill-step6", true);
+      useAgentStore.getState().completeRun("test-skill-step7", false);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[7].status).toBe("error");
+    });
+
+    // isRunning should be false since all agents are done
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().isRunning).toBe(false);
+    });
+
+    // Error toast should fire for step 7
+    expect(mockToast.error).toHaveBeenCalledWith("Step 8 failed", { duration: Infinity });
+  });
+
+  it("single-agent completion watcher skips when parallel agents are active", async () => {
+    vi.mocked(getArtifactContent).mockResolvedValue(null);
+
+    // Simulate: parallel steps running
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    for (let i = 0; i < 6; i++) {
+      useWorkflowStore.getState().updateStepStatus(i, "completed");
+    }
+    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(7, "in_progress");
+    useWorkflowStore.getState().setRunning(true);
+    useWorkflowStore.getState().addActiveStep(6);
+    useWorkflowStore.getState().addActiveStep(7);
+
+    useAgentStore.getState().startRun("test-skill-step6", "sonnet");
+    useAgentStore.getState().startRun("test-skill-step7", "sonnet");
+    useAgentStore.getState().addActiveAgent("test-skill-step6");
+    useAgentStore.getState().addActiveAgent("test-skill-step7");
+    useAgentStore.getState().setActiveAgent("test-skill-step6");
+
+    render(<WorkflowPage />);
+
+    // Complete step 6's agent — single-agent watcher should NOT handle it
+    act(() => {
+      useAgentStore.getState().completeRun("test-skill-step6", true);
+    });
+
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
+    });
+
+    // Step 7 should still be in_progress — the parallel watcher handles this,
+    // not the single-agent watcher which would have advanced to the next step
+    expect(useWorkflowStore.getState().steps[7].status).toBe("in_progress");
   });
 });

@@ -252,6 +252,63 @@ describe("useAgentStore", () => {
   });
 });
 
+describe("activeAgentIds (parallel agent tracking)", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    vi.restoreAllMocks();
+  });
+
+  it("has empty activeAgentIds initially", () => {
+    const state = useAgentStore.getState();
+    expect(state.activeAgentIds).toBeInstanceOf(Set);
+    expect(state.activeAgentIds.size).toBe(0);
+  });
+
+  it("addActiveAgent adds an agent to the set", () => {
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    useAgentStore.getState().addActiveAgent("skill-step7");
+    const state = useAgentStore.getState();
+    expect(state.activeAgentIds.size).toBe(2);
+    expect(state.activeAgentIds.has("skill-step6")).toBe(true);
+    expect(state.activeAgentIds.has("skill-step7")).toBe(true);
+  });
+
+  it("addActiveAgent is idempotent for same agent", () => {
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    expect(useAgentStore.getState().activeAgentIds.size).toBe(1);
+  });
+
+  it("removeActiveAgent removes an agent from the set", () => {
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    useAgentStore.getState().addActiveAgent("skill-step7");
+    useAgentStore.getState().removeActiveAgent("skill-step6");
+    const state = useAgentStore.getState();
+    expect(state.activeAgentIds.size).toBe(1);
+    expect(state.activeAgentIds.has("skill-step6")).toBe(false);
+    expect(state.activeAgentIds.has("skill-step7")).toBe(true);
+  });
+
+  it("removeActiveAgent is safe for non-existent agent", () => {
+    useAgentStore.getState().removeActiveAgent("nonexistent");
+    expect(useAgentStore.getState().activeAgentIds.size).toBe(0);
+  });
+
+  it("clearActiveAgents empties the set", () => {
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    useAgentStore.getState().addActiveAgent("skill-step7");
+    useAgentStore.getState().clearActiveAgents();
+    expect(useAgentStore.getState().activeAgentIds.size).toBe(0);
+  });
+
+  it("clearRuns also clears activeAgentIds", () => {
+    useAgentStore.getState().addActiveAgent("skill-step6");
+    useAgentStore.getState().addActiveAgent("skill-step7");
+    useAgentStore.getState().clearRuns();
+    expect(useAgentStore.getState().activeAgentIds.size).toBe(0);
+  });
+});
+
 describe("shutdownRun", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();

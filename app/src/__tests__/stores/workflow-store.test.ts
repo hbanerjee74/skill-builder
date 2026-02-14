@@ -193,6 +193,64 @@ describe("useWorkflowStore", () => {
     });
   });
 
+  describe("activeSteps (parallel step tracking)", () => {
+    it("has empty activeSteps initially", () => {
+      const state = useWorkflowStore.getState();
+      expect(state.activeSteps).toBeInstanceOf(Set);
+      expect(state.activeSteps.size).toBe(0);
+    });
+
+    it("addActiveStep adds a step to the set", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().addActiveStep(7);
+      const state = useWorkflowStore.getState();
+      expect(state.activeSteps.size).toBe(2);
+      expect(state.activeSteps.has(6)).toBe(true);
+      expect(state.activeSteps.has(7)).toBe(true);
+    });
+
+    it("addActiveStep is idempotent for same step", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().addActiveStep(6);
+      expect(useWorkflowStore.getState().activeSteps.size).toBe(1);
+    });
+
+    it("removeActiveStep removes a step from the set", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().addActiveStep(7);
+      useWorkflowStore.getState().removeActiveStep(6);
+      const state = useWorkflowStore.getState();
+      expect(state.activeSteps.size).toBe(1);
+      expect(state.activeSteps.has(6)).toBe(false);
+      expect(state.activeSteps.has(7)).toBe(true);
+    });
+
+    it("removeActiveStep is safe for non-existent step", () => {
+      useWorkflowStore.getState().removeActiveStep(99);
+      expect(useWorkflowStore.getState().activeSteps.size).toBe(0);
+    });
+
+    it("clearActiveSteps empties the set", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().addActiveStep(7);
+      useWorkflowStore.getState().clearActiveSteps();
+      expect(useWorkflowStore.getState().activeSteps.size).toBe(0);
+    });
+
+    it("initWorkflow clears activeSteps", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      expect(useWorkflowStore.getState().activeSteps.size).toBe(0);
+    });
+
+    it("reset clears activeSteps", () => {
+      useWorkflowStore.getState().addActiveStep(6);
+      useWorkflowStore.getState().addActiveStep(7);
+      useWorkflowStore.getState().reset();
+      expect(useWorkflowStore.getState().activeSteps.size).toBe(0);
+    });
+  });
+
   describe("loadWorkflowState migration safety", () => {
     it("completes all 9 steps including step 8 (Refine)", () => {
       // Simulate SQLite returning all steps completed including the Refine step (8)
