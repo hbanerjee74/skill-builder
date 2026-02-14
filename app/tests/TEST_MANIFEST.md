@@ -11,7 +11,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
 | `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (19) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-review.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
-| `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
+| `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (10) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
 | `src/stores/imported-skills-store.ts` | `stores/imported-skills-store.test.ts` (13) | `components/imported-skill-card.test.tsx`, `pages/skills.test.tsx` | -- |
 | `src/stores/auth-store.ts` | -- | `components/feedback-dialog.test.tsx`, `components/github-login-dialog.test.tsx`, `pages/settings.test.tsx` | `@settings` |
 
@@ -73,7 +73,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (82) | `@workflow` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (86) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
@@ -82,8 +82,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
-| `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
-| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (21) | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (3) | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (23) | `@workflow-agent` |
 
 ### Sidecar (Node.js Agent Runner)
 
@@ -92,7 +92,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `sidecar/run-agent.ts` | `sidecar/__tests__/run-agent.test.ts` (10) | -- |
 | `sidecar/agent-runner.ts` | `sidecar/__tests__/agent-runner.test.ts` (13) | -- |
 | `sidecar/config.ts` | `sidecar/__tests__/config.test.ts` (5) | -- |
-| `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (19) | -- |
+| `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (21) | -- |
 | `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (33) | -- |
 | `sidecar/shutdown.ts` | `sidecar/__tests__/shutdown.test.ts` (5) | -- |
 
