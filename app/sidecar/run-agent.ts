@@ -54,7 +54,13 @@ export async function runAgentRequest(
     }
   }
 
-  const options = buildQueryOptions(config, state.abortController);
+  // Route SDK subprocess stderr through onMessage so it gets wrapped with
+  // request_id and written to the JSONL transcript (not the app log).
+  const stderrHandler = (data: string) => {
+    onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
+  };
+
+  const options = buildQueryOptions(config, state.abortController, stderrHandler);
 
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
