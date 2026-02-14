@@ -320,7 +320,11 @@ fn build_prompt(
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
-    let context_dir = skill_dir.join("context");
+    let context_dir = if let Some(sp) = skills_path {
+        Path::new(sp).join(skill_name).join("context")
+    } else {
+        skill_dir.join("context")
+    };
     let skill_output_dir = if let Some(sp) = skills_path {
         Path::new(sp).join(skill_name)
     } else {
@@ -332,7 +336,12 @@ fn build_prompt(
     let output_path = if output_file.starts_with("skill/") {
         skill_output_dir.join(output_file.trim_start_matches("skill/"))
     } else {
-        skill_dir.join(output_file)
+        // For context files, resolve relative to context_dir's parent (the skill target dir)
+        if output_file.starts_with("context/") {
+            context_dir.join(output_file.trim_start_matches("context/"))
+        } else {
+            skill_dir.join(output_file)
+        }
     };
 
     let mut prompt = format!(
@@ -478,6 +487,223 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
+/// Write all DB artifacts for a skill to the workspace filesystem.
+/// This stages files so agents can read them during execution.
+/// Skips files that already exist on disk with the same byte length.
+/// When `skills_path` is set, context files (clarifications, decisions)
+/// are written to the skill output directory only (not workspace).
+fn stage_artifacts(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: Option<&str>,
+) -> Result<(), String> {
+    let artifacts = crate::db::get_skill_artifacts(conn, skill_name)?;
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+
+    // Ensure context/ directory exists
+    std::fs::create_dir_all(skill_dir.join("context"))
+        .map_err(|e| format!("Failed to create context dir: {}", e))?;
+
+    // Context files that should also be written to skill output dir
+    let context_files: &[&str] = &[
+        "context/clarifications-concepts.md",
+        "context/clarifications.md",
+        "context/decisions.md",
+    ];
+
+    // Create skill output context dir if skills_path is set
+    let skill_output_context_dir = if let Some(sp) = skills_path {
+        let dir = Path::new(sp).join(skill_name).join("context");
+        std::fs::create_dir_all(&dir)
+            .map_err(|e| format!("Failed to create skill output context dir {}: {}", dir.display(), e))?;
+        Some(dir)
+    } else {
+        None
+    };
+
+    for artifact in &artifacts {
+        let is_context_file = context_files.contains(&artifact.relative_path.as_str());
+
+        if is_context_file && skill_output_context_dir.is_some() {
+            // Context files go ONLY to target location when skills_path is set
+            let filename = Path::new(&artifact.relative_path)
+                .file_name()
+                .ok_or_else(|| format!("No filename in {}", artifact.relative_path))?;
+            let dest = skill_output_context_dir.as_ref().unwrap().join(filename);
+
+            let needs_write = match std::fs::metadata(&dest) {
+                Ok(meta) => meta.len() != artifact.content.len() as u64,
+                Err(_) => true,
+            };
+            if needs_write {
+                std::fs::write(&dest, &artifact.content)
+                    .map_err(|e| format!("Failed to write {}: {}", dest.display(), e))?;
+            }
+        } else {
+            // All other files (including context files when no skills_path) go to workspace
+            let file_path = skill_dir.join(&artifact.relative_path);
+
+            let needs_write = match std::fs::metadata(&file_path) {
+                Ok(meta) => meta.len() != artifact.content.len() as u64,
+                Err(_) => true,
+            };
+
+            if needs_write {
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
+                }
+                std::fs::write(&file_path, &artifact.content)
+                    .map_err(|e| format!("Failed to write {}: {}", file_path.display(), e))?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Reconcile disk → SQLite: scan the workspace for existing step artifacts
+/// and capture any that aren't already in the DB (or differ in size).
+/// This handles the case where the app was shut down mid-agent and files
+/// were written to disk but never captured.
+fn reconcile_disk_artifacts(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    workspace_path: &str,
+    skills_path: Option<&str>,
+) -> Result<(), String> {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    if !skill_dir.exists() {
+        return Ok(());
+    }
+
+    let context_files: &[&str] = &[
+        "context/clarifications-concepts.md",
+        "context/clarifications.md",
+        "context/decisions.md",
+    ];
+    let target_skill_dir = skills_path.map(|sp| Path::new(sp).join(skill_name));
+
+    // Walk all steps that produce output files
+    for step_id in [0u32, 2, 4, 5, 6] {
+        for file in get_step_output_files(step_id) {
+            // For context files with skills_path, check target location
+            if skills_path.is_some() && context_files.contains(&file) {
+                if let Some(ref tsd) = target_skill_dir {
+                    reconcile_single_file(conn, skill_name, step_id, tsd, file)?;
+                }
+            } else {
+                reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
+            }
+        }
+
+        // Step 5 also has references/ directory in skill output dir
+        if step_id == 5 {
+            let refs_base = target_skill_dir.as_deref().unwrap_or(&skill_dir);
+            let refs_dir = refs_base.join("references");
+            if refs_dir.is_dir() {
+                for entry in walk_md_paths(&refs_dir, "references")? {
+                    reconcile_single_file(
+                        conn,
+                        skill_name,
+                        step_id,
+                        refs_base,
+                        &entry,
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Reconcile a single file: skip if DB already has it with the same size.
+fn reconcile_single_file(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    step_id: u32,
+    skill_dir: &Path,
+    relative_path: &str,
+) -> Result<(), String> {
+    let path = skill_dir.join(relative_path);
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let disk_size = std::fs::metadata(&path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+
+    // Skip if DB already has this artifact with the same size
+    if let Ok(Some(existing)) = crate::db::get_artifact_by_path(conn, skill_name, relative_path) {
+        if existing.size_bytes as u64 == disk_size {
+            return Ok(());
+        }
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    crate::db::save_artifact(conn, skill_name, step_id as i32, relative_path, &content)?;
+    Ok(())
+}
+
+/// Recursively collect .md file relative paths from a directory.
+fn walk_md_paths(dir: &Path, prefix: &str) -> Result<Vec<String>, String> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read dir {}: {}", dir.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            results.extend(walk_md_paths(&path, &relative)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            results.push(relative);
+        }
+    }
+
+    Ok(results)
+}
+
+/// Recursively collect .md files from a directory, returning relative paths and content.
+fn walk_md_files(dir: &Path, prefix: &str) -> Result<Vec<(String, String)>, String> {
+    let mut results = Vec::new();
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read dir {}: {}", dir.display(), e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let relative = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", prefix, name)
+        };
+
+        if path.is_dir() {
+            results.extend(walk_md_files(&path, &relative)?);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            results.push((relative, content));
+        }
+    }
+
+    Ok(results)
+}
+
+
 #[tauri::command]
 pub async fn run_review_step(
     app: tauri::AppHandle,
@@ -610,6 +836,13 @@ fn read_workflow_settings(
     let extended_context = settings.extended_context;
     let debug_mode = settings.debug_mode;
     let extended_thinking = settings.extended_thinking;
+
+    // Reconcile disk → DB, then stage all DB artifacts → disk
+    if !(step_id == 0 && !resume && !rerun) {
+        reconcile_disk_artifacts(&conn, skill_name, workspace_path, skills_path.as_deref())?;
+        stage_artifacts(&conn, skill_name, workspace_path, skills_path.as_deref())?;
+    }
+
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
@@ -1196,37 +1429,238 @@ where
     Err(last_err.expect("max_attempts >= 1 so last_err is always set"))
 }
 
-/// After steps 0, 2, and 4, copy the relevant clarification/decision files
-/// from `{workspace_path}/{skill_name}/context/` to `{skills_path}/{skill_name}/context/`.
-/// Creates the destination directory if it doesn't exist.
-#[allow(dead_code)]
-fn copy_context_to_skill_output(
-    step_id: u32,
-    skill_dir: &Path,
-    skills_path: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    let context_files: &[&str] = match step_id {
-        0 => &["context/clarifications-concepts.md"],
-        2 => &["context/clarifications.md"],
-        4 => &["context/decisions.md"],
-        _ => return Ok(()),
+/// Capture artifacts on error — called from sidecar_pool when an agent fails.
+/// This is best-effort: logs errors but doesn't propagate them to avoid interfering
+/// with error event emission. Retries up to 3 times with backoff to handle transient
+/// DB lock contention or temporary I/O failures.
+pub fn capture_artifacts_on_error(
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+) {
+    use tauri::Manager;
+
+    // Parse agent_id to extract skill_name and step_id
+    let (skill_name, step_id) = match parse_agent_id(agent_id) {
+        Some(parsed) => parsed,
+        None => {
+            log::warn!(
+                "Failed to parse agent_id '{}' for artifact capture on error",
+                agent_id
+            );
+            return;
+        }
     };
 
-    let dest_context_dir = Path::new(skills_path).join(skill_name).join("context");
-    std::fs::create_dir_all(&dest_context_dir)
-        .map_err(|e| format!("Failed to create skill output context dir: {}", e))?;
+    log::debug!(
+        "Capturing artifacts on error for skill '{}', step {}",
+        skill_name,
+        step_id
+    );
 
-    for file in context_files {
-        let src = skill_dir.join(file);
-        if src.exists() {
-            let dest = Path::new(skills_path).join(skill_name).join(file);
-            std::fs::copy(&src, &dest)
-                .map_err(|e| format!("Failed to copy {} to skill output: {}", file, e))?;
+    // Get DB state
+    let db = match app_handle.try_state::<Db>() {
+        Some(db) => db,
+        None => {
+            log::error!("DB state not available for artifact capture on error");
+            return;
+        }
+    };
+
+    // Get workspace_path and skills_path from settings
+    let (workspace_path, skills_path) = {
+        let conn = match db.0.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                log::error!("Failed to lock DB for artifact capture on error: {}", e);
+                return;
+            }
+        };
+
+        let settings = match crate::db::read_settings(&conn) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to read settings for artifact capture on error: {}", e);
+                return;
+            }
+        };
+
+        let workspace_path = match settings.workspace_path {
+            Some(wp) => wp,
+            None => {
+                log::warn!("Workspace path not set for artifact capture on error");
+                return;
+            }
+        };
+
+        (workspace_path, settings.skills_path)
+    };
+
+    // Capture artifacts with retry (best-effort)
+    let config = RetryConfig::default();
+    let skill_name_ref = &skill_name;
+    let result = retry_with_backoff(
+        &config,
+        || {
+            let conn = db.0.lock().map_err(|e| format!("DB lock failed: {}", e))?;
+            capture_artifacts_inner(
+                &conn,
+                skill_name_ref,
+                step_id,
+                &workspace_path,
+                skills_path.as_deref(),
+            )
+        },
+        |attempt, max, error, delay_ms| {
+            log::debug!(
+                "Retry {attempt}/{max} for artifact capture (skill: {skill_name_ref}, step: {step_id}): {error} — retrying in {delay_ms}ms"
+            );
+        },
+    );
+
+    match result {
+        Ok(artifacts) => {
+            log::debug!(
+                "Captured {} artifact(s) on error for skill '{}', step {}",
+                artifacts.len(),
+                skill_name,
+                step_id
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to capture artifacts after {} attempts for skill '{}', step {}: {}",
+                config.max_attempts,
+                skill_name,
+                step_id,
+                e
+            );
+        }
+    }
+}
+
+/// Core logic for capturing step artifacts — takes `&Connection` directly so
+/// it cannot re-lock the Db mutex (prevents deadlock by construction).
+fn capture_artifacts_inner(
+    conn: &rusqlite::Connection,
+    skill_name: &str,
+    step_id: u32,
+    workspace_path: &str,
+    skills_path: Option<&str>,
+) -> Result<Vec<ArtifactRow>, String> {
+    let skill_dir = Path::new(workspace_path).join(skill_name);
+    let mut captured = Vec::new();
+
+    // For step 5, determine the source directory for skill output files
+    let skill_output_dir = skills_path.map(|sp| Path::new(sp).join(skill_name));
+
+    // Read known output files for this step
+    for file in get_step_output_files(step_id) {
+        // For build step (5), ALL files should resolve from skill_output_dir.
+        // For steps 0, 2, 4 with skills_path, context files also live in skill_output_dir.
+        // Strip "skill/" prefix when present for backward compatibility.
+        let read_from_target = step_id == 5 || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4));
+        let path = if read_from_target {
+            let clean_file = file.strip_prefix("skill/").unwrap_or(file);
+            if let Some(ref sod) = skill_output_dir {
+                sod.join(clean_file)
+            } else {
+                skill_dir.join(clean_file)
+            }
+        } else {
+            skill_dir.join(file)
+        };
+        if path.exists() {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            crate::db::save_artifact(conn, skill_name, step_id as i32, file, &content)?;
+            captured.push(ArtifactRow {
+                skill_name: skill_name.to_string(),
+                step_id: step_id as i32,
+                relative_path: file.to_string(),
+                size_bytes: content.len() as i64,
+                content,
+                created_at: String::new(),
+                updated_at: String::new(),
+            });
         }
     }
 
-    Ok(())
+    // Step 5 (Build): also walk references/ directory from skill output location
+    if step_id == 5 {
+        let refs_dir = if let Some(ref sod) = skill_output_dir {
+            sod.join("references")
+        } else {
+            skill_dir.join("references")
+        };
+        // Use relative paths with "skill/" prefix to keep DB artifact paths consistent
+        if refs_dir.is_dir() {
+            for (relative, content) in walk_md_files(&refs_dir, "skill/references")? {
+                crate::db::save_artifact(
+                    conn,
+                    skill_name,
+                    step_id as i32,
+                    &relative,
+                    &content,
+                )?;
+                captured.push(ArtifactRow {
+                    skill_name: skill_name.to_string(),
+                    step_id: step_id as i32,
+                    relative_path: relative,
+                    size_bytes: content.len() as i64,
+                    content,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                });
+            }
+        }
+    }
+
+    Ok(captured)
+}
+
+#[tauri::command]
+pub fn capture_step_artifacts(
+    skill_name: String,
+    step_id: u32,
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<ArtifactRow>, String> {
+    // Read skills_path before acquiring the DB lock (read_skills_path locks internally)
+    let skills_path = read_skills_path(&db);
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    capture_artifacts_inner(&conn, &skill_name, step_id, &workspace_path, skills_path.as_deref())
+}
+
+#[tauri::command]
+pub fn get_artifact_content(
+    skill_name: String,
+    relative_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Option<ArtifactRow>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_artifact_by_path(&conn, &skill_name, &relative_path)
+}
+
+#[tauri::command]
+pub fn save_artifact_content(
+    skill_name: String,
+    step_id: i32,
+    relative_path: String,
+    content: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::save_artifact(&conn, &skill_name, step_id, &relative_path, &content)
+}
+
+#[tauri::command]
+pub fn has_step_artifacts(
+    skill_name: String,
+    step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::has_artifacts(&conn, &skill_name, step_id as i32)
 }
 
 #[cfg(test)]
@@ -1328,8 +1762,8 @@ mod tests {
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
         // output path for build step (skill/SKILL.md) should resolve to skills_path/skill_name/SKILL.md
         assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/SKILL.md"));
-        // context dir should still be in workspace
-        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
+        // context dir should now point to skills_path when configured
+        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/my-skills/my-skill/context"));
         // skill directory should still be workspace-based
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
     }
@@ -1352,8 +1786,8 @@ mod tests {
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
         assert!(!prompt.contains("follow the instructions"));
-        // output path should be in workspace for non-build steps
-        assert!(prompt.contains("Write output to /home/user/.vibedata/my-skill/context/decisions.md"));
+        // output path should be in skills_path for context files when skills_path is set
+        assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/context/decisions.md"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
@@ -1829,99 +2263,255 @@ mod tests {
         assert_eq!(content, "# Domain Research");
     }
 
-    // --- copy_context_to_skill_output tests ---
+    // --- capture_artifacts_inner tests ---
+
+    fn create_test_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS workflow_artifacts (
+                skill_name TEXT NOT NULL,
+                step_id INTEGER NOT NULL,
+                relative_path TEXT NOT NULL,
+                content TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (skill_name, step_id, relative_path)
+            );",
+        )
+        .unwrap();
+        conn
+    }
 
     #[test]
-    fn test_copy_context_step0_copies_clarifications_concepts() {
+    fn test_capture_artifacts_step0() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        std::fs::write(skill_dir.join("research-entities.md"), "# Entities").unwrap();
+        std::fs::write(skill_dir.join("research-metrics.md"), "# Metrics").unwrap();
+        std::fs::write(skill_dir.join("clarifications-concepts.md"), "# Clarifications").unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(&conn, "my-skill", 0, workspace, None).unwrap();
+
+        assert_eq!(captured.len(), 3);
+        assert!(captured.iter().any(|a| a.relative_path == "context/research-entities.md"));
+        assert!(captured.iter().any(|a| a.relative_path == "context/clarifications-concepts.md"));
+
+        // Verify artifacts were persisted to DB
+        let db_artifacts = crate::db::get_skill_artifacts(&conn, "my-skill").unwrap();
+        assert_eq!(db_artifacts.len(), 3);
+    }
+
+    #[test]
+    fn test_capture_artifacts_skips_missing_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        // Only create one of the three expected step 0 output files
+        std::fs::write(skill_dir.join("clarifications-concepts.md"), "# Concepts").unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(&conn, "my-skill", 0, workspace, None).unwrap();
+
+        assert_eq!(captured.len(), 1);
+        assert_eq!(captured[0].relative_path, "context/clarifications-concepts.md");
+    }
+
+    #[test]
+    fn test_capture_artifacts_step5_with_skills_path() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
+
+        // When skills_path is set, ALL step 5 files (SKILL.md and references/)
+        // should be resolved from skills_path/skill_name/, not workspace.
+        let skill_output = skills.join("my-skill");
+        std::fs::create_dir_all(skill_output.join("references")).unwrap();
+        std::fs::write(skill_output.join("SKILL.md"), "# My Skill").unwrap();
+        std::fs::write(skill_output.join("references").join("ref.md"), "# Ref").unwrap();
+
+        // Ensure workspace skill dir exists (but has no SKILL.md — verifies we
+        // read from skills_path, not workspace)
         let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications-concepts.md"),
-            "# Concepts",
+        std::fs::create_dir_all(&skill_dir).unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(
+            &conn,
+            "my-skill",
+            5,
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
         )
         .unwrap();
 
-        copy_context_to_skill_output(0, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        let dest = skills.join("my-skill").join("context").join("clarifications-concepts.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Concepts");
+        assert!(captured.iter().any(|a| a.relative_path == "SKILL.md"));
+        assert!(captured.iter().any(|a| a.relative_path == "skill/references/ref.md"));
     }
 
     #[test]
-    fn test_copy_context_step2_copies_merged_clarifications() {
+    fn test_capture_artifacts_empty_step() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
+
+        let conn = create_test_conn();
+        // Human review steps have no output files
+        let captured = capture_artifacts_inner(&conn, "my-skill", 1, workspace, None).unwrap();
+        assert!(captured.is_empty());
+    }
+
+    #[test]
+    fn test_capture_artifacts_reads_context_from_target() {
+        // When skills_path is set, capture should read context files from skills_path
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications.md"),
-            "# Merged",
+        // Write files to TARGET location (skills_path), not workspace
+        let target_context = skills.join("my-skill").join("context");
+        std::fs::create_dir_all(&target_context).unwrap();
+        std::fs::write(target_context.join("research-entities.md"), "# Entities").unwrap();
+        std::fs::write(target_context.join("research-metrics.md"), "# Metrics").unwrap();
+        std::fs::write(target_context.join("clarifications-concepts.md"), "# Concepts").unwrap();
+
+        // Ensure workspace skill dir exists but has NO files
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+
+        let conn = create_test_conn();
+        let captured = capture_artifacts_inner(
+            &conn,
+            "my-skill",
+            0,
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
         )
         .unwrap();
 
-        copy_context_to_skill_output(2, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        let dest = skills.join("my-skill").join("context").join("clarifications.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Merged");
+        assert_eq!(captured.len(), 3);
+        assert!(captured.iter().any(|a| a.relative_path == "context/clarifications-concepts.md"));
+        assert!(captured.iter().any(|a| a.content == "# Concepts"));
     }
 
     #[test]
-    fn test_copy_context_step4_copies_decisions() {
+    fn test_capture_artifacts_no_copy_without_skills_path() {
+        // When skills_path is None, no context copy should happen
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skill_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("clarifications-concepts.md"), "# C").unwrap();
+
+        let conn = create_test_conn();
+        let _captured = capture_artifacts_inner(&conn, "my-skill", 0, workspace, None).unwrap();
+
+        // No skills output dir should exist — only workspace dir exists
+        // (There's no separate skills dir to check)
+    }
+
+    // --- Task 2: stage_artifacts with skills_path tests ---
+
+    #[test]
+    fn test_stage_artifacts_writes_context_to_skill_output() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/decisions.md"),
-            "# Decisions",
-        )
-        .unwrap();
 
-        copy_context_to_skill_output(4, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
+        let conn = create_test_conn();
+        crate::db::save_artifact(
+            &conn, "my-skill", 0,
+            "context/clarifications-concepts.md", "# Concepts from DB",
+        ).unwrap();
+        crate::db::save_artifact(
+            &conn, "my-skill", 2,
+            "context/clarifications.md", "# Merged from DB",
+        ).unwrap();
+        crate::db::save_artifact(
+            &conn, "my-skill", 4,
+            "context/decisions.md", "# Decisions from DB",
+        ).unwrap();
 
-        let dest = skills.join("my-skill").join("context").join("decisions.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Decisions");
+        stage_artifacts(
+            &conn, "my-skill",
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
+        ).unwrap();
+
+        // Verify workspace does NOT have context files (they're only in target now)
+        assert!(!workspace.join("my-skill/context/clarifications-concepts.md").exists());
+        assert!(!workspace.join("my-skill/context/clarifications.md").exists());
+        assert!(!workspace.join("my-skill/context/decisions.md").exists());
+
+        // Verify skill output files
+        let ctx = skills.join("my-skill").join("context");
+        assert!(ctx.join("clarifications-concepts.md").exists());
+        assert!(ctx.join("clarifications.md").exists());
+        assert!(ctx.join("decisions.md").exists());
+
+        // Verify content matches
+        assert_eq!(
+            std::fs::read_to_string(ctx.join("decisions.md")).unwrap(),
+            "# Decisions from DB"
+        );
     }
 
     #[test]
-    fn test_copy_context_step5_is_noop() {
+    fn test_stage_artifacts_without_skills_path_no_output_copy() {
         let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        let skill_dir = tmp.path().join("workspace").join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        let workspace = tmp.path().join("workspace");
 
-        // Step 5 (build) should not copy context files
-        copy_context_to_skill_output(5, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
+        let conn = create_test_conn();
+        crate::db::save_artifact(
+            &conn, "my-skill", 0,
+            "context/clarifications-concepts.md", "# Concepts",
+        ).unwrap();
 
-        // No context dir should be created in skills output
-        assert!(!skills.join("my-skill").join("context").exists());
+        stage_artifacts(
+            &conn, "my-skill",
+            workspace.to_str().unwrap(),
+            None,
+        ).unwrap();
+
+        // Workspace file should exist
+        assert!(workspace.join("my-skill/context/clarifications-concepts.md").exists());
+        // No separate skills output dir (there's no skills_path)
     }
 
     #[test]
-    fn test_copy_context_skips_missing_source_files() {
+    fn test_stage_artifacts_skips_non_context_files() {
         let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
-        let skill_dir = tmp.path().join("workspace").join("my-skill");
-        // Create context dir but NOT the expected file
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Should not error even though the source file doesn't exist
-        copy_context_to_skill_output(0, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
+        let conn = create_test_conn();
+        // Validation log should NOT be copied to skill output context
+        crate::db::save_artifact(
+            &conn, "my-skill", 6,
+            "context/agent-validation-log.md", "# Validation",
+        ).unwrap();
 
-        // Context dir is created but file doesn't exist
-        assert!(skills.join("my-skill").join("context").exists());
-        assert!(!skills.join("my-skill").join("context").join("clarifications-concepts.md").exists());
+        stage_artifacts(
+            &conn, "my-skill",
+            workspace.to_str().unwrap(),
+            Some(skills.to_str().unwrap()),
+        ).unwrap();
+
+        // Workspace file should exist
+        assert!(workspace.join("my-skill/context/agent-validation-log.md").exists());
+        // But it should NOT be in skill output context (not one of the 3 context files)
+        assert!(!skills.join("my-skill/context/agent-validation-log.md").exists());
     }
 
-    // --- build_prompt skill output context path tests ---
+    // --- Task 3: build_prompt skill output context path tests ---
 
     #[test]
     fn test_build_prompt_contains_skill_output_context_path() {

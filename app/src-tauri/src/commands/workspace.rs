@@ -33,6 +33,10 @@ fn detect_furthest_step(
             };
             output_dir.join("SKILL.md").exists()
                 || output_dir.join("references").is_dir()
+        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4) {
+            // Context files live in skills_path when configured
+            let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
+            files.iter().any(|f| target_dir.join(f).exists())
         } else {
             files.iter().any(|f| skill_dir.join(f).exists())
         };
