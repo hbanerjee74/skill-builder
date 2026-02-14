@@ -7,6 +7,7 @@ import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, reconcileStartup } from "@/lib/tauri";
 import type { OrphanSkill } from "@/lib/types";
 
@@ -30,12 +31,19 @@ export function AppLayout() {
         debugMode: s.debug_mode,
         logLevel: s.log_level,
         extendedContext: s.extended_context,
+        githubOauthToken: s.github_oauth_token,
+        githubUserLogin: s.github_user_login,
+        githubUserAvatar: s.github_user_avatar,
+        githubUserEmail: s.github_user_email,
       });
       setSettingsLoaded(true);
     }).catch(() => {
       // Settings may not exist yet — show splash
       setSettingsLoaded(true);
     });
+
+    // Load GitHub auth state
+    useAuthStore.getState().loadUser();
   }, [setSettings]);
 
   // Run reconciliation after settings are loaded
