@@ -172,7 +172,7 @@ jobs:
           #!/bin/bash
           DIR="$(cd "$(dirname "$0")" && pwd)"
           xattr -cr "$DIR/Skill Builder.app"
-          open "$DIR/Skill Builder.app"
+          open -n "$DIR/Skill Builder.app"
           SCRIPT
           chmod +x "$STAGE/run.sh"
           zip -r "${STAGE}.zip" "$STAGE"
