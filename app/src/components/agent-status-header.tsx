@@ -69,10 +69,11 @@ interface AgentStatusHeaderProps {
 export type DisplayStatus = "initializing" | "running" | "completed" | "error";
 
 export function getDisplayStatus(
-  runStatus: "running" | "completed" | "error",
+  runStatus: "running" | "completed" | "error" | "shutdown",
   messageCount: number,
   workflowIsInitializing?: boolean,
 ): DisplayStatus {
+  if (runStatus === "shutdown") return "completed";
   if (runStatus !== "running") return runStatus;
   // If workflow store says we're initializing, trust that
   if (workflowIsInitializing) return "initializing";
