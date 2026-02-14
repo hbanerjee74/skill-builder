@@ -1240,6 +1240,73 @@ pub fn reset_workflow_step(
     Ok(())
 }
 
+#[tauri::command]
+pub fn preview_step_reset(
+    workspace_path: String,
+    skill_name: String,
+    from_step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<crate::types::StepResetPreview>, String> {
+    let skills_path = read_skills_path(&db);
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    let skill_output_dir = if let Some(ref sp) = skills_path {
+        Path::new(sp).join(&skill_name)
+    } else {
+        skill_dir.clone()
+    };
+
+    let step_names = [
+        "Research Concepts",
+        "Concepts Review",
+        "Perform Research",
+        "Human Review",
+        "Reasoning",
+        "Build Skill",
+        "Validate & Test",
+        "Refine",
+    ];
+
+    let mut result = Vec::new();
+    for step_id in from_step_id..=7 {
+        let base_dir = if step_id == 5 { &skill_output_dir } else { &skill_dir };
+        let mut existing_files: Vec<String> = Vec::new();
+
+        for file in get_step_output_files(step_id) {
+            let path = base_dir.join(file);
+            if path.exists() {
+                existing_files.push(file.to_string());
+            }
+        }
+
+        // Step 5: also check references/ directory
+        if step_id == 5 {
+            let refs_dir = base_dir.join("references");
+            if refs_dir.is_dir() {
+                existing_files.push("references/".to_string());
+            }
+        }
+
+        // Step 4: also check reasoning chat session
+        if step_id == 4 {
+            let session = skill_dir.join("logs").join("reasoning-chat.json");
+            if session.exists() {
+                existing_files.push("logs/reasoning-chat.json".to_string());
+            }
+        }
+
+        if !existing_files.is_empty() {
+            let name = step_names.get(step_id as usize).unwrap_or(&"Unknown").to_string();
+            result.push(crate::types::StepResetPreview {
+                step_id,
+                step_name: name,
+                files: existing_files,
+            });
+        }
+    }
+
+    Ok(result)
+}
+
 // --- Artifact commands ---
 
 /// Parse agent_id (format: "{skill_name}-step{step_id}-{timestamp}") to extract skill_name and step_id.
