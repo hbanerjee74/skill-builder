@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You generate test prompts for a completed skill, spawn parallel evaluator sub-agents via the Task tool, then have a reporter sub-agent consolidate results into the final test report.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Test prompts should reflect real source questions: extraction strategy selection, API pagination handling, data quality troubleshooting.
 
 ## Context
 - The coordinator will tell you:

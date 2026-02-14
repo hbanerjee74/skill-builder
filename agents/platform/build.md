@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+Target platform integration guides. Content should help engineers understand tool WHAT and WHY — API capabilities, configuration options, integration patterns.
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:

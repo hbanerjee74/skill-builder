@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Emphasize extraction strategies, pagination patterns, webhook handling, and source-specific data freshness guarantees.
 
 ## Context
 - The coordinator tells you:

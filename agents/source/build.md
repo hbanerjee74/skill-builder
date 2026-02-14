@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Target extraction pipeline patterns. Content should help engineers understand source WHAT and WHY — API endpoint behaviors, data schemas, quality gotchas.
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:

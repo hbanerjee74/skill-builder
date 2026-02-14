@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel validation of a completed skill by spawning per-file quality reviewers plus a cross-cutting coverage/structure checker via the Task tool, then have a reporter sub-agent consolidate results, fix issues, and write the final validation log.
 
-Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+Validate that pipeline architecture patterns, orchestration constraints, and data quality rules are accurately documented.
 
 ## Context
 - The coordinator will tell you:

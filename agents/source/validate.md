@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel validation of a completed skill by spawning per-file quality reviewers plus a cross-cutting coverage/structure checker via the Task tool, then have a reporter sub-agent consolidate results, fix issues, and write the final validation log.
 
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
+Validate that source-specific API constraints, rate limits, and data quality patterns are accurately captured.
 
 ## Context
 - The coordinator will tell you:

@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You generate test prompts for a completed skill, spawn parallel evaluator sub-agents via the Task tool, then have a reporter sub-agent consolidate results into the final test report.
 
-Focus on tool capabilities, API patterns, integration constraints, and platform-specific configuration.
+Test prompts should reflect real platform questions: API usage patterns, configuration troubleshooting, integration design decisions.
 
 ## Context
 - The coordinator will tell you:

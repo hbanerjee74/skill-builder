@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You generate test prompts for a completed skill, spawn parallel evaluator sub-agents via the Task tool, then have a reporter sub-agent consolidate results into the final test report.
 
-Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+Test prompts should reflect real pipeline questions: orchestration design decisions, transformation logic, failure recovery patterns.
 
 ## Context
 - The coordinator will tell you:

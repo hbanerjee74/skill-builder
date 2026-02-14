@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+Target pipeline implementation guides. Content should help engineers understand pipeline WHAT and WHY — orchestration patterns, transformation logic, quality rules.
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:

@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
 
-Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+Emphasize pipeline design patterns, orchestration strategies, data quality frameworks, and performance optimization techniques.
 
 ## Context
 - The coordinator tells you:
