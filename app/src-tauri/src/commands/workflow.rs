@@ -1061,8 +1061,12 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
     }
 
     // Context files (steps 0, 2, 4, 6) may live in skills_path when configured
-    let context_dir = if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
-        Path::new(skills_path.unwrap()).join(skill_name)
+    let context_dir = if let Some(sp) = skills_path {
+        if matches!(step_id, 0 | 2 | 4 | 6) {
+            Path::new(sp).join(skill_name)
+        } else {
+            skill_dir.clone()
+        }
     } else {
         skill_dir.clone()
     };
@@ -1150,9 +1154,9 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=7 {
-        let base_dir = if step_id == 5 {
-            &skill_output_dir
-        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+        let base_dir = if step_id == 5
+            || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6))
+        {
             &skill_output_dir
         } else {
             &skill_dir
