@@ -128,7 +128,6 @@ pub fn reconcile_on_startup(
                             &run.skill_type,
                         )?;
                         crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
-                        crate::db::delete_artifacts_from(conn, &run.skill_name, disk_step)?;
                         notifications.push(format!(
                             "'{}' was reset from step {} to step {} (disk state behind DB)",
                             run.skill_name, run.current_step, disk_step
