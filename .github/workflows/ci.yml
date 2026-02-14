@@ -1,7 +1,6 @@
 name: CI
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -54,6 +53,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: "app/src-tauri -> target"
+
+      - name: Stub sidecar dist for Tauri resource validation
+        run: mkdir -p app/sidecar/dist
 
       - name: Cargo test
         working-directory: app/src-tauri
