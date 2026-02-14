@@ -69,7 +69,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (33) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (42) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (80) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
