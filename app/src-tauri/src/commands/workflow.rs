@@ -78,14 +78,14 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// so we only need to copy once per workspace.
 ///
 /// **Dev-mode caveat:** In development, prompts are read from the repo root.
-/// Edits to `agents/` or `references/` while the app is running won't be
+/// Edits to `agents/` or `workspace/` while the app is running won't be
 /// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// Resolve source directories for agents and references from the app handle.
-/// Returns `(agents_dir, refs_dir, claude_md)` as owned PathBufs. Either may be empty
+/// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
+/// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
 /// if not found (caller should check `.is_dir()` / `.is_file()` before using).
-fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, PathBuf) {
+fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
     use tauri::Manager;
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -94,7 +94,6 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         .map(|p| p.to_path_buf());
 
     let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
-    let refs_src = repo_root.as_ref().map(|r| r.join("references"));
     let claude_md_src = repo_root.as_ref().map(|r| r.join("workspace").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
@@ -104,22 +103,6 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
                 .path()
                 .resource_dir()
                 .map(|r| r.join("agents"))
-                .unwrap_or_default();
-            if resource.is_dir() {
-                resource
-            } else {
-                PathBuf::new()
-            }
-        }
-    };
-
-    let refs_dir = match refs_src {
-        Some(ref p) if p.is_dir() => p.clone(),
-        _ => {
-            let resource = app_handle
-                .path()
-                .resource_dir()
-                .map(|r| r.join("references"))
                 .unwrap_or_default();
             if resource.is_dir() {
                 resource
@@ -145,7 +128,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         }
     };
 
-    (agents_dir, refs_dir, claude_md)
+    (agents_dir, claude_md)
 }
 
 /// Returns true if this workspace has already been initialized this session.
@@ -160,7 +143,7 @@ fn mark_workspace_copied(workspace_path: &str) {
     cache.get_or_insert_with(HashSet::new).insert(workspace_path.to_string());
 }
 
-/// Copy bundled agent .md files and references into workspace.
+/// Copy bundled agent .md files and workspace CLAUDE.md into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 ///
@@ -182,19 +165,18 @@ pub async fn ensure_workspace_prompts(
 
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
-    let (agents_dir, refs_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
-    let refs = refs_dir.clone();
     let cmd = claude_md.clone();
 
     tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(&agents, &refs, &cmd, &workspace)
+        copy_prompts_sync(&agents, &cmd, &workspace)
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))??;
@@ -204,13 +186,10 @@ pub async fn ensure_workspace_prompts(
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
-fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_prompts_sync(agents_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_directory_to(agents_dir, workspace_path, "agents")?;
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
-    }
-    if refs_dir.is_dir() {
-        copy_directory_to(refs_dir, workspace_path, "references")?;
     }
     if claude_md.is_file() {
         let dest = Path::new(workspace_path).join("CLAUDE.md");
@@ -231,13 +210,13 @@ pub fn ensure_workspace_prompts_sync(
         return Ok(());
     }
 
-    let (agents_dir, refs_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() && !claude_md.is_file() {
+    if !agents_dir.is_dir() && !claude_md.is_file() {
         return Ok(());
     }
 
-    copy_prompts_sync(&agents_dir, &refs_dir, &claude_md, workspace_path)?;
+    copy_prompts_sync(&agents_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
