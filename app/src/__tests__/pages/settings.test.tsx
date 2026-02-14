@@ -29,7 +29,10 @@ vi.mock("@/lib/tauri", () => ({
     })
   ),
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
-  testGithubPat: vi.fn(() => Promise.resolve("Authenticated as 'testuser' — can access hbanerjee74/skill-builder")),
+  githubStartDeviceFlow: vi.fn(),
+  githubPollForToken: vi.fn(),
+  githubGetUser: vi.fn(() => Promise.resolve(null)),
+  githubLogout: vi.fn(),
 }));
 
 // Import after mocks are set up
@@ -45,7 +48,10 @@ const defaultSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
-  github_pat: null,
+  github_oauth_token: null,
+  github_user_login: null,
+  github_user_avatar: null,
+  github_user_email: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -58,7 +64,10 @@ const populatedSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
-  github_pat: null,
+  github_oauth_token: null,
+  github_user_login: null,
+  github_user_avatar: null,
+  github_user_email: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
