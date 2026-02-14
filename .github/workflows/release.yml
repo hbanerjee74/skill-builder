@@ -125,7 +125,7 @@ jobs:
           # Cleanup
           rm -f "/tmp/${ZIPFILE}"
 
-- name: Build Tauri app (macOS)
+      - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         working-directory: app
         run: npx tauri build --bundles app
