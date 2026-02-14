@@ -23,13 +23,13 @@ pub fn run() {
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
 
-            // Apply persisted verbose_logging setting to the log level
+            // Apply persisted log level setting
             {
                 let db_state = app.state::<db::Db>();
                 let conn = db_state.0.lock().expect("failed to lock db for settings");
                 if let Ok(settings) = db::read_settings(&conn) {
-                    logging::set_log_level(settings.verbose_logging);
-                    log::debug!("Log level initialized from settings: verbose={}", settings.verbose_logging);
+                    logging::set_log_level(&settings.log_level);
+                    log::debug!("Log level initialized from settings: {}", settings.log_level);
                 }
             }
 

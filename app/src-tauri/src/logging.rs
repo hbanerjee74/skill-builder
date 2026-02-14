@@ -50,18 +50,23 @@ pub fn build_log_plugin() -> tauri_plugin_log::Builder {
         .max_file_size(50_000_000) // 50 MB safety cap
 }
 
-/// Switch the runtime log level between `Info` and `Debug`.
+/// Set the runtime log level.
+///
+/// Accepts one of `"error"`, `"warn"`, `"info"`, `"debug"` (case-insensitive).
+/// Falls back to `Info` for unrecognized values.
 ///
 /// Called from the `set_log_level` Tauri command and during `.setup()` after
-/// reading the persisted `debug_mode` setting.
-pub fn set_log_level(verbose: bool) {
-    let level = if verbose {
-        log::LevelFilter::Debug
-    } else {
-        log::LevelFilter::Info
+/// reading the persisted setting.
+pub fn set_log_level(level: &str) {
+    let filter = match level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Info,
     };
-    log::set_max_level(level);
-    log::info!("Log level set to {}", level);
+    log::set_max_level(filter);
+    log::info!("Log level set to {}", filter);
 }
 
 /// Return the absolute path to the log file.
