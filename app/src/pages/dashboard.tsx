@@ -30,7 +30,8 @@ import EditTagsDialog from "@/components/edit-tags-dialog"
 import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
-import { packageSkill } from "@/lib/tauri"
+import { useSkillStore } from "@/stores/skill-store"
+import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
@@ -46,6 +47,17 @@ export default function DashboardPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
+  const lockedSkills = useSkillStore((s) => s.lockedSkills)
+  const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
+
+  const refreshLocks = useCallback(async () => {
+    try {
+      const locks = await getLockedSkills()
+      setLockedSkills(new Set(locks.map(l => l.skill_name)))
+    } catch {
+      // ignore — locks are best-effort
+    }
+  }, [setLockedSkills])
 
   const loadSettings = useCallback(async () => {
     try {
@@ -91,7 +103,18 @@ export default function DashboardPage() {
   useEffect(() => {
     loadSkills()
     loadTags()
-  }, [loadSkills, loadTags])
+    refreshLocks()
+  }, [loadSkills, loadTags, refreshLocks])
+
+  useEffect(() => {
+    refreshLocks()
+    const interval = setInterval(refreshLocks, 30000)
+    window.addEventListener("focus", refreshLocks)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener("focus", refreshLocks)
+    }
+  }, [refreshLocks])
 
   const filteredSkills = useMemo(() => {
     let result = skills
@@ -295,6 +318,7 @@ export default function DashboardPage() {
             <SkillCard
               key={skill.name}
               skill={skill}
+              isLocked={lockedSkills.has(skill.name)}
               onContinue={handleContinue}
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
