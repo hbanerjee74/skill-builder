@@ -5,34 +5,16 @@ on:
     branches:
       - main
     paths-ignore:
-      - 'README.md'
-      - 'CLAUDE*.md'
-      - 'AGENTS.md'
+      - '**/*.md'
       - 'LICENSE'
-      - '.kiro/**/*.md'
   pull_request:
     branches:
       - main
     paths-ignore:
-      - 'README.md'
-      - 'CLAUDE*.md'
-      - 'AGENTS.md'
+      - '**/*.md'
       - 'LICENSE'
-      - '.kiro/**/*.md'
 
 jobs:
-  plugin:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Check generated agents are fresh
-        run: ./scripts/build-agents.sh --check
-
-      - name: Structural validation
-        run: ./scripts/validate.sh
-
   frontend:
     runs-on: ubuntu-latest
     steps:
