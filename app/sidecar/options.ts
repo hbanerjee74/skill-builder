@@ -3,7 +3,7 @@ import type { SidecarConfig } from "./config.js";
 /**
  * Build the options object to pass to the SDK query() function.
  *
- * Agent / model resolution (settingSources: ['project'] always passed for skill discovery):
+ * Agent / model resolution (settingSources: ['project'] always passed for project settings):
  *  - agentName only  → agent (front-matter model used)
  *  - model only      → model
  *  - both            → agent + model (model overrides front-matter)
@@ -23,8 +23,7 @@ export function buildQueryOptions(
   return {
     ...agentField,
     ...modelField,
-    // Always pass settingSources so the SDK discovers skills from
-    // {cwd}/.claude/skills/{name}/SKILL.md regardless of agent mode.
+    // Always pass settingSources so the SDK loads project-level settings (agents, CLAUDE.md).
     settingSources: ['project' as const],
     cwd: config.cwd,
     allowedTools: config.allowedTools,

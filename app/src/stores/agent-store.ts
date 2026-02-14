@@ -99,7 +99,6 @@ export interface AgentRun {
   contextWindow: number;
   compactionEvents: CompactionEvent[];
   thinkingEnabled: boolean;
-  skillsUsed: string[];
 }
 
 interface AgentState {
@@ -142,7 +141,6 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
-                skillsUsed: [],
               },
         },
         activeAgentId: agentId,
@@ -168,7 +166,6 @@ export const useAgentStore = create<AgentState>((set) => ({
                 contextWindow: extendedContext ? 1_000_000 : 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
-                skillsUsed: [],
               },
         },
         // Do NOT set activeAgentId — chat components manage their own lifecycle
@@ -251,7 +248,6 @@ export const useAgentStore = create<AgentState>((set) => ({
           contextWindow: extendedContext ? 1_000_000 : 200_000,
           compactionEvents: [],
           thinkingEnabled: false,
-          skillsUsed: [],
         };
 
         // Extract token usage and cost from result messages
@@ -356,23 +352,6 @@ export const useAgentStore = create<AgentState>((set) => ({
           }
         }
 
-        // Detect Skill tool_use blocks in assistant messages
-        let skillsUsed = run.skillsUsed;
-        if (message.type === "assistant") {
-          const msgContent = (raw as Record<string, unknown>).message as
-            | { content?: Array<{ type: string; name?: string; input?: { skill?: string } }> }
-            | undefined;
-          if (msgContent?.content) {
-            for (const block of msgContent.content) {
-              if (block.type === "tool_use" && block.name === "Skill" && block.input?.skill) {
-                if (!skillsUsed.includes(block.input.skill)) {
-                  skillsUsed = [...skillsUsed, block.input.skill];
-                }
-              }
-            }
-          }
-        }
-
         updatedRuns[agentId] = {
           ...run,
           model,
@@ -384,7 +363,6 @@ export const useAgentStore = create<AgentState>((set) => ({
           contextHistory,
           contextWindow,
           compactionEvents,
-          skillsUsed,
         };
       }
 

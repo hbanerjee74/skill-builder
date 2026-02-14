@@ -13,7 +13,6 @@ import {
   MessageCircleQuestion,
   CheckCircle2,
   XCircle,
-  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -44,8 +43,6 @@ function getToolIcon(toolName: string) {
       return <Globe className="size-3.5" />;
     case "Task":
       return <GitBranch className="size-3.5" />;
-    case "Skill":
-      return <Sparkles className="size-3.5" />;
     default:
       return <Terminal className="size-3.5" />;
   }
@@ -113,9 +110,6 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   }
   if (name === "Task" && input?.description) {
     return result(`Sub-agent: ${truncate(String(input.description), 60)}`);
-  }
-  if (name === "Skill" && input?.skill) {
-    return result(`Skill: ${String(input.skill)}`);
   }
   if (name === "NotebookEdit" && input?.notebook_path) {
     const path = String(input.notebook_path).split("/").pop();
