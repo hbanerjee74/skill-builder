@@ -118,9 +118,10 @@ for entry in $ALL_AGENTS; do
   fi
 done
 
-# Check for unique names across all agents
+# Check for unique names across all agents (frontmatter only)
 echo "=== Name Uniqueness ==="
-all_names=$(grep -rh "^name:" agents/ | sed 's/name: *//' | sort)
+all_names=$(find agents/ -name "*.md" ! -path "agents/templates/*" ! -path "agents/types/*" -exec \
+  awk 'BEGIN{n=0} /^---$/{n++; next} n==1 && /^name:/{sub(/^name: */, ""); print}' {} \; | sort)
 dupes=$(echo "$all_names" | uniq -d)
 if [ -z "$dupes" ]; then
   pass "all $(echo "$all_names" | wc -l | tr -d ' ') agent names are unique"
