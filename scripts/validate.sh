@@ -44,7 +44,7 @@ echo "=== Agents ==="
 # Shared agents (no type prefix)
 SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:haiku"
 
-# Type-specific agents: each type dir has 6 agents
+# Type-specific agents: each type dir has 5 agents
 TYPE_DIRS="domain platform source data-engineering"
 TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
 

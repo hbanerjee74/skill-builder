@@ -7,24 +7,24 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 
 ## Workflow (9 steps)
 
-0. **Research Concepts** -- research agent writes `clarifications-concepts.md`
-1. **Concepts Review** -- user answers questions
-2. **Research Patterns + Data + Merge** -- orchestrator spawns sub-agents
-3. **Human Review** -- user answers merged questions
-4. **Reasoning** -- multi-turn conversation, produces `decisions.md`
-5. **Build** -- creates SKILL.md + reference files
-6. **Validate** -- checks against best practices
-7. **Test** -- generates and evaluates test prompts
-8. **Refine Skill** -- interactive chat to review, iterate, and polish
+0. **Init** -- skill type selection, name confirmation, resume detection
+1. **Research Concepts** -- research agent writes `clarifications-concepts.md`
+2. **Concepts Review** -- user answers questions
+3. **Research Patterns + Data + Merge** -- orchestrator spawns sub-agents
+4. **Human Review** -- user answers merged questions
+5. **Reasoning** -- multi-turn conversation, produces `decisions.md`
+6. **Build** -- creates SKILL.md + reference files
+7. **Validate & Test** -- checks against best practices, generates and evaluates test prompts
+8. **Package / Refine** -- zip for distribution (plugin) or iterative chat (app)
 
 ## Model Tiers
 
 | Role | Model |
 |---|---|
-| Research agents (Steps 0, 2) | sonnet |
-| Merge (Step 2) | haiku |
-| Reasoning (Step 4) | opus |
-| Build / Validate / Test (Steps 5-7) | sonnet |
+| Research agents (Steps 1, 3) | sonnet |
+| Merge (Step 3) | haiku |
+| Reasoning (Step 5) | opus |
+| Build / Validate & Test (Steps 6-7) | sonnet |
 
 The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
 
@@ -56,7 +56,7 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
-./scripts/build-agents.sh               # Regenerate 24 agent files from templates
+./scripts/build-agents.sh               # Regenerate 20 agent files from templates
 ./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
@@ -98,7 +98,8 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 - Unsure? → `./tests/run.sh` runs everything
 
 **Plugin quick rules:**
-- Changed an agent prompt (`agents/`)? → `./scripts/test-plugin.sh t1`
+- Changed a template (`agents/templates/`) or type config (`agents/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
+- Changed a shared agent (`agents/shared/`)? → `./scripts/test-plugin.sh t1`
 - Changed the coordinator (`skills/start/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
 - Changed `references/shared-context.md`? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
@@ -111,7 +112,7 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (31), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (23), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Merge deduplicates, reasoning produces decisions, build creates SKILL.md | ~$0.50 |
@@ -140,9 +141,9 @@ When you add, remove, or rename tests (including adding tests to existing files)
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/{type}/` -- 7 agents per type, **generated** by `scripts/build-agents.sh` from templates + configs
-- `agents/templates/` -- 6 phase templates (source of truth for agent content)
-- `agents/types/` -- 4 type configs (focus lines, entity examples, output examples)
+- `agents/{type}/` -- 5 agents per type (4 types = 20 files), **generated** by `scripts/build-agents.sh`
+- `agents/templates/` -- 5 phase templates (source of truth for agent content)
+- `agents/types/` -- 4 type configs with output examples (focus lines, entity examples)
 - `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
 - `references/shared-context.md` -- domain definitions, file formats, content principles
 - `references/agent-protocols.md` -- rerun/resume, before-you-start, sub-agent communication protocols
