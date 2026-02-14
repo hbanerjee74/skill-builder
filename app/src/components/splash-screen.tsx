@@ -19,7 +19,9 @@ function DepRow({ dep }: { dep: DepStatus }) {
       )}
       <div className="min-w-0 flex-1">
         <p className="font-medium">{dep.name}</p>
-        <p className="text-muted-foreground break-all">{dep.detail}</p>
+        {!dep.ok && (
+          <p className="text-muted-foreground break-all">{dep.detail}</p>
+        )}
       </div>
     </div>
   );
@@ -60,24 +62,7 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
           className="size-20"
         />
 
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
-          <p className="text-muted-foreground">
-            Build domain-specific Claude skills with AI-powered multi-agent
-            workflows.
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-muted-foreground">
-          <p className="font-medium text-amber-600 dark:text-amber-400">
-            Demo Software
-          </p>
-          <p className="mt-1">
-            This software is provided as-is for demonstration and experimental
-            purposes. It is not officially supported and may change or break
-            without notice. Use at your own risk.
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
 
         {/* Dependency checklist */}
         <div className="w-full rounded-lg border bg-muted/30 px-4 py-3">
@@ -96,6 +81,10 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
             ))}
           </div>
         </div>
+
+        <p className="text-xs text-muted-foreground/50">
+          Experimental software — not for production use
+        </p>
 
         {/* Invoke-level error */}
         {error && (
