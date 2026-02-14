@@ -150,4 +150,24 @@ describe("buildQueryOptions", () => {
     const opts = buildQueryOptions(makeConfig(), new AbortController());
     expect(opts).not.toHaveProperty("stderr");
   });
+
+  it("includes mcpServers when present", () => {
+    const mcpServers = {
+      linear: {
+        type: "http",
+        url: "https://mcp.linear.app/mcp",
+        headers: { Authorization: "Bearer test-token" },
+      },
+    };
+    const opts = buildQueryOptions(
+      makeConfig({ mcpServers }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("mcpServers", mcpServers);
+  });
+
+  it("excludes mcpServers when absent", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController());
+    expect(opts).not.toHaveProperty("mcpServers");
+  });
 });

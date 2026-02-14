@@ -11,6 +11,7 @@ export interface SidecarConfig {
   betas?: string[];
   maxThinkingTokens?: number;
   pathToClaudeCodeExecutable?: string;
+  mcpServers?: Record<string, { type: string; url: string; headers?: Record<string, string> }>;
 }
 
 /**

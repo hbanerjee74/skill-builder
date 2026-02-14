@@ -44,5 +44,6 @@ export function buildQueryOptions(
     ...(config.betas ? { betas: config.betas } : {}),
     ...(config.maxThinkingTokens ? { maxThinkingTokens: config.maxThinkingTokens } : {}),
     ...(stderr ? { stderr } : {}),
+    ...(config.mcpServers ? { mcpServers: config.mcpServers } : {}),
   };
 }
