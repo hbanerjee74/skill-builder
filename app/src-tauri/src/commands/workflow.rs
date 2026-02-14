@@ -1194,11 +1194,21 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
         }
     }
 
-    // Step 4 (reasoning): also delete the chat session file so reset starts fresh
+    // Step 4 (reasoning): also delete the chat session file so reset starts fresh,
+    // and remove decisions.md from the skill output directory (skills_path) if it exists.
     if step_id == 4 {
         let session = skill_dir.join("logs").join("reasoning-chat.json");
         if session.exists() {
             let _ = std::fs::remove_file(&session);
+        }
+        if let Some(sp) = skills_path {
+            let skill_output_decisions = Path::new(sp)
+                .join(skill_name)
+                .join("context")
+                .join("decisions.md");
+            if skill_output_decisions.exists() {
+                let _ = std::fs::remove_file(&skill_output_decisions);
+            }
         }
     }
 }
