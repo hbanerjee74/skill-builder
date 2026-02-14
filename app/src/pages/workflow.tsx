@@ -141,6 +141,7 @@ export default function WorkflowPage() {
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
   const addActiveAgent = useAgentStore((s) => s.addActiveAgent);
   const removeActiveAgent = useAgentStore((s) => s.removeActiveAgent);
+  const clearActiveAgents = useAgentStore((s) => s.clearActiveAgents);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
   // --- Navigation guard ---
@@ -160,7 +161,8 @@ export default function WorkflowPage() {
   }, [resetBlocker]);
 
   const handleNavLeave = useCallback(() => {
-    // Revert all in-progress steps to pending so SQLite persists the correct state.
+    // Issue 4: Only revert steps that are still "in_progress", preserving
+    // completed/error steps so partial completion state is not lost.
     const store = useWorkflowStore.getState();
     for (const stepId of store.activeSteps) {
       if (store.steps[stepId]?.status === "in_progress") {
@@ -174,6 +176,7 @@ export default function WorkflowPage() {
 
     useWorkflowStore.getState().setRunning(false);
     useWorkflowStore.getState().clearActiveSteps();
+    useAgentStore.getState().clearActiveAgents();
     useAgentStore.getState().clearRuns();
 
     // Fire-and-forget: shut down persistent sidecar for this skill
@@ -195,7 +198,8 @@ export default function WorkflowPage() {
 
       const store = useWorkflowStore.getState();
       if (store.isRunning) {
-        // Revert all parallel active steps to pending
+        // Issue 4: Only revert steps that are still "in_progress", preserving
+        // completed/error steps so partial completion state is not lost.
         for (const stepId of store.activeSteps) {
           if (store.steps[stepId]?.status === "in_progress") {
             useWorkflowStore.getState().updateStepStatus(stepId, "pending");
@@ -206,6 +210,7 @@ export default function WorkflowPage() {
         }
         useWorkflowStore.getState().setRunning(false);
         useWorkflowStore.getState().clearActiveSteps();
+        useAgentStore.getState().clearActiveAgents();
         useAgentStore.getState().clearRuns();
       }
 
@@ -558,21 +563,30 @@ export default function WorkflowPage() {
       const stepId = getStepIdFromAgentId(agentId);
       if (stepId === null) continue;
 
+      // Issue 3: Skip agents whose steps were already cleaned up
+      if (!wfStore.activeSteps.has(stepId)) continue;
+
+      // Issue 1: Skip steps already marked as completed to prevent re-processing
+      if (wfStore.steps[stepId]?.status === "completed") continue;
+
       if (run.status === "completed") {
-        // Mark this step completed, capture artifacts, remove from active sets
-        const finishParallelStep = () => {
-          updateStepStatus(stepId, "completed");
+        // Issue 1: Mark step status as completed synchronously BEFORE async artifact capture
+        // so the allDone check (based on step statuses) is accurate
+        updateStepStatus(stepId, "completed");
+        toast.success(`Step ${stepId + 1} completed`);
+
+        // Capture artifacts and clean up active sets asynchronously
+        const cleanupParallelStep = () => {
           removeActiveStep(stepId);
           removeActiveAgent(agentId);
-          toast.success(`Step ${stepId + 1} completed`);
         };
 
         if (workspacePath) {
           captureStepArtifacts(skillName, stepId, workspacePath)
             .catch(() => {})
-            .then(finishParallelStep);
+            .then(cleanupParallelStep);
         } else {
-          finishParallelStep();
+          cleanupParallelStep();
         }
       } else if (run.status === "error") {
         updateStepStatus(stepId, "error");
@@ -585,11 +599,24 @@ export default function WorkflowPage() {
       }
     }
 
+    // Issue 1: Check allDone based on step statuses (updated synchronously above)
+    // rather than relying on async callbacks completing
+    if (!allDone) {
+      // Re-check: all parallel steps may have been marked completed/error synchronously
+      const latestStore = useWorkflowStore.getState();
+      allDone = PARALLEL_STEPS.every((sid) => {
+        const status = latestStore.steps[sid]?.status;
+        return status === "completed" || status === "error";
+      });
+    }
+
     // When all parallel agents are done (success or error), finalize
     if (allDone) {
       setRunning(false);
       setActiveAgent(null);
       clearActiveSteps();
+      // Issue 2: Clear stale agent IDs to prevent watcher re-triggering
+      clearActiveAgents();
 
       // Clear initializing state if still set
       const { isInitializing: stillInit } = useWorkflowStore.getState();
