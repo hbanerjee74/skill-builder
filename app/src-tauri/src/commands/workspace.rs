@@ -33,8 +33,8 @@ fn detect_furthest_step(
             };
             output_dir.join("SKILL.md").exists()
                 || output_dir.join("references").is_dir()
-        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4) {
-            // Context files live in skills_path when configured
+        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+            // Context files (all steps) live in skills_path when configured
             let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
             files.iter().any(|f| target_dir.join(f).exists())
         } else {
@@ -800,12 +800,66 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
 
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-        create_step_output(&workspace, "my-skill", 0);
-        create_step_output(&workspace, "my-skill", 2);
-        create_step_output(&workspace, "my-skill", 4);
+        // Working dir must exist for detect_furthest_step to proceed
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+
+        // Context files live in skills_path when configured
+        create_step_output(&skills, "my-skill", 0);
+        create_step_output(&skills, "my-skill", 2);
+        create_step_output(&skills, "my-skill", 4);
 
         // Step 5 output lives in skills_path
+        std::fs::create_dir_all(skills.join("my-skill")).unwrap();
+        std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
+
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            Some(skills.to_str().unwrap()),
+        );
+        assert_eq!(step, Some(5));
+
+        // Verify context steps are individually detectable
+        assert_eq!(
+            detect_furthest_step(workspace.to_str().unwrap(), "my-skill", Some(skills.to_str().unwrap())),
+            Some(5)
+        );
+    }
+
+    #[test]
+    fn test_detect_furthest_step_6_in_skills_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+
+        // Steps 0-5 in skills_path
+        create_step_output(&skills, "my-skill", 0);
+        create_step_output(&skills, "my-skill", 2);
+        create_step_output(&skills, "my-skill", 4);
+        std::fs::create_dir_all(skills.join("my-skill")).unwrap();
+        std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
+
+        // Step 6 context output also in skills_path
+        create_step_output(&skills, "my-skill", 6);
+
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            Some(skills.to_str().unwrap()),
+        );
+        assert_eq!(step, Some(6));
+    }
+
+    #[test]
+    fn test_detect_furthest_step_skill_md_only() {
+        // SKILL.md exists but no context files — step 5 is detected
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
         std::fs::create_dir_all(skills.join("my-skill")).unwrap();
         std::fs::write(skills.join("my-skill").join("SKILL.md"), "# Skill").unwrap();
 
