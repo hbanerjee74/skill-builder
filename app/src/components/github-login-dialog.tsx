@@ -29,6 +29,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
   const [state, setState] = useState<FlowState>({ step: "loading" })
   const deviceRef = useRef<DeviceFlowResponse | null>(null)
   const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const intervalRef = useRef(5)
   const mountedRef = useRef(true)
 
@@ -37,6 +38,9 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -75,7 +79,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
       setState({ step: "loading" })
       deviceRef.current = null
     }
-    return stopPolling
+    return () => stopPolling()
   }, [open, startDeviceFlow, stopPolling])
 
   const handleCopy = async () => {
@@ -119,7 +123,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
           useAuthStore.getState().setUser(result.user)
           setState({ step: "success", login: result.user.login })
           // Auto-close after a brief success display
-          setTimeout(() => {
+          successTimeoutRef.current = setTimeout(() => {
             if (mountedRef.current) {
               onOpenChange(false)
             }

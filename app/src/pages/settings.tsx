@@ -136,10 +136,11 @@ export default function SettingsPage() {
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
       splash_shown: false,
-      github_oauth_token: null,
-      github_user_login: null,
-      github_user_avatar: null,
-      github_user_email: null,
+      // Preserve OAuth fields — these are managed by the auth flow, not settings
+      github_oauth_token: useSettingsStore.getState().githubOauthToken ?? null,
+      github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
+      github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
+      github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
     }
     try {
       await invoke("save_settings", { settings })
