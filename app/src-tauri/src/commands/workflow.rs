@@ -887,6 +887,14 @@ async fn run_workflow_step_inner(
     settings: &WorkflowSettings,
 ) -> Result<String, String> {
     let step = get_step_config(step_id)?;
+
+    // Ensure the skill working directory exists so reconcile_on_startup can
+    // find it during workspace scanning, even when agents write output
+    // directly to skills_path instead of workspace.
+    let skill_work_dir = Path::new(workspace_path).join(skill_name);
+    std::fs::create_dir_all(&skill_work_dir)
+        .map_err(|e| format!("Failed to create skill working dir {}: {}", skill_work_dir.display(), e))?;
+
     let thinking_budget = if settings.extended_thinking {
         thinking_budget_for_step(step_id)
     } else {

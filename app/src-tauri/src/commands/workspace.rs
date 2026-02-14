@@ -192,12 +192,15 @@ pub fn reconcile_on_startup(
     })
 }
 
-/// Check if a skill has output files in the skills_path directory.
-/// Skills output is SKILL.md and/or references/ in skills_path/skill_name/.
+/// Check if a skill has ANY output files in the skills_path directory.
+/// This includes build output (SKILL.md, references/) and context files
+/// (clarifications, decisions) that are written directly to skills_path.
 fn has_skill_output(skill_name: &str, skills_path: Option<&str>) -> bool {
     if let Some(sp) = skills_path {
         let output_dir = Path::new(sp).join(skill_name);
-        output_dir.join("SKILL.md").exists() || output_dir.join("references").is_dir()
+        output_dir.join("SKILL.md").exists()
+            || output_dir.join("references").is_dir()
+            || output_dir.join("context").is_dir()
     } else {
         false
     }
@@ -934,6 +937,18 @@ mod tests {
     #[test]
     fn test_has_skill_output_none() {
         assert!(!has_skill_output("my-skill", None));
+    }
+
+    #[test]
+    fn test_has_skill_output_with_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("context")).unwrap();
+
+        assert!(has_skill_output(
+            "my-skill",
+            Some(tmp.path().to_str().unwrap())
+        ));
     }
 
     #[test]
