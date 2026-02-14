@@ -993,10 +993,6 @@ export default function WorkflowPage() {
               setPendingStepSwitch(id);
               return;
             }
-            if (id < currentStep) {
-              setResetTarget(id);
-              return;
-            }
             setCurrentStep(id);
           }}
         />
