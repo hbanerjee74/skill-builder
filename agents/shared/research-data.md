@@ -29,7 +29,7 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
 
 ## Instructions
 
-1. Read the **answered** domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research data modeling for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply. Reference specific entities and metrics from the confirmed answers.
+1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research data modeling for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply. Reference specific entities and metrics from the confirmed answers. If any question's `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer and proceed.
 
 2. Research data modeling considerations for this domain. Focus on:
    - What silver layer entities are needed (the core cleaned/conformed entities for this domain)

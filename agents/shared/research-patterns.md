@@ -29,7 +29,7 @@ You are a research agent. Your job is to research the business patterns, industr
 
 ## Instructions
 
-1. Read the **answered** domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research patterns for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply to their organization.
+1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research patterns for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply to their organization. If any question's `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer and proceed.
 
 2. Research what makes this domain complex or nuanced from a data modeling perspective. Focus on:
    - Business patterns that affect how data should be modeled (e.g., recurring vs. one-time revenue, multi-leg shipments, hierarchical org structures)

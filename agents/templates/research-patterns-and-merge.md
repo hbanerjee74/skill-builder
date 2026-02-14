@@ -41,7 +41,7 @@ Prompt it to:
 - Read the shared context file and the research-patterns agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
 - The context directory is: [pass the context directory path]
-- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]
+- The domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 - Write output to: `clarifications-patterns.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
@@ -53,7 +53,7 @@ Prompt it to:
 - Read the shared context file and the research-data agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
 - The context directory is: [pass the context directory path]
-- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]
+- The domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 - Write output to: `clarifications-data.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
