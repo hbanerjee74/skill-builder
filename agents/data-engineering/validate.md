@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/validate.md + agents/types/data-engineering/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: de-validate
 description: Orchestrates parallel validation of skill files against best practices and coverage checks. Called during Step 7 to validate the built skill against best practices and decisions.
 model: sonnet
@@ -19,22 +21,13 @@ Focus on pipeline architecture patterns, transformation logic, data quality rule
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read `agent-validation-log.md` from the context directory using the Read tool (if it exists).
-2. Present a concise summary (3-5 bullets) of what was previously produced — overall pass/fail counts, decisions coverage, key issues found, auto-fixes applied, and any items flagged for manual review.
-3. **STOP here.** Do NOT spawn validators, do NOT re-run checks, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific validators or edit files directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
 ## Phase 1: Inventory and Prepare
 
-1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
-   - If fetch fails: retry once. If still fails, proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
+1. Read best practices from `references/validate-best-practices.md` in the workspace.
 2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 3. List all skill files: `SKILL.md` at the skill output directory root and all files in `references/`.
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
@@ -58,7 +51,7 @@ This is the cross-cutting checker. Prompt it to:
 - Check for unnecessary files (README, CHANGELOG, etc.)
 - Write findings to `validation-coverage-structure.md` in the context directory
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-coverage-structure.md`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
@@ -71,7 +64,7 @@ Prompt it to:
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-skill-md.md` in the context directory with PASS/FAIL per section and specific improvement suggestions for any FAIL
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-skill-md.md`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
@@ -83,7 +76,7 @@ For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote validation-<filename>.md`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 **IMPORTANT: Launch ALL sub-agents (A + B + C1..CN) in the SAME turn so they run in parallel.**
 
@@ -110,42 +103,15 @@ Prompt it to:
 - **Content checks**: X passed, Y failed
 - **Auto-fixed**: N issues
 - **Needs manual review**: N issues
-
-## Coverage Results
-
-### D1: [decision title]
-- **Status**: COVERED | MISSING
-- **Location**: [file:section] or "Not found"
-
-### Q1: [clarification summary]
-- **Status**: COVERED | MISSING
-- **Location**: [file:section] or "Not found"
-
-## Structural Results
-
-### [Check name]
-- **Status**: PASS | FIXED | NEEDS REVIEW
-- **Details**: [what was checked]
-- **Fix applied**: [if any]
-
-## Content Results
-
-### [File name]
-- **Status**: PASS | FIXED | NEEDS REVIEW
-- **Details**: [findings]
-- **Fix applied**: [if any]
-
-## Items Needing Manual Review
-[List anything that couldn't be auto-fixed with suggestions]
 ```
 
 6. Delete all temporary `validation-*.md` files from the context directory when done
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote agent-validation-log.md ([N] issues found, [M] auto-fixed)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 
-- **If best practices URL fetch fails (even after retry):** Use the fallback criteria listed in Phase 1. Do not skip validation — the structural and coverage checks are the most valuable parts and don't require the URL.
+- **If best practices file is missing:** Proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
 - **If a validator sub-agent fails:** Note the failure in the reporter prompt so it knows which file was not independently reviewed. The reporter should review that file itself as part of consolidation.
 
 ## Output Files
@@ -164,33 +130,6 @@ Prompt it to:
 - **Content checks**: 4 passed, 1 failed
 - **Auto-fixed**: 2 issues
 - **Needs manual review**: 0 issues
-
-## Coverage Results
-
-### D1: Two-level customer hierarchy
-- **Status**: COVERED
-- **Location**: references/entity-model.md:Customer Hierarchy
-
-### D2: Revenue split (gross/net/recurring)
-- **Status**: COVERED
-- **Location**: references/pipeline-metrics.md:Revenue Metrics
-
-## Structural Results
-
-### SKILL.md line count
-- **Status**: PASS
-- **Details**: 342 lines (limit: 500)
-
-### Orphaned reference files
-- **Status**: FIXED
-- **Details**: references/legacy-fields.md not referenced from SKILL.md
-- **Fix applied**: Added pointer in SKILL.md Reference Files section
-
-## Content Results
-
-### references/entity-model.md
-- **Status**: PASS
-- **Details**: Actionability: 5, Specificity: 4, Domain depth: 5, Self-containment: 5
 ```
 
 ## Success Criteria

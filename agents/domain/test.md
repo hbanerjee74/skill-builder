@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/test.md + agents/types/domain/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: domain-test
 description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage. Called during Step 8 to generate and run test prompts against the built skill.
 model: sonnet
@@ -21,15 +23,7 @@ Test prompts should reflect real domain questions: business rule interpretation,
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read `test-skill.md` from the context directory using the Read tool (if it exists).
-2. Present a concise summary (3-5 bullets) of what was previously produced — total tests run, pass/partial/fail counts, key content gaps identified, and any suggested PM prompts.
-3. **STOP here.** Do NOT generate test prompts, do NOT spawn evaluators, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific tests or edit the report directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -37,7 +31,7 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 1. Read `SKILL.md` at the skill output directory root and all files in the `references/` subfolder. Understand:
    - What domain knowledge the skill covers
-   - How the content is organized (SKILL.md entry point → `references/` for depth)
+   - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
 
@@ -95,7 +89,7 @@ Use this exact format:
 - **Gap**: [what's missing, if any — write "None" for PASS]
 ```
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] (result: PASS/PARTIAL/FAIL)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Phase 3: Consolidate and Write Report
 
@@ -108,7 +102,7 @@ Prompt it to:
    - Are there entire topic areas the skill doesn't cover?
    - Are there areas where the skill is too vague to be actionable?
    - Are there areas where content exists in reference files but SKILL.md doesn't point to them?
-4. Suggest 5–8 additional prompt categories the PM should write based on their domain expertise
+4. Suggest 5-8 additional prompt categories the PM should write based on their domain expertise
 5. Write `test-skill.md` to the context directory with this format:
 
 ```
@@ -139,7 +133,7 @@ Prompt it to:
 
 6. Delete the temporary test result files when done
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote test-skill.md ([N] tests, [M] passed, [P] partial, [F] failed)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 

@@ -1,4 +1,6 @@
 ---
+# AUTO-GENERATED — do not edit. Source: agents/templates/test.md + agents/types/source/config.conf
+# Regenerate with: scripts/build-agents.sh
 name: source-test
 description: Generates test prompts and spawns parallel evaluator sub-agents to validate skill coverage. Called during Step 8 to generate and run test prompts against the built skill.
 model: sonnet
@@ -21,15 +23,7 @@ Focus on data extraction patterns, API structures, authentication flows, rate li
 
 ## Rerun / Resume Mode
 
-If the coordinator's prompt contains `[RERUN MODE]`:
-
-1. Read `test-skill.md` from the context directory using the Read tool (if it exists).
-2. Present a concise summary (3-5 bullets) of what was previously produced — total tests run, pass/partial/fail counts, key content gaps identified, and any suggested PM prompts.
-3. **STOP here.** Do NOT generate test prompts, do NOT spawn evaluators, do NOT proceed with normal execution.
-4. Wait for the user to provide direction on what to improve or change.
-5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific tests or edit the report directly as needed.
-
-If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally below.
+See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -37,7 +31,7 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 1. Read `SKILL.md` at the skill output directory root and all files in the `references/` subfolder. Understand:
    - What domain knowledge the skill covers
-   - How the content is organized (SKILL.md entry point → `references/` for depth)
+   - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
 
@@ -93,11 +87,9 @@ Use this exact format:
 - **Result**: PASS | PARTIAL | FAIL
 - **Skill coverage**: [what the skill provides]
 - **Gap**: [what's missing, if any — write "None" for PASS]
-
-When finished, respond with only a single line: Done — wrote [filename] (result: PASS/PARTIAL/FAIL). Do not echo file contents.
 ```
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] (result: PASS/PARTIAL/FAIL)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Phase 3: Consolidate and Write Report
 
@@ -110,7 +102,7 @@ Prompt it to:
    - Are there entire topic areas the skill doesn't cover?
    - Are there areas where the skill is too vague to be actionable?
    - Are there areas where content exists in reference files but SKILL.md doesn't point to them?
-4. Suggest 5–8 additional prompt categories the PM should write based on their domain expertise
+4. Suggest 5-8 additional prompt categories the PM should write based on their domain expertise
 5. Write `test-skill.md` to the context directory with this format:
 
 ```
@@ -141,7 +133,7 @@ Prompt it to:
 
 6. Delete the temporary test result files when done
 
-**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote test-skill.md ([N] tests, [M] passed, [P] partial, [F] failed)`. Do not echo file contents or summarize what you wrote.
+**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
 ## Error Handling
 
@@ -164,33 +156,33 @@ Prompt it to:
 
 ## Test Results
 
-### Test 1: What are the core entities in sales pipeline analytics?
+### Test 1: What are the core entities in the Stripe data model?
 - **Category**: basic concepts
 - **Result**: PASS
-- **Skill coverage**: SKILL.md overview lists opportunity, account, contact, and pipeline stage. references/entity-model.md provides cardinality and relationship details.
+- **Skill coverage**: SKILL.md overview lists charges, subscriptions, invoices, and events. references/event-schemas.md provides detailed object relationships.
 - **Gap**: None
 
-### Test 2: What silver layer tables do I need for opportunity tracking?
+### Test 2: What silver layer tables do I need for subscription lifecycle tracking?
 - **Category**: silver layer
 - **Result**: PARTIAL
-- **Skill coverage**: references/entity-model.md describes opportunity entity but doesn't specify recommended table grain
-- **Gap**: Missing guidance on whether to use event-level or snapshot grain for opportunity state changes
+- **Skill coverage**: references/event-schemas.md describes subscription entity but doesn't specify recommended grain for tracking state transitions
+- **Gap**: Missing guidance on whether to use event-level or snapshot grain for subscription status changes
 
-### Test 8: How do I handle backdated opportunity stage changes?
+### Test 8: How do I handle Stripe webhook delivery failures and out-of-order events?
 - **Category**: edge case
 - **Result**: FAIL
-- **Skill coverage**: No content found addressing backdated or retroactive changes
-- **Gap**: Content gap — need a section on temporal edge cases in stage-modeling.md
+- **Skill coverage**: No content found addressing webhook retry semantics or event ordering guarantees
+- **Gap**: Content gap — need a section on webhook reliability patterns in webhook-events.md
 
 ## Skill Content Issues
-- Temporal/historical modeling is the biggest gap (affects Tests 8, 9)
-- Silver layer guidance lacks specificity on table grain decisions
-- Source field coverage is strong for Salesforce but missing for HubSpot
+- Webhook reliability and idempotency is the biggest gap (affects Tests 8, 9)
+- Silver layer guidance lacks specificity on handling Stripe's eventual consistency
+- API extraction patterns are strong for charges but missing for Connect and Issuing
 
 ## Suggested PM Prompts
-1. **Historical state reconstruction** — "How should I rebuild pipeline state as of a past date?"
-2. **Multi-CRM consolidation** — "How do I merge pipeline data from multiple CRM systems?"
-3. **Forecast accuracy tracking** — "How should I model forecast vs. actuals over time?"
+1. **Multi-account consolidation** — "How should I merge data from multiple Stripe accounts into a unified model?"
+2. **Currency normalization** — "How do I handle multi-currency amounts and exchange rate snapshots?"
+3. **Dispute lifecycle tracking** — "How should I model the full dispute resolution workflow from Stripe data?"
 ```
 
 ## Success Criteria
