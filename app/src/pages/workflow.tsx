@@ -962,6 +962,9 @@ export default function WorkflowPage() {
           {/* Step header */}
           <div className="flex items-center justify-between border-b px-6 py-4">
             <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-muted-foreground tracking-wide uppercase">
+                {skillName.replace(/[-_]/g, " ")}
+              </p>
               <h2 className="text-lg font-semibold">
                 Step {currentStep + 1}: {currentStepDef?.name}
               </h2>
