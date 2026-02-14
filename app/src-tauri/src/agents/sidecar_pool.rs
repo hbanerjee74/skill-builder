@@ -455,7 +455,7 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let result = AssertUnwindSafe(async {
-                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    log::warn!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
                 })
                 .catch_unwind()
                 .await;
@@ -630,10 +630,34 @@ impl SidecarPool {
                                     &line,
                                 );
 
+                                // Log lifecycle events at INFO so the log file tells the full story.
+                                // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
+                                if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    match msg_type {
+                                        "system" => {
+                                            let subtype = msg.get("subtype")
+                                                .and_then(|s| s.as_str())
+                                                .unwrap_or("unknown");
+                                            log::info!(
+                                                "[persistent-sidecar:{}] Agent '{}': {}",
+                                                skill_name_stdout,
+                                                request_id,
+                                                subtype,
+                                            );
+                                        }
+                                        _ => {}
+                                    }
+                                }
+
                                 // Check if this is a result or error — if so, emit exit event
                                 // and remove from pending_requests so timeout tasks know it completed.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
                                     if msg_type == "result" {
+                                        log::info!(
+                                            "[persistent-sidecar:{}] Agent '{}' completed successfully",
+                                            skill_name_stdout,
+                                            request_id,
+                                        );
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
@@ -644,6 +668,15 @@ impl SidecarPool {
                                             true,
                                         );
                                     } else if msg_type == "error" {
+                                        let error_detail = msg.get("message")
+                                            .and_then(|m| m.as_str())
+                                            .unwrap_or("(no message)");
+                                        log::error!(
+                                            "[persistent-sidecar:{}] Agent error for '{}': {}",
+                                            skill_name_stdout,
+                                            request_id,
+                                            error_detail,
+                                        );
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
