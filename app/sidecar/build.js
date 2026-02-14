@@ -20,6 +20,10 @@ await build({
 
 console.log("Built dist/agent-runner.js");
 
+// Copy bootstrap.js (thin wrapper that catches module-load errors)
+cpSync(resolve(__dirname, "bootstrap.js"), resolve(__dirname, "dist/bootstrap.js"));
+console.log("Copied dist/bootstrap.js");
+
 // Copy SDK runtime files needed by cli.js at runtime.
 // The SDK's query() spawns cli.js as a child process, and cli.js
 // needs its sibling wasm files and vendor/ directory.
