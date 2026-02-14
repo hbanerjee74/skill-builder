@@ -1164,11 +1164,20 @@ pub fn preview_step_reset(
             }
         }
 
-        // Step 5: also check references/ directory
+        // Step 5: also list individual files in references/ directory
         if step_id == 5 {
             let refs_dir = base_dir.join("references");
             if refs_dir.is_dir() {
-                existing_files.push("references/".to_string());
+                if let Ok(entries) = std::fs::read_dir(&refs_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(name) = path.file_name() {
+                                existing_files.push(format!("references/{}", name.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
             }
         }
 

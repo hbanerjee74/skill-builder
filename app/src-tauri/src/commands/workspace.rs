@@ -146,18 +146,12 @@ pub fn reconcile_on_startup(
                             ));
                         }
                     } else if disk_step > run.current_step {
-                        // Disk is ahead of DB — advance to match
-                        crate::db::save_workflow_run(
-                            conn,
-                            &run.skill_name,
-                            &run.domain,
-                            disk_step,
-                            "pending",
-                            &run.skill_type,
-                        )?;
+                        // Disk is ahead of DB — don't change current_step (user may
+                        // have intentionally navigated back). Just ensure step statuses
+                        // are marked completed below.
                         notifications.push(format!(
-                            "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                            run.skill_name, run.current_step, disk_step
+                            "'{}' disk has output through step {} (DB at step {}); step statuses synced",
+                            run.skill_name, disk_step, run.current_step
                         ));
                     }
 
