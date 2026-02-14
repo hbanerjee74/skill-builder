@@ -433,6 +433,16 @@ impl SidecarPool {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
+        // On Windows, the Claude Code SDK requires git-bash. Auto-detect it
+        // so the user doesn't have to configure CLAUDE_CODE_GIT_BASH_PATH.
+        #[cfg(target_os = "windows")]
+        if std::env::var("CLAUDE_CODE_GIT_BASH_PATH").is_err() {
+            if let Some(bash_path) = find_git_bash() {
+                log::info!("Auto-detected git-bash at {}", bash_path);
+                cmd.env("CLAUDE_CODE_GIT_BASH_PATH", &bash_path);
+            }
+        }
+
         let mut child = cmd.spawn()
             .map_err(|e| {
                 let err = SidecarStartupError::SpawnFailed {
@@ -1460,6 +1470,41 @@ fn is_node_compatible(version: &str) -> bool {
         }
     }
     false
+}
+
+/// Auto-detect git-bash on Windows. Checks common install locations.
+#[cfg(target_os = "windows")]
+fn find_git_bash() -> Option<String> {
+    use std::path::PathBuf;
+
+    // 1. Check if bash.exe is already in PATH
+    if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // `where` can return multiple lines — pick the first Git one
+            for line in stdout.lines() {
+                let trimmed = line.trim();
+                if trimmed.contains("Git") && PathBuf::from(trimmed).exists() {
+                    return Some(trimmed.to_string());
+                }
+            }
+            // Fall through if no Git-specific bash was found in PATH
+        }
+    }
+
+    // 2. Check standard install locations
+    let candidates = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+    ];
+
+    for path in &candidates {
+        if PathBuf::from(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
