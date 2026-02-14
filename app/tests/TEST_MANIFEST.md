@@ -63,7 +63,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |
-| `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (pending) | `@settings` |
+| `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (7) | `@settings` |
 | `src/components/layout/app-layout.tsx` | -- | `components/app-layout.test.tsx` (8) | `@navigation` |
 
 ### Rust Backend
