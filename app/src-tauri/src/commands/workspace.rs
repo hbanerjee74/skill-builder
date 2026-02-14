@@ -137,8 +137,29 @@ pub fn reconcile_on_startup(
                             run.skill_name, run.current_step, disk_step
                         ));
                     }
+                } else if disk_step >= run.current_step {
+                    // Disk is at or ahead of DB — advance DB to match and mark
+                    // completed steps. Handles crash after agent writes files
+                    // but before frontend updates step status.
+                    if disk_step > run.current_step {
+                        crate::db::save_workflow_run(
+                            conn,
+                            &run.skill_name,
+                            &run.domain,
+                            disk_step,
+                            "pending",
+                            &run.skill_type,
+                        )?;
+                        notifications.push(format!(
+                            "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
+                            run.skill_name, run.current_step, disk_step
+                        ));
+                    }
+                    // Mark all steps with output on disk as completed
+                    for s in 0..=disk_step {
+                        crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
+                    }
                 }
-                // else: Scenario 5 — normal, no action
             }
             (false, true) => {
                 // Scenario 3: Orphan — skill output exists but working dir is gone
