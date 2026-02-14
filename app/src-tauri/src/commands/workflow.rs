@@ -783,6 +783,143 @@ fn validate_decisions_exist_inner(
     )
 }
 
+/// Shared settings extracted from the DB, used by both `run_workflow_step`
+/// and `run_workflow_steps_parallel` to avoid re-reading settings per step.
+struct WorkflowSettings {
+    skills_path: Option<String>,
+    api_key: String,
+    extended_context: bool,
+    debug_mode: bool,
+    extended_thinking: bool,
+    skill_type: String,
+}
+
+/// Read all workflow settings from the DB in a single lock acquisition.
+/// Also performs reconciliation and staging of artifacts for non-fresh-start steps.
+fn read_workflow_settings(
+    db: &Db,
+    skill_name: &str,
+    step_id: u32,
+    workspace_path: &str,
+    resume: bool,
+    rerun: bool,
+) -> Result<WorkflowSettings, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    // Delete artifacts for fresh Step 0
+    if step_id == 0 && !resume && !rerun {
+        crate::db::delete_artifacts_from(&conn, skill_name, 0)?;
+    }
+
+    // Read all settings in one pass
+    let settings = crate::db::read_settings(&conn)?;
+    let skills_path = settings.skills_path;
+    let api_key = settings.anthropic_api_key
+        .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+    let extended_context = settings.extended_context;
+    let debug_mode = settings.debug_mode;
+    let extended_thinking = settings.extended_thinking;
+
+    // Reconcile disk → DB, then stage all DB artifacts → disk
+    if !(step_id == 0 && !resume && !rerun) {
+        reconcile_disk_artifacts(&conn, skill_name, workspace_path)?;
+        stage_artifacts(&conn, skill_name, workspace_path, skills_path.as_deref())?;
+    }
+
+    // Validate prerequisites (step 5 requires decisions.md)
+    if step_id == 5 {
+        validate_decisions_exist_inner(skill_name, workspace_path, skills_path.as_deref(), &conn)?;
+    }
+
+    // Get skill type
+    let skill_type = crate::db::get_skill_type(&conn, skill_name)?;
+
+    Ok(WorkflowSettings {
+        skills_path,
+        api_key,
+        extended_context,
+        debug_mode,
+        extended_thinking,
+        skill_type,
+    })
+}
+
+/// Core logic for launching a single workflow step. Builds the prompt,
+/// constructs the sidecar config, and spawns the agent. Returns the agent_id.
+///
+/// Shared by `run_workflow_step` (single step) and `run_workflow_steps_parallel`
+/// (multiple steps) to avoid duplicating step logic.
+#[allow(clippy::too_many_arguments)]
+async fn run_workflow_step_inner(
+    app: &tauri::AppHandle,
+    pool: &SidecarPool,
+    skill_name: &str,
+    step_id: u32,
+    domain: &str,
+    workspace_path: &str,
+    rerun: bool,
+    settings: &WorkflowSettings,
+) -> Result<String, String> {
+    let step = get_step_config(step_id)?;
+    let thinking_budget = if settings.extended_thinking {
+        thinking_budget_for_step(step_id)
+    } else {
+        None
+    };
+    let mut prompt = build_prompt(
+        &step.prompt_template,
+        &step.output_file,
+        skill_name,
+        domain,
+        workspace_path,
+        settings.skills_path.as_deref(),
+        &settings.skill_type,
+    );
+
+    // In rerun mode, prepend a marker so the agent knows to summarize
+    // existing output before regenerating.
+    if rerun {
+        prompt = format!("[RERUN MODE]\n\n{}", prompt);
+    }
+
+    let agent_name = derive_agent_name(&settings.skill_type, &step.prompt_template);
+    let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
+
+    // Determine the effective model for betas: debug_mode forces sonnet,
+    // otherwise use the agent front-matter default for this step.
+    let model = if settings.debug_mode {
+        resolve_model_id("sonnet")
+    } else {
+        resolve_model_id(default_model_for_step(step_id))
+    };
+
+    let config = SidecarConfig {
+        prompt,
+        model: if settings.debug_mode { Some(model.clone()) } else { None },
+        api_key: settings.api_key.clone(),
+        cwd: workspace_path.to_string(),
+        allowed_tools: Some(step.allowed_tools),
+        max_turns: Some(step.max_turns),
+        permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
+        betas: build_betas(settings.extended_context, thinking_budget, &model),
+        max_thinking_tokens: thinking_budget,
+        path_to_claude_code_executable: None,
+        agent_name: Some(agent_name),
+    };
+
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.clone(),
+        app.clone(),
+        skill_name.to_string(),
+    )
+    .await?;
+
+    Ok(agent_id)
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
@@ -810,93 +947,97 @@ pub async fn run_workflow_step(
         }
     }
 
-    // Consolidate all DB operations into a single lock acquisition:
-    // delete artifacts (fresh step 0), reconcile, stage, read settings, get skill type.
-    // This avoids re-acquiring the mutex 6+ times per call.
-    let (skills_path, api_key, extended_context, debug_mode, extended_thinking, skill_type) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path, resume, rerun)?;
 
-        // Delete artifacts for fresh Step 0
-        if step_id == 0 && !resume && !rerun {
-            crate::db::delete_artifacts_from(&conn, &skill_name, 0)?;
-        }
+    run_workflow_step_inner(
+        &app,
+        pool.inner(),
+        &skill_name,
+        step_id,
+        &domain,
+        &workspace_path,
+        rerun,
+        &settings,
+    )
+    .await
+}
 
-        // Read all settings in one pass
-        let settings = crate::db::read_settings(&conn)?;
-        let skills_path = settings.skills_path;
-        let api_key = settings.anthropic_api_key
-            .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-        let extended_context = settings.extended_context;
-        let debug_mode = settings.debug_mode;
-        let extended_thinking = settings.extended_thinking;
-
-        // Reconcile disk → DB, then stage all DB artifacts → disk
-        if !(step_id == 0 && !resume && !rerun) {
-            reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
-            stage_artifacts(&conn, &skill_name, &workspace_path, skills_path.as_deref())?;
-        }
-
-        // Validate prerequisites (step 5 requires decisions.md)
-        if step_id == 5 {
-            validate_decisions_exist_inner(&skill_name, &workspace_path, skills_path.as_deref(), &conn)?;
-        }
-
-        // Get skill type
-        let skill_type = crate::db::get_skill_type(&conn, &skill_name)?;
-
-        (skills_path, api_key, extended_context, debug_mode, extended_thinking, skill_type)
-    }; // DB lock released before file I/O and sidecar spawn
-
-    let step = get_step_config(step_id)?;
-    let thinking_budget = if extended_thinking {
-        thinking_budget_for_step(step_id)
-    } else {
-        None
-    };
-    let mut prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
-
-    // In rerun mode, prepend a marker so the agent knows to summarize
-    // existing output before regenerating.
-    if rerun {
-        prompt = format!("[RERUN MODE]\n\n{}", prompt);
+/// Launch multiple workflow steps concurrently. Each step gets its own agent,
+/// and all agents run in parallel on the same sidecar process (per-skill).
+///
+/// Returns a list of agent_ids, one per step, in the same order as `step_ids`.
+/// If any step fails to launch, the error is returned immediately and already-spawned
+/// agents continue running (they will complete or be cancelled by the frontend).
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn run_workflow_steps_parallel(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    step_ids: Vec<u32>,
+    domain: String,
+    workspace_path: String,
+    resume: bool,
+    rerun: bool,
+) -> Result<Vec<String>, String> {
+    if step_ids.is_empty() {
+        return Ok(Vec::new());
     }
 
-    let agent_name = derive_agent_name(&skill_type, &step.prompt_template);
-    let agent_id = make_agent_id(&skill_name, &format!("step{}", step_id));
+    // Ensure prompt files exist in workspace before running any step
+    ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Determine the effective model for betas: debug_mode forces sonnet,
-    // otherwise use the agent front-matter default for this step.
-    let model = if debug_mode {
-        resolve_model_id("sonnet")
-    } else {
-        resolve_model_id(default_model_for_step(step_id))
-    };
+    // Read settings once (shared across all steps). Use the first step_id for
+    // the reconcile/stage pass — all steps share the same skill directory.
+    // Note: step 0 fresh-start logic and step 5 decisions.md validation are
+    // step-specific and handled inside read_workflow_settings, but parallel
+    // execution targets steps 6+7 which don't need either.
+    let first_step = step_ids[0];
+    let settings = read_workflow_settings(&db, &skill_name, first_step, &workspace_path, resume, rerun)?;
 
-    let config = SidecarConfig {
-        prompt,
-        model: if debug_mode { Some(model.clone()) } else { None },
-        api_key,
-        cwd: workspace_path,
-        allowed_tools: Some(step.allowed_tools),
-        max_turns: Some(step.max_turns),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-        betas: build_betas(extended_context, thinking_budget, &model),
-        max_thinking_tokens: thinking_budget,
-        path_to_claude_code_executable: None,
-        agent_name: Some(agent_name),
-    };
+    // Spawn all steps concurrently
+    let futures: Vec<_> = step_ids
+        .iter()
+        .map(|&sid| {
+            let app_ref = app.clone();
+            let pool_ref = pool.inner().clone();
+            let skill = skill_name.clone();
+            let dom = domain.clone();
+            let ws = workspace_path.clone();
+            let settings_ref = WorkflowSettings {
+                skills_path: settings.skills_path.clone(),
+                api_key: settings.api_key.clone(),
+                extended_context: settings.extended_context,
+                debug_mode: settings.debug_mode,
+                extended_thinking: settings.extended_thinking,
+                skill_type: settings.skill_type.clone(),
+            };
+            async move {
+                run_workflow_step_inner(
+                    &app_ref,
+                    &pool_ref,
+                    &skill,
+                    sid,
+                    &dom,
+                    &ws,
+                    rerun,
+                    &settings_ref,
+                )
+                .await
+            }
+        })
+        .collect();
 
-    sidecar::spawn_sidecar(
-        agent_id.clone(),
-        config,
-        pool.inner().clone(),
-        app,
-        skill_name,
-    )
-    .await?;
+    let results = futures::future::join_all(futures).await;
 
-    Ok(agent_id)
+    // Collect results, returning all agent_ids or the first error
+    let mut agent_ids = Vec::with_capacity(results.len());
+    for result in results {
+        agent_ids.push(result?);
+    }
+
+    Ok(agent_ids)
 }
 
 
