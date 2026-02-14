@@ -134,7 +134,7 @@ export default function SkillCard({
   const canDownload = isWorkflowComplete(skill)
 
   const cardContent = (
-    <Card className={cn(isLocked && "opacity-50 pointer-events-none")}>
+    <Card className={cn("flex flex-col", isLocked && "opacity-50 pointer-events-none")}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">
@@ -167,7 +167,7 @@ export default function SkillCard({
           </div>
         )}
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent className="mt-auto flex flex-col gap-2">
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{skill.current_step || "Not started"}</span>
           <span>{progress}%</span>
