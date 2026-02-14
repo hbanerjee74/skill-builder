@@ -125,6 +125,42 @@ jobs:
           # Cleanup
           rm -f "/tmp/${ZIPFILE}"
 
+      # Bundle MinGit (portable git-bash) for Windows — required by the Claude Code SDK.
+      # MinGit is the official minimal Git for Windows distribution (~30MB).
+      # Licensed under GPL v2; license included in the package.
+      - name: Bundle MinGit for Windows
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          MINGIT_VERSION="2.48.1"
+          MINGIT_TAG="v${MINGIT_VERSION}.windows.1"
+          MINGIT_ZIP="MinGit-${MINGIT_VERSION}-64-bit.zip"
+          MINGIT_SHA256="11e8f462726827acccc7ecdad541f2544cbe5506d70fef4fa1ffac7c16288709"
+          URL="https://github.com/git-for-windows/git/releases/download/${MINGIT_TAG}/${MINGIT_ZIP}"
+
+          DEST="app/src-tauri/resources/git-bash"
+          mkdir -p "$DEST"
+
+          echo "Downloading MinGit ${MINGIT_VERSION}..."
+          curl -fsSL "$URL" -o "/tmp/${MINGIT_ZIP}"
+
+          echo "Verifying SHA256 checksum..."
+          echo "${MINGIT_SHA256}  /tmp/${MINGIT_ZIP}" | sha256sum -c -
+
+          echo "Extracting MinGit..."
+          unzip -q "/tmp/${MINGIT_ZIP}" -d "$DEST"
+
+          # Verify bash.exe works
+          "${DEST}/bin/bash.exe" --version | head -1
+
+          # Report size
+          MINGIT_SIZE=$(du -sh "$DEST" | cut -f1)
+          echo "Bundled MinGit size: ${MINGIT_SIZE}"
+
+          # Cleanup
+          rm -f "/tmp/${MINGIT_ZIP}"
+
       - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         working-directory: app
@@ -181,6 +217,12 @@ jobs:
           if [ -d "app/src-tauri/resources/node" ]; then
             mkdir -p "$STAGE/resources"
             cp -r "app/src-tauri/resources/node" "$STAGE/resources/node"
+          fi
+
+          # Copy bundled MinGit (git-bash for Claude Code SDK)
+          if [ -d "app/src-tauri/resources/git-bash" ]; then
+            mkdir -p "$STAGE/resources"
+            cp -r "app/src-tauri/resources/git-bash" "$STAGE/resources/git-bash"
           fi
 
           # Copy agents and references (used by the sidecar at runtime)

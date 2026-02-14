@@ -97,6 +97,24 @@ pub async fn check_startup_deps(app: tauri::AppHandle) -> Result<StartupDeps, St
     };
     checks.push(sdk);
 
+    // 4. Git-bash (Windows only — required by Claude Code SDK)
+    #[cfg(target_os = "windows")]
+    {
+        let git_bash = match sidecar_pool::find_git_bash() {
+            Some(path) => DepStatus {
+                name: "Git Bash".to_string(),
+                ok: true,
+                detail: path,
+            },
+            None => DepStatus {
+                name: "Git Bash".to_string(),
+                ok: false,
+                detail: "Not found — install Git for Windows from https://git-scm.com/downloads/win".to_string(),
+            },
+        };
+        checks.push(git_bash);
+    }
+
     let all_ok = checks.iter().all(|c| c.ok);
     Ok(StartupDeps { all_ok, checks })
 }
