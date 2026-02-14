@@ -125,41 +125,46 @@ jobs:
           # Cleanup
           rm -f "/tmp/${ZIPFILE}"
 
-      # Bundle MinGit (portable git-bash) for Windows — required by the Claude Code SDK.
-      # MinGit is the official minimal Git for Windows distribution (~30MB).
-      # Licensed under GPL v2; license included in the package.
-      - name: Bundle MinGit for Windows
+      # Bundle git-bash for Windows — required by the Claude Code SDK.
+      # Copies the bash runtime from the runner's pre-installed Git for Windows.
+      # The bin/ directory contains bash.exe and its MSYS2 DLLs (msys-2.0.dll etc).
+      # Licensed under GPL v2.
+      - name: Bundle git-bash for Windows
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
           set -euo pipefail
-          MINGIT_VERSION="2.48.1"
-          MINGIT_TAG="v${MINGIT_VERSION}.windows.1"
-          MINGIT_ZIP="MinGit-${MINGIT_VERSION}-64-bit.zip"
-          MINGIT_SHA256="11e8f462726827acccc7ecdad541f2544cbe5506d70fef4fa1ffac7c16288709"
-          URL="https://github.com/git-for-windows/git/releases/download/${MINGIT_TAG}/${MINGIT_ZIP}"
 
+          # Git for Windows is pre-installed on windows-latest runners
+          GIT_ROOT="C:/Program Files/Git"
           DEST="app/src-tauri/resources/git-bash"
+
+          if [ ! -f "$GIT_ROOT/bin/bash.exe" ]; then
+            echo "::error::Git for Windows not found at $GIT_ROOT"
+            exit 1
+          fi
+
+          # Copy bin/ (bash.exe, sh.exe, and co-located MSYS2 DLLs)
           mkdir -p "$DEST"
+          cp -r "$GIT_ROOT/bin" "$DEST/bin"
 
-          echo "Downloading MinGit ${MINGIT_VERSION}..."
-          curl -fsSL "$URL" -o "/tmp/${MINGIT_ZIP}"
+          # Copy etc/ (minimal config needed by bash)
+          cp -r "$GIT_ROOT/etc" "$DEST/etc"
 
-          echo "Verifying SHA256 checksum..."
-          echo "${MINGIT_SHA256}  /tmp/${MINGIT_ZIP}" | sha256sum -c -
+          # Copy MSYS2 usr/bin/ for bash dependencies (coreutils, DLLs)
+          mkdir -p "$DEST/usr"
+          cp -r "$GIT_ROOT/usr/bin" "$DEST/usr/bin"
 
-          echo "Extracting MinGit..."
-          unzip -q "/tmp/${MINGIT_ZIP}" -d "$DEST"
+          # Include GPL license
+          cp "$GIT_ROOT/LICENSE.txt" "$DEST/" 2>/dev/null || true
 
-          # Verify bash.exe works
-          "${DEST}/bin/bash.exe" --version | head -1
+          # Verify the bundled bash works
+          "$DEST/bin/bash.exe" -c "echo bash bundled OK"
 
-          # Report size
-          MINGIT_SIZE=$(du -sh "$DEST" | cut -f1)
-          echo "Bundled MinGit size: ${MINGIT_SIZE}"
-
-          # Cleanup
-          rm -f "/tmp/${MINGIT_ZIP}"
+          # Report version and size
+          "$DEST/bin/bash.exe" --version | head -1
+          BASH_SIZE=$(du -sh "$DEST" | cut -f1)
+          echo "Bundled git-bash size: ${BASH_SIZE}"
 
       - name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
