@@ -955,20 +955,7 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      <ResetStepDialog
-        targetStep={resetTarget}
-        workspacePath={workspacePath ?? ""}
-        skillName={skillName}
-        open={resetTarget !== null}
-        onOpenChange={(open) => { if (!open) setResetTarget(null) }}
-        onReset={() => {
-          if (resetTarget !== null) {
-            clearRuns();
-            rerunFromStep(resetTarget);
-            setResetTarget(null);
-          }
-        }}
-      />
+
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar
