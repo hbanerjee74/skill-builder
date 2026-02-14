@@ -153,7 +153,11 @@ export default function SkillCard({
           </Badge>
         )}
         {skill.skill_type && (
-          <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType] || "")}>
+          <Badge className={cn("w-fit text-xs", (() => {
+            const c = SKILL_TYPE_COLORS[skill.skill_type as SkillType];
+            if (!c) return "";
+            return `${c.light} ${c.dark.split(" ").map(cls => `dark:${cls}`).join(" ")}`;
+          })())}>
             {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
           </Badge>
         )}
