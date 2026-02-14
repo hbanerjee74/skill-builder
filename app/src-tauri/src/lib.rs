@@ -6,6 +6,12 @@ mod types;
 
 pub use types::*;
 
+#[derive(Clone)]
+pub struct InstanceInfo {
+    pub id: String,
+    pub pid: u32,
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -22,6 +28,13 @@ pub fn run() {
 
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
+
+            let instance_info = InstanceInfo {
+                id: uuid::Uuid::new_v4().to_string(),
+                pid: std::process::id(),
+            };
+            log::info!("Instance ID: {}, PID: {}", instance_info.id, instance_info.pid);
+            app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails)
             {
@@ -69,6 +82,10 @@ pub fn run() {
             commands::skill::delete_skill,
             commands::skill::update_skill_tags,
             commands::skill::get_all_tags,
+            commands::skill::acquire_lock,
+            commands::skill::release_lock,
+            commands::skill::get_locked_skills,
+            commands::skill::check_lock,
             commands::clarification::save_raw_file,
             commands::files::list_skill_files,
             commands::files::read_file,
@@ -115,8 +132,16 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
-                // Shutdown all persistent sidecars on app exit
                 use tauri::Manager;
+
+                // Release all skill locks held by this instance
+                let instance = app_handle.state::<InstanceInfo>();
+                let db_state = app_handle.state::<crate::db::Db>();
+                if let Ok(conn) = db_state.0.lock() {
+                    let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
+                }
+
+                // Shutdown all persistent sidecars on app exit
                 let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
                 // The Tokio runtime may already be torn down during exit
                 if let Ok(rt) = tokio::runtime::Handle::try_current() {
