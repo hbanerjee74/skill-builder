@@ -40,7 +40,6 @@ import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
-  runWorkflowStepsParallel,
   resetWorkflowStep,
   getWorkflowState,
   saveWorkflowState,
@@ -70,9 +69,8 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
-  6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
-  7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
-  8: { type: "refinement" },
+  6: { type: "agent", outputFiles: ["context/agent-validation-log.md", "context/test-skill.md"], model: "sonnet" },
+  7: { type: "refinement" },
 };
 
 // Human review steps: step id -> relative artifact path
@@ -82,25 +80,15 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
 };
 
 // Agent step IDs eligible for rerun chat (not reasoning or refinement — those have their own chat)
-const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6, 7]);
+const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6]);
 
 // Map step IDs to human-readable labels for the rerun chat header
 const STEP_LABELS: Record<number, string> = {
   0: "research-concepts",
   2: "perform-research",
   5: "build",
-  6: "validate",
-  7: "test",
+  6: "validate-and-test",
 };
-
-// Steps that run in parallel after the Build step completes
-const PARALLEL_STEPS = [6, 7];
-
-/** Extract step number from agent ID format: "{skillName}-step{N}" */
-function getStepIdFromAgentId(agentId: string): number | null {
-  const match = agentId.match(/-step(\d+)$/);
-  return match ? parseInt(match[1], 10) : null;
-}
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -128,20 +116,12 @@ export default function WorkflowPage() {
     rerunFromStep,
     loadWorkflowState,
     setHydrated,
-    activeSteps,
-    addActiveStep,
-    removeActiveStep,
-    clearActiveSteps,
   } = useWorkflowStore();
 
   const activeAgentId = useAgentStore((s) => s.activeAgentId);
-  const activeAgentIds = useAgentStore((s) => s.activeAgentIds);
   const runs = useAgentStore((s) => s.runs);
   const agentStartRun = useAgentStore((s) => s.startRun);
   const setActiveAgent = useAgentStore((s) => s.setActiveAgent);
-  const addActiveAgent = useAgentStore((s) => s.addActiveAgent);
-  const removeActiveAgent = useAgentStore((s) => s.removeActiveAgent);
-  const clearActiveAgents = useAgentStore((s) => s.clearActiveAgents);
   const clearRuns = useAgentStore((s) => s.clearRuns);
 
   // --- Navigation guard ---
@@ -161,22 +141,13 @@ export default function WorkflowPage() {
   }, [resetBlocker]);
 
   const handleNavLeave = useCallback(() => {
-    // Issue 4: Only revert steps that are still "in_progress", preserving
-    // completed/error steps so partial completion state is not lost.
     const store = useWorkflowStore.getState();
-    for (const stepId of store.activeSteps) {
-      if (store.steps[stepId]?.status === "in_progress") {
-        useWorkflowStore.getState().updateStepStatus(stepId, "pending");
-      }
-    }
-    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    const { currentStep: step, steps: curSteps } = store;
     if (curSteps[step]?.status === "in_progress") {
       useWorkflowStore.getState().updateStepStatus(step, "pending");
     }
 
     useWorkflowStore.getState().setRunning(false);
-    useWorkflowStore.getState().clearActiveSteps();
-    useAgentStore.getState().clearActiveAgents();
     useAgentStore.getState().clearRuns();
 
     // Fire-and-forget: shut down persistent sidecar for this skill
@@ -198,19 +169,10 @@ export default function WorkflowPage() {
 
       const store = useWorkflowStore.getState();
       if (store.isRunning) {
-        // Issue 4: Only revert steps that are still "in_progress", preserving
-        // completed/error steps so partial completion state is not lost.
-        for (const stepId of store.activeSteps) {
-          if (store.steps[stepId]?.status === "in_progress") {
-            useWorkflowStore.getState().updateStepStatus(stepId, "pending");
-          }
-        }
         if (store.steps[store.currentStep]?.status === "in_progress") {
           useWorkflowStore.getState().updateStepStatus(store.currentStep, "pending");
         }
         useWorkflowStore.getState().setRunning(false);
-        useWorkflowStore.getState().clearActiveSteps();
-        useAgentStore.getState().clearActiveAgents();
         useAgentStore.getState().clearRuns();
       }
 
@@ -431,67 +393,25 @@ export default function WorkflowPage() {
   const isDebugAutoCompleteStep = useCallback((stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
     if (!cfg) return false;
-    // Auto-complete: human review (1, 3), validate (6), test (7), refinement (8)
-    return cfg.type === "human" || stepId === 6 || stepId === 7 || cfg.type === "refinement";
+    // Auto-complete: human review and refinement steps
+    return cfg.type === "human" || cfg.type === "refinement";
   }, []);
 
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
-
-    // When all parallel steps in a batch are done, skip past them
-    // (e.g. after parallel validate + test, jump to refine)
-    const { activeSteps: curActiveSteps } = useWorkflowStore.getState();
-    if (curActiveSteps.size === 0 && PARALLEL_STEPS.includes(currentStep)) {
-      // We're on a parallel step that just finished — find the step after the batch
-      const maxParallel = Math.max(...PARALLEL_STEPS);
-      if (currentStep < maxParallel) {
-        // Other parallel steps already completed; skip to after the batch
-        const afterBatch = maxParallel + 1;
-        if (afterBatch < steps.length) {
-          setCurrentStep(afterBatch);
-          const nextConfig = STEP_CONFIGS[afterBatch];
-          if (!debugMode && nextConfig?.type === "human") {
-            updateStepStatus(afterBatch, "waiting_for_user");
-          }
-          return;
-        }
-      }
-    }
-
     let nextStep = currentStep + 1;
-
-    // When advancing from Build (step 5) to Validate (step 6), trigger parallel execution
-    if (nextStep === PARALLEL_STEPS[0] && !debugMode) {
-      setCurrentStep(nextStep);
-      // handleStartParallelSteps is called from the auto-start effect or directly
-      // We set currentStep and let the parallel auto-start effect handle it
-      return;
-    }
-
-    // When the current step is the last parallel step and the batch is done,
-    // skip to the step after the batch
-    if (PARALLEL_STEPS.includes(nextStep) && steps[nextStep]?.status === "completed") {
-      // This parallel step already completed (was running in parallel) — skip past it
-      const maxParallel = Math.max(...PARALLEL_STEPS);
-      nextStep = maxParallel + 1;
-      if (nextStep >= steps.length) return;
-    }
-
     setCurrentStep(nextStep);
 
     if (debugMode) {
-      // In debug mode, skip through auto-completable steps in a chain
       while (nextStep < steps.length && isDebugAutoCompleteStep(nextStep)) {
         updateStepStatus(nextStep, "completed");
         toast.success(`Step ${nextStep + 1} auto-completed (debug)`);
-        if (nextStep >= steps.length - 1) return; // Last step, stop
+        if (nextStep >= steps.length - 1) return;
         nextStep += 1;
         setCurrentStep(nextStep);
       }
-      // Now nextStep is an agent or reasoning step — auto-start effect will handle it
     } else {
-      // Normal mode: set human steps to waiting_for_user
       const nextConfig = STEP_CONFIGS[nextStep];
       if (nextConfig?.type === "human") {
         updateStepStatus(nextStep, "waiting_for_user");
@@ -499,14 +419,12 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus, debugMode, isDebugAutoCompleteStep]);
 
-  // Watch for single agent completion (non-parallel steps)
+  // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
-    // Skip if we're in parallel mode — parallel watcher handles those
-    if (activeAgentIds.size > 0) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
@@ -547,96 +465,7 @@ export default function WorkflowPage() {
       }
       toast.error(`Step ${step + 1} failed`, { duration: Infinity });
     }
-  }, [activeRunStatus, activeAgentIds.size, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
-
-  // Watch for parallel agent completions
-  useEffect(() => {
-    if (activeAgentIds.size === 0) return;
-
-    const wfStore = useWorkflowStore.getState();
-    let allDone = true;
-
-    for (const agentId of activeAgentIds) {
-      const run = runs[agentId];
-      if (!run) { allDone = false; continue; }
-
-      const stepId = getStepIdFromAgentId(agentId);
-      if (stepId === null) continue;
-
-      // Issue 3: Skip agents whose steps were already cleaned up
-      if (!wfStore.activeSteps.has(stepId)) continue;
-
-      // Issue 1: Skip steps already marked as completed to prevent re-processing
-      if (wfStore.steps[stepId]?.status === "completed") continue;
-
-      if (run.status === "completed") {
-        // Issue 1: Mark step status as completed synchronously BEFORE async artifact capture
-        // so the allDone check (based on step statuses) is accurate
-        updateStepStatus(stepId, "completed");
-        toast.success(`Step ${stepId + 1} completed`);
-
-        // Capture artifacts and clean up active sets asynchronously
-        const cleanupParallelStep = () => {
-          removeActiveStep(stepId);
-          removeActiveAgent(agentId);
-        };
-
-        if (workspacePath) {
-          captureStepArtifacts(skillName, stepId, workspacePath)
-            .catch(() => {})
-            .then(cleanupParallelStep);
-        } else {
-          cleanupParallelStep();
-        }
-      } else if (run.status === "error") {
-        updateStepStatus(stepId, "error");
-        removeActiveStep(stepId);
-        removeActiveAgent(agentId);
-        toast.error(`Step ${stepId + 1} failed`, { duration: Infinity });
-      } else {
-        // Still running
-        allDone = false;
-      }
-    }
-
-    // Issue 1: Check allDone based on step statuses (updated synchronously above)
-    // rather than relying on async callbacks completing
-    if (!allDone) {
-      // Re-check: all parallel steps may have been marked completed/error synchronously
-      const latestStore = useWorkflowStore.getState();
-      allDone = PARALLEL_STEPS.every((sid) => {
-        const status = latestStore.steps[sid]?.status;
-        return status === "completed" || status === "error";
-      });
-    }
-
-    // When all parallel agents are done (success or error), finalize
-    if (allDone) {
-      setRunning(false);
-      setActiveAgent(null);
-      clearActiveSteps();
-      // Issue 2: Clear stale agent IDs to prevent watcher re-triggering
-      clearActiveAgents();
-
-      // Clear initializing state if still set
-      const { isInitializing: stillInit } = useWorkflowStore.getState();
-      if (stillInit) {
-        clearInitializing();
-      }
-
-      // Auto-advance to the step after the parallel batch
-      const maxParallel = Math.max(...PARALLEL_STEPS);
-      const nextStep = maxParallel + 1;
-      if (nextStep < steps.length) {
-        setCurrentStep(nextStep);
-        const nextConfig = STEP_CONFIGS[nextStep];
-        if (!debugMode && nextConfig?.type === "human") {
-          updateStepStatus(nextStep, "waiting_for_user");
-        }
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runs, activeAgentIds]);
+  }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
   // (Review agent logic removed — direct completion is faster and sufficient)
 
@@ -679,62 +508,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStartParallelSteps = async (stepIds: number[]) => {
-    if (!domain || !workspacePath) {
-      toast.error("Missing domain or workspace path", { duration: Infinity });
-      return;
-    }
-
-    try {
-      clearRuns();
-      clearRuntimeError();
-      clearActiveSteps();
-
-      // Mark all steps as in_progress and add to activeSteps
-      for (const id of stepIds) {
-        updateStepStatus(id, "in_progress");
-        addActiveStep(id);
-      }
-
-      setRunning(true);
-      setInitializing();
-      setHasPartialOutput(false);
-      // Show the first step's content panel
-      setCurrentStep(stepIds[0]);
-
-      const agentIds = await runWorkflowStepsParallel(
-        skillName,
-        stepIds,
-        domain,
-        workspacePath,
-        false,
-        false,
-      );
-
-      // Register all returned agent IDs
-      for (const agentId of agentIds) {
-        agentStartRun(agentId, "sonnet");
-        addActiveAgent(agentId);
-      }
-
-      // Set the first agent as the primary active agent for the output panel
-      if (agentIds.length > 0) {
-        setActiveAgent(agentIds[0]);
-      }
-    } catch (err) {
-      for (const id of stepIds) {
-        updateStepStatus(id, "error");
-      }
-      setRunning(false);
-      clearInitializing();
-      clearActiveSteps();
-      toast.error(
-        `Failed to start parallel steps: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      );
-    }
-  };
-
   const handleSkipHumanStep = () => {
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
@@ -758,7 +531,7 @@ export default function WorkflowPage() {
 
     // For agent steps eligible for rerun chat, enter interactive rerun mode
     // instead of destructively resetting.
-    // Steps 4 (reasoning) and 8 (refinement) have their own chat components.
+    // Steps 4 (reasoning) and 7 (refinement) have their own chat components.
     if (RERUN_CHAT_STEPS.has(currentStep)) {
       clearRuns();
       setRerunStepId(currentStep);
@@ -798,7 +571,7 @@ export default function WorkflowPage() {
   // Handle completion from the rerun chat
   const handleRerunComplete = useCallback(() => {
     setRerunStepId(null);
-    // Ensure the step is marked as completed (handles error → completed transition)
+    // Ensure the step is marked as completed (handles error -> completed transition)
     updateStepStatus(currentStep, "completed");
     toast.success(`Step ${currentStep + 1} rerun completed`);
   }, [currentStep, updateStepStatus]);
@@ -865,34 +638,6 @@ export default function WorkflowPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debugMode, currentStep, hydrated, isRunning, steps]);
 
-  // Auto-start parallel steps when landing on the first parallel step (validate)
-  // after the Build step completes.
-  const parallelAutoStartedRef = useRef(false);
-  useEffect(() => {
-    if (debugMode || !hydrated || isRunning) return;
-    if (currentStep !== PARALLEL_STEPS[0]) {
-      parallelAutoStartedRef.current = false;
-      return;
-    }
-
-    const stepStatus = steps[currentStep]?.status;
-    if (stepStatus !== "pending") return;
-
-    // Prevent re-triggering
-    if (parallelAutoStartedRef.current) return;
-    parallelAutoStartedRef.current = true;
-
-    const timer = setTimeout(() => {
-      const store = useWorkflowStore.getState();
-      if (store.currentStep !== PARALLEL_STEPS[0]) return;
-      if (store.steps[PARALLEL_STEPS[0]]?.status !== "pending") return;
-      if (store.isRunning) return;
-      handleStartParallelSteps(PARALLEL_STEPS);
-    }, 100);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugMode, currentStep, hydrated, isRunning, steps]);
-
   const currentStepDef = steps[currentStep];
   const canStart =
     stepConfig &&
@@ -924,12 +669,9 @@ export default function WorkflowPage() {
     }
 
     // Completed step with output files.
-    // In parallel mode, if this step completed but siblings are still running,
-    // don't show the completion UI — the parallel watcher will handle final navigation.
     if (
       currentStepDef?.status === "completed" &&
-      !activeAgentId &&
-      activeSteps.size === 0
+      !activeAgentId
     ) {
       const isLastStep = currentStep >= steps.length - 1;
       if (stepConfig?.outputFiles) {
@@ -1023,7 +765,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 6) — multi-turn chat
+    // Reasoning step (Step 4) — multi-turn chat
     if (stepConfig?.type === "reasoning") {
       return (
         <ReasoningChat
@@ -1037,7 +779,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Refinement step (Step 8) — open-ended chat for skill polish
+    // Refinement step (Step 7) — open-ended chat for skill polish
     if (stepConfig?.type === "refinement") {
       return (
         <RefinementChat
@@ -1049,21 +791,13 @@ export default function WorkflowPage() {
     }
 
     // Initializing state — show spinner before first agent message arrives.
-    // In parallel mode, show spinner if the currently viewed agent has no messages yet.
     if (isInitializing) {
-      if (activeAgentIds.size > 0) {
-        // Parallel mode: show initializing if the viewed agent has no messages
-        if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
-          return <AgentInitializingIndicator />;
-        }
-      } else if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
-        // Single-agent mode
+      if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
         return <AgentInitializingIndicator />;
       }
     }
 
-    // Agent with output — works for both single and parallel mode.
-    // In parallel mode, activeAgentId points to whichever step the user is viewing.
+    // Agent with output
     if (activeAgentId) {
       return <AgentOutputPanel agentId={activeAgentId} />;
     }
@@ -1250,18 +984,6 @@ export default function WorkflowPage() {
           steps={steps}
           currentStep={currentStep}
           onStepClick={(id) => {
-            // Allow clicking between parallel running steps without confirmation
-            if (activeSteps.has(id) && steps[id]?.status === "in_progress") {
-              setCurrentStep(id);
-              // Switch active agent to show this step's output
-              for (const agentId of activeAgentIds) {
-                if (getStepIdFromAgentId(agentId) === id) {
-                  setActiveAgent(agentId);
-                  break;
-                }
-              }
-              return;
-            }
             if (steps[id]?.status !== "completed") return;
             if (isRunning) {
               setPendingStepSwitch(id);

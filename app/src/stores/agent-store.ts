@@ -104,8 +104,6 @@ export interface AgentRun {
 interface AgentState {
   runs: Record<string, AgentRun>;
   activeAgentId: string | null;
-  /** Multiple agents executing in parallel (e.g. validate + test). */
-  activeAgentIds: Set<string>;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
    *  Used by chat components (reasoning, refinement) that manage their own lifecycle. */
@@ -114,12 +112,6 @@ interface AgentState {
   completeRun: (agentId: string, success: boolean) => void;
   shutdownRun: (agentId: string) => void;
   setActiveAgent: (agentId: string | null) => void;
-  /** Add an agent to the set of active parallel agents. */
-  addActiveAgent: (id: string) => void;
-  /** Remove an agent from the set of active parallel agents. */
-  removeActiveAgent: (id: string) => void;
-  /** Clear all active parallel agents. */
-  clearActiveAgents: () => void;
   clearRuns: () => void;
   /** Internal: apply a batch of buffered messages in a single set() call. */
   _applyMessageBatch: (batch: BufferedMessage[]) => void;
@@ -128,7 +120,6 @@ interface AgentState {
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
-  activeAgentIds: new Set<string>(),
 
   startRun: (agentId, model) =>
     set((state) => {
@@ -229,22 +220,6 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
 
-  addActiveAgent: (id) =>
-    set((state) => {
-      const next = new Set(state.activeAgentIds);
-      next.add(id);
-      return { activeAgentIds: next };
-    }),
-
-  removeActiveAgent: (id) =>
-    set((state) => {
-      const next = new Set(state.activeAgentIds);
-      next.delete(id);
-      return { activeAgentIds: next };
-    }),
-
-  clearActiveAgents: () => set({ activeAgentIds: new Set<string>() }),
-
   clearRuns: () => {
     // Cancel any pending RAF and clear the buffer so stale messages
     // from the previous run don't leak into the next one.
@@ -253,7 +228,7 @@ export const useAgentStore = create<AgentState>((set) => ({
       _rafScheduled = false;
     }
     _messageBuffer = [];
-    set({ runs: {}, activeAgentId: null, activeAgentIds: new Set<string>() });
+    set({ runs: {}, activeAgentId: null });
   },
 
   _applyMessageBatch: (batch) =>

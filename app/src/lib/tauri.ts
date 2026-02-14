@@ -68,15 +68,6 @@ export const runWorkflowStep = (
   rerun?: boolean,
 ) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
 
-export const runWorkflowStepsParallel = (
-  skillName: string,
-  stepIds: number[],
-  domain: string,
-  workspacePath: string,
-  resume?: boolean,
-  rerun?: boolean,
-) => invoke<string[]>("run_workflow_steps_parallel", { skillName, stepIds, domain, workspacePath, resume: resume ?? false, rerun: rerun ?? false });
-
 export const runReviewStep = (
   skillName: string,
   stepId: number,
