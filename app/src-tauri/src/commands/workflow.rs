@@ -1142,9 +1142,62 @@ fn parse_agent_id(agent_id: &str) -> Option<(String, u32)> {
     None
 }
 
+/// Configuration for retry with backoff.
+pub struct RetryConfig {
+    /// Maximum number of attempts (including the first try).
+    pub max_attempts: u32,
+    /// Delay schedule in milliseconds for each retry (index 0 = delay before attempt 2, etc.).
+    pub delays_ms: Vec<u64>,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            delays_ms: vec![100, 200, 300],
+        }
+    }
+}
+
+/// Retry a fallible closure with backoff delays between attempts.
+/// Returns `Ok(T)` on the first successful attempt, or the last `Err` after all retries.
+/// Calls `on_retry(attempt, max_attempts, &error, delay_ms)` before each retry sleep.
+pub fn retry_with_backoff<T, E, F, R>(
+    config: &RetryConfig,
+    mut operation: F,
+    mut on_retry: R,
+) -> Result<T, E>
+where
+    E: std::fmt::Display,
+    F: FnMut() -> Result<T, E>,
+    R: FnMut(u32, u32, &E, u64),
+{
+    let mut last_err = None;
+    for attempt in 1..=config.max_attempts {
+        match operation() {
+            Ok(val) => return Ok(val),
+            Err(e) => {
+                if attempt < config.max_attempts {
+                    let delay_idx = (attempt - 1) as usize;
+                    let delay_ms = config
+                        .delays_ms
+                        .get(delay_idx)
+                        .copied()
+                        .unwrap_or(300);
+                    on_retry(attempt, config.max_attempts, &e, delay_ms);
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.expect("max_attempts >= 1 so last_err is always set"))
+}
+
 /// Capture artifacts on error — called from sidecar_pool when an agent fails.
 /// This is best-effort: logs errors but doesn't propagate them to avoid interfering
-/// with error event emission.
+/// with error event emission. Retries up to 3 times with backoff to handle transient
+/// DB lock contention or temporary I/O failures.
 pub fn capture_artifacts_on_error(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
@@ -1207,39 +1260,45 @@ pub fn capture_artifacts_on_error(
         (workspace_path, settings.skills_path)
     };
 
-    // Capture artifacts (best-effort)
-    {
-        let conn = match db.0.lock() {
-            Ok(conn) => conn,
-            Err(e) => {
-                log::error!("Failed to lock DB for artifact capture on error: {}", e);
-                return;
-            }
-        };
+    // Capture artifacts with retry (best-effort)
+    let config = RetryConfig::default();
+    let skill_name_ref = &skill_name;
+    let result = retry_with_backoff(
+        &config,
+        || {
+            let conn = db.0.lock().map_err(|e| format!("DB lock failed: {}", e))?;
+            capture_artifacts_inner(
+                &conn,
+                skill_name_ref,
+                step_id,
+                &workspace_path,
+                skills_path.as_deref(),
+            )
+        },
+        |attempt, max, error, delay_ms| {
+            log::warn!(
+                "Retry {attempt}/{max} for artifact capture (skill: {skill_name_ref}, step: {step_id}): {error} — retrying in {delay_ms}ms"
+            );
+        },
+    );
 
-        match capture_artifacts_inner(
-            &conn,
-            &skill_name,
-            step_id,
-            &workspace_path,
-            skills_path.as_deref(),
-        ) {
-            Ok(artifacts) => {
-                log::info!(
-                    "Captured {} artifact(s) on error for skill '{}', step {}",
-                    artifacts.len(),
-                    skill_name,
-                    step_id
-                );
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to capture artifacts on error for skill '{}', step {}: {}",
-                    skill_name,
-                    step_id,
-                    e
-                );
-            }
+    match result {
+        Ok(artifacts) => {
+            log::info!(
+                "Captured {} artifact(s) on error for skill '{}', step {}",
+                artifacts.len(),
+                skill_name,
+                step_id
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "Failed to capture artifacts after {} attempts for skill '{}', step {}: {}",
+                config.max_attempts,
+                skill_name,
+                step_id,
+                e
+            );
         }
     }
 }
@@ -2932,5 +2991,88 @@ mod tests {
         // the parse_agent_id function which is the first thing capture_artifacts_on_error does
         assert!(parse_agent_id("invalid-agent-id").is_none());
         assert!(parse_agent_id("").is_none());
+    }
+
+    // --- retry_with_backoff tests ---
+
+    #[test]
+    fn test_retry_succeeds_on_first_attempt() {
+        let config = RetryConfig { max_attempts: 3, delays_ms: vec![100, 200, 300] };
+        let mut retries = Vec::new();
+        let result: Result<&str, String> = retry_with_backoff(
+            &config,
+            || Ok("success"),
+            |attempt, max, _err, delay| { retries.push((attempt, max, delay)); },
+        );
+        assert_eq!(result.unwrap(), "success");
+        assert!(retries.is_empty(), "No retries should occur on first success");
+    }
+
+    #[test]
+    fn test_retry_succeeds_on_second_attempt() {
+        let config = RetryConfig { max_attempts: 3, delays_ms: vec![10, 20, 30] }; // short delays for test speed
+        let call_count = std::cell::Cell::new(0u32);
+        let mut retries = Vec::new();
+        let result: Result<&str, String> = retry_with_backoff(
+            &config,
+            || {
+                let count = call_count.get() + 1;
+                call_count.set(count);
+                if count < 2 {
+                    Err("transient error".to_string())
+                } else {
+                    Ok("recovered")
+                }
+            },
+            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
+        );
+        assert_eq!(result.unwrap(), "recovered");
+        assert_eq!(call_count.get(), 2);
+        assert_eq!(retries.len(), 1);
+        assert_eq!(retries[0].0, 1); // attempt 1 failed
+        assert_eq!(retries[0].1, 3); // max 3
+        assert_eq!(retries[0].3, 10); // first delay
+    }
+
+    #[test]
+    fn test_retry_exhausts_all_attempts() {
+        let config = RetryConfig { max_attempts: 3, delays_ms: vec![10, 20, 30] };
+        let call_count = std::cell::Cell::new(0u32);
+        let mut retries = Vec::new();
+        let result: Result<(), String> = retry_with_backoff(
+            &config,
+            || {
+                call_count.set(call_count.get() + 1);
+                Err(format!("fail #{}", call_count.get()))
+            },
+            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "fail #3"); // last error returned
+        assert_eq!(call_count.get(), 3);
+        // on_retry called for attempts 1 and 2 (before retries), not for the final failure
+        assert_eq!(retries.len(), 2);
+        assert_eq!(retries[0].3, 10);  // first delay
+        assert_eq!(retries[1].3, 20);  // second delay
+    }
+
+    #[test]
+    fn test_retry_single_attempt_no_retry() {
+        let config = RetryConfig { max_attempts: 1, delays_ms: vec![] };
+        let mut retries = Vec::new();
+        let result: Result<(), String> = retry_with_backoff(
+            &config,
+            || Err("only one try".to_string()),
+            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
+        );
+        assert_eq!(result.unwrap_err(), "only one try");
+        assert!(retries.is_empty(), "No retry callback for single-attempt config");
+    }
+
+    #[test]
+    fn test_retry_default_config() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_attempts, 3);
+        assert_eq!(config.delays_ms, vec![100, 200, 300]);
     }
 }
