@@ -617,7 +617,8 @@ impl SidecarPool {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("[sidecar-stdout:{}] {}", skill_name_stdout, line);
+                // Raw stdout lines are captured in per-request JSONL transcripts
+                // ({cwd}/{skill_name}/logs/) — no need to duplicate in the app log.
 
                 // Wrap per-line processing in catch_unwind so a panic in JSON
                 // parsing or message routing doesn't kill the reader silently.
@@ -902,10 +903,6 @@ impl SidecarPool {
                     let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                     let mut logs = self.request_logs.lock().await;
                     logs.insert(agent_id.to_string(), log_handle);
-                    log::debug!(
-                        "JSONL transcript: {}",
-                        log_path.display(),
-                    );
                 }
                 Err(e) => {
                     log::warn!(
