@@ -46,7 +46,10 @@ pub fn build_log_plugin() -> tauri_plugin_log::Builder {
             }),
             Target::new(TargetKind::Stderr),
         ])
-        .level(log::LevelFilter::Info)
+        // Set the plugin filter wide open — actual filtering is done by
+        // `log::set_max_level()` in `set_log_level()`, which is called
+        // during setup and whenever the user changes the setting.
+        .level(log::LevelFilter::Debug)
         .max_file_size(50_000_000) // 50 MB safety cap
 }
 
