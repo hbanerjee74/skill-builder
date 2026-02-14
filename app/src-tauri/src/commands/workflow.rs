@@ -338,6 +338,7 @@ fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &s
     format!("{}-{}", skill_type, phase)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     _prompt_file: &str,
     output_file: &str,

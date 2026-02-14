@@ -34,7 +34,6 @@ import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningReview } from "@/components/reasoning-review";
 import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
-import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
@@ -201,8 +200,7 @@ export default function WorkflowPage() {
   // Confirmation dialog for resetting steps with partial output
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Target step for reset confirmation dialog (when clicking a prior step)
-  const [resetTarget, setResetTarget] = useState<number | null>(null);
+
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
