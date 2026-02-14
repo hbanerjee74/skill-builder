@@ -198,6 +198,9 @@ fn spawn_heartbeat_task(
             // Wait 30 seconds between heartbeat pings
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
+            // Record time just before sending ping so we can check if pong arrived after it
+            let ping_sent_at = tokio::time::Instant::now();
+
             // Send ping to sidecar stdin
             let write_result = {
                 let mut stdin_guard = stdin.lock().await;
@@ -223,17 +226,16 @@ fn spawn_heartbeat_task(
             // Wait 5 seconds for pong response
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-            // Check if pong was received recently
+            // Check if pong was received after we sent the ping
             let last = {
                 let guard = last_pong.lock().await;
                 *guard
             };
-            let elapsed = last.elapsed();
-            if elapsed > std::time::Duration::from_secs(5) {
+            if last < ping_sent_at {
+                // No pong received since we sent the ping — zombie
                 log::warn!(
-                    "Zombie sidecar detected for '{}': no pong in {:.1}s — removing from pool",
+                    "Zombie sidecar detected for '{}': no pong within 5s — removing from pool",
                     skill_name,
-                    elapsed.as_secs_f64()
                 );
                 remove_and_cleanup_sidecar(&pool, &skill_name).await;
                 break;
@@ -864,13 +866,19 @@ impl SidecarPool {
             sidecar.stderr_task.abort();
             sidecar.heartbeat_task.abort();
 
-            // 2. Now safely emit agent-shutdown for all pending requests and clear them
+            // 2. Now safely emit agent-shutdown for pending requests belonging to THIS skill only
             {
                 let mut pending = self.pending_requests.lock().await;
-                for agent_id in pending.iter() {
+                let to_shutdown: Vec<String> = pending
+                    .iter()
+                    .filter(|agent_id| agent_id.starts_with(&format!("{}-", skill_name)))
+                    .cloned()
+                    .collect();
+
+                for agent_id in &to_shutdown {
                     events::handle_agent_shutdown(app_handle, agent_id);
+                    pending.remove(agent_id);
                 }
-                pending.clear();
             }
 
             // Send shutdown message
