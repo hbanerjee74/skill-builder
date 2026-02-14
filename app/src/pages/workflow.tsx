@@ -1088,8 +1088,12 @@ export default function WorkflowPage() {
             </div>
           </div>
 
-          {/* Content area */}
-          <div className="flex flex-1 flex-col overflow-hidden p-4">
+          {/* Content area — reasoning/refinement/rerun/agent panels manage their own padding */}
+          <div className={`flex flex-1 flex-col overflow-hidden ${
+            stepConfig?.type === "reasoning" || stepConfig?.type === "refinement" || rerunStepId !== null || activeAgentId
+              ? ""
+              : "p-4"
+          }`}>
             {renderContent()}
           </div>
         </div>
