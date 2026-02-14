@@ -36,7 +36,7 @@ import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
@@ -157,9 +157,12 @@ export default function WorkflowPage() {
 
   // Safety-net cleanup: revert running state on unmount (e.g. if the
   // component is removed without going through the blocker dialog).
-  // Also shuts down the persistent sidecar for this skill.
+  // Also flushes buffered agent messages and shuts down the persistent sidecar.
   useEffect(() => {
     return () => {
+      // Flush any pending RAF-batched messages so they aren't lost
+      flushMessageBuffer();
+
       const store = useWorkflowStore.getState();
       if (store.isRunning) {
         if (store.steps[store.currentStep]?.status === "in_progress") {
@@ -250,7 +253,7 @@ export default function WorkflowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillName]);
 
-  // Reset state when moving to a new step
+  // Reset local UI state when moving to a new step (fires immediately)
   useEffect(() => {
     setHasPartialOutput(false);
     setReasoningPhase("not_started");
@@ -258,34 +261,34 @@ export default function WorkflowPage() {
     setErrorHasArtifacts(false);
   }, [currentStep]);
 
-  // Detect partial output from interrupted runs
+  // Consolidated step-artifact detection: partial output + error artifacts.
+  // Merges two formerly separate effects that both depended on steps/currentStep
+  // and each triggered async Tauri calls.
   useEffect(() => {
-    if (!workspacePath || !hydrated) return;
-    const cfg = STEP_CONFIGS[currentStep];
     const stepStatus = steps[currentStep]?.status;
-    if (!cfg?.outputFiles || stepStatus !== "pending") {
-      setHasPartialOutput(false);
-      return;
-    }
-    // Check if any artifact exists for this step — try SQLite first,
-    // then fall back to filesystem (handles interrupted runs where
-    // artifacts were written to disk but never captured to SQLite).
-    const path = cfg.outputFiles[0];
-    if (!path) return;
-    getArtifactContent(skillName, path)
-      .catch(() => null)
-      .then(async (artifact) => {
-        if (artifact?.content) return true;
-        const filePath = `${workspacePath}/${skillName}/${path}`;
-        return readFile(filePath).then((content) => !!content).catch(() => false);
-      })
-      .then((exists) => setHasPartialOutput(exists))
-      .catch(() => setHasPartialOutput(false));
-  }, [currentStep, steps, workspacePath, skillName, hydrated]);
 
-  // Check for partial artifacts when step is in error state
-  useEffect(() => {
-    const stepStatus = steps[currentStep]?.status;
+    // --- Partial output from interrupted runs ---
+    if (workspacePath && hydrated) {
+      const cfg = STEP_CONFIGS[currentStep];
+      if (cfg?.outputFiles && stepStatus === "pending") {
+        const path = cfg.outputFiles[0];
+        if (path) {
+          getArtifactContent(skillName, path)
+            .catch(() => null)
+            .then(async (artifact) => {
+              if (artifact?.content) return true;
+              const filePath = `${workspacePath}/${skillName}/${path}`;
+              return readFile(filePath).then((content) => !!content).catch(() => false);
+            })
+            .then((exists) => setHasPartialOutput(exists))
+            .catch(() => setHasPartialOutput(false));
+        }
+      } else {
+        setHasPartialOutput(false);
+      }
+    }
+
+    // --- Error-state artifact check ---
     if (stepStatus === "error" && skillName) {
       hasStepArtifacts(skillName, currentStep)
         .then(setErrorHasArtifacts)
@@ -293,28 +296,36 @@ export default function WorkflowPage() {
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [steps, currentStep, skillName]);
+  }, [currentStep, steps, workspacePath, skillName, hydrated]);
 
-  // Persist workflow state to SQLite when steps change
+  // Debounced SQLite persistence — saves workflow state at most once per 300ms
+  // instead of firing synchronously on every step/status change.
   useEffect(() => {
     if (!domain || !hydrated) return;
     const store = useWorkflowStore.getState();
     if (store.skillName !== skillName) return;
 
-    const stepStatuses = store.steps.map((s) => ({
-      step_id: s.id,
-      status: s.status,
-    }));
+    const timer = setTimeout(() => {
+      const latestStore = useWorkflowStore.getState();
+      if (latestStore.skillName !== skillName) return;
 
-    const status = store.steps[store.currentStep]?.status === "in_progress"
-      ? "in_progress"
-      : store.steps.every((s) => s.status === "completed")
-        ? "completed"
-        : "pending";
+      const stepStatuses = latestStore.steps.map((s) => ({
+        step_id: s.id,
+        status: s.status,
+      }));
 
-    saveWorkflowState(skillName, domain, currentStep, status, stepStatuses, skillType ?? undefined).catch(
-      (err) => console.warn("Failed to persist workflow state:", err)
-    );
+      const status = latestStore.steps[latestStore.currentStep]?.status === "in_progress"
+        ? "in_progress"
+        : latestStore.steps.every((s) => s.status === "completed")
+          ? "completed"
+          : "pending";
+
+      saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
+        (err) => console.warn("Failed to persist workflow state:", err)
+      );
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [steps, currentStep, skillName, domain, skillType, hydrated]);
 
   // Load file content when entering a human review step.

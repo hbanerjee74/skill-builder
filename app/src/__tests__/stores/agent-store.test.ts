@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   useAgentStore,
+  flushMessageBuffer,
   type AgentMessage,
   formatModelName,
   formatTokenCount,
@@ -56,6 +57,7 @@ describe("useAgentStore", () => {
 
     useAgentStore.getState().addMessage("agent-1", msg1);
     useAgentStore.getState().addMessage("agent-1", msg2);
+    flushMessageBuffer();
 
     const state = useAgentStore.getState();
     expect(state.runs["agent-1"].messages).toHaveLength(2);
@@ -77,6 +79,7 @@ describe("useAgentStore", () => {
     };
 
     useAgentStore.getState().addMessage("agent-1", resultMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.tokenUsage).toEqual({ input: 1500, output: 500 });
@@ -98,6 +101,7 @@ describe("useAgentStore", () => {
     };
 
     useAgentStore.getState().addMessage("agent-1", resultMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.tokenUsage).toEqual({ input: 100, output: 0 });
@@ -117,6 +121,7 @@ describe("useAgentStore", () => {
     };
 
     useAgentStore.getState().addMessage("agent-1", resultMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     // No usage in raw, so tokenUsage stays undefined
@@ -153,6 +158,7 @@ describe("useAgentStore", () => {
     };
 
     useAgentStore.getState().addMessage("nonexistent", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["nonexistent"];
     expect(run).toBeDefined();
@@ -179,6 +185,7 @@ describe("useAgentStore", () => {
     };
     useAgentStore.getState().addMessage("agent-1", msg);
 
+    // clearRuns discards the buffer and resets state
     useAgentStore.getState().clearRuns();
 
     const state = useAgentStore.getState();
@@ -216,6 +223,7 @@ describe("useAgentStore", () => {
     };
 
     useAgentStore.getState().addMessage("agent-1", initMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.model).toBe("claude-sonnet-4-5-20250929");
@@ -233,6 +241,7 @@ describe("useAgentStore", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    // completeRun flushes the buffer internally before changing status
     useAgentStore.getState().completeRun("agent-2", true);
 
     const state = useAgentStore.getState();
@@ -318,6 +327,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextHistory).toHaveLength(1);
@@ -346,6 +356,7 @@ describe("context tracking", () => {
 
     useAgentStore.getState().addMessage("agent-1", msg1);
     useAgentStore.getState().addMessage("agent-1", msg2);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextHistory).toHaveLength(2);
@@ -374,6 +385,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextHistory).toHaveLength(1);
@@ -392,6 +404,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextHistory).toHaveLength(0);
@@ -417,6 +430,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextWindow).toBe(200000);
@@ -432,6 +446,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.contextWindow).toBe(200_000);
@@ -460,6 +475,7 @@ describe("context tracking", () => {
       timestamp: 1700000000000,
     };
     useAgentStore.getState().addMessage("agent-1", compactMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.compactionEvents).toHaveLength(1);
@@ -480,6 +496,7 @@ describe("context tracking", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", compactMsg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.compactionEvents).toHaveLength(1);
@@ -525,6 +542,7 @@ describe("context helper functions", () => {
 
     useAgentStore.getState().addMessage("agent-1", msg1);
     useAgentStore.getState().addMessage("agent-1", msg2);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(getLatestContextTokens(run)).toBe(50000);
@@ -540,6 +558,7 @@ describe("context helper functions", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(getContextUtilization(run)).toBe(50); // 100K / 200K = 50%
@@ -555,6 +574,7 @@ describe("context helper functions", () => {
       timestamp: Date.now(),
     };
     useAgentStore.getState().addMessage("agent-1", msg);
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(getContextUtilization(run)).toBe(100);
@@ -582,5 +602,74 @@ describe("formatModelName", () => {
 
   it("capitalizes unknown model names", () => {
     expect(formatModelName("custom")).toBe("Custom");
+  });
+});
+
+describe("RAF batching", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    vi.restoreAllMocks();
+  });
+
+  it("all buffered messages end up in state after addMessage calls", () => {
+    // Note: In tests, RAF fires synchronously so messages apply immediately.
+    // In production, they batch up and flush once per animation frame.
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    for (let i = 0; i < 5; i++) {
+      useAgentStore.getState().addMessage("agent-1", {
+        type: "text",
+        content: `msg-${i}`,
+        raw: {},
+        timestamp: Date.now(),
+      });
+    }
+
+    // All 5 messages should be present
+    expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(5);
+  });
+
+  it("completeRun preserves messages added before status change", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "text",
+      content: "buffered",
+      raw: {},
+      timestamp: Date.now(),
+    });
+
+    // completeRun should flush first, then set status
+    useAgentStore.getState().completeRun("agent-1", true);
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.messages).toHaveLength(1);
+    expect(run.messages[0].content).toBe("buffered");
+    expect(run.status).toBe("completed");
+  });
+
+  it("clearRuns discards buffered messages", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    // In tests, RAF fires synchronously so this message is applied immediately.
+    // clearRuns should still reset everything.
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "text",
+      content: "will be discarded",
+      raw: {},
+      timestamp: Date.now(),
+    });
+
+    useAgentStore.getState().clearRuns();
+
+    // After clear, runs should be empty
+    expect(useAgentStore.getState().runs).toEqual({});
+  });
+
+  it("flushMessageBuffer is safe to call when buffer is empty", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    // No messages added — flush should be a no-op
+    flushMessageBuffer();
+    expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(0);
   });
 });
