@@ -81,7 +81,7 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 6,
-    name: "Validate & Test",
+    name: "Validate",
     description: "Validate skill and run test prompts against it",
     status: "pending",
   },

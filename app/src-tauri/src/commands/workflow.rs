@@ -60,7 +60,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         }),
         6 => Ok(StepConfig {
             step_id: 6,
-            name: "Validate & Test".to_string(),
+            name: "Validate".to_string(),
             prompt_template: "validate-and-test.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -485,7 +485,7 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
         2 => Some(8_000),   // research-patterns-and-merge orchestrator
         4 => Some(32_000),  // reasoning — highest priority
         5 => Some(16_000),  // build — complex synthesis
-        6 => Some(8_000),   // validate & test
+        6 => Some(8_000),   // validate
         _ => None,
     }
 }
@@ -1148,7 +1148,7 @@ pub fn preview_step_reset(
         "Human Review",
         "Reasoning",
         "Build Skill",
-        "Validate & Test",
+        "Validate",
         "Refine",
     ];
 
@@ -1612,7 +1612,7 @@ mod tests {
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 6 (validate & test)
+        // Create files for step 6 (validate)
         std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
 
@@ -2006,7 +2006,7 @@ mod tests {
             (2, 50),   // research patterns
             (4, 100),  // reasoning
             (5, 120),  // build
-            (6, 120),  // validate & test
+            (6, 120),  // validate
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
