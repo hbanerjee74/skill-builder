@@ -248,7 +248,6 @@ Prompt it to:
 
 ## Error Handling
 
-- **If best practices file is missing:** Proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
 - **If a validator sub-agent fails:** Note the failure in the reporter prompt so it knows which file was not independently reviewed. The reporter should review that file itself as part of consolidation.
 - **If skill files are empty or incomplete:** Report to the coordinator that the skill output is not ready for validation/testing. List which files are missing or empty. Do not generate test prompts against incomplete content.
 - **If an evaluator sub-agent fails:** Check if the test result file was written. If missing, include the test in the reporter prompt as "NOT EVALUATED" with a note to manually review.
