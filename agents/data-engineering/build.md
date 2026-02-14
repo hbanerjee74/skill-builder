@@ -114,8 +114,8 @@ Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decision
 After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
 
 Prompt it to:
-1. Read `decisions.md` from the context directory
-2. Read `SKILL.md` and every file in `references/`
+1. Read `decisions.md` from the context directory [pass the full absolute path to the file]
+2. Read `SKILL.md` and every file in `references/` from the skill output directory
 3. Cross-check against `decisions.md` to ensure every decision is addressed somewhere
 4. Fix any gaps, inconsistencies, or missing content directly in the files
 5. Ensure SKILL.md's pointers accurately describe each reference file

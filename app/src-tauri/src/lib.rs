@@ -157,6 +157,7 @@ pub fn run() {
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,
             commands::workflow::get_agent_prompt,
+            commands::workflow::verify_step_output,
             commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::workspace::get_workspace_path,

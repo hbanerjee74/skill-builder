@@ -39,12 +39,13 @@ Spawn two sub-agents via the **Task tool** — both in the **same turn** so they
 
 Prompt it to:
 - **Before starting research:** Check if `research-entities.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
+- The context directory is: [pass the context directory path]
 - Research key entities and their relationships for the domain (e.g., for batch pipelines: stages, checkpoints, transformations; for streaming: sources, sinks, windows)
 - Identify 5-10 core entities, their cardinality relationships, and 3+ analysis patterns per entity
 - Research common analysis patterns (trend analysis, cohort analysis, forecasting)
 - Research cross-functional dependencies between entities
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
-- Write output to `research-entities.md` in the context directory
+- Write output to: `research-entities.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
@@ -52,12 +53,13 @@ Prompt it to:
 
 Prompt it to:
 - **Before starting research:** Check if `research-metrics.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
+- The context directory is: [pass the context directory path]
 - Research core metrics and KPIs that matter for this domain
 - Research how these metrics are typically calculated and what business rules affect them
 - Research metrics that vary significantly by industry vertical or company size
 - Research common pitfalls in metric calculation or interpretation
 - For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
-- Write output to `research-metrics.md` in the context directory
+- Write output to: `research-metrics.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
@@ -69,8 +71,9 @@ After both sub-agents return, spawn a fresh **merger** sub-agent via the Task to
 
 Prompt it to:
 1. Read the shared context file for the clarification file format
-2. Read `research-entities.md` and `research-metrics.md` from the context directory
-3. Merge into a single file at [the output file path provided by coordinator]:
+2. The context directory is: [pass the context directory path]
+3. Read `research-entities.md` and `research-metrics.md` from the context directory
+4. Merge into a single file at [the output file path provided by coordinator]:
    - Organize questions by topic section (entities, metrics, analysis patterns, etc.)
    - Deduplicate any overlapping questions
    - Number questions sequentially within each section (Q1, Q2, etc.)

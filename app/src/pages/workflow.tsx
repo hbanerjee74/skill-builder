@@ -34,7 +34,6 @@ import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningReview } from "@/components/reasoning-review";
 import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
-import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
@@ -49,6 +48,7 @@ import {
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
+  verifyStepOutput,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -200,8 +200,7 @@ export default function WorkflowPage() {
   // Confirmation dialog for resetting steps with partial output
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Target step for reset confirmation dialog (when clicking a prior step)
-  const [resetTarget, setResetTarget] = useState<number | null>(null);
+
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -424,7 +423,22 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
-      const finish = () => {
+      const finish = async () => {
+        // Verify the agent actually produced output files before marking complete
+        if (workspacePath && skillName) {
+          try {
+            const hasOutput = await verifyStepOutput(workspacePath, skillName, step);
+            if (!hasOutput) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(`Step ${step + 1} completed but produced no output files`, { duration: Infinity });
+              return;
+            }
+          } catch {
+            // Verification failed — proceed optimistically
+          }
+        }
+
         updateStepStatus(step, "completed");
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
@@ -553,12 +567,24 @@ export default function WorkflowPage() {
   };
 
   // Handle completion from the rerun chat
-  const handleRerunComplete = useCallback(() => {
+  const handleRerunComplete = useCallback(async () => {
     setRerunStepId(null);
-    // Ensure the step is marked as completed (handles error -> completed transition)
+    // Verify output before marking as completed
+    if (workspacePath && skillName) {
+      try {
+        const hasOutput = await verifyStepOutput(workspacePath, skillName, currentStep);
+        if (!hasOutput) {
+          updateStepStatus(currentStep, "error");
+          toast.error(`Step ${currentStep + 1} rerun produced no output files`, { duration: Infinity });
+          return;
+        }
+      } catch {
+        // Verification failed — proceed optimistically
+      }
+    }
     updateStepStatus(currentStep, "completed");
     toast.success(`Step ${currentStep + 1} rerun completed`);
-  }, [currentStep, updateStepStatus]);
+  }, [currentStep, updateStepStatus, workspacePath, skillName]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > workspace.
@@ -955,20 +981,7 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      <ResetStepDialog
-        targetStep={resetTarget}
-        workspacePath={workspacePath ?? ""}
-        skillName={skillName}
-        open={resetTarget !== null}
-        onOpenChange={(open) => { if (!open) setResetTarget(null) }}
-        onReset={() => {
-          if (resetTarget !== null) {
-            clearRuns();
-            rerunFromStep(resetTarget);
-            setResetTarget(null);
-          }
-        }}
-      />
+
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar
@@ -978,10 +991,6 @@ export default function WorkflowPage() {
             if (steps[id]?.status !== "completed") return;
             if (isRunning) {
               setPendingStepSwitch(id);
-              return;
-            }
-            if (id < currentStep) {
-              setResetTarget(id);
               return;
             }
             setCurrentStep(id);

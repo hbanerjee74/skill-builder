@@ -60,7 +60,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         }),
         6 => Ok(StepConfig {
             step_id: 6,
-            name: "Validate & Test".to_string(),
+            name: "Validate".to_string(),
             prompt_template: "validate-and-test.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
@@ -299,10 +299,42 @@ fn copy_md_files_recursive(src_dir: &Path, dest_dir: &Path, label: &str) -> Resu
     Ok(())
 }
 
+/// Read the `name:` field from an agent file's YAML frontmatter.
+/// Agent files live at `{workspace}/.claude/agents/{skill_type}-{phase}.md`.
+/// Returns `None` if the file doesn't exist or has no `name:` field.
+fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &str) -> Option<String> {
+    let agent_file = Path::new(workspace_path)
+        .join(".claude")
+        .join("agents")
+        .join(format!("{}-{}.md", skill_type, phase));
+    let content = std::fs::read_to_string(&agent_file).ok()?;
+    if !content.starts_with("---") {
+        return None;
+    }
+    let after_start = &content[3..];
+    let end = after_start.find("---")?;
+    let frontmatter = &after_start[..end];
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if let Some(name) = trimmed.strip_prefix("name:") {
+            let name = name.trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Derive agent name from skill type and prompt template.
-/// Example: skill_type="domain", prompt_template="research-concepts.md" → "domain-research-concepts"
-fn derive_agent_name(skill_type: &str, prompt_template: &str) -> String {
+/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
+/// this to register the agent). Falls back to `{skill_type}-{phase}` if the
+/// file is missing or has no name field.
+fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &str) -> String {
     let phase = prompt_template.trim_end_matches(".md");
+    if let Some(name) = read_agent_frontmatter_name(workspace_path, skill_type, phase) {
+        return name;
+    }
     format!("{}-{}", skill_type, phase)
 }
 
@@ -320,7 +352,11 @@ fn build_prompt(
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
-    let context_dir = skill_dir.join("context");
+    let context_dir = if let Some(sp) = skills_path {
+        Path::new(sp).join(skill_name).join("context")
+    } else {
+        skill_dir.join("context")
+    };
     let skill_output_dir = if let Some(sp) = skills_path {
         Path::new(sp).join(skill_name)
     } else {
@@ -332,7 +368,12 @@ fn build_prompt(
     let output_path = if output_file.starts_with("skill/") {
         skill_output_dir.join(output_file.trim_start_matches("skill/"))
     } else {
-        skill_dir.join(output_file)
+        // For context files, resolve relative to context_dir's parent (the skill target dir)
+        if output_file.starts_with("context/") {
+            context_dir.join(output_file.trim_start_matches("context/"))
+        } else {
+            skill_dir.join(output_file)
+        }
     };
 
     let mut prompt = format!(
@@ -445,7 +486,7 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
         2 => Some(8_000),   // research-patterns-and-merge orchestrator
         4 => Some(32_000),  // reasoning — highest priority
         5 => Some(16_000),  // build — complex synthesis
-        6 => Some(8_000),   // validate & test
+        6 => Some(8_000),   // validate
         _ => None,
     }
 }
@@ -677,7 +718,7 @@ async fn run_workflow_step_inner(
         prompt = format!("[RERUN MODE]\n\n{}", prompt);
     }
 
-    let agent_name = derive_agent_name(&settings.skill_type, &step.prompt_template);
+    let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
 
     // Determine the effective model for betas: debug_mode forces sonnet,
@@ -950,6 +991,43 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     }
 }
 
+/// Check if at least one expected output file exists for a completed step.
+/// Returns `true` if the step produced output, `false` if no files were written.
+/// Human review steps (1, 3) and refinement (7) always return `true` since they
+/// produce no files by design.
+#[tauri::command]
+pub fn verify_step_output(
+    workspace_path: String,
+    skill_name: String,
+    step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<bool, String> {
+    let files = get_step_output_files(step_id);
+    // Steps with no expected output files are always valid
+    if files.is_empty() {
+        return Ok(true);
+    }
+
+    let skills_path = read_skills_path(&db);
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+
+    let has_output = if step_id == 5 {
+        let output_dir = if let Some(ref sp) = skills_path {
+            Path::new(sp).join(&skill_name)
+        } else {
+            skill_dir.clone()
+        };
+        output_dir.join("SKILL.md").exists() || output_dir.join("references").is_dir()
+    } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+        let target_dir = Path::new(skills_path.as_ref().unwrap()).join(&skill_name);
+        files.iter().any(|f| target_dir.join(f).exists())
+    } else {
+        files.iter().any(|f| skill_dir.join(f).exists())
+    };
+
+    Ok(has_output)
+}
+
 /// Delete output files for a single step.
 /// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name or
 /// workspace_path/skill_name). For other steps, files are in workspace_path/skill_name.
@@ -1071,7 +1149,7 @@ pub fn preview_step_reset(
         "Human Review",
         "Reasoning",
         "Build Skill",
-        "Validate & Test",
+        "Validate",
         "Refine",
     ];
 
@@ -1116,118 +1194,7 @@ pub fn preview_step_reset(
     Ok(result)
 }
 
-// --- Artifact commands ---
 
-/// Parse agent_id (format: "{skill_name}-step{step_id}-{timestamp}") to extract skill_name and step_id.
-/// Returns None if the format doesn't match the expected pattern.
-#[allow(dead_code)]
-fn parse_agent_id(agent_id: &str) -> Option<(String, u32)> {
-    // agent_id format: {skill_name}-step{step_id}-{timestamp}
-    // We need to extract skill_name and step_id
-    // Example: "my-skill-step5-123456789"
-
-    // Find the last occurrence of "-step" to handle skill names with hyphens
-    if let Some(step_idx) = agent_id.rfind("-step") {
-        let skill_name = &agent_id[..step_idx];
-        let rest = &agent_id[step_idx + 5..]; // +5 to skip "-step"
-
-        // Find the next hyphen to separate step_id from timestamp
-        if let Some(hyphen_idx) = rest.find('-') {
-            let step_id_str = &rest[..hyphen_idx];
-            if let Ok(step_id) = step_id_str.parse::<u32>() {
-                return Some((skill_name.to_string(), step_id));
-            }
-        }
-    }
-    None
-}
-
-/// Configuration for retry with backoff.
-#[allow(dead_code)]
-pub struct RetryConfig {
-    /// Maximum number of attempts (including the first try).
-    pub max_attempts: u32,
-    /// Delay schedule in milliseconds for each retry (index 0 = delay before attempt 2, etc.).
-    pub delays_ms: Vec<u64>,
-}
-
-impl Default for RetryConfig {
-    fn default() -> Self {
-        Self {
-            max_attempts: 3,
-            delays_ms: vec![100, 200, 300],
-        }
-    }
-}
-
-/// Retry a fallible closure with backoff delays between attempts.
-/// Returns `Ok(T)` on the first successful attempt, or the last `Err` after all retries.
-/// Calls `on_retry(attempt, max_attempts, &error, delay_ms)` before each retry sleep.
-#[allow(dead_code)]
-pub fn retry_with_backoff<T, E, F, R>(
-    config: &RetryConfig,
-    mut operation: F,
-    mut on_retry: R,
-) -> Result<T, E>
-where
-    E: std::fmt::Display,
-    F: FnMut() -> Result<T, E>,
-    R: FnMut(u32, u32, &E, u64),
-{
-    let mut last_err = None;
-    for attempt in 1..=config.max_attempts {
-        match operation() {
-            Ok(val) => return Ok(val),
-            Err(e) => {
-                if attempt < config.max_attempts {
-                    let delay_idx = (attempt - 1) as usize;
-                    let delay_ms = config
-                        .delays_ms
-                        .get(delay_idx)
-                        .copied()
-                        .unwrap_or(300);
-                    on_retry(attempt, config.max_attempts, &e, delay_ms);
-                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-                }
-                last_err = Some(e);
-            }
-        }
-    }
-    Err(last_err.expect("max_attempts >= 1 so last_err is always set"))
-}
-
-/// After steps 0, 2, and 4, copy the relevant clarification/decision files
-/// from `{workspace_path}/{skill_name}/context/` to `{skills_path}/{skill_name}/context/`.
-/// Creates the destination directory if it doesn't exist.
-#[allow(dead_code)]
-fn copy_context_to_skill_output(
-    step_id: u32,
-    skill_dir: &Path,
-    skills_path: &str,
-    skill_name: &str,
-) -> Result<(), String> {
-    let context_files: &[&str] = match step_id {
-        0 => &["context/clarifications-concepts.md"],
-        2 => &["context/clarifications.md"],
-        4 => &["context/decisions.md"],
-        _ => return Ok(()),
-    };
-
-    let dest_context_dir = Path::new(skills_path).join(skill_name).join("context");
-    std::fs::create_dir_all(&dest_context_dir)
-        .map_err(|e| format!("Failed to create skill output context dir: {}", e))?;
-
-    for file in context_files {
-        let src = skill_dir.join(file);
-        if src.exists() {
-            let dest = Path::new(skills_path).join(skill_name).join(file);
-            std::fs::copy(&src, &dest)
-                .map_err(|e| format!("Failed to copy {} to skill output: {}", file, e))?;
-        }
-    }
-
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
@@ -1328,8 +1295,8 @@ mod tests {
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
         // output path for build step (skill/SKILL.md) should resolve to skills_path/skill_name/SKILL.md
         assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/SKILL.md"));
-        // context dir should still be in workspace
-        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
+        // context dir should now point to skills_path when configured
+        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/my-skills/my-skill/context"));
         // skill directory should still be workspace-based
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
     }
@@ -1352,8 +1319,8 @@ mod tests {
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
         assert!(!prompt.contains("follow the instructions"));
-        // output path should be in workspace for non-build steps
-        assert!(prompt.contains("Write output to /home/user/.vibedata/my-skill/context/decisions.md"));
+        // output path should be in skills_path for context files when skills_path is set
+        assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/context/decisions.md"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
@@ -1646,7 +1613,7 @@ mod tests {
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 6 (validate & test)
+        // Create files for step 6 (validate)
         std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
 
@@ -1755,22 +1722,36 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_agent_name() {
+    fn test_derive_agent_name_fallback() {
+        // Without deployed agent files, falls back to {skill_type}-{phase}
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().to_str().unwrap();
         assert_eq!(
-            derive_agent_name("domain", "research-concepts.md"),
+            derive_agent_name(ws, "domain", "research-concepts.md"),
             "domain-research-concepts"
         );
         assert_eq!(
-            derive_agent_name("platform", "build.md"),
+            derive_agent_name(ws, "platform", "build.md"),
             "platform-build"
         );
+    }
+
+    #[test]
+    fn test_derive_agent_name_reads_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().to_str().unwrap();
+        let agents_dir = tmp.path().join(".claude").join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        // Write an agent file with a frontmatter name that differs from the filename
+        std::fs::write(
+            agents_dir.join("data-engineering-research-patterns-and-merge.md"),
+            "---\nname: de-research-patterns-and-merge\nmodel: sonnet\n---\n# Agent\n",
+        ).unwrap();
+
         assert_eq!(
-            derive_agent_name("source", "validate.md"),
-            "source-validate"
-        );
-        assert_eq!(
-            derive_agent_name("data-engineering", "research-patterns-and-merge.md"),
-            "data-engineering-research-patterns-and-merge"
+            derive_agent_name(ws, "data-engineering", "research-patterns-and-merge.md"),
+            "de-research-patterns-and-merge"
         );
     }
 
@@ -1827,98 +1808,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(content, "# Domain Research");
-    }
-
-    // --- copy_context_to_skill_output tests ---
-
-    #[test]
-    fn test_copy_context_step0_copies_clarifications_concepts() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications-concepts.md"),
-            "# Concepts",
-        )
-        .unwrap();
-
-        copy_context_to_skill_output(0, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        let dest = skills.join("my-skill").join("context").join("clarifications-concepts.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Concepts");
-    }
-
-    #[test]
-    fn test_copy_context_step2_copies_merged_clarifications() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications.md"),
-            "# Merged",
-        )
-        .unwrap();
-
-        copy_context_to_skill_output(2, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        let dest = skills.join("my-skill").join("context").join("clarifications.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Merged");
-    }
-
-    #[test]
-    fn test_copy_context_step4_copies_decisions() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        let skill_dir = workspace.join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        std::fs::write(
-            skill_dir.join("context/decisions.md"),
-            "# Decisions",
-        )
-        .unwrap();
-
-        copy_context_to_skill_output(4, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        let dest = skills.join("my-skill").join("context").join("decisions.md");
-        assert!(dest.exists());
-        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "# Decisions");
-    }
-
-    #[test]
-    fn test_copy_context_step5_is_noop() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        let skill_dir = tmp.path().join("workspace").join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-
-        // Step 5 (build) should not copy context files
-        copy_context_to_skill_output(5, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        // No context dir should be created in skills output
-        assert!(!skills.join("my-skill").join("context").exists());
-    }
-
-    #[test]
-    fn test_copy_context_skips_missing_source_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        let skill_dir = tmp.path().join("workspace").join("my-skill");
-        // Create context dir but NOT the expected file
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-
-        // Should not error even though the source file doesn't exist
-        copy_context_to_skill_output(0, &skill_dir, skills.to_str().unwrap(), "my-skill").unwrap();
-
-        // Context dir is created but file doesn't exist
-        assert!(skills.join("my-skill").join("context").exists());
-        assert!(!skills.join("my-skill").join("context").join("clarifications-concepts.md").exists());
     }
 
     // --- build_prompt skill output context path tests ---
@@ -2118,7 +2007,7 @@ mod tests {
             (2, 50),   // research patterns
             (4, 100),  // reasoning
             (5, 120),  // build
-            (6, 120),  // validate & test
+            (6, 120),  // validate
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2367,128 +2256,6 @@ mod tests {
         assert_eq!(betas, None);
     }
 
-    #[test]
-    fn test_parse_agent_id_valid() {
-        // Standard format
-        let (skill_name, step_id) = parse_agent_id("my-skill-step5-123456789").unwrap();
-        assert_eq!(skill_name, "my-skill");
-        assert_eq!(step_id, 5);
-
-        // Skill name with hyphens
-        let (skill_name, step_id) = parse_agent_id("my-cool-skill-step0-987654321").unwrap();
-        assert_eq!(skill_name, "my-cool-skill");
-        assert_eq!(step_id, 0);
-
-        // Different step IDs
-        let (skill_name, step_id) = parse_agent_id("test-step2-111111111").unwrap();
-        assert_eq!(skill_name, "test");
-        assert_eq!(step_id, 2);
-
-        let (skill_name, step_id) = parse_agent_id("test-step6-222222222").unwrap();
-        assert_eq!(skill_name, "test");
-        assert_eq!(step_id, 6);
-    }
-
-    #[test]
-    fn test_parse_agent_id_invalid() {
-        // Missing step marker
-        assert!(parse_agent_id("my-skill-123456789").is_none());
-
-        // Invalid step ID (not a number)
-        assert!(parse_agent_id("my-skill-stepX-123456789").is_none());
-
-        // Missing timestamp
-        assert!(parse_agent_id("my-skill-step5").is_none());
-
-        // Empty string
-        assert!(parse_agent_id("").is_none());
-
-        // Wrong format
-        assert!(parse_agent_id("invalid-format").is_none());
-    }
-
-    // --- retry_with_backoff tests ---
-
-    #[test]
-    fn test_retry_succeeds_on_first_attempt() {
-        let config = RetryConfig { max_attempts: 3, delays_ms: vec![100, 200, 300] };
-        let mut retries = Vec::new();
-        let result: Result<&str, String> = retry_with_backoff(
-            &config,
-            || Ok("success"),
-            |attempt, max, _err, delay| { retries.push((attempt, max, delay)); },
-        );
-        assert_eq!(result.unwrap(), "success");
-        assert!(retries.is_empty(), "No retries should occur on first success");
-    }
-
-    #[test]
-    fn test_retry_succeeds_on_second_attempt() {
-        let config = RetryConfig { max_attempts: 3, delays_ms: vec![10, 20, 30] }; // short delays for test speed
-        let call_count = std::cell::Cell::new(0u32);
-        let mut retries = Vec::new();
-        let result: Result<&str, String> = retry_with_backoff(
-            &config,
-            || {
-                let count = call_count.get() + 1;
-                call_count.set(count);
-                if count < 2 {
-                    Err("transient error".to_string())
-                } else {
-                    Ok("recovered")
-                }
-            },
-            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
-        );
-        assert_eq!(result.unwrap(), "recovered");
-        assert_eq!(call_count.get(), 2);
-        assert_eq!(retries.len(), 1);
-        assert_eq!(retries[0].0, 1); // attempt 1 failed
-        assert_eq!(retries[0].1, 3); // max 3
-        assert_eq!(retries[0].3, 10); // first delay
-    }
-
-    #[test]
-    fn test_retry_exhausts_all_attempts() {
-        let config = RetryConfig { max_attempts: 3, delays_ms: vec![10, 20, 30] };
-        let call_count = std::cell::Cell::new(0u32);
-        let mut retries = Vec::new();
-        let result: Result<(), String> = retry_with_backoff(
-            &config,
-            || {
-                call_count.set(call_count.get() + 1);
-                Err(format!("fail #{}", call_count.get()))
-            },
-            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
-        );
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "fail #3"); // last error returned
-        assert_eq!(call_count.get(), 3);
-        // on_retry called for attempts 1 and 2 (before retries), not for the final failure
-        assert_eq!(retries.len(), 2);
-        assert_eq!(retries[0].3, 10);  // first delay
-        assert_eq!(retries[1].3, 20);  // second delay
-    }
-
-    #[test]
-    fn test_retry_single_attempt_no_retry() {
-        let config = RetryConfig { max_attempts: 1, delays_ms: vec![] };
-        let mut retries = Vec::new();
-        let result: Result<(), String> = retry_with_backoff(
-            &config,
-            || Err("only one try".to_string()),
-            |attempt, max, err, delay| { retries.push((attempt, max, err.clone(), delay)); },
-        );
-        assert_eq!(result.unwrap_err(), "only one try");
-        assert!(retries.is_empty(), "No retry callback for single-attempt config");
-    }
-
-    #[test]
-    fn test_retry_default_config() {
-        let config = RetryConfig::default();
-        assert_eq!(config.max_attempts, 3);
-        assert_eq!(config.delays_ms, vec![100, 200, 300]);
-    }
 
     #[test]
     fn test_workspace_already_copied_returns_false_for_unknown() {

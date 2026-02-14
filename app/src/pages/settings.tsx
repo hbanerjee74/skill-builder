@@ -416,12 +416,12 @@ export default function SettingsPage() {
           <CardTitle>Debug Mode</CardTitle>
           <CardDescription>
             Run the full workflow unattended using Sonnet for all agents.
-            Human review steps auto-complete, validate and test steps are skipped.
+            Human review steps auto-complete, validate steps are skipped.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-            <Label htmlFor="debug-mode">Unattended workflow (Sonnet, skip validate/test)</Label>
+            <Label htmlFor="debug-mode">Unattended workflow (Sonnet, skip validate)</Label>
             <Switch
               id="debug-mode"
               checked={debugMode}

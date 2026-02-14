@@ -236,7 +236,7 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step 6 (Validate & Test -- not yet 100%)", () => {
+  it("returns false for step 6 (Validate -- not yet 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(false);
   });

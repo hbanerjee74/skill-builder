@@ -143,7 +143,7 @@ describe("useWorkflowStore", () => {
     expect(state.steps[3].name).toBe("Human Review");
     expect(state.steps[4].name).toBe("Reasoning");
     expect(state.steps[5].name).toBe("Build Skill");
-    expect(state.steps[6].name).toBe("Validate & Test");
+    expect(state.steps[6].name).toBe("Validate");
     expect(state.steps[7].name).toBe("Refine");
   });
 

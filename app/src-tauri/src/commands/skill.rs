@@ -120,7 +120,16 @@ fn create_skill_inner(
         }
     }
 
-    fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
+    if let Some(sp) = skills_path {
+        // Workspace dir is a marker for reconcile; context lives in skills_path
+        fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+        let skill_output = Path::new(sp).join(name);
+        fs::create_dir_all(skill_output.join("context")).map_err(|e| e.to_string())?;
+        fs::create_dir_all(skill_output.join("references")).map_err(|e| e.to_string())?;
+    } else {
+        // No skills_path — workspace holds everything including context
+        fs::create_dir_all(base.join("context")).map_err(|e| e.to_string())?;
+    }
 
     let skill_type = skill_type.unwrap_or("domain");
 
@@ -661,10 +670,13 @@ mod tests {
         );
         assert!(result.is_ok());
 
-        // Verify the skill was created in the workspace
+        // Verify the workspace working directory was created
         assert!(Path::new(workspace).join("new-skill").exists());
-        assert!(Path::new(workspace).join("new-skill").join("context").exists());
-        // workflow.md is no longer created — DB is the single source of truth
+
+        // Verify skill output directories were created in skills_path
+        let skill_output = Path::new(skills_path).join("new-skill");
+        assert!(skill_output.join("context").exists());
+        assert!(skill_output.join("references").exists());
     }
 
     #[test]

@@ -37,8 +37,7 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 ## Phase 1: Inventory and Prepare
 
-1. Fetch best practices: `https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices`
-   - If fetch fails: retry once. If still fails, proceed using these fallback criteria: content should be actionable and specific, files should be self-contained, guidance should focus on domain knowledge not general LLM knowledge, and structure should use progressive disclosure.
+1. Read the best practices file from the references directory (it's deployed alongside the shared context file — look for `validate-best-practices.md` in the same `references/` folder).
 2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 3. Read the shared context file for domain definitions and content principles.
 4. Read `SKILL.md` at the skill output directory root and all files in `references/`. Understand:
@@ -87,7 +86,7 @@ This is the cross-cutting checker. Prompt it to:
 Prompt it to:
 - Read `SKILL.md` from [skill output directory path]
 - Read `decisions.md` from [context directory path] for context on what the skill should cover
-- Read the best practices URL for content guidelines
+- Read the best practices file (`validate-best-practices.md` from the references directory) for content guidelines
 - Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
 - Focus on content quality, not structure (the coverage-structure checker handles that)
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
@@ -100,7 +99,7 @@ Prompt it to:
 For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Read the specific reference file at [full path]
 - Read `decisions.md` from [context directory path] for context
-- Read the best practices URL for content guidelines
+- Read the best practices file (`validate-best-practices.md` from the references directory) for content guidelines
 - Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL
@@ -247,7 +246,6 @@ Prompt it to:
 
 ## Error Handling
 
-- **If best practices URL fetch fails (even after retry):** Use the fallback criteria listed in Phase 1. Do not skip validation — the structural and coverage checks are the most valuable parts and don't require the URL.
 - **If a validator sub-agent fails:** Note the failure in the reporter prompt so it knows which file was not independently reviewed. The reporter should review that file itself as part of consolidation.
 - **If skill files are empty or incomplete:** Report to the coordinator that the skill output is not ready for validation/testing. List which files are missing or empty. Do not generate test prompts against incomplete content.
 - **If an evaluator sub-agent fails:** Check if the test result file was written. If missing, include the test in the reporter prompt as "NOT EVALUATED" with a note to manually review.

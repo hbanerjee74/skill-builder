@@ -58,10 +58,6 @@ Debug with: `tail -f ~/.vibedata/my-skill/logs/step0-research-concepts-*.jsonl`
 
 Optional fields (`sessionId`, `betas`, `pathToClaudeCodeExecutable`) are omitted when not set. `sessionId` enables session resume (used by Step 4 reasoning). `pathToClaudeCodeExecutable` is auto-resolved by the Rust backend to the bundled SDK cli.js.
 
-### Parallel step execution
-
-Steps 6 (Validate) and 7 (Test) can run in parallel via a combined `validate-and-test` agent. The Rust backend spawns both agents concurrently and tracks them as separate entries in the sidecar pool. If one fails, the other is terminated via `pool.shutdown_skill()`.
-
 ### Model selection
 
 The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or Opus 4.6) that overrides the shared model tiers (see CLAUDE.md). The Rust backend passes the user's selected model to every sidecar invocation.

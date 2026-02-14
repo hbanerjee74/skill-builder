@@ -144,7 +144,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("auto-advances from step 5 (build) to step 6 (validate & test)", async () => {
+  it("auto-advances from step 5 (build) to step 6 (validate)", async () => {
     // Simulate: steps 0-4 completed, step 5 running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -172,7 +172,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 5 completed
     expect(wf.steps[5].status).toBe("completed");
 
-    // Auto-advances to step 6 (validate & test)
+    // Auto-advances to step 6 (validate)
     expect(wf.currentStep).toBe(6);
 
     // Step 6 is an agent step — stays pending (not waiting_for_user)
@@ -845,7 +845,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     // Enable debug mode
     useSettingsStore.getState().setSettings({ debugMode: true });
 
-    // Simulate: steps 0-5 completed, step 6 (validate & test) running
+    // Simulate: steps 0-5 completed, step 6 (validate) running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 6; i++) {
@@ -858,7 +858,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes step 6 (validate & test) — should skip refinement (7)
+    // Agent completes step 6 (validate) — should skip refinement (7)
     act(() => {
       useAgentStore.getState().completeRun("agent-validate-test", true);
     });
