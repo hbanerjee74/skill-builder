@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -19,7 +19,10 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
+import { useAuthStore } from "@/stores/auth-store"
 import { checkNode, getDataDir, type NodeStatus } from "@/lib/tauri"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -47,7 +50,9 @@ export default function SettingsPage() {
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const { user, isLoggedIn, logout } = useAuthStore()
 
   useEffect(() => {
     let cancelled = false
@@ -285,13 +290,40 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>GitHub Integration</CardTitle>
+          <CardTitle>GitHub Account</CardTitle>
           <CardDescription>
-            Sign in with GitHub to submit feedback as issues. OAuth-based authentication will be configured here.
+            Connect your GitHub account to submit feedback and report issues.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <p className="text-sm text-muted-foreground">GitHub OAuth login coming soon.</p>
+          {isLoggedIn && user ? (
+            <>
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src={user.avatar_url} alt={user.login} />
+                  <AvatarFallback>{user.login[0].toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">@{user.login}</span>
+                  {user.email && (
+                    <span className="text-sm text-muted-foreground">{user.email}</span>
+                  )}
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="w-fit" onClick={logout}>
+                <LogOut className="size-4" />
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">Not connected</p>
+              <Button variant="outline" size="sm" className="w-fit" onClick={() => setLoginDialogOpen(true)}>
+                <Github className="size-4" />
+                Sign in with GitHub
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -587,6 +619,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </div>
   )
 }

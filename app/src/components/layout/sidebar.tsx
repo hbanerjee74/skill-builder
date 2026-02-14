@@ -1,8 +1,20 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen, BookOpen } from "lucide-react";
+import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen, BookOpen, Github, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { GitHubLoginDialog } from "@/components/github-login-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
@@ -23,6 +35,9 @@ export function Sidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
   const { theme, setTheme } = useTheme();
+  const { user, isLoggedIn, logout } = useAuthStore();
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+
   // Initialize collapsed state from localStorage
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -128,7 +143,66 @@ export function Sidebar() {
             </button>
           ))}
         </div>
+
+        {/* Auth UI */}
+        {isLoggedIn && user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              {collapsed ? (
+                <button
+                  className="flex w-full items-center justify-center rounded-md py-2 transition-colors hover:bg-sidebar-accent/50"
+                  title={user.login}
+                >
+                  <Avatar size="sm">
+                    <AvatarImage src={user.avatar_url} alt={user.login} />
+                    <AvatarFallback>{user.login[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </button>
+              ) : (
+                <button className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground">
+                  <Avatar size="sm">
+                    <AvatarImage src={user.avatar_url} alt={user.login} />
+                    <AvatarFallback>{user.login[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm font-medium">{user.login}</span>
+                </button>
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align={collapsed ? "center" : "start"}>
+              <DropdownMenuLabel className="font-normal">
+                <span className="text-xs text-muted-foreground">{user.login}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => logout()}>
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : collapsed ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mx-auto"
+            onClick={() => setLoginDialogOpen(true)}
+            title="Sign in with GitHub"
+          >
+            <Github className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 px-3 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+            onClick={() => setLoginDialogOpen(true)}
+          >
+            <Github className="size-4" />
+            Sign in
+          </Button>
+        )}
       </div>
+
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </aside>
   );
 }
