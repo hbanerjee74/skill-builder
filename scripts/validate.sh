@@ -46,7 +46,7 @@ SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research
 
 # Type-specific agents: each type dir has 6 agents
 TYPE_DIRS="domain platform source data-engineering"
-TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate:sonnet test:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
+TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
 
 # Build full list: path:expected_name:expected_model
 ALL_AGENTS="$SHARED_AGENTS"
