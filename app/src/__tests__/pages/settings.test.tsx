@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 
 import type { AppSettings } from "@/lib/types";
 
@@ -33,6 +34,10 @@ vi.mock("@/lib/tauri", () => ({
   githubPollForToken: vi.fn(),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
+}));
+
+vi.mock("@/components/github-login-dialog", () => ({
+  GitHubLoginDialog: () => null,
 }));
 
 // Import after mocks are set up
@@ -91,6 +96,8 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
 describe("SettingsPage", () => {
   beforeEach(() => {
     resetTauriMocks();
+    // Default to logged-out state
+    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
   });
 
   it("renders all card sections", async () => {
@@ -573,5 +580,39 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Not available")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open/i })).toBeDisabled();
+  });
+
+  it("shows sign in button when not logged in", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("GitHub Account")).toBeInTheDocument();
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sign in with GitHub/i })).toBeInTheDocument();
+  });
+
+  it("shows user info when logged in", async () => {
+    useAuthStore.setState({
+      user: { login: "octocat", avatar_url: "https://github.com/octocat.png", email: "octocat@github.com" },
+      isLoggedIn: true,
+      isLoading: false,
+    });
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("GitHub Account")).toBeInTheDocument();
+    expect(screen.getByText("@octocat")).toBeInTheDocument();
+    expect(screen.getByText("octocat@github.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sign Out/i })).toBeInTheDocument();
+    // Should NOT show "Not connected"
+    expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
 });
