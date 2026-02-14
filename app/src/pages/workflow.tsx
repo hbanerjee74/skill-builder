@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useBlocker } from "@tanstack/react-router";
+import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -49,6 +49,8 @@ import {
   readFile,
   cleanupSkillSidecar,
   hasStepArtifacts,
+  acquireLock,
+  releaseLock,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -92,6 +94,7 @@ const STEP_LABELS: Record<number, string> = {
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
+  const navigate = useNavigate();
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const debugMode = useSettingsStore((s) => s.debugMode);
@@ -151,6 +154,9 @@ export default function WorkflowPage() {
 
     // Fire-and-forget: shut down persistent sidecar for this skill
     cleanupSkillSidecar(skillName).catch(() => {});
+
+    // Fire-and-forget: release skill lock before leaving
+    releaseLock(skillName).catch(() => {});
 
     proceed?.();
   }, [proceed, skillName]);
@@ -253,7 +259,26 @@ export default function WorkflowPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillName]);
 
-  // Reset local UI state when moving to a new step (fires immediately)
+  // --- Skill lock management ---
+  // Acquire lock when entering workflow, release when leaving.
+  useEffect(() => {
+    let mounted = true;
+
+    acquireLock(skillName).catch((err) => {
+      if (mounted) {
+        toast.error(`Could not lock skill: ${err instanceof Error ? err.message : String(err)}`);
+        navigate({ to: "/" });
+      }
+    });
+
+    return () => {
+      mounted = false;
+      // Fire-and-forget: release lock on unmount
+      releaseLock(skillName).catch(() => {});
+    };
+  }, [skillName, navigate]);
+
+  // Reset state when moving to a new step
   useEffect(() => {
     setHasPartialOutput(false);
     setReasoningPhase("not_started");

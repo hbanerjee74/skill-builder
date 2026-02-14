@@ -14,8 +14,13 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     let app_dir = app.path().app_data_dir()?;
     fs::create_dir_all(&app_dir)?;
     let conn = Connection::open(app_dir.join("skill-builder.db"))?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+    conn.pragma_update(None, "busy_timeout", "5000")
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     run_migrations(&conn)?;
     run_add_skill_type_migration(&conn)?;
+    run_lock_table_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -123,6 +128,17 @@ fn run_add_skill_type_migration(conn: &Connection) -> Result<(), rusqlite::Error
         )?;
     }
     Ok(())
+}
+
+fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS skill_locks (
+            skill_name TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )
 }
 
 pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
@@ -646,6 +662,178 @@ pub fn get_imported_skill(
     }
 }
 
+// --- Skill Locks ---
+
+pub fn acquire_skill_lock(
+    conn: &Connection,
+    skill_name: &str,
+    instance_id: &str,
+    pid: u32,
+) -> Result<(), String> {
+    // Use BEGIN IMMEDIATE to prevent race conditions between instances
+    // both detecting a dead lock and trying to reclaim it simultaneously.
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| e.to_string())?;
+
+    let result = (|| -> Result<(), String> {
+        if let Some(existing) = get_skill_lock(conn, skill_name)? {
+            if existing.instance_id == instance_id {
+                return Ok(()); // Already locked by us
+            }
+            if !check_pid_alive(existing.pid) {
+                // Dead process — reclaim
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_name = ?1",
+                    [skill_name],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                return Err(format!(
+                    "Skill '{}' is being edited in another instance",
+                    skill_name
+                ));
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES (?1, ?2, ?3)",
+            rusqlite::params![skill_name, instance_id, pid as i64],
+        )
+        .map_err(|e| {
+            if e.to_string().contains("UNIQUE") {
+                format!(
+                    "Skill '{}' is being edited in another instance",
+                    skill_name
+                )
+            } else {
+                e.to_string()
+            }
+        })?;
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+    } else {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
+pub fn release_skill_lock(
+    conn: &Connection,
+    skill_name: &str,
+    instance_id: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM skill_locks WHERE skill_name = ?1 AND instance_id = ?2",
+        [skill_name, instance_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn release_all_instance_locks(
+    conn: &Connection,
+    instance_id: &str,
+) -> Result<u32, String> {
+    let count = conn
+        .execute(
+            "DELETE FROM skill_locks WHERE instance_id = ?1",
+            [instance_id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count as u32)
+}
+
+pub fn get_skill_lock(
+    conn: &Connection,
+    skill_name: &str,
+) -> Result<Option<crate::types::SkillLock>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_name = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row([skill_name], |row| {
+        Ok(crate::types::SkillLock {
+            skill_name: row.get(0)?,
+            instance_id: row.get(1)?,
+            pid: row.get::<_, i64>(2)? as u32,
+            acquired_at: row.get(3)?,
+        })
+    });
+
+    match result {
+        Ok(lock) => Ok(Some(lock)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+pub fn get_all_skill_locks(
+    conn: &Connection,
+) -> Result<Vec<crate::types::SkillLock>, String> {
+    let mut stmt = conn
+        .prepare("SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks")
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(crate::types::SkillLock {
+                skill_name: row.get(0)?,
+                instance_id: row.get(1)?,
+                pid: row.get::<_, i64>(2)? as u32,
+                acquired_at: row.get(3)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn reclaim_dead_locks(conn: &Connection) -> Result<u32, String> {
+    let locks = get_all_skill_locks(conn)?;
+    let mut reclaimed = 0u32;
+    for lock in locks {
+        if !check_pid_alive(lock.pid) {
+            conn.execute(
+                "DELETE FROM skill_locks WHERE skill_name = ?1",
+                [&lock.skill_name],
+            )
+            .map_err(|e| e.to_string())?;
+            reclaimed += 1;
+        }
+    }
+    Ok(reclaimed)
+}
+
+#[cfg(unix)]
+pub fn check_pid_alive(pid: u32) -> bool {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+    // Signal 0 checks if process exists without sending a signal
+    kill(Pid::from_raw(pid as i32), None).is_ok()
+}
+
+#[cfg(not(unix))]
+pub fn check_pid_alive(pid: u32) -> bool {
+    use std::process::Command;
+    // tasklist /FI "PID eq N" /NH outputs "INFO: No tasks are running..."
+    // when the PID doesn't exist, or a process row when it does.
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .output()
+        .map(|out| {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let trimmed = stdout.trim();
+            !trimmed.is_empty() && !trimmed.contains("No tasks")
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,6 +842,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
         conn
     }
 
@@ -1128,5 +1317,102 @@ mod tests {
         let run = get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.skill_type, "data-engineering");
         assert_eq!(run.current_step, 3);
+    }
+
+    // --- WAL and busy_timeout tests ---
+
+    #[test]
+    fn test_wal_mode_enabled() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "journal_mode", "WAL").unwrap();
+        let mode: String =
+            conn.pragma_query_value(None, "journal_mode", |row| row.get(0)).unwrap();
+        // In-memory DBs use "memory" journal mode, but the pragma still succeeds
+        assert!(mode == "wal" || mode == "memory");
+    }
+
+    #[test]
+    fn test_busy_timeout_set() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "busy_timeout", "5000").unwrap();
+        let timeout: i64 =
+            conn.pragma_query_value(None, "busy_timeout", |row| row.get(0)).unwrap();
+        assert_eq!(timeout, 5000);
+    }
+
+    // --- Skill Lock tests ---
+
+    #[test]
+    fn test_acquire_and_release_lock() {
+        let conn = create_test_db();
+        run_lock_table_migration(&conn).unwrap();
+        acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
+        let lock = get_skill_lock(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(lock.skill_name, "test-skill");
+        assert_eq!(lock.instance_id, "inst-1");
+        assert_eq!(lock.pid, 12345);
+
+        release_skill_lock(&conn, "test-skill", "inst-1").unwrap();
+        assert!(get_skill_lock(&conn, "test-skill").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_acquire_lock_conflict() {
+        let conn = create_test_db();
+        run_lock_table_migration(&conn).unwrap();
+        // Use the current PID so the lock appears "live"
+        let pid = std::process::id();
+        acquire_skill_lock(&conn, "test-skill", "inst-1", pid).unwrap();
+        let result = acquire_skill_lock(&conn, "test-skill", "inst-2", pid);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("being edited"));
+    }
+
+    #[test]
+    fn test_acquire_lock_idempotent_same_instance() {
+        let conn = create_test_db();
+        run_lock_table_migration(&conn).unwrap();
+        acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
+        // Acquiring again from the same instance should succeed
+        acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
+    }
+
+    #[test]
+    fn test_release_all_instance_locks() {
+        let conn = create_test_db();
+        run_lock_table_migration(&conn).unwrap();
+        acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
+        acquire_skill_lock(&conn, "skill-b", "inst-1", 12345).unwrap();
+        acquire_skill_lock(&conn, "skill-c", "inst-2", 67890).unwrap();
+
+        let count = release_all_instance_locks(&conn, "inst-1").unwrap();
+        assert_eq!(count, 2);
+
+        // inst-2's lock should remain
+        assert!(get_skill_lock(&conn, "skill-c").unwrap().is_some());
+        assert!(get_skill_lock(&conn, "skill-a").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_get_all_skill_locks() {
+        let conn = create_test_db();
+        run_lock_table_migration(&conn).unwrap();
+        acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
+        acquire_skill_lock(&conn, "skill-b", "inst-2", 67890).unwrap();
+
+        let locks = get_all_skill_locks(&conn).unwrap();
+        assert_eq!(locks.len(), 2);
+    }
+
+    #[test]
+    fn test_check_pid_alive_current_process() {
+        let pid = std::process::id();
+        assert!(check_pid_alive(pid));
+    }
+
+    #[test]
+    fn test_check_pid_alive_dead_process() {
+        // PID 99999999 almost certainly doesn't exist
+        assert!(!check_pid_alive(99999999));
     }
 }

@@ -181,6 +181,14 @@ pub struct OrphanSkill {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillLock {
+    pub skill_name: String,
+    pub instance_id: String,
+    pub pid: u32,
+    pub acquired_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReconciliationResult {
     pub orphans: Vec<OrphanSkill>,
     pub notifications: Vec<String>,

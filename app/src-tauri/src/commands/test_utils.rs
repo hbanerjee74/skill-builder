@@ -75,6 +75,12 @@ pub fn create_test_db() -> rusqlite::Connection {
             is_active INTEGER DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS skill_locks (
+            skill_name TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )
     .unwrap();

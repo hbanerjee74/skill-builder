@@ -79,6 +79,11 @@ const mockResponses: Record<string, unknown> = {
   cleanup_skill_sidecar: undefined,
   // Reconciliation
   reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0 },
+  // Skill locks
+  acquire_lock: undefined,
+  release_lock: undefined,
+  get_locked_skills: [],
+  check_lock: false,
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

@@ -15,13 +15,20 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Play, Tag, Trash2 } from "lucide-react"
+import { Download, Lock, Play, Tag, Trash2 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface SkillCardProps {
   skill: SkillSummary
+  isLocked?: boolean
   onContinue: (skill: SkillSummary) => void
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
@@ -116,6 +123,7 @@ function statusLabel(status: string | null): string {
 
 export default function SkillCard({
   skill,
+  isLocked,
   onContinue,
   onDelete,
   onDownload,
@@ -125,67 +133,91 @@ export default function SkillCard({
   const relativeTime = formatRelativeTime(skill.last_modified)
   const canDownload = isWorkflowComplete(skill)
 
+  const cardContent = (
+    <Card className={cn("flex flex-col", isLocked && "opacity-50 pointer-events-none")}>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-base">
+            {formatSkillName(skill.name)}
+          </CardTitle>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
+            <Badge variant={statusVariant(skill.status)}>
+              {statusLabel(skill.status)}
+            </Badge>
+          </div>
+        </div>
+        {skill.domain && (
+          <Badge variant="outline" className="w-fit text-xs">
+            {skill.domain}
+          </Badge>
+        )}
+        {skill.skill_type && (
+          <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType] || "")}>
+            {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
+          </Badge>
+        )}
+        {skill.tags && skill.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {skill.tags.map((tag) => (
+              <Badge key={tag} variant="secondary" className="text-xs">
+                {tag}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="mt-auto flex flex-col gap-2">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{skill.current_step || "Not started"}</span>
+          <span>{progress}%</span>
+        </div>
+        <Progress value={progress} />
+      </CardContent>
+      <CardFooter className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => onContinue(skill)}>
+            <Play className="size-3" />
+            Continue
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground hover:text-destructive"
+            aria-label="Delete skill"
+            onClick={() => onDelete(skill)}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
+        {relativeTime && (
+          <span className="text-xs text-muted-foreground">{relativeTime}</span>
+        )}
+      </CardFooter>
+    </Card>
+  )
+
+  if (isLocked) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="cursor-not-allowed">
+              {cardContent}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>This skill is being edited in another window</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <Card>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-2">
-              <CardTitle className="text-base">
-                {formatSkillName(skill.name)}
-              </CardTitle>
-              <Badge variant={statusVariant(skill.status)} className="shrink-0">
-                {statusLabel(skill.status)}
-              </Badge>
-            </div>
-            {skill.domain && (
-              <Badge variant="outline" className="w-fit text-xs">
-                {skill.domain}
-              </Badge>
-            )}
-            {skill.skill_type && (
-              <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType] || "")}>
-                {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
-              </Badge>
-            )}
-            {skill.tags && skill.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {skill.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{skill.current_step || "Not started"}</span>
-              <span>{progress}%</span>
-            </div>
-            <Progress value={progress} />
-          </CardContent>
-          <CardFooter className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button size="sm" onClick={() => onContinue(skill)}>
-                <Play className="size-3" />
-                Continue
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-muted-foreground hover:text-destructive"
-                aria-label="Delete skill"
-                onClick={() => onDelete(skill)}
-              >
-                <Trash2 className="size-3" />
-              </Button>
-            </div>
-            {relativeTime && (
-              <span className="text-xs text-muted-foreground">{relativeTime}</span>
-            )}
-          </CardFooter>
-        </Card>
+        {cardContent}
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onSelect={() => onEditTags?.(skill)}>

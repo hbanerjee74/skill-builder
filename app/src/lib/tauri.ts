@@ -222,6 +222,27 @@ export const githubGetUser = () =>
 export const githubLogout = () =>
   invoke<void>("github_logout");
 
+// --- Skill Locks ---
+
+export interface SkillLock {
+  skill_name: string;
+  instance_id: string;
+  pid: number;
+  acquired_at: string;
+}
+
+export const acquireLock = (skillName: string) =>
+  invoke<void>("acquire_lock", { skillName });
+
+export const releaseLock = (skillName: string) =>
+  invoke<void>("release_lock", { skillName });
+
+export const getLockedSkills = () =>
+  invoke<SkillLock[]>("get_locked_skills");
+
+export const checkLock = (skillName: string) =>
+  invoke<boolean>("check_lock", { skillName });
+
 // --- Agent Prompts ---
 
 export const getAgentPrompt = (skillType: string, phase: string) =>

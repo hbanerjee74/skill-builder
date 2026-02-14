@@ -11,10 +11,12 @@ const mockBlocker = vi.hoisted(() => ({
   reset: vi.fn(),
   status: "idle" as string,
 }));
+const mockNavigate = vi.hoisted(() => vi.fn());
 vi.mock("@tanstack/react-router", () => ({
   useParams: () => ({ skillName: "test-skill" }),
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useBlocker: () => mockBlocker,
+  useNavigate: () => mockNavigate,
 }));
 
 // Mock sonner — use vi.hoisted so the object is available in hoisted vi.mock factory
@@ -40,6 +42,8 @@ vi.mock("@/lib/tauri", () => ({
   saveArtifactContent: vi.fn(() => Promise.resolve()),
   cleanupSkillSidecar: vi.fn(() => Promise.resolve()),
   hasStepArtifacts: vi.fn(() => Promise.resolve(false)),
+  acquireLock: vi.fn(() => Promise.resolve()),
+  releaseLock: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle

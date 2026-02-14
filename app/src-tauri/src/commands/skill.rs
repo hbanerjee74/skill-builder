@@ -201,6 +201,58 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     crate::db::get_all_tags(&conn)
 }
 
+#[tauri::command]
+pub fn acquire_lock(
+    skill_name: String,
+    instance: tauri::State<'_, crate::InstanceInfo>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::acquire_skill_lock(&conn, &skill_name, &instance.id, instance.pid)
+}
+
+#[tauri::command]
+pub fn release_lock(
+    skill_name: String,
+    instance: tauri::State<'_, crate::InstanceInfo>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::release_skill_lock(&conn, &skill_name, &instance.id)
+}
+
+#[tauri::command]
+pub fn get_locked_skills(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<crate::types::SkillLock>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::reclaim_dead_locks(&conn)?;
+    crate::db::get_all_skill_locks(&conn)
+}
+
+#[tauri::command]
+pub fn check_lock(
+    skill_name: String,
+    instance: tauri::State<'_, crate::InstanceInfo>,
+    db: tauri::State<'_, Db>,
+) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    match crate::db::get_skill_lock(&conn, &skill_name)? {
+        Some(lock) => {
+            if lock.instance_id == instance.id {
+                Ok(false) // Locked by us, not locked from our perspective
+            } else if !crate::db::check_pid_alive(lock.pid) {
+                // Dead process — reclaim
+                crate::db::release_skill_lock(&conn, &skill_name, &lock.instance_id)?;
+                Ok(false)
+            } else {
+                Ok(true) // Locked by another live instance
+            }
+        }
+        None => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
