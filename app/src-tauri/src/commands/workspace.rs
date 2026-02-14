@@ -146,32 +146,22 @@ pub fn reconcile_on_startup(
                             ));
                         }
                     } else if disk_step > run.current_step {
-                        // Disk is ahead of DB. Distinguish stale DB from intentional
-                        // user navigation: if the DB already has completed step records
-                        // beyond current_step, the user navigated back deliberately.
-                        // Otherwise the DB is stale and needs advancing.
-                        let existing_steps = crate::db::get_workflow_steps(conn, &run.skill_name)?;
-                        let has_completed_beyond = existing_steps.iter().any(|s| {
-                            s.step_id > run.current_step && s.status == "completed"
-                        });
-
-                        if !has_completed_beyond {
-                            // Stale DB — advance current_step to match disk
-                            crate::db::save_workflow_run(
-                                conn,
-                                &run.skill_name,
-                                &run.domain,
-                                disk_step,
-                                "pending",
-                                &run.skill_type,
-                            )?;
-                            notifications.push(format!(
-                                "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                                run.skill_name, run.current_step, disk_step
-                            ));
-                        }
-                        // If user navigated back intentionally, leave current_step alone.
-                        // Step statuses are synced below regardless.
+                        // Disk is ahead of DB — advance current_step to match.
+                        // The reset dialog always deletes both files and DB step
+                        // records when navigating back, so disk ahead always means
+                        // the DB is stale (never intentional navigation).
+                        crate::db::save_workflow_run(
+                            conn,
+                            &run.skill_name,
+                            &run.domain,
+                            disk_step,
+                            "pending",
+                            &run.skill_type,
+                        )?;
+                        notifications.push(format!(
+                            "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
+                            run.skill_name, run.current_step, disk_step
+                        ));
                     }
 
                     // Mark steps with output on disk as completed.
@@ -903,33 +893,6 @@ mod tests {
         assert!(result.notifications[0].contains("advanced from step 0 to step 5"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 5);
-    }
-
-    #[test]
-    fn test_disk_ahead_intentional_navigation_preserves_current_step() {
-        // User was at step 5, completed it, then clicked back to step 2.
-        // DB at step 2 with steps 0-5 marked completed. Disk has output through step 5.
-        // Reconciler should NOT advance current_step.
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let conn = create_test_db();
-
-        crate::db::save_workflow_run(&conn, "my-skill", "sales", 2, "pending", "domain").unwrap();
-        for step in 0..=5i32 {
-            crate::db::save_workflow_step(&conn, "my-skill", step, "completed").unwrap();
-        }
-
-        create_skill_dir(tmp.path(), "my-skill", "sales");
-        for step in [0, 2, 4, 5] {
-            create_step_output(tmp.path(), "my-skill", step);
-        }
-
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
-
-        // Should NOT advance — user intentionally navigated back
-        assert!(result.notifications.is_empty());
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 2);
     }
 
     // --- Edge cases ---
