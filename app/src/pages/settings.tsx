@@ -391,6 +391,44 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Extended Context</CardTitle>
+          <CardDescription>
+            Enable 1M token context window for all agents. Requires a compatible API plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+            <Switch
+              id="extended-context"
+              checked={extendedContext}
+              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Thinking</CardTitle>
+          <CardDescription>
+            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
+            <Switch
+              id="extended-thinking"
+              checked={extendedThinking}
+              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Debug Mode</CardTitle>
           <CardDescription>
             Run the full workflow unattended using Sonnet for all agents.
@@ -473,44 +511,6 @@ export default function SettingsPage() {
               <ExternalLink className="size-4" />
               Open
             </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Context</CardTitle>
-          <CardDescription>
-            Enable 1M token context window for all agents. Requires a compatible API plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
-            <Switch
-              id="extended-context"
-              checked={extendedContext}
-              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Thinking</CardTitle>
-          <CardDescription>
-            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
-            <Switch
-              id="extended-thinking"
-              checked={extendedThinking}
-              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
-            />
           </div>
         </CardContent>
       </Card>
