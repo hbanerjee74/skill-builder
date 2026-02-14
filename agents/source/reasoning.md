@@ -4,7 +4,7 @@
 name: source-reasoning
 description: Analyzes PM responses to find gaps, contradictions, and implications, then produces decisions.md in a single pass. Called during Step 5.
 model: opus
-tools: Read, Write, Edit, Glob, Grep, Bash, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
 # Reasoning Agent

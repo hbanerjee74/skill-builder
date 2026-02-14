@@ -2,7 +2,7 @@
 name: {{NAME_PREFIX}}-validate-and-test
 description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Validate & Test Agent: Combined Best Practices Check + Skill Testing

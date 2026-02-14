@@ -4,7 +4,7 @@
 name: domain-research-concepts
 description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents. Called during Step 1 to research and generate domain concept clarification questions.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Research Agent: Domain Concepts & Metrics
