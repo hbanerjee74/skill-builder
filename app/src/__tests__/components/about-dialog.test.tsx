@@ -26,9 +26,9 @@ describe("AboutDialog", () => {
     });
   });
 
-  it("shows 'by Accelerate Data' text", () => {
+  it("shows Accelerate Data attribution", () => {
     render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
-    expect(screen.getByText("Accelerate Data")).toBeInTheDocument();
+    expect(screen.getByText("Website")).toBeInTheDocument();
   });
 
   it("shows app icon image", () => {
@@ -36,5 +36,30 @@ describe("AboutDialog", () => {
     const img = screen.getByAltText("Skill Builder");
     expect(img).toBeInTheDocument();
     expect(img).toHaveAttribute("src", "/icon-256.png");
+  });
+
+  it("shows Powered by Claude from Anthropic", () => {
+    render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Claude")).toBeInTheDocument();
+    expect(screen.getByText("Anthropic")).toBeInTheDocument();
+  });
+
+  it("shows disclaimer text", () => {
+    render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
+    expect(screen.getByText(/Experimental Software/)).toBeInTheDocument();
+    expect(screen.getByText(/without warranty/)).toBeInTheDocument();
+  });
+
+  it("shows copyright notice", () => {
+    render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
+    const year = new Date().getFullYear().toString();
+    expect(screen.getByText(new RegExp(`${year} Accelerate Data`))).toBeInTheDocument();
+  });
+
+  it("shows built-with credits", () => {
+    render(<AboutDialog open={true} onOpenChange={vi.fn()} />);
+    expect(screen.getByText("Tauri")).toBeInTheDocument();
+    expect(screen.getByText("React")).toBeInTheDocument();
+    expect(screen.getByText("Claude Agent SDK")).toBeInTheDocument();
   });
 });
