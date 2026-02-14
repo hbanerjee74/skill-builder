@@ -23,6 +23,9 @@ export function buildQueryOptions(
   return {
     ...agentField,
     ...modelField,
+    // Include the full Claude Code system prompt so the model knows how to
+    // use tools (Read, Write, Bash, Skill, etc.) and follows CC conventions.
+    systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
     // Load project settings (skill discovery, CLAUDE.md) and user settings
     // (MCP servers from ~/.claude/settings.json).
     settingSources: ['project' as const, 'user' as const],

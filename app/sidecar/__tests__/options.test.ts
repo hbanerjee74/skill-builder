@@ -22,6 +22,11 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("model");
   });
 
+  it("always includes claude_code system prompt preset", () => {
+    const opts = buildQueryOptions(makeConfig(), new AbortController());
+    expect(opts.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
+  });
+
   it("uses model when agentName is absent", () => {
     const config = makeConfig({ model: "claude-sonnet-4-20250514" });
     const ac = new AbortController();
