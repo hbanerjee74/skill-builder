@@ -86,6 +86,18 @@ export const resetWorkflowStep = (
   fromStepId: number,
 ) => invoke("reset_workflow_step", { workspacePath, skillName, fromStepId });
 
+export interface StepResetPreview {
+  step_id: number;
+  step_name: string;
+  files: string[];
+}
+
+export const previewStepReset = (
+  workspacePath: string,
+  skillName: string,
+  fromStepId: number,
+) => invoke<StepResetPreview[]>("preview_step_reset", { workspacePath, skillName, fromStepId });
+
 // --- Workflow State (SQLite) ---
 
 export interface WorkflowRunRow {

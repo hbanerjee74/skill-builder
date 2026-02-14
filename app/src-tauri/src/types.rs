@@ -222,6 +222,13 @@ pub enum GitHubAuthResult {
     Success { user: GitHubUser },
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StepResetPreview {
+    pub step_id: u32,
+    pub step_name: String,
+    pub files: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

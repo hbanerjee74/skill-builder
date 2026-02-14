@@ -153,6 +153,7 @@ pub fn run() {
             commands::workflow::run_review_step,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
+            commands::workflow::preview_step_reset,
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,
             commands::workflow::capture_step_artifacts,

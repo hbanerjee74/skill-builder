@@ -135,7 +135,7 @@ When you add, remove, or rename tests (including adding tests to existing files)
 ## Gotchas
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
-- **Parallel worktrees**: Set `DEV_PORT=<port>` to avoid conflicts (convention: `1000 + issue_number`).
+- **Parallel worktrees**: `npm run dev` auto-assigns a free port.
 - **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agents/templates/` or `agents/types/` instead, then run `./scripts/build-agents.sh`.
 
 ## Shared Components

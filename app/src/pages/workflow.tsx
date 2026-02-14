@@ -34,6 +34,7 @@ import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
 import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
+import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
@@ -204,6 +205,9 @@ export default function WorkflowPage() {
 
   // Confirmation dialog for resetting steps with partial output
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Target step for reset confirmation dialog (when clicking a prior step)
+  const [resetTarget, setResetTarget] = useState<number | null>(null);
 
   const stepConfig = STEP_CONFIGS[currentStep];
   const isHumanReviewStep = stepConfig?.type === "human";
@@ -979,6 +983,21 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
+      <ResetStepDialog
+        targetStep={resetTarget}
+        workspacePath={workspacePath ?? ""}
+        skillName={skillName}
+        open={resetTarget !== null}
+        onOpenChange={(open) => { if (!open) setResetTarget(null) }}
+        onReset={() => {
+          if (resetTarget !== null) {
+            clearRuns();
+            rerunFromStep(resetTarget);
+            setResetTarget(null);
+          }
+        }}
+      />
+
       <div className="flex h-full -m-6">
         <WorkflowSidebar
           steps={steps}
@@ -987,6 +1006,10 @@ export default function WorkflowPage() {
             if (steps[id]?.status !== "completed") return;
             if (isRunning) {
               setPendingStepSwitch(id);
+              return;
+            }
+            if (id < currentStep) {
+              setResetTarget(id);
               return;
             }
             setCurrentStep(id);
