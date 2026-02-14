@@ -13,6 +13,7 @@ import {
   MessageCircleQuestion,
   CheckCircle2,
   XCircle,
+  Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -43,6 +44,8 @@ function getToolIcon(toolName: string) {
       return <Globe className="size-3.5" />;
     case "Task":
       return <GitBranch className="size-3.5" />;
+    case "Skill":
+      return <Sparkles className="size-3.5" />;
     default:
       return <Terminal className="size-3.5" />;
   }
@@ -110,6 +113,9 @@ function getToolSummary(message: AgentMessage): ToolSummaryResult | null {
   }
   if (name === "Task" && input?.description) {
     return result(`Sub-agent: ${truncate(String(input.description), 60)}`);
+  }
+  if (name === "Skill" && input?.skill) {
+    return result(`Skill: ${String(input.skill)}`);
   }
   if (name === "NotebookEdit" && input?.notebook_path) {
     const path = String(input.notebook_path).split("/").pop();
@@ -432,7 +438,6 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     const tools = config.allowedTools as string[] | undefined;
     const model = config.model as string | undefined;
     const agentName = config.agentName as string | undefined;
-    const discoveredSkills = raw.discoveredSkills as string[] | undefined;
     return (
       <div className={`${wrapperClass} text-xs text-muted-foreground space-y-0.5`}>
         {agentName && <div><span className="font-medium">Agent:</span> {agentName}</div>}
@@ -443,16 +448,6 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
             {tools.map((t) => (
               <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
                 {t}
-              </Badge>
-            ))}
-          </div>
-        )}
-        {discoveredSkills && discoveredSkills.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="font-medium">Skills:</span>
-            {discoveredSkills.map((s) => (
-              <Badge key={s} variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-blue-400 text-blue-600 dark:text-blue-400">
-                {s}
               </Badge>
             ))}
           </div>
