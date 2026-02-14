@@ -38,15 +38,14 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 ## Phase 1: Inventory and Prepare
 
-1. Read the best practices file (`validate-best-practices.md` from the `references/` folder).
-2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
-3. Read `SKILL.md` at the skill output directory root and all files in `references/`. Understand:
+1. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
+2. Read `SKILL.md` at the skill output directory root and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
-4. **Count the files** — you'll need this to know how many sub-agents to spawn.
-5. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
+3. **Count the files** — you'll need this to know how many sub-agents to spawn.
+4. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
    - **Basic domain concepts** (2 prompts) — "What are the key entities in [domain]?"
    - **Silver layer modeling** (2 prompts) — "What silver layer tables do I need for [specific entity]?"
    - **Gold layer / metrics modeling** (2 prompts) — "How should I model [specific metric]?"
@@ -86,7 +85,7 @@ This is the cross-cutting checker. Prompt it to:
 Prompt it to:
 - Read `SKILL.md` from [skill output directory path]
 - Read `decisions.md` from [context directory path] for context on what the skill should cover
-- Read the best practices file (`validate-best-practices.md` from the references directory) for content guidelines
+- Review against the Skill Best Practices from your system instructions
 - Check: is the overview clear and actionable? Are trigger conditions well-defined? Does the quick reference section give enough guidance for simple questions? Are pointers to references accurate and descriptive?
 - Focus on content quality, not structure (the coverage-structure checker handles that)
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
@@ -99,7 +98,7 @@ Prompt it to:
 For EACH file in `references/`, spawn a sub-agent. Prompt each to:
 - Read the specific reference file at [full path]
 - Read `decisions.md` from [context directory path] for context
-- Read the best practices file (`validate-best-practices.md` from the references directory) for content guidelines
+- Review against the Skill Best Practices from your system instructions
 - Check: is the file self-contained for its topic? Does it focus on domain knowledge, not things LLMs already know? Is the content actionable and specific? Does it start with a one-line summary?
 - Score each section 1-5 on: actionability, specificity, domain depth, and self-containment
 - Write findings to `validation-<filename>.md` in the context directory with PASS/FAIL per criterion and specific improvement suggestions for any FAIL

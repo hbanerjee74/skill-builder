@@ -179,3 +179,69 @@ round: 2
 - If a new decision contradicts or refines an existing one, **replace** the old entry (keep the same D-number)
 - If a new decision is entirely new, **add** it at the end with the next number
 - The file should always read as a coherent, self-contained set of current decisions — no history, no "superseded by" notes
+
+---
+
+## Skill Best Practices
+
+> Used by validate agents to check skill quality. Embedded from platform.claude.com.
+
+### Core Principles
+
+**Concise is Key:** The context window is a public good. Only add context Claude doesn't already have. Challenge each piece of information: "Does Claude really need this?" "Can I assume Claude knows this?" "Does this paragraph justify its token cost?"
+
+**Set Appropriate Degrees of Freedom:** Match specificity to fragility. High freedom (text instructions) when multiple approaches are valid. Medium freedom (pseudocode) when a preferred pattern exists. Low freedom (specific scripts) when operations are fragile or consistency is critical.
+
+**Test with All Models You Plan to Use:** What works for Opus might need more detail for Haiku. Aim for instructions that work well with all target models.
+
+### Skill Structure
+
+- **Naming**: Use gerund form (verb + -ing), e.g., `processing-pdfs`. Lowercase letters, numbers, hyphens only (max 64 chars). Avoid vague names like `helper`, `utils`.
+- **Description**: Write in third person. Be specific and include key terms. Include what the Skill does AND when to use it. Max 1024 characters.
+- **Progressive Disclosure**: SKILL.md is the overview/table of contents. Keep body under 500 lines. Split into separate reference files when approaching limit. All reference files link one level deep from SKILL.md.
+- **Long Reference Files**: Include a table of contents at the top for files over 100 lines.
+
+### Content Guidelines
+
+- **Avoid time-sensitive information.** Use "old patterns" sections for deprecated approaches.
+- **Use consistent terminology.** Choose one term and stick with it throughout.
+
+### Common Patterns
+
+- **Template Pattern**: Provide output format templates. Strict for APIs/data formats, flexible with "adjust as needed" for guidance.
+- **Examples Pattern**: Provide input/output pairs when output quality depends on seeing examples.
+- **Conditional Workflow Pattern**: Guide through decision points with clear branching logic.
+- **Feedback Loops**: Run validator, fix errors, repeat.
+
+### Evaluation and Iteration
+
+1. **Identify gaps**: Run Claude on representative tasks without a Skill. Document failures.
+2. **Create evaluations**: Build three scenarios that test these gaps.
+3. **Establish baseline**: Measure performance without the Skill.
+4. **Write minimal instructions**: Just enough to address gaps and pass evaluations.
+5. **Iterate**: Execute evaluations, compare against baseline, refine.
+
+### Checklist for Effective Skills
+
+**Core Quality:**
+- Description is specific with key terms, includes what + when
+- SKILL.md body under 500 lines
+- Additional details in separate files (if needed)
+- No time-sensitive information
+- Consistent terminology throughout
+- Concrete examples (not abstract)
+- File references one level deep
+- Progressive disclosure used appropriately
+- Workflows have clear steps
+
+**Testing:**
+- At least three evaluations created
+- Tested with target models and real usage scenarios
+
+### Anti-patterns to Avoid
+
+- **Windows-style paths**: Always use forward slashes.
+- **Too many options**: Provide a default with an escape hatch.
+- **Deeply nested references**: Keep one level deep from SKILL.md.
+- **Vague descriptions**: Be specific about what + when.
+- **Over-explaining what Claude already knows**: Focus on domain-specific knowledge.
