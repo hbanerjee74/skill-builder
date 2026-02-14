@@ -3146,4 +3146,28 @@ mod tests {
         assert_eq!(config.max_attempts, 3);
         assert_eq!(config.delays_ms, vec![100, 200, 300]);
     }
+
+    #[test]
+    fn test_workspace_already_copied_returns_false_for_unknown() {
+        // Use a unique path to avoid interference from other tests
+        let path = format!("/tmp/test-workspace-unknown-{}", std::process::id());
+        assert!(!super::workspace_already_copied(&path));
+    }
+
+    #[test]
+    fn test_mark_workspace_copied_then_already_copied() {
+        let path = format!("/tmp/test-workspace-mark-{}", std::process::id());
+        assert!(!super::workspace_already_copied(&path));
+        super::mark_workspace_copied(&path);
+        assert!(super::workspace_already_copied(&path));
+    }
+
+    #[test]
+    fn test_workspace_copy_cache_is_per_workspace() {
+        let path_a = format!("/tmp/test-ws-a-{}", std::process::id());
+        let path_b = format!("/tmp/test-ws-b-{}", std::process::id());
+        super::mark_workspace_copied(&path_a);
+        assert!(super::workspace_already_copied(&path_a));
+        assert!(!super::workspace_already_copied(&path_b));
+    }
 }
