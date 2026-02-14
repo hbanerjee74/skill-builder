@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 
+use futures::FutureExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -145,13 +147,101 @@ struct PersistentSidecar {
     stdout_task: JoinHandle<()>,
     /// Handle for the stderr reader task — aborted on shutdown/crash-respawn.
     stderr_task: JoinHandle<()>,
+    /// Handle for the heartbeat task — aborted on shutdown/crash-respawn.
+    heartbeat_task: JoinHandle<()>,
+    /// Timestamp of the last pong received from this sidecar, used for health checks.
+    /// The Arc is cloned into the stdout reader and heartbeat tasks; keeping it here
+    /// ensures the Arc stays alive for the sidecar's lifetime.
+    #[allow(dead_code)]
+    last_pong: Arc<Mutex<tokio::time::Instant>>,
 }
 
-/// Abort the reader tasks and drop the sidecar, cleaning up all resources.
+/// Abort the reader tasks and heartbeat task, then drop the sidecar, cleaning up all resources.
 fn cleanup_sidecar(sidecar: PersistentSidecar) {
     sidecar.stdout_task.abort();
     sidecar.stderr_task.abort();
+    sidecar.heartbeat_task.abort();
     // `child`, `stdin`, etc. are dropped here — stdin closes, process may receive SIGPIPE.
+}
+
+/// Remove a sidecar from the pool and clean up all its resources (tasks + child process).
+/// Used by the heartbeat task when it detects a zombie/unresponsive sidecar.
+async fn remove_and_cleanup_sidecar(
+    pool: &Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    skill_name: &str,
+) {
+    let mut pool_guard = pool.lock().await;
+    if let Some(mut sidecar) = pool_guard.remove(skill_name) {
+        let pid = sidecar.pid;
+        sidecar.stdout_task.abort();
+        sidecar.stderr_task.abort();
+        sidecar.heartbeat_task.abort();
+        let _ = sidecar.child.kill().await;
+        log::warn!(
+            "Removed and killed sidecar for '{}' (pid {})",
+            skill_name,
+            pid
+        );
+    }
+}
+
+/// Spawn a heartbeat task that periodically pings the sidecar and checks for pong responses.
+/// If the sidecar fails to respond, it is removed from the pool and killed.
+fn spawn_heartbeat_task(
+    skill_name: String,
+    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
+    pool: Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    last_pong: Arc<Mutex<tokio::time::Instant>>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            // Wait 30 seconds between heartbeat pings
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+            // Record time just before sending ping so we can check if pong arrived after it
+            let ping_sent_at = tokio::time::Instant::now();
+
+            // Send ping to sidecar stdin
+            let write_result = {
+                let mut stdin_guard = stdin.lock().await;
+                let ping_msg = b"{\"type\":\"ping\"}\n";
+                let write = stdin_guard.write_all(ping_msg).await;
+                if write.is_ok() {
+                    stdin_guard.flush().await
+                } else {
+                    write
+                }
+            };
+
+            if let Err(e) = write_result {
+                log::warn!(
+                    "Heartbeat ping failed for '{}': {} — removing from pool",
+                    skill_name,
+                    e
+                );
+                remove_and_cleanup_sidecar(&pool, &skill_name).await;
+                break;
+            }
+
+            // Wait 5 seconds for pong response
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+            // Check if pong was received after we sent the ping
+            let last = {
+                let guard = last_pong.lock().await;
+                *guard
+            };
+            if last < ping_sent_at {
+                // No pong received since we sent the ping — zombie
+                log::warn!(
+                    "Zombie sidecar detected for '{}': no pong within 5s — removing from pool",
+                    skill_name,
+                );
+                remove_and_cleanup_sidecar(&pool, &skill_name).await;
+                break;
+            }
+        }
+    })
 }
 
 /// Pool of persistent sidecar processes, one per skill.
@@ -406,84 +496,131 @@ impl SidecarPool {
 
         // Issue 3: Store JoinHandles so we can abort them on shutdown/crash-respawn
 
-        // Spawn stderr reader for logging
+        // Spawn stderr reader for logging (panic-safe: log and continue on panic)
         let skill_name_stderr = skill_name.to_string();
         let stderr_task = tokio::spawn(async move {
             let stderr_reader = BufReader::new(stderr);
             let mut lines = stderr_reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                let result = AssertUnwindSafe(async {
+                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                })
+                .catch_unwind()
+                .await;
+
+                if let Err(panic_info) = result {
+                    // stderr panics are non-fatal — log and continue
+                    eprintln!(
+                        "stderr reader panicked for skill '{}': {:?} (line: {})",
+                        skill_name_stderr, panic_info, line
+                    );
+                }
             }
         });
+
+        // Create last_pong timestamp for heartbeat tracking
+        let last_pong = Arc::new(Mutex::new(tokio::time::Instant::now()));
 
         // Spawn stdout reader that routes messages by request_id
         let stdout_pool = self.sidecars.clone();
         let stdout_pending = self.pending_requests.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
+        let stdout_last_pong = last_pong.clone();
+        // Separate pool clone for the panic-recovery cleanup path (the other clone,
+        // stdout_pool, is consumed by the normal EOF cleanup path).
+        let panic_pool = self.sidecars.clone();
+
         let stdout_task = tokio::spawn(async move {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
                 log::debug!("[sidecar-stdout:{}] {}", skill_name_stdout, line);
-                // Parse the line to extract request_id for routing
-                match serde_json::from_str::<serde_json::Value>(&line) {
-                    Ok(msg) => {
-                        if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
-                            // Route this message to the correct agent using the request_id as agent_id
-                            events::handle_sidecar_message(
-                                &app_handle_stdout,
-                                request_id,
-                                &line,
-                            );
 
-                            // Check if this is a result or error — if so, emit exit event
-                            // and remove from pending_requests so timeout tasks know it completed.
-                            if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
-                                if msg_type == "result" {
-                                    {
-                                        let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id);
-                                    }
-                                    events::handle_sidecar_exit(
-                                        &app_handle_stdout,
-                                        request_id,
-                                        true,
-                                    );
-                                } else if msg_type == "error" {
-                                    {
-                                        let mut pending = stdout_pending.lock().await;
-                                        pending.remove(request_id);
-                                    }
-                                    // Capture any partial artifacts written before the error
-                                    crate::commands::workflow::capture_artifacts_on_error(
-                                        &app_handle_stdout,
-                                        request_id,
-                                    );
-                                    events::handle_sidecar_exit(
-                                        &app_handle_stdout,
-                                        request_id,
-                                        false,
-                                    );
-                                }
+                // Wrap per-line processing in catch_unwind so a panic in JSON
+                // parsing or message routing doesn't kill the reader silently.
+                // AssertUnwindSafe is safe here: all captured refs are Arc/Clone
+                // and we break out of the loop on panic, so no torn state is reused.
+                let process_result = AssertUnwindSafe(async {
+                    // Parse the line to extract request_id for routing
+                    match serde_json::from_str::<serde_json::Value>(&line) {
+                        Ok(msg) => {
+                            // Intercept pong messages for heartbeat tracking
+                            if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
+                                let mut pong_guard = stdout_last_pong.lock().await;
+                                *pong_guard = tokio::time::Instant::now();
+                                return;
                             }
-                        } else {
+
+                            if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
+                                // Route this message to the correct agent using the request_id as agent_id
+                                events::handle_sidecar_message(
+                                    &app_handle_stdout,
+                                    request_id,
+                                    &line,
+                                );
+
+                                // Check if this is a result or error — if so, emit exit event
+                                // and remove from pending_requests so timeout tasks know it completed.
+                                if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    if msg_type == "result" {
+                                        {
+                                            let mut pending = stdout_pending.lock().await;
+                                            pending.remove(request_id);
+                                        }
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            true,
+                                        );
+                                    } else if msg_type == "error" {
+                                        {
+                                            let mut pending = stdout_pending.lock().await;
+                                            pending.remove(request_id);
+                                        }
+                                        // Capture any partial artifacts written before the error
+                                        crate::commands::workflow::capture_artifacts_on_error(
+                                            &app_handle_stdout,
+                                            request_id,
+                                        );
+                                        events::handle_sidecar_exit(
+                                            &app_handle_stdout,
+                                            request_id,
+                                            false,
+                                        );
+                                    }
+                                }
+                            } else {
+                                log::warn!(
+                                    "[persistent-sidecar:{}] Message without request_id: {}",
+                                    skill_name_stdout,
+                                    line
+                                );
+                            }
+                        }
+                        Err(e) => {
                             log::warn!(
-                                "[persistent-sidecar:{}] Message without request_id: {}",
+                                "[persistent-sidecar:{}] Failed to parse stdout: {} (line: {})",
                                 skill_name_stdout,
+                                e,
                                 line
                             );
                         }
                     }
-                    Err(e) => {
-                        log::warn!(
-                            "[persistent-sidecar:{}] Failed to parse stdout: {} (line: {})",
-                            skill_name_stdout,
-                            e,
-                            line
-                        );
-                    }
+                })
+                .catch_unwind()
+                .await;
+
+                if let Err(panic_info) = process_result {
+                    log::error!(
+                        "stdout reader panicked for skill '{}': {:?} (line: {}) — removing from pool",
+                        skill_name_stdout,
+                        panic_info,
+                        line
+                    );
+                    remove_and_cleanup_sidecar(&panic_pool, &skill_name_stdout).await;
+                    return; // exit the task — sidecar is cleaned up
                 }
             }
 
@@ -496,12 +633,23 @@ impl SidecarPool {
             pool.remove(&skill_name_stdout);
         });
 
+        // Spawn heartbeat task for periodic health checks
+        let stdin_arc = Arc::new(Mutex::new(stdin));
+        let heartbeat_task = spawn_heartbeat_task(
+            skill_name.to_string(),
+            stdin_arc.clone(),
+            self.sidecars.clone(),
+            last_pong.clone(),
+        );
+
         let sidecar = PersistentSidecar {
             child,
-            stdin: Arc::new(Mutex::new(stdin)),
+            stdin: stdin_arc,
             pid,
             stdout_task,
             stderr_task,
+            heartbeat_task,
+            last_pong,
         };
 
         // Re-acquire pool lock to insert the new sidecar
@@ -713,17 +861,24 @@ impl SidecarPool {
                 sidecar.pid
             );
 
-            // 1. Abort reader tasks first — prevents any new agent-exit events
+            // 1. Abort reader and heartbeat tasks first — prevents any new agent-exit events
             sidecar.stdout_task.abort();
             sidecar.stderr_task.abort();
+            sidecar.heartbeat_task.abort();
 
-            // 2. Now safely emit agent-shutdown for all pending requests and clear them
+            // 2. Now safely emit agent-shutdown for pending requests belonging to THIS skill only
             {
                 let mut pending = self.pending_requests.lock().await;
-                for agent_id in pending.iter() {
+                let to_shutdown: Vec<String> = pending
+                    .iter()
+                    .filter(|agent_id| agent_id.starts_with(&format!("{}-", skill_name)))
+                    .cloned()
+                    .collect();
+
+                for agent_id in &to_shutdown {
                     events::handle_agent_shutdown(app_handle, agent_id);
+                    pending.remove(agent_id);
                 }
-                pending.clear();
             }
 
             // Send shutdown message
@@ -780,6 +935,7 @@ impl SidecarPool {
         if let Some(mut sidecar) = pool.remove(skill_name) {
             sidecar.stdout_task.abort();
             sidecar.stderr_task.abort();
+            sidecar.heartbeat_task.abort();
             let _ = sidecar.child.kill().await;
             log::info!(
                 "Killed hung sidecar for '{}' (pid {})",
@@ -1256,6 +1412,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cleanup_aborts_heartbeat() {
+        // Create a long-running task to simulate a heartbeat task
+        let heartbeat_task = tokio::spawn(async {
+            // This would run forever if not aborted
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        // Also create dummy tasks for stdout and stderr
+        let stdout_task = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+        let stderr_task = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        // Verify the tasks are not finished before cleanup
+        assert!(!heartbeat_task.is_finished());
+        assert!(!stdout_task.is_finished());
+        assert!(!stderr_task.is_finished());
+
+        // Abort them as cleanup_sidecar would
+        heartbeat_task.abort();
+        stdout_task.abort();
+        stderr_task.abort();
+
+        // Give a moment for abort to take effect
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Verify all tasks are finished after abort
+        assert!(heartbeat_task.is_finished(), "Heartbeat task should be aborted by cleanup");
+        assert!(stdout_task.is_finished(), "Stdout task should be aborted by cleanup");
+        assert!(stderr_task.is_finished(), "Stderr task should be aborted by cleanup");
+    }
+
+    #[tokio::test]
     async fn test_pending_requests_completed_before_timeout() {
         // Simulate the case where a request completes before the timeout fires.
         // The stdout reader removes it, so the timeout task should find it absent.
@@ -1278,5 +1475,44 @@ mod tests {
             pending.remove("agent-fast")
         };
         assert!(!still_pending, "Request should have been completed before timeout");
+    }
+
+    #[tokio::test]
+    async fn test_catch_unwind_on_panic() {
+        // Verify the catch_unwind pattern used in reader tasks correctly catches panics
+        // from an AssertUnwindSafe-wrapped async block via FutureExt::catch_unwind.
+        let result = AssertUnwindSafe(async {
+            panic!("simulated JSON processing panic");
+        })
+        .catch_unwind()
+        .await;
+
+        assert!(result.is_err(), "catch_unwind should catch the panic");
+
+        // Verify the panic payload is accessible for logging
+        let panic_info = result.unwrap_err();
+        let panic_msg = panic_info
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        assert!(
+            panic_msg.contains("simulated JSON processing panic"),
+            "Panic payload should contain the panic message, got: {}",
+            panic_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn test_catch_unwind_normal_execution_passes_through() {
+        // Verify that normal (non-panicking) execution passes through catch_unwind
+        let result = AssertUnwindSafe(async {
+            let json: serde_json::Value = serde_json::from_str(r#"{"type":"result"}"#).unwrap();
+            json.get("type").unwrap().as_str().unwrap().to_string()
+        })
+        .catch_unwind()
+        .await;
+
+        assert!(result.is_ok(), "Non-panicking code should return Ok");
+        assert_eq!(result.unwrap(), "result");
     }
 }

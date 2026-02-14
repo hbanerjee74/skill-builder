@@ -40,6 +40,12 @@ describe("parseIncomingMessage", () => {
     expect(result).toEqual({ type: "shutdown" });
   });
 
+  it("parses a valid ping message", () => {
+    const line = JSON.stringify({ type: "ping" });
+    const result = parseIncomingMessage(line);
+    expect(result).toEqual({ type: "ping" });
+  });
+
   it("returns null for empty string", () => {
     expect(parseIncomingMessage("")).toBeNull();
   });
@@ -423,6 +429,31 @@ describe("runPersistent", () => {
     const errorMsg = JSON.parse(errorLine!);
     expect(errorMsg.type).toBe("error");
     expect(errorMsg.message).toContain("Unrecognized input");
+  });
+
+  it("responds to ping with pong", async () => {
+    const input = createInputStream([
+      JSON.stringify({ type: "ping" }),
+      JSON.stringify({ type: "shutdown" }),
+    ]);
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    try {
+      await runPersistent(input, exitFn);
+    } finally {
+      capture.restore();
+    }
+
+    const pongLine = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.type === "pong";
+    });
+    expect(pongLine).toBeDefined();
+    expect(JSON.parse(pongLine!)).toEqual({ type: "pong" });
+
+    // Should still exit cleanly
+    expect(exitFn).toHaveBeenCalledWith(0);
   });
 
   it("each response is a valid JSON line", async () => {
