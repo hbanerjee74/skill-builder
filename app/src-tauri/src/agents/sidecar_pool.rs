@@ -2,9 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
 
 use futures::FutureExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -883,12 +882,9 @@ impl SidecarPool {
                 obj.remove("prompt");
             }
 
-            let discovered_skills = scan_skills_dir_cached(Path::new(&config.cwd));
-
             let event = serde_json::json!({
                 "type": "config",
                 "config": config_val,
-                "discoveredSkills": discovered_skills,
             });
             events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
             event
@@ -1163,61 +1159,6 @@ fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
         }
     }
     without_prefix
-}
-
-/// TTL cache for `scan_skills_dir` results, keyed by workspace path.
-/// Each entry stores the discovered skill names and the instant they were cached.
-/// A 30-second TTL avoids redundant filesystem scans on every `do_send_request`.
-#[allow(clippy::type_complexity)]
-static SKILLS_DIR_CACHE: std::sync::Mutex<Option<HashMap<PathBuf, (Vec<String>, Instant)>>> =
-    std::sync::Mutex::new(None);
-
-/// Cached wrapper around `scan_skills_dir`. Returns cached results if the
-/// entry is less than 30 seconds old; otherwise re-scans and updates the cache.
-fn scan_skills_dir_cached(cwd: &Path) -> Vec<String> {
-    const TTL: std::time::Duration = std::time::Duration::from_secs(30);
-
-    let key = cwd.to_path_buf();
-    {
-        let cache = SKILLS_DIR_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(ref map) = *cache {
-            if let Some((skills, cached_at)) = map.get(&key) {
-                if cached_at.elapsed() < TTL {
-                    return skills.clone();
-                }
-            }
-        }
-    }
-
-    // Cache miss or expired — scan and update
-    let result = scan_skills_dir(cwd);
-    {
-        let mut cache = SKILLS_DIR_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        let map = cache.get_or_insert_with(HashMap::new);
-        map.insert(key, (result.clone(), Instant::now()));
-    }
-    result
-}
-
-/// Scan `{cwd}/.claude/skills/` for active skill directories (those containing SKILL.md).
-/// Returns a list of skill directory names that the SDK will discover.
-fn scan_skills_dir(cwd: &Path) -> Vec<String> {
-    let skills_dir = cwd.join(".claude").join("skills");
-    let mut names = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&skills_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() && path.join("SKILL.md").exists() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if !name.starts_with('.') {
-                        names.push(name.to_string());
-                    }
-                }
-            }
-        }
-    }
-    names.sort();
-    names
 }
 
 // Re-use the sidecar path resolution logic from sidecar.rs.
@@ -1560,35 +1501,6 @@ mod tests {
     // were removed because shutdown_skill/shutdown_all now require a real
     // tauri::AppHandle to emit agent-shutdown events. The no-op behavior
     // (empty pool) is trivially correct and covered by the type system.
-
-    #[test]
-    fn test_scan_skills_dir_empty() {
-        let tmp = tempfile::tempdir().unwrap();
-        let result = scan_skills_dir(tmp.path());
-        assert!(result.is_empty(), "No .claude/skills dir should return empty");
-    }
-
-    #[test]
-    fn test_scan_skills_dir_with_skills() {
-        let tmp = tempfile::tempdir().unwrap();
-        let skills_dir = tmp.path().join(".claude").join("skills");
-
-        // Create two skill directories with SKILL.md
-        let skill_a = skills_dir.join("skill-a");
-        std::fs::create_dir_all(&skill_a).unwrap();
-        std::fs::write(skill_a.join("SKILL.md"), "# Skill A").unwrap();
-
-        let skill_b = skills_dir.join("skill-b");
-        std::fs::create_dir_all(&skill_b).unwrap();
-        std::fs::write(skill_b.join("SKILL.md"), "# Skill B").unwrap();
-
-        // Create a directory without SKILL.md (should be excluded)
-        let no_skill = skills_dir.join("no-skill");
-        std::fs::create_dir_all(&no_skill).unwrap();
-
-        let result = scan_skills_dir(tmp.path());
-        assert_eq!(result, vec!["skill-a", "skill-b"]);
-    }
 
     #[test]
     fn test_is_node_compatible_pool() {
