@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { GitHubLoginDialog } from "@/components/github-login-dialog";
-import { AboutDialog } from "@/components/about-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 
 const navItems = [
@@ -30,7 +29,6 @@ export function Sidebar() {
   const currentPath = routerState.location.pathname;
   const { user, isLoggedIn, logout } = useAuthStore();
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
-  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
 
   // Initialize collapsed state from localStorage
   const [collapsed, setCollapsed] = useState(() => {
@@ -69,22 +67,9 @@ export function Sidebar() {
     >
       <div className={cn("flex h-14 items-center border-b", collapsed ? "justify-center px-2" : "gap-2 px-4")}>
         {collapsed ? (
-          <button
-            onClick={() => setAboutDialogOpen(true)}
-            className="rounded-md p-1 transition-colors hover:bg-sidebar-accent/50"
-            title="About Skill Builder"
-          >
-            <img src="/favicon.png" alt="Skill Builder" className="size-5" />
-          </button>
+          <Home className="size-5" />
         ) : (
-          <button
-            onClick={() => setAboutDialogOpen(true)}
-            className="flex items-center gap-2 rounded-md px-1 py-0.5 transition-colors hover:bg-sidebar-accent/50"
-            title="About Skill Builder"
-          >
-            <img src="/favicon.png" alt="Skill Builder" className="size-5" />
-            <span className="text-lg font-semibold">Skill Builder</span>
-          </button>
+          <span className="text-lg font-semibold">Skill Builder</span>
         )}
       </div>
 
@@ -190,7 +175,6 @@ export function Sidebar() {
       </div>
 
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
-      <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
     </aside>
   );
 }
