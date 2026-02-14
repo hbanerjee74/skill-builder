@@ -14,8 +14,13 @@ export interface ShutdownRequest {
   type: "shutdown";
 }
 
+/** Incoming ping envelope for heartbeat health checks. */
+export interface PingRequest {
+  type: "ping";
+}
+
 /** Union of all valid incoming messages. */
-export type IncomingMessage = AgentRequest | ShutdownRequest;
+export type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest;
 
 /**
  * Write a single JSON line to stdout.
@@ -45,6 +50,10 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
 
   if (obj.type === "shutdown") {
     return { type: "shutdown" };
+  }
+
+  if (obj.type === "ping") {
+    return { type: "ping" };
   }
 
   if (obj.type === "agent_request") {
@@ -106,6 +115,11 @@ export async function runPersistent(
         type: "error",
         message: `Unrecognized input: ${line.trim().substring(0, 200)}`,
       });
+      continue;
+    }
+
+    if (message.type === "ping") {
+      writeLine({ type: "pong" });
       continue;
     }
 

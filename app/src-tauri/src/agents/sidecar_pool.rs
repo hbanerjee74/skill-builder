@@ -145,13 +145,99 @@ struct PersistentSidecar {
     stdout_task: JoinHandle<()>,
     /// Handle for the stderr reader task — aborted on shutdown/crash-respawn.
     stderr_task: JoinHandle<()>,
+    /// Handle for the heartbeat task — aborted on shutdown/crash-respawn.
+    heartbeat_task: JoinHandle<()>,
+    /// Timestamp of the last pong received from this sidecar, used for health checks.
+    /// The Arc is cloned into the stdout reader and heartbeat tasks; keeping it here
+    /// ensures the Arc stays alive for the sidecar's lifetime.
+    #[allow(dead_code)]
+    last_pong: Arc<Mutex<tokio::time::Instant>>,
 }
 
-/// Abort the reader tasks and drop the sidecar, cleaning up all resources.
+/// Abort the reader tasks and heartbeat task, then drop the sidecar, cleaning up all resources.
 fn cleanup_sidecar(sidecar: PersistentSidecar) {
     sidecar.stdout_task.abort();
     sidecar.stderr_task.abort();
+    sidecar.heartbeat_task.abort();
     // `child`, `stdin`, etc. are dropped here — stdin closes, process may receive SIGPIPE.
+}
+
+/// Remove a sidecar from the pool and clean up all its resources (tasks + child process).
+/// Used by the heartbeat task when it detects a zombie/unresponsive sidecar.
+async fn remove_and_cleanup_sidecar(
+    pool: &Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    skill_name: &str,
+) {
+    let mut pool_guard = pool.lock().await;
+    if let Some(mut sidecar) = pool_guard.remove(skill_name) {
+        let pid = sidecar.pid;
+        sidecar.stdout_task.abort();
+        sidecar.stderr_task.abort();
+        sidecar.heartbeat_task.abort();
+        let _ = sidecar.child.kill().await;
+        log::warn!(
+            "Removed and killed sidecar for '{}' (pid {})",
+            skill_name,
+            pid
+        );
+    }
+}
+
+/// Spawn a heartbeat task that periodically pings the sidecar and checks for pong responses.
+/// If the sidecar fails to respond, it is removed from the pool and killed.
+fn spawn_heartbeat_task(
+    skill_name: String,
+    stdin: Arc<Mutex<tokio::process::ChildStdin>>,
+    pool: Arc<Mutex<HashMap<String, PersistentSidecar>>>,
+    last_pong: Arc<Mutex<tokio::time::Instant>>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        loop {
+            // Wait 30 seconds between heartbeat pings
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+
+            // Send ping to sidecar stdin
+            let write_result = {
+                let mut stdin_guard = stdin.lock().await;
+                let ping_msg = b"{\"type\":\"ping\"}\n";
+                let write = stdin_guard.write_all(ping_msg).await;
+                if write.is_ok() {
+                    stdin_guard.flush().await
+                } else {
+                    write
+                }
+            };
+
+            if let Err(e) = write_result {
+                log::warn!(
+                    "Heartbeat ping failed for '{}': {} — removing from pool",
+                    skill_name,
+                    e
+                );
+                remove_and_cleanup_sidecar(&pool, &skill_name).await;
+                break;
+            }
+
+            // Wait 5 seconds for pong response
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+            // Check if pong was received recently
+            let last = {
+                let guard = last_pong.lock().await;
+                *guard
+            };
+            let elapsed = last.elapsed();
+            if elapsed > std::time::Duration::from_secs(5) {
+                log::warn!(
+                    "Zombie sidecar detected for '{}': no pong in {:.1}s — removing from pool",
+                    skill_name,
+                    elapsed.as_secs_f64()
+                );
+                remove_and_cleanup_sidecar(&pool, &skill_name).await;
+                break;
+            }
+        }
+    })
 }
 
 /// Pool of persistent sidecar processes, one per skill.
@@ -417,11 +503,15 @@ impl SidecarPool {
             }
         });
 
+        // Create last_pong timestamp for heartbeat tracking
+        let last_pong = Arc::new(Mutex::new(tokio::time::Instant::now()));
+
         // Spawn stdout reader that routes messages by request_id
         let stdout_pool = self.sidecars.clone();
         let stdout_pending = self.pending_requests.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
+        let stdout_last_pong = last_pong.clone();
         let stdout_task = tokio::spawn(async move {
             let mut lines = reader.lines();
 
@@ -430,6 +520,13 @@ impl SidecarPool {
                 // Parse the line to extract request_id for routing
                 match serde_json::from_str::<serde_json::Value>(&line) {
                     Ok(msg) => {
+                        // Intercept pong messages for heartbeat tracking
+                        if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
+                            let mut pong_guard = stdout_last_pong.lock().await;
+                            *pong_guard = tokio::time::Instant::now();
+                            continue;
+                        }
+
                         if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
                             // Route this message to the correct agent using the request_id as agent_id
                             events::handle_sidecar_message(
@@ -496,12 +593,23 @@ impl SidecarPool {
             pool.remove(&skill_name_stdout);
         });
 
+        // Spawn heartbeat task for periodic health checks
+        let stdin_arc = Arc::new(Mutex::new(stdin));
+        let heartbeat_task = spawn_heartbeat_task(
+            skill_name.to_string(),
+            stdin_arc.clone(),
+            self.sidecars.clone(),
+            last_pong.clone(),
+        );
+
         let sidecar = PersistentSidecar {
             child,
-            stdin: Arc::new(Mutex::new(stdin)),
+            stdin: stdin_arc,
             pid,
             stdout_task,
             stderr_task,
+            heartbeat_task,
+            last_pong,
         };
 
         // Re-acquire pool lock to insert the new sidecar
@@ -713,9 +821,10 @@ impl SidecarPool {
                 sidecar.pid
             );
 
-            // 1. Abort reader tasks first — prevents any new agent-exit events
+            // 1. Abort reader and heartbeat tasks first — prevents any new agent-exit events
             sidecar.stdout_task.abort();
             sidecar.stderr_task.abort();
+            sidecar.heartbeat_task.abort();
 
             // 2. Now safely emit agent-shutdown for all pending requests and clear them
             {
@@ -780,6 +889,7 @@ impl SidecarPool {
         if let Some(mut sidecar) = pool.remove(skill_name) {
             sidecar.stdout_task.abort();
             sidecar.stderr_task.abort();
+            sidecar.heartbeat_task.abort();
             let _ = sidecar.child.kill().await;
             log::info!(
                 "Killed hung sidecar for '{}' (pid {})",
@@ -1253,6 +1363,47 @@ mod tests {
             let pending = pool.pending_requests.lock().await;
             assert!(!pending.contains("agent-timeout-test"));
         }
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_aborts_heartbeat() {
+        // Create a long-running task to simulate a heartbeat task
+        let heartbeat_task = tokio::spawn(async {
+            // This would run forever if not aborted
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        // Also create dummy tasks for stdout and stderr
+        let stdout_task = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+        let stderr_task = tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
+        });
+
+        // Verify the tasks are not finished before cleanup
+        assert!(!heartbeat_task.is_finished());
+        assert!(!stdout_task.is_finished());
+        assert!(!stderr_task.is_finished());
+
+        // Abort them as cleanup_sidecar would
+        heartbeat_task.abort();
+        stdout_task.abort();
+        stderr_task.abort();
+
+        // Give a moment for abort to take effect
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Verify all tasks are finished after abort
+        assert!(heartbeat_task.is_finished(), "Heartbeat task should be aborted by cleanup");
+        assert!(stdout_task.is_finished(), "Stdout task should be aborted by cleanup");
+        assert!(stderr_task.is_finished(), "Stderr task should be aborted by cleanup");
     }
 
     #[tokio::test]
