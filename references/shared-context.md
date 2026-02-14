@@ -65,7 +65,7 @@ Additionally:
 
 ## File Formats
 
-All agent output files use YAML frontmatter for structured metadata. The frontmatter block is delimited by `---` and must be the first thing in the file.
+All agent output files use YAML frontmatter for structured metadata. The frontmatter block is delimited by `---` and must be the first thing in the file. When rewriting an existing file, always include the frontmatter block with updated counts — add it if the file you are rewriting does not already have one.
 
 ### `clarifications-*.md` (written by research agents to context directory)
 
