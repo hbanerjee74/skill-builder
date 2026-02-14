@@ -25,8 +25,30 @@ export interface AppSettings {
   extended_context: boolean
   extended_thinking: boolean
   splash_shown: boolean
-  github_pat: string | null
+  github_oauth_token: string | null
+  github_user_login: string | null
+  github_user_avatar: string | null
+  github_user_email: string | null
 }
+
+export interface DeviceFlowResponse {
+  device_code: string
+  user_code: string
+  verification_uri: string
+  expires_in: number
+  interval: number
+}
+
+export interface GitHubUser {
+  login: string
+  avatar_url: string
+  email: string | null
+}
+
+export type GitHubAuthResult =
+  | { status: 'pending' }
+  | { status: 'slow_down' }
+  | { status: 'success'; user: GitHubUser }
 
 export interface SkillSummary {
   name: string

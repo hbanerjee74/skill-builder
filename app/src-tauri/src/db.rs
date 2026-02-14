@@ -678,7 +678,10 @@ mod tests {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -703,7 +706,10 @@ mod tests {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -724,7 +730,10 @@ mod tests {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -745,7 +754,10 @@ mod tests {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -759,7 +771,10 @@ mod tests {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         };
         write_settings(&conn, &v2).unwrap();
 
