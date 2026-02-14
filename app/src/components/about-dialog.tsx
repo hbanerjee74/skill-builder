@@ -73,6 +73,7 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
           <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs">
             <ExternalLink href="https://acceleratedata.ai">Website</ExternalLink>
             <ExternalLink href="https://github.com/hbanerjee74/skill-builder">GitHub</ExternalLink>
+            <ExternalLink href="mailto:hi@acceleratedata.ai">hi@acceleratedata.ai</ExternalLink>
           </div>
 
           <Separator />
