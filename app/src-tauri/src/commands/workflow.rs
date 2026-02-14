@@ -299,10 +299,42 @@ fn copy_md_files_recursive(src_dir: &Path, dest_dir: &Path, label: &str) -> Resu
     Ok(())
 }
 
+/// Read the `name:` field from an agent file's YAML frontmatter.
+/// Agent files live at `{workspace}/.claude/agents/{skill_type}-{phase}.md`.
+/// Returns `None` if the file doesn't exist or has no `name:` field.
+fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &str) -> Option<String> {
+    let agent_file = Path::new(workspace_path)
+        .join(".claude")
+        .join("agents")
+        .join(format!("{}-{}.md", skill_type, phase));
+    let content = std::fs::read_to_string(&agent_file).ok()?;
+    if !content.starts_with("---") {
+        return None;
+    }
+    let after_start = &content[3..];
+    let end = after_start.find("---")?;
+    let frontmatter = &after_start[..end];
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if let Some(name) = trimmed.strip_prefix("name:") {
+            let name = name.trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
 /// Derive agent name from skill type and prompt template.
-/// Example: skill_type="domain", prompt_template="research-concepts.md" → "domain-research-concepts"
-fn derive_agent_name(skill_type: &str, prompt_template: &str) -> String {
+/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
+/// this to register the agent). Falls back to `{skill_type}-{phase}` if the
+/// file is missing or has no name field.
+fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &str) -> String {
     let phase = prompt_template.trim_end_matches(".md");
+    if let Some(name) = read_agent_frontmatter_name(workspace_path, skill_type, phase) {
+        return name;
+    }
     format!("{}-{}", skill_type, phase)
 }
 
@@ -656,7 +688,7 @@ async fn run_workflow_step_inner(
         prompt = format!("[RERUN MODE]\n\n{}", prompt);
     }
 
-    let agent_name = derive_agent_name(&settings.skill_type, &step.prompt_template);
+    let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
 
     // Determine the effective model for betas: debug_mode forces sonnet,
@@ -1580,22 +1612,36 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_agent_name() {
+    fn test_derive_agent_name_fallback() {
+        // Without deployed agent files, falls back to {skill_type}-{phase}
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().to_str().unwrap();
         assert_eq!(
-            derive_agent_name("domain", "research-concepts.md"),
+            derive_agent_name(ws, "domain", "research-concepts.md"),
             "domain-research-concepts"
         );
         assert_eq!(
-            derive_agent_name("platform", "build.md"),
+            derive_agent_name(ws, "platform", "build.md"),
             "platform-build"
         );
+    }
+
+    #[test]
+    fn test_derive_agent_name_reads_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ws = tmp.path().to_str().unwrap();
+        let agents_dir = tmp.path().join(".claude").join("agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        // Write an agent file with a frontmatter name that differs from the filename
+        std::fs::write(
+            agents_dir.join("data-engineering-research-patterns-and-merge.md"),
+            "---\nname: de-research-patterns-and-merge\nmodel: sonnet\n---\n# Agent\n",
+        ).unwrap();
+
         assert_eq!(
-            derive_agent_name("source", "validate.md"),
-            "source-validate"
-        );
-        assert_eq!(
-            derive_agent_name("data-engineering", "research-patterns-and-merge.md"),
-            "data-engineering-research-patterns-and-merge"
+            derive_agent_name(ws, "data-engineering", "research-patterns-and-merge.md"),
+            "de-research-patterns-and-merge"
         );
     }
 
