@@ -55,7 +55,8 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                 agent_id: agent_id.to_string(),
                 message,
             };
-            log::debug!("[event:agent-message:{}] {}", agent_id, line);
+            // Agent message content is captured in per-request JSONL transcripts —
+            // no need to dump it into the app log (even at DEBUG, it's enormous).
             if let Err(e) = app_handle.emit("agent-message", &event) {
                 log::warn!("Failed to emit agent-message for {}: {}", agent_id, e);
             }
