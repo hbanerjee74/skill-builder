@@ -36,7 +36,7 @@ pub fn truncate_log_file(app: &tauri::AppHandle) {
 ///
 /// Targets:
 /// - **LogDir**: persistent file in the app log directory (fresh each session
-///   via `truncate_log_file()` called before the builder starts).
+///   via `truncate_log_file()` called during `.setup()`).
 /// - **Stderr**: visible in terminals / dev consoles for CLI users.
 pub fn build_log_plugin() -> tauri_plugin_log::Builder {
     tauri_plugin_log::Builder::new()
