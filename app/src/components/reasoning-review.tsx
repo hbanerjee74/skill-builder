@@ -17,6 +17,8 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
+  captureStepArtifacts,
+  getArtifactContent,
   readFile,
 } from "@/lib/tauri";
 import { countDecisions } from "@/lib/reasoning-parser";
@@ -108,7 +110,14 @@ export function ReasoningReview({
   // --- Load decisions when agent completes ---
 
   const loadDecisions = useCallback(async () => {
-    // Try loading from multiple sources: skillsPath > workspace
+    // Capture artifacts first
+    try {
+      await captureStepArtifacts(skillName, STEP_ID, workspacePath);
+    } catch {
+      // best-effort
+    }
+
+    // Try loading from multiple sources: skillsPath > workspace > SQLite
     let content: string | null = null;
 
     if (skillsPath) {
@@ -126,6 +135,17 @@ export function ReasoningReview({
         if (result && result.trim().length > 0) content = result;
       } catch {
         // not found there
+      }
+    }
+
+    if (!content) {
+      try {
+        const artifact = await getArtifactContent(skillName, "context/decisions.md");
+        if (artifact?.content && artifact.content.trim().length > 0) {
+          content = artifact.content;
+        }
+      } catch {
+        // not found
       }
     }
 
@@ -166,6 +186,13 @@ export function ReasoningReview({
   // --- Handlers ---
 
   const handleCompleteStep = useCallback(async () => {
+    // Capture artifacts
+    try {
+      await captureStepArtifacts(skillName, STEP_ID, workspacePath);
+    } catch {
+      // best-effort
+    }
+
     // Validate decisions.md exists (skip in debug mode)
     if (!debugMode) {
       let decisionsFound = false;
@@ -183,6 +210,15 @@ export function ReasoningReview({
         try {
           const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
           if (content && content.trim().length > 0) decisionsFound = true;
+        } catch {
+          // not found
+        }
+      }
+
+      if (!decisionsFound) {
+        try {
+          const artifact = await getArtifactContent(skillName, "context/decisions.md");
+          if (artifact?.content && artifact.content.trim().length > 0) decisionsFound = true;
         } catch {
           // not found
         }
