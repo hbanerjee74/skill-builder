@@ -992,7 +992,7 @@ export default function WorkflowPage() {
         }}
       />
 
-      <div className="flex h-full -m-6">
+      <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar
           steps={steps}
           currentStep={currentStep}
