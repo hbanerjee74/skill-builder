@@ -41,7 +41,13 @@ export default function ResetStepDialog({
     setLoadingPreview(true)
     previewStepReset(workspacePath, skillName, targetStep)
       .then(setPreview)
-      .catch(() => setPreview([]))
+      .catch((err) => {
+        toast.error(
+          `Failed to load preview: ${err instanceof Error ? err.message : String(err)}`,
+          { duration: Infinity },
+        )
+        setPreview(null)
+      })
       .finally(() => setLoadingPreview(false))
   }, [open, targetStep, workspacePath, skillName])
 
@@ -113,7 +119,7 @@ export default function ResetStepDialog({
           <Button
             variant="destructive"
             onClick={handleReset}
-            disabled={loading || loadingPreview}
+            disabled={loading || loadingPreview || preview === null}
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
             {totalFiles > 0 ? `Delete ${totalFiles} file${totalFiles !== 1 ? "s" : ""} & Reset` : "Reset"}
