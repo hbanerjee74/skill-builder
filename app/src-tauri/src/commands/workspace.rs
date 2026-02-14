@@ -22,7 +22,7 @@ fn detect_furthest_step(
 
     let mut furthest: Option<u32> = None;
 
-    for step_id in [0u32, 2, 4, 5, 6, 7] {
+    for step_id in [0u32, 2, 4, 5, 6] {
         let files = get_step_output_files(step_id);
         let has_output = if step_id == 5 {
             // Step 5 output may live in skills_path or workspace_path
@@ -105,10 +105,10 @@ pub fn reconcile_on_startup(
                     .map(|s| s as i32)
                     .unwrap_or(0);
                 if run.current_step > disk_step {
-                    // Steps 1, 3, 8 produce no output files so detect_furthest_step
+                    // Steps 1, 3, 7 produce no output files so detect_furthest_step
                     // can never return them. Only reset if disk evidence is genuinely
                     // behind — i.e. the prerequisite agent step's output is missing.
-                    let is_non_detectable = matches!(run.current_step, 1 | 3 | 8);
+                    let is_non_detectable = matches!(run.current_step, 1 | 3 | 7);
                     let should_reset = if is_non_detectable {
                         // Non-detectable step: only reset if disk is more than
                         // 1 step behind (the preceding agent step output is missing)
@@ -588,41 +588,41 @@ mod tests {
     // --- Non-detectable step tests ---
 
     #[test]
-    fn test_step_8_not_reset_when_step_7_output_exists() {
-        // Bug: step 8 (refinement) produces no output files, so detect_furthest_step
-        // returns 7 at most. The reconciler was incorrectly resetting from 8 to 7.
+    fn test_step_7_not_reset_when_step_6_output_exists() {
+        // Bug: step 7 (refinement) produces no output files, so detect_furthest_step
+        // returns 6 at most. The reconciler was incorrectly resetting from 7 to 6.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // DB at step 8, disk has all agent step outputs through step 7
-        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 8, "pending", "domain")
+        // DB at step 7, disk has all agent step outputs through step 6
+        crate::db::save_workflow_run(&conn, "done-skill", "analytics", 7, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "analytics");
-        for step in [0, 2, 4, 5, 6, 7] {
+        for step in [0, 2, 4, 5, 6] {
             create_step_output(tmp.path(), "done-skill", step);
         }
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
-        // Should NOT reset — step 8 is non-detectable but step 7 output exists
+        // Should NOT reset — step 7 is non-detectable but step 6 output exists
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "done-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 8);
+        assert_eq!(run.current_step, 7);
     }
 
     #[test]
-    fn test_step_8_reset_when_step_7_output_missing() {
-        // Step 8 in DB but step 7 output is missing — genuine corruption
+    fn test_step_7_reset_when_step_6_output_missing() {
+        // Step 7 in DB but step 6 output is missing — genuine corruption
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 8, "pending", "domain")
+        crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 7, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "bad-skill", "analytics");
-        // Only steps 0-6 have output, step 7 is missing
-        for step in [0, 2, 4, 5, 6] {
+        // Only steps 0-5 have output, step 6 is missing
+        for step in [0, 2, 4, 5] {
             create_step_output(tmp.path(), "bad-skill", step);
         }
 
@@ -630,9 +630,9 @@ mod tests {
 
         // Should reset — disk is genuinely behind
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 8 to step 6"));
+        assert!(result.notifications[0].contains("reset from step 7 to step 5"));
         let run = crate::db::get_workflow_run(&conn, "bad-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 6);
+        assert_eq!(run.current_step, 5);
     }
 
     #[test]

@@ -60,22 +60,14 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         }),
         6 => Ok(StepConfig {
             step_id: 6,
-            name: "Validate".to_string(),
-            prompt_template: "validate.md".to_string(),
+            name: "Validate & Test".to_string(),
+            prompt_template: "validate-and-test.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 80,
-        }),
-        7 => Ok(StepConfig {
-            step_id: 7,
-            name: "Test".to_string(),
-            prompt_template: "test.md".to_string(),
-            output_file: "context/test-skill.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
-            max_turns: 80,
+            max_turns: 120,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1 and 3 are human review steps; step 8 is the refinement step (client-side only).",
+            "Unknown step_id {}. Steps 1 and 3 are human review steps; step 7 is the refinement step (client-side only).",
             step_id
         )),
     }
@@ -367,6 +359,7 @@ const VALID_PHASES: &[&str] = &[
     "build",
     "validate",
     "test",
+    "validate-and-test",
     "merge",
     "research-patterns",
     "research-data",
@@ -435,8 +428,7 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
         2 => Some(8_000),   // research-patterns-and-merge orchestrator
         4 => Some(32_000),  // reasoning — highest priority
         5 => Some(16_000),  // build — complex synthesis
-        6 => Some(8_000),   // validate
-        7 => Some(8_000),   // test
+        6 => Some(8_000),   // validate & test
         _ => None,
     }
 }
@@ -558,7 +550,7 @@ fn reconcile_disk_artifacts(
     }
 
     // Walk all steps that produce output files
-    for step_id in [0u32, 2, 4, 5, 6, 7] {
+    for step_id in [0u32, 2, 4, 5, 6] {
         for file in get_step_output_files(step_id) {
             reconcile_single_file(conn, skill_name, step_id, &skill_dir, file)?;
         }
@@ -783,8 +775,7 @@ fn validate_decisions_exist_inner(
     )
 }
 
-/// Shared settings extracted from the DB, used by both `run_workflow_step`
-/// and `run_workflow_steps_parallel` to avoid re-reading settings per step.
+/// Shared settings extracted from the DB, used by `run_workflow_step`.
 struct WorkflowSettings {
     skills_path: Option<String>,
     api_key: String,
@@ -847,8 +838,7 @@ fn read_workflow_settings(
 /// Core logic for launching a single workflow step. Builds the prompt,
 /// constructs the sidecar config, and spawns the agent. Returns the agent_id.
 ///
-/// Shared by `run_workflow_step` (single step) and `run_workflow_steps_parallel`
-/// (multiple steps) to avoid duplicating step logic.
+/// Used by `run_workflow_step` to avoid duplicating step logic.
 #[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
@@ -960,103 +950,6 @@ pub async fn run_workflow_step(
         &settings,
     )
     .await
-}
-
-/// Launch multiple workflow steps concurrently. Each step gets its own agent,
-/// and all agents run in parallel on the same sidecar process (per-skill).
-///
-/// Returns a list of agent_ids, one per step, in the same order as `step_ids`.
-/// If any step fails to launch, successfully spawned agents are cleaned up via
-/// `shutdown_skill` before returning the error.
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub async fn run_workflow_steps_parallel(
-    app: tauri::AppHandle,
-    pool: tauri::State<'_, SidecarPool>,
-    db: tauri::State<'_, Db>,
-    skill_name: String,
-    step_ids: Vec<u32>,
-    domain: String,
-    workspace_path: String,
-    resume: bool,
-    rerun: bool,
-) -> Result<Vec<String>, String> {
-    if step_ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Ensure prompt files exist in workspace before running any step
-    ensure_workspace_prompts(&app, &workspace_path).await?;
-
-    // Read settings once (shared across all steps). Use the first step_id for
-    // the reconcile/stage pass — all steps share the same skill directory.
-    // Note: step 0 fresh-start logic and step 5 decisions.md validation are
-    // step-specific and handled inside read_workflow_settings, but parallel
-    // execution targets steps 6+7 which don't need either.
-    let first_step = step_ids[0];
-    let settings = read_workflow_settings(&db, &skill_name, first_step, &workspace_path, resume, rerun)?;
-
-    // Spawn all steps concurrently
-    let futures: Vec<_> = step_ids
-        .iter()
-        .map(|&sid| {
-            let app_ref = app.clone();
-            let pool_ref = pool.inner().clone();
-            let skill = skill_name.clone();
-            let dom = domain.clone();
-            let ws = workspace_path.clone();
-            let settings_ref = WorkflowSettings {
-                skills_path: settings.skills_path.clone(),
-                api_key: settings.api_key.clone(),
-                extended_context: settings.extended_context,
-                debug_mode: settings.debug_mode,
-                extended_thinking: settings.extended_thinking,
-                skill_type: settings.skill_type.clone(),
-            };
-            async move {
-                run_workflow_step_inner(
-                    &app_ref,
-                    &pool_ref,
-                    &skill,
-                    sid,
-                    &dom,
-                    &ws,
-                    rerun,
-                    &settings_ref,
-                )
-                .await
-            }
-        })
-        .collect();
-
-    let results = futures::future::join_all(futures).await;
-
-    // Collect results separately so a partial failure doesn't orphan agents
-    let mut agent_ids = Vec::new();
-    let mut errors = Vec::new();
-
-    for (idx, result) in results.into_iter().enumerate() {
-        match result {
-            Ok(id) => agent_ids.push(id),
-            Err(e) => errors.push((step_ids[idx], e)),
-        }
-    }
-
-    if !errors.is_empty() {
-        // Shut down the skill's sidecar so successfully spawned agents
-        // don't continue running untracked. shutdown_skill also emits
-        // agent-shutdown events for each pending request on this skill.
-        let _ = pool.shutdown_skill(&skill_name, &app).await;
-
-        let error_msg = errors
-            .iter()
-            .map(|(sid, e)| format!("Step {}: {}", sid, e))
-            .collect::<Vec<_>>()
-            .join("; ");
-        return Err(format!("Failed to start steps: {}", error_msg));
-    }
-
-    Ok(agent_ids)
 }
 
 
@@ -1252,8 +1145,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
-        6 => vec!["context/agent-validation-log.md"],
-        7 => vec!["context/test-skill.md"],
+        6 => vec!["context/agent-validation-log.md", "context/test-skill.md"],
         _ => vec![],
     }
 }
@@ -1313,7 +1205,7 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
 
 /// Delete output files for the given step and all subsequent steps.
 fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
-    for step_id in from_step_id..=8 {
+    for step_id in from_step_id..=7 {
         clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
@@ -1700,7 +1592,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 2, 4, 5, 6, 7];
+        let valid_steps = [0, 2, 4, 5, 6];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -1714,20 +1606,23 @@ mod tests {
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
         assert!(get_step_config(3).is_err());  // Human review
-        assert!(get_step_config(8).is_err());  // Refinement step (client-side only)
-        assert!(get_step_config(9).is_err());  // Beyond last step
+        assert!(get_step_config(7).is_err());  // Refinement step (client-side only)
+        assert!(get_step_config(8).is_err());  // Beyond last step
+        assert!(get_step_config(9).is_err());
         assert!(get_step_config(99).is_err());
     }
 
     #[test]
-    fn test_get_step_config_step8_error_message() {
-        let err = get_step_config(8).unwrap_err();
+    fn test_get_step_config_step7_error_message() {
+        let err = get_step_config(7).unwrap_err();
         assert!(err.contains("refinement step"), "Error should mention refinement: {}", err);
     }
 
     #[test]
     fn test_get_step_output_files_unknown_step() {
         // Unknown steps should return empty vec
+        let files = get_step_output_files(7);
+        assert!(files.is_empty());
         let files = get_step_output_files(8);
         assert!(files.is_empty());
         let files = get_step_output_files(99);
@@ -2065,24 +1960,26 @@ mod tests {
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create file for step 7
-        std::fs::write(skill_dir.join("context/test-skill.md"), "step7").unwrap();
+        // Create files for step 6 (validate & test)
+        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
 
-        // Reset from step 7 onwards should clean up through step 8
-        delete_step_output_files(workspace, "my-skill", 7, None);
+        // Reset from step 6 onwards should clean up through step 7
+        delete_step_output_files(workspace, "my-skill", 6, None);
 
-        // Step 7 output should be deleted
+        // Step 6 outputs should be deleted
+        assert!(!skill_dir.join("context/agent-validation-log.md").exists());
         assert!(!skill_dir.join("context/test-skill.md").exists());
     }
 
     #[test]
-    fn test_delete_step_output_files_includes_step8() {
-        // Verify the loop range extends to step 8 (refine step)
-        // by confirming delete_step_output_files(from=8) doesn't panic
+    fn test_delete_step_output_files_includes_step7() {
+        // Verify the loop range extends to step 7 (refine step)
+        // by confirming delete_step_output_files(from=7) doesn't panic
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        delete_step_output_files(workspace, "my-skill", 8, None);
+        delete_step_output_files(workspace, "my-skill", 7, None);
     }
 
     #[test]
@@ -2830,8 +2727,7 @@ mod tests {
             (2, 50),   // research patterns
             (4, 100),  // reasoning
             (5, 120),  // build
-            (6, 80),   // validate
-            (7, 80),   // test
+            (6, 120),  // validate & test
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2875,8 +2771,7 @@ mod tests {
             (2, 50),
             (4, 100),
             (5, 120),
-            (6, 80),
-            (7, 80),
+            (6, 120),
         ];
         for (step_id, normal_turns) in steps_with_expected_turns {
             let config = get_step_config(step_id).unwrap();
@@ -3000,8 +2895,7 @@ mod tests {
             (2, "research-patterns-and-merge.md", "context/clarifications.md"),
             (4, "reasoning.md", "context/decisions.md"),
             (5, "build.md", "skill/SKILL.md"),
-            (6, "validate.md", "context/agent-validation-log.md"),
-            (7, "test.md", "context/test-skill.md"),
+            (6, "validate-and-test.md", "context/agent-validation-log.md"),
         ];
 
         for (step_id, prompt_template, output_file) in agent_steps {
@@ -3077,11 +2971,10 @@ mod tests {
         assert_eq!(thinking_budget_for_step(4), Some(32_000));
         assert_eq!(thinking_budget_for_step(5), Some(16_000));
         assert_eq!(thinking_budget_for_step(6), Some(8_000));
-        assert_eq!(thinking_budget_for_step(7), Some(8_000));
         // Human review steps and beyond return None
         assert_eq!(thinking_budget_for_step(1), None);
         assert_eq!(thinking_budget_for_step(3), None);
-        assert_eq!(thinking_budget_for_step(8), None);
+        assert_eq!(thinking_budget_for_step(7), None);
     }
 
     #[test]
@@ -3135,9 +3028,9 @@ mod tests {
         assert_eq!(skill_name, "test");
         assert_eq!(step_id, 2);
 
-        let (skill_name, step_id) = parse_agent_id("test-step7-222222222").unwrap();
+        let (skill_name, step_id) = parse_agent_id("test-step6-222222222").unwrap();
         assert_eq!(skill_name, "test");
-        assert_eq!(step_id, 7);
+        assert_eq!(step_id, 6);
     }
 
     #[test]
