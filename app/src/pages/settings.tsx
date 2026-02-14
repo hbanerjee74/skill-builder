@@ -380,18 +380,23 @@ export default function SettingsPage() {
         <CardContent>
           <div className="flex flex-col gap-2">
             <Label htmlFor="model-select">Chat Model</Label>
-            <select
-              id="model-select"
-              value={preferredModel}
-              onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} — {opt.description}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-3">
+              <select
+                id="model-select"
+                value={preferredModel}
+                onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
+                className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {MODEL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-sm text-muted-foreground">
+                {MODEL_OPTIONS.find((opt) => opt.value === preferredModel)?.description}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>
