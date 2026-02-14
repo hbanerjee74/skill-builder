@@ -284,7 +284,7 @@ pub fn init_workspace(
     drop(conn);
 
     // Always sync bundled agents and references so app updates deploy new files
-    super::workflow::ensure_workspace_prompts(app, &workspace_path)?;
+    super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
     Ok(workspace_path)
 }
@@ -367,7 +367,7 @@ pub fn clear_workspace(
     drop(conn);
 
     // Re-initialize workspace with bundled agents/references
-    super::workflow::ensure_workspace_prompts(&app, &workspace_path)?;
+    super::workflow::ensure_workspace_prompts_sync(&app, &workspace_path)?;
 
     Ok(())
 }

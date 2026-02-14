@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
@@ -79,76 +82,193 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
-/// Copy bundled agent .md files and references into workspace.
-/// Creates the directories if they don't exist. Overwrites existing files
-/// to keep them in sync with the app version.
-///
-/// Resolution order:
-/// 1. Dev mode: repo root from `CARGO_MANIFEST_DIR` (compile-time path)
-/// 2. Production: Tauri resource directory (bundled in the app)
-pub fn ensure_workspace_prompts(
-    app_handle: &tauri::AppHandle,
-    workspace_path: &str,
-) -> Result<(), String> {
+/// Static cache of source directory mtimes, keyed by workspace_path.
+/// Used by `ensure_workspace_prompts` to skip redundant copies when
+/// source files haven't changed since the last invocation.
+static PROMPT_MTIME_CACHE: Mutex<Option<HashMap<String, SystemTime>>> = Mutex::new(None);
+
+/// Resolve source directories for agents and references from the app handle.
+/// Returns `(agents_dir, refs_dir)` as owned PathBufs. Either may be empty
+/// if not found (caller should check `.is_dir()` before using).
+fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
     use tauri::Manager;
 
-    // Try dev mode first: resolve from CARGO_MANIFEST_DIR (only works during development)
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent() // app/
-        .and_then(|p| p.parent()) // repo root
+        .parent()
+        .and_then(|p| p.parent())
         .map(|p| p.to_path_buf());
 
     let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
     let refs_src = repo_root.as_ref().map(|r| r.join("references"));
 
-    // Fall back to Tauri resource directory for production builds
-    let resource_agents;
-    let resource_refs;
     let agents_dir = match agents_src {
-        Some(ref p) if p.is_dir() => p.as_path(),
+        Some(ref p) if p.is_dir() => p.clone(),
         _ => {
-            resource_agents = app_handle
+            let resource = app_handle
                 .path()
                 .resource_dir()
                 .map(|r| r.join("agents"))
                 .unwrap_or_default();
-            if resource_agents.is_dir() {
-                resource_agents.as_path()
+            if resource.is_dir() {
+                resource
             } else {
-                return Ok(()); // No agents found anywhere — skip silently
+                PathBuf::new()
             }
         }
     };
 
     let refs_dir = match refs_src {
-        Some(ref p) if p.is_dir() => p.as_path(),
+        Some(ref p) if p.is_dir() => p.clone(),
         _ => {
-            resource_refs = app_handle
+            let resource = app_handle
                 .path()
                 .resource_dir()
                 .map(|r| r.join("references"))
                 .unwrap_or_default();
-            if resource_refs.is_dir() {
-                resource_refs.as_path()
+            if resource.is_dir() {
+                resource
             } else {
-                Path::new("") // Will fail is_dir check below
+                PathBuf::new()
             }
         }
     };
 
-    // Copy agents/ directory
+    (agents_dir, refs_dir)
+}
+
+/// Get the latest mtime from a directory tree (non-recursive for top-level entries).
+fn get_dir_mtime(dir: &Path) -> Option<SystemTime> {
+    let dir_mtime = std::fs::metadata(dir).ok()?.modified().ok()?;
+    let mut latest = dir_mtime;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if let Ok(mtime) = meta.modified() {
+                    if mtime > latest {
+                        latest = mtime;
+                    }
+                }
+            }
+            // Check subdirectory entries too
+            if entry.path().is_dir() {
+                if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                    for sub_entry in sub_entries.flatten() {
+                        if let Ok(meta) = sub_entry.metadata() {
+                            if let Ok(mtime) = meta.modified() {
+                                if mtime > latest {
+                                    latest = mtime;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some(latest)
+}
+
+/// Check if prompt sources have changed since last copy for this workspace.
+/// Returns true if a copy is needed, false if cached mtimes match.
+fn prompts_need_copy(workspace_path: &str, agents_dir: &Path, refs_dir: &Path) -> bool {
+    let mut latest = SystemTime::UNIX_EPOCH;
     if agents_dir.is_dir() {
-        copy_directory_to(agents_dir, workspace_path, "agents")?;
-        // Also copy to .claude/agents/ with flattened names for SDK loading
-        copy_agents_to_claude_dir(agents_dir, workspace_path)?;
+        if let Some(mtime) = get_dir_mtime(agents_dir) {
+            if mtime > latest {
+                latest = mtime;
+            }
+        }
+    }
+    if refs_dir.is_dir() {
+        if let Some(mtime) = get_dir_mtime(refs_dir) {
+            if mtime > latest {
+                latest = mtime;
+            }
+        }
     }
 
-    // Copy references/ directory
+    let mut cache = PROMPT_MTIME_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    let map = cache.get_or_insert_with(HashMap::new);
+    if let Some(cached_mtime) = map.get(workspace_path) {
+        if *cached_mtime >= latest {
+            return false; // No changes since last copy
+        }
+    }
+    // Update cache with current mtime
+    map.insert(workspace_path.to_string(), latest);
+    true
+}
+
+/// Copy bundled agent .md files and references into workspace.
+/// Creates the directories if they don't exist. Overwrites existing files
+/// to keep them in sync with the app version.
+///
+/// Uses an mtime-based cache to skip redundant copies when source files
+/// haven't changed since the last invocation for this workspace.
+///
+/// File I/O is offloaded to `spawn_blocking` to avoid blocking the tokio runtime.
+///
+/// Resolution order:
+/// 1. Dev mode: repo root from `CARGO_MANIFEST_DIR` (compile-time path)
+/// 2. Production: Tauri resource directory (bundled in the app)
+pub async fn ensure_workspace_prompts(
+    app_handle: &tauri::AppHandle,
+    workspace_path: &str,
+) -> Result<(), String> {
+    // Extract paths from AppHandle before moving into the blocking closure
+    // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
+    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+
+    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+        return Ok(()); // No sources found anywhere — skip silently
+    }
+
+    // Check mtime cache — skip copy if sources haven't changed
+    if !prompts_need_copy(workspace_path, &agents_dir, &refs_dir) {
+        return Ok(());
+    }
+
+    let workspace = workspace_path.to_string();
+    let agents = agents_dir.clone();
+    let refs = refs_dir.clone();
+
+    tokio::task::spawn_blocking(move || {
+        copy_prompts_sync(&agents, &refs, &workspace)
+    })
+    .await
+    .map_err(|e| format!("Prompt copy task failed: {}", e))?
+}
+
+/// Synchronous inner copy logic shared by async and sync entry points.
+fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, workspace_path: &str) -> Result<(), String> {
+    if agents_dir.is_dir() {
+        copy_directory_to(agents_dir, workspace_path, "agents")?;
+        copy_agents_to_claude_dir(agents_dir, workspace_path)?;
+    }
     if refs_dir.is_dir() {
         copy_directory_to(refs_dir, workspace_path, "references")?;
     }
-
     Ok(())
+}
+
+/// Synchronous variant of `ensure_workspace_prompts` for callers that cannot be async
+/// (e.g. `init_workspace` called from Tauri's synchronous `setup` hook).
+/// Includes the same mtime-based caching to skip redundant copies.
+pub fn ensure_workspace_prompts_sync(
+    app_handle: &tauri::AppHandle,
+    workspace_path: &str,
+) -> Result<(), String> {
+    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+
+    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+        return Ok(());
+    }
+
+    if !prompts_need_copy(workspace_path, &agents_dir, &refs_dir) {
+        return Ok(());
+    }
+
+    copy_prompts_sync(&agents_dir, &refs_dir, workspace_path)
 }
 
 /// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
@@ -348,23 +468,9 @@ fn read_extended_context(db: &tauri::State<'_, Db>) -> bool {
         .unwrap_or(false)
 }
 
-fn read_debug_mode(db: &tauri::State<'_, Db>) -> bool {
-    let conn = db.0.lock().ok();
-    conn.and_then(|c| crate::db::read_settings(&c).ok())
-        .map(|s| s.debug_mode)
-        .unwrap_or(false)
-}
-
 fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
     crate::db::read_settings(&conn).ok()?.skills_path
-}
-
-fn read_extended_thinking(db: &tauri::State<'_, Db>) -> bool {
-    let conn = db.0.lock().ok();
-    conn.and_then(|c| crate::db::read_settings(&c).ok())
-        .map(|s| s.extended_thinking)
-        .unwrap_or(false)
 }
 
 fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
@@ -615,7 +721,7 @@ pub async fn run_review_step(
     domain: String,
     workspace_path: String,
 ) -> Result<String, String> {
-    ensure_workspace_prompts(&app, &workspace_path)?;
+    ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Stage DB artifacts to filesystem before running agent
     let skills_path = read_skills_path(&db);
@@ -721,17 +827,6 @@ fn validate_decisions_exist_inner(
     )
 }
 
-/// Tauri command wrapper for decisions validation.
-fn validate_decisions_exist(
-    skill_name: &str,
-    workspace_path: &str,
-    skills_path: Option<&str>,
-    db: &tauri::State<'_, Db>,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    validate_decisions_exist_inner(skill_name, workspace_path, skills_path, &conn)
-}
-
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn run_workflow_step(
@@ -746,7 +841,7 @@ pub async fn run_workflow_step(
     rerun: bool,
 ) -> Result<String, String> {
     // Ensure prompt files exist in workspace before running
-    ensure_workspace_prompts(&app, &workspace_path)?;
+    ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
@@ -757,39 +852,50 @@ pub async fn run_workflow_step(
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);
         }
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::delete_artifacts_from(&conn, &skill_name, 0)?;
     }
 
-    // Reconcile disk → DB (captures partial output from paused/interrupted runs),
-    // then stage all DB artifacts → disk so the agent sees prerequisites and
-    // any previously written partial output.
-    let skills_path = read_skills_path(&db);
-    {
+    // Consolidate all DB operations into a single lock acquisition:
+    // delete artifacts (fresh step 0), reconcile, stage, read settings, get skill type.
+    // This avoids re-acquiring the mutex 6+ times per call.
+    let (skills_path, api_key, extended_context, debug_mode, extended_thinking, skill_type) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
-        stage_artifacts(&conn, &skill_name, &workspace_path, skills_path.as_deref())?;
-    }
 
-    // Validate that prerequisite files exist before starting certain steps.
-    // Step 5 (Build) requires decisions.md from step 4 (Reasoning).
-    if step_id == 5 {
-        validate_decisions_exist(&skill_name, &workspace_path, skills_path.as_deref(), &db)?;
-    }
+        // Delete artifacts for fresh Step 0
+        if step_id == 0 && !resume && !rerun {
+            crate::db::delete_artifacts_from(&conn, &skill_name, 0)?;
+        }
+
+        // Read all settings in one pass
+        let settings = crate::db::read_settings(&conn)?;
+        let skills_path = settings.skills_path;
+        let api_key = settings.anthropic_api_key
+            .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+        let extended_context = settings.extended_context;
+        let debug_mode = settings.debug_mode;
+        let extended_thinking = settings.extended_thinking;
+
+        // Reconcile disk → DB, then stage all DB artifacts → disk
+        if !(step_id == 0 && !resume && !rerun) {
+            reconcile_disk_artifacts(&conn, &skill_name, &workspace_path)?;
+            stage_artifacts(&conn, &skill_name, &workspace_path, skills_path.as_deref())?;
+        }
+
+        // Validate prerequisites (step 5 requires decisions.md)
+        if step_id == 5 {
+            validate_decisions_exist_inner(&skill_name, &workspace_path, skills_path.as_deref(), &conn)?;
+        }
+
+        // Get skill type
+        let skill_type = crate::db::get_skill_type(&conn, &skill_name)?;
+
+        (skills_path, api_key, extended_context, debug_mode, extended_thinking, skill_type)
+    }; // DB lock released before file I/O and sidecar spawn
 
     let step = get_step_config(step_id)?;
-    let api_key = read_api_key(&db)?;
-    let extended_context = read_extended_context(&db);
-    let debug_mode = read_debug_mode(&db);
-    let extended_thinking = read_extended_thinking(&db);
     let thinking_budget = if extended_thinking {
         thinking_budget_for_step(step_id)
     } else {
         None
-    };
-    let skill_type = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::get_skill_type(&conn, &skill_name)?
     };
     let mut prompt = build_prompt(&step.prompt_template, &step.output_file, &skill_name, &domain, &workspace_path, skills_path.as_deref(), &skill_type);
 
