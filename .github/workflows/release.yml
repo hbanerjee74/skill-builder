@@ -190,11 +190,6 @@ jobs:
             cp -r "references" "$STAGE/references"
           fi
 
-          cat > "$STAGE/run.bat" << 'SCRIPT'
-          @echo off
-          cd /d "%~dp0"
-          start "" "skill-builder.exe"
-          SCRIPT
           7z a "${STAGE}.zip" "$STAGE"
 
       - name: Upload artifacts
