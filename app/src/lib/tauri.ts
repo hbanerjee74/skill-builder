@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser } from "@/lib/types";
 
 // --- Settings ---
 
@@ -208,8 +208,19 @@ export interface CreateGithubIssueResponse {
 export const createGithubIssue = (request: CreateGithubIssueRequest) =>
   invoke<CreateGithubIssueResponse>("create_github_issue", { request });
 
-export const testGithubPat = (githubPat: string) =>
-  invoke<string>("test_github_pat", { githubPat });
+// --- GitHub OAuth ---
+
+export const githubStartDeviceFlow = () =>
+  invoke<DeviceFlowResponse>("github_start_device_flow");
+
+export const githubPollForToken = (deviceCode: string) =>
+  invoke<GitHubAuthResult>("github_poll_for_token", { deviceCode });
+
+export const githubGetUser = () =>
+  invoke<GitHubUser | null>("github_get_user");
+
+export const githubLogout = () =>
+  invoke<void>("github_logout");
 
 // --- Agent Prompts ---
 
