@@ -49,7 +49,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
 | `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (34) | `@dashboard` |
-| `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (19) | `@dashboard` |
+| `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (16) | `@workflow` |
@@ -67,13 +67,13 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (46) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (33) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (77) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
-| `src-tauri/src/commands/files.rs` | `cargo test commands::files` (13) | `@workflow` |
+| `src-tauri/src/commands/files.rs` | `cargo test commands::files` (19) | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `cargo test commands::settings` (7) | `@settings` |
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
