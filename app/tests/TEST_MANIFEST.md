@@ -40,6 +40,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (37) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
+| `src/pages/mcp-servers.tsx` | -- | -- | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
 
 ### Components
