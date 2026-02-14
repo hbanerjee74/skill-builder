@@ -1060,32 +1060,28 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
         return;
     }
 
-    if !skill_dir.exists() {
-        return;
-    }
+    // Context files (steps 0, 2, 4, 6) may live in skills_path when configured
+    let context_dir = if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+        Path::new(skills_path.unwrap()).join(skill_name)
+    } else {
+        skill_dir.clone()
+    };
 
     for file in get_step_output_files(step_id) {
-        let path = skill_dir.join(file);
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
+        // Check both locations — workspace and skills_path
+        for dir in [&skill_dir, &context_dir] {
+            let path = dir.join(file);
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+            }
         }
     }
 
-    // Step 4 (reasoning): also delete the chat session file so reset starts fresh,
-    // and remove decisions.md from the skill output directory (skills_path) if it exists.
+    // Step 4 (reasoning): also delete the chat session file so reset starts fresh
     if step_id == 4 {
         let session = skill_dir.join("logs").join("reasoning-chat.json");
         if session.exists() {
             let _ = std::fs::remove_file(&session);
-        }
-        if let Some(sp) = skills_path {
-            let skill_output_decisions = Path::new(sp)
-                .join(skill_name)
-                .join("context")
-                .join("decisions.md");
-            if skill_output_decisions.exists() {
-                let _ = std::fs::remove_file(&skill_output_decisions);
-            }
         }
     }
 }
@@ -1154,12 +1150,18 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=7 {
-        let base_dir = if step_id == 5 { &skill_output_dir } else { &skill_dir };
+        let base_dir = if step_id == 5 {
+            &skill_output_dir
+        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+            &skill_output_dir
+        } else {
+            &skill_dir
+        };
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            let path = base_dir.join(file);
-            if path.exists() {
+            // Check both workspace and skills_path locations
+            if base_dir.join(file).exists() || skill_dir.join(file).exists() {
                 existing_files.push(file.to_string());
             }
         }
