@@ -769,7 +769,7 @@ fn validate_decisions_exist_inner(
 
     Err(
         "Cannot start Build step: decisions.md was not found. \
-         The Reasoning step (step 5) must create a decisions file before the Build step can run. \
+         The Reasoning step (step 4) must create a decisions file before the Build step can run. \
          Please re-run the Reasoning step first."
             .to_string(),
     )
