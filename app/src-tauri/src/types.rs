@@ -19,7 +19,13 @@ pub struct AppSettings {
     #[serde(default)]
     pub splash_shown: bool,
     #[serde(default)]
-    pub github_pat: Option<String>,
+    pub github_oauth_token: Option<String>,
+    #[serde(default)]
+    pub github_user_login: Option<String>,
+    #[serde(default)]
+    pub github_user_avatar: Option<String>,
+    #[serde(default)]
+    pub github_user_email: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -34,7 +40,10 @@ impl Default for AppSettings {
             extended_context: false,
             extended_thinking: false,
             splash_shown: false,
-            github_pat: None,
+            github_oauth_token: None,
+            github_user_login: None,
+            github_user_avatar: None,
+            github_user_email: None,
         }
     }
 }
@@ -178,6 +187,33 @@ pub struct ReconciliationResult {
     pub auto_cleaned: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceFlowResponse {
+    pub device_code: String,
+    pub user_code: String,
+    pub verification_uri: String,
+    pub expires_in: u64,
+    pub interval: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GitHubUser {
+    pub login: String,
+    pub avatar_url: String,
+    pub email: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "status")]
+pub enum GitHubAuthResult {
+    #[serde(rename = "pending")]
+    Pending,
+    #[serde(rename = "slow_down")]
+    SlowDown,
+    #[serde(rename = "success")]
+    Success { user: GitHubUser },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -194,7 +230,10 @@ mod tests {
         assert!(!settings.extended_context);
         assert!(!settings.extended_thinking);
         assert!(!settings.splash_shown);
-        assert!(settings.github_pat.is_none());
+        assert!(settings.github_oauth_token.is_none());
+        assert!(settings.github_user_login.is_none());
+        assert!(settings.github_user_avatar.is_none());
+        assert!(settings.github_user_email.is_none());
     }
 
     #[test]
@@ -209,7 +248,10 @@ mod tests {
             extended_context: false,
             extended_thinking: true,
             splash_shown: false,
-            github_pat: Some("ghp_testtoken123".to_string()),
+            github_oauth_token: Some("gho_testtoken123".to_string()),
+            github_user_login: Some("testuser".to_string()),
+            github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
+            github_user_email: Some("test@example.com".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -233,14 +275,17 @@ mod tests {
 
     #[test]
     fn test_app_settings_deserialize_without_optional_fields() {
-        // Simulates loading settings saved before skills_path / debug_mode / extended_thinking / github_pat / log_level existed
+        // Simulates loading settings saved before new OAuth fields existed
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
         assert!(!settings.debug_mode);
         assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_thinking);
-        assert!(settings.github_pat.is_none());
+        assert!(settings.github_oauth_token.is_none());
+        assert!(settings.github_user_login.is_none());
+        assert!(settings.github_user_avatar.is_none());
+        assert!(settings.github_user_email.is_none());
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
