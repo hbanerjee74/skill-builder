@@ -84,6 +84,10 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// Session-scoped set of workspaces whose prompts have already been copied.
 /// Prompts are bundled with the app and don't change during a session,
 /// so we only need to copy once per workspace.
+///
+/// **Dev-mode caveat:** In development, prompts are read from the repo root.
+/// Edits to `agents/` or `references/` while the app is running won't be
+/// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// Resolve source directories for agents and references from the app handle.
