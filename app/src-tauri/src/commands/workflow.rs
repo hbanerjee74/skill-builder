@@ -83,9 +83,9 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// Resolve source directories for agents and references from the app handle.
-/// Returns `(agents_dir, refs_dir)` as owned PathBufs. Either may be empty
-/// if not found (caller should check `.is_dir()` before using).
-fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
+/// Returns `(agents_dir, refs_dir, claude_md)` as owned PathBufs. Either may be empty
+/// if not found (caller should check `.is_dir()` / `.is_file()` before using).
+fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf, PathBuf) {
     use tauri::Manager;
 
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -95,6 +95,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
 
     let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
     let refs_src = repo_root.as_ref().map(|r| r.join("references"));
+    let claude_md_src = repo_root.as_ref().map(|r| r.join("workspace").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),
@@ -128,7 +129,23 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         }
     };
 
-    (agents_dir, refs_dir)
+    let claude_md = match claude_md_src {
+        Some(ref p) if p.is_file() => p.clone(),
+        _ => {
+            let resource = app_handle
+                .path()
+                .resource_dir()
+                .map(|r| r.join("workspace").join("CLAUDE.md"))
+                .unwrap_or_default();
+            if resource.is_file() {
+                resource
+            } else {
+                PathBuf::new()
+            }
+        }
+    };
+
+    (agents_dir, refs_dir, claude_md)
 }
 
 /// Returns true if this workspace has already been initialized this session.
@@ -165,18 +182,19 @@ pub async fn ensure_workspace_prompts(
 
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
-    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, refs_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+    if !agents_dir.is_dir() && !refs_dir.is_dir() && !claude_md.is_file() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
     let refs = refs_dir.clone();
+    let cmd = claude_md.clone();
 
     tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(&agents, &refs, &workspace)
+        copy_prompts_sync(&agents, &refs, &cmd, &workspace)
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))??;
@@ -186,13 +204,18 @@ pub async fn ensure_workspace_prompts(
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
-fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_directory_to(agents_dir, workspace_path, "agents")?;
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
     }
     if refs_dir.is_dir() {
         copy_directory_to(refs_dir, workspace_path, "references")?;
+    }
+    if claude_md.is_file() {
+        let dest = Path::new(workspace_path).join("CLAUDE.md");
+        std::fs::copy(claude_md, &dest)
+            .map_err(|e| format!("Failed to copy CLAUDE.md to workspace: {}", e))?;
     }
     Ok(())
 }
@@ -208,13 +231,13 @@ pub fn ensure_workspace_prompts_sync(
         return Ok(());
     }
 
-    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, refs_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+    if !agents_dir.is_dir() && !refs_dir.is_dir() && !claude_md.is_file() {
         return Ok(());
     }
 
-    copy_prompts_sync(&agents_dir, &refs_dir, workspace_path)?;
+    copy_prompts_sync(&agents_dir, &refs_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
@@ -363,7 +386,6 @@ fn build_prompt(
         skill_dir.clone() // fallback: workspace_path/skill_name
     };
     let skill_output_context_dir = skill_output_dir.join("context");
-    let shared_context = base.join("references").join("shared-context.md");
     // For build step (output_file starts with "skill/"), use skill_output_dir
     let output_path = if output_file.starts_with("skill/") {
         skill_output_dir.join(output_file.trim_start_matches("skill/"))
@@ -378,7 +400,6 @@ fn build_prompt(
 
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
-         The shared context file is: {}. \
          The skill directory is: {}. \
          The context directory (for reading and writing intermediate files) is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
@@ -386,7 +407,6 @@ fn build_prompt(
          Write output to {}.",
         domain,
         skill_name,
-        shared_context.display(),
         skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -545,7 +565,7 @@ pub async fn run_review_step(
          1. The file exists and is non-empty\n\
          2. The content is well-structured markdown\n\
          3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected format (check references/shared-context.md for format guidelines)\n\
+         4. The content follows the expected file formats (clarifications format with YAML frontmatter, numbered questions, choices, recommendation, answer field)\n\
          5. The content is substantive (not placeholder or minimal)\n\
          \n\nRespond with EXACTLY one line:\n\
          - If satisfactory: PASS\n\
@@ -1266,7 +1286,6 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("The shared context file is: /home/user/.vibedata/references/shared-context.md"));
         assert!(prompt.contains("/home/user/.vibedata/my-skill/context/clarifications-concepts.md"));
         assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));

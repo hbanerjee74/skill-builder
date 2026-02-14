@@ -14,7 +14,6 @@ You orchestrate parallel validation AND testing of a completed skill in a single
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **domain name**
@@ -37,16 +36,15 @@ If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section
 
 ## Phase 1: Inventory and Prepare
 
-1. Read the best practices file from the references directory (it's deployed alongside the shared context file — look for `validate-best-practices.md` in the same `references/` folder).
+1. Read the best practices file (`validate-best-practices.md` from the `references/` folder).
 2. Read `decisions.md` and `clarifications.md` from the context directory. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
-3. Read the shared context file for domain definitions and content principles.
-4. Read `SKILL.md` at the skill output directory root and all files in `references/`. Understand:
+3. Read `SKILL.md` at the skill output directory root and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
-5. **Count the files** — you'll need this to know how many sub-agents to spawn.
-6. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
+4. **Count the files** — you'll need this to know how many sub-agents to spawn.
+5. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
    - **Basic domain concepts** (2 prompts) — "What are the key entities in [domain]?"
    - **Silver layer modeling** (2 prompts) — "What silver layer tables do I need for [specific entity]?"
    - **Gold layer / metrics modeling** (2 prompts) — "How should I model [specific metric]?"

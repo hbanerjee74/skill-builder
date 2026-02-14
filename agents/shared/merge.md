@@ -18,7 +18,6 @@ You merge the three research agents' output files into a single, deduplicated `c
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the expected file formats
   - The **context directory** path where the research output files are and where to write the merged file
 
 </context>
@@ -59,7 +58,7 @@ Write the merged output to `clarifications.md` in the context directory. Organiz
 3. Add a `## Cross-cutting Questions` section for questions that span multiple areas
 4. Number all questions sequentially across sections (Q1, Q2, Q3...)
 5. Add an empty **Answer**: field to each question for the PM to fill in
-6. Follow the `clarifications.md` format from the shared context file
+6. Follow the `clarifications.md` format
 
 ### Step 5: Write merge log
 

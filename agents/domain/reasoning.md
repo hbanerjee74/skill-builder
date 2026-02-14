@@ -16,12 +16,11 @@ Pay special attention to business logic contradictions, regulatory compliance im
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for full context on the skill builder's purpose
   - The **context directory** path where all working files live
 
 ## Rerun / Resume Mode
 
-See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
+Follow the Rerun/Resume Mode protocol. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -29,8 +28,8 @@ See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode pr
 
 ### Step 1: Load context
 - Read `clarifications-concepts.md` from the context directory (domain concepts questions — already answered by the PM in an earlier step)
-- Read `clarifications.md` from the context directory (merged patterns + data modeling questions with the PM's answers — see the shared context file for the expected format)
-- Read `decisions.md` from the context directory if it exists (contains previously confirmed decisions — see the shared context file for the format)
+- Read `clarifications.md` from the context directory (merged patterns + data modeling questions with the PM's answers)
+- Read `decisions.md` from the context directory if it exists (contains previously confirmed decisions)
 
 For any question where the `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer. Do not skip unanswered questions — treat the recommendation as the PM's choice and proceed.
 
@@ -63,7 +62,7 @@ Write `decisions.md` to the context directory:
   - If a new decision **contradicts or refines** an existing one, **replace** the old entry (keep the same D-number)
   - If a new decision is **entirely new**, add it at the end with the next D-number
   - If an existing decision is **unchanged**, keep it as-is
-- Rewrite `decisions.md` in the context directory as a clean, complete snapshot — see the shared context file under **File Formats -> `decisions.md`** for the format and rules
+- Rewrite `decisions.md` in the context directory as a clean, complete snapshot — follow the `decisions.md` format
 - The resulting file must read as a coherent, self-contained set of current decisions with no duplicates or contradictions
 
 **Handling conflicts**: If you find contradictions or ambiguities across clarification answers, resolve them yourself by picking the most reasonable option. Record your reasoning in the decision's `**Implication**` field — e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy. The gross revenue reference in Q3 appears to be shorthand."

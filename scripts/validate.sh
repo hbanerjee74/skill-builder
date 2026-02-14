@@ -141,12 +141,12 @@ else
   fail "skills/start/SKILL.md not found"
 fi
 
-# ---------- T1.5: Shared context ----------
-echo "=== Shared Context ==="
-if [ -f "references/shared-context.md" ]; then
-  pass "references/shared-context.md exists"
+# ---------- T1.5: Workspace CLAUDE.md ----------
+echo "=== Workspace CLAUDE.md ==="
+if [ -f "workspace/CLAUDE.md" ]; then
+  pass "workspace/CLAUDE.md exists"
 else
-  fail "references/shared-context.md not found"
+  fail "workspace/CLAUDE.md not found"
 fi
 
 # ---------- T1.6: Old files removed ----------

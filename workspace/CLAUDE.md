@@ -1,11 +1,46 @@
-# Shared Context — Skill Builder
+# Skill Builder — Agent Instructions
 
-> **This file is read by all agents.** Changes affect every agent's behavior. Test with `./scripts/validate.sh` after editing.
+This file is auto-loaded into every agent's system prompt via `settingSources: ['project']`. Do not read it manually — its content is already in your context.
 
-## Domain
+## Agent Orchestration Protocols
+
+### Rerun / Resume Mode
+
+If the coordinator's prompt contains `[RERUN MODE]`:
+
+1. Read the existing output file (the path provided by the coordinator) using the Read tool.
+2. Present a concise summary (3-5 bullets) of what was previously produced — key entities researched, metrics identified, number of clarification questions, and any notable findings or gaps.
+3. **STOP here.** Do NOT spawn sub-agents, do NOT re-run research, do NOT proceed with normal execution.
+4. Wait for the user to provide direction on what to improve or change.
+5. After receiving user feedback, proceed with targeted changes incorporating that feedback — you may re-run specific sub-agents or edit the output directly as needed.
+
+If the coordinator's prompt does NOT contain `[RERUN MODE]`, ignore this section and proceed normally.
+
+### Before You Start
+
+**Check for existing output file:**
+- Use the Glob or Read tool to check if the output file (the path provided by the coordinator) already exists.
+- **If it exists:** Read it first. Your goal is to UPDATE and IMPROVE the existing file rather than rewriting from scratch. Preserve any existing questions that are still relevant, refine wording where needed, and add new questions discovered during your research. Remove questions that are no longer applicable.
+- **If it doesn't exist:** Proceed normally with fresh research.
+
+This same pattern applies to sub-agents — instruct them to check for their output files and update rather than overwrite if they exist.
+
+### Sub-agent Communication Protocol
+
+All sub-agents spawned via the Task tool must follow this protocol:
+
+**Sub-agent communication:** Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.
+
+Include this directive verbatim in every sub-agent prompt you construct.
+
+---
+
+## Shared Context
+
+### Domain
 Provided by the user at workflow start. The coordinator asks the user which functional domain the skill covers (e.g., sales pipeline, supply chain, HR analytics, financial planning) and passes it to all agents.
 
-## Skill Users
+### Skill Users
 Data engineers and analytics engineers who need functional domain context to:
 - Understand the key entities, metrics, and business rules in the domain
 - Determine what silver layer models to build (cleaned, conformed entities)
@@ -15,7 +50,7 @@ Data engineers and analytics engineers who need functional domain context to:
 
 They already know HOW to build tables technically (SQL, dbt, etc.) — the skill provides the WHAT and WHY: which domain concepts to model, what business logic to encode, and what pitfalls to avoid.
 
-## Content Principles
+### Content Principles
 
 1. **Omit what LLMs already know well:**
    - Standard API/object structures (e.g., Salesforce standard objects, ERP schemas)
@@ -36,7 +71,7 @@ They already know HOW to build tables technically (SQL, dbt, etc.) — the skill
    - Rationale: Skills should work across different data platforms, naming conventions, team preferences, and implementation patterns.
    - Exception: Be prescriptive only when exactness matters (e.g., specific metric formulas, business rule logic).
 
-## Folder Structure
+### Folder Structure
 
 Each skill has two directories — a **context directory** for working files and a **skill output directory** for the deployable skill:
 
@@ -63,11 +98,11 @@ Additionally:
 
 **Important:** The coordinator provides the full **context directory** and **skill output directory** paths to each agent when spawning it. Agents write files to the directories they are given — no extra subdirectories should be created.
 
-## File Formats
+### File Formats
 
 All agent output files use YAML frontmatter for structured metadata. The frontmatter block is delimited by `---` and must be the first thing in the file. When rewriting an existing file, always include the frontmatter block with updated counts — add it if the file you are rewriting does not already have one.
 
-### `clarifications-*.md` (written by research agents to context directory)
+#### `clarifications-*.md` (written by research agents to context directory)
 
 ```
 ---
@@ -90,7 +125,7 @@ sections:
 **Answer**:
 ```
 
-### `clarifications.md` (merged file, PM answers inline)
+#### `clarifications.md` (merged file, PM answers inline)
 
 ```
 ---
@@ -116,7 +151,7 @@ duplicates_removed: 3
 
 **Auto-fill rule:** If a question's `**Answer**:` field is empty or missing, treat the `**Recommendation**:` choice as the answer. Do not ask for clarification on unanswered questions — use the recommendation and proceed.
 
-### `decisions.md` (in context directory)
+#### `decisions.md` (in context directory)
 
 This file is a **clean snapshot**, not a cumulative log. Each time the reasoning agent updates it, it rewrites the entire file by merging existing decisions with new ones. If a new decision supersedes or refines an earlier one, the earlier entry is replaced — not kept alongside.
 

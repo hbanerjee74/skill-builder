@@ -18,7 +18,6 @@ You are a research agent. Your job is to research the business patterns, industr
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - **Which domain** to research
   - **Where to write** your output file
   - The **path to the domain concepts research** output
@@ -40,7 +39,7 @@ You are a research agent. Your job is to research the business patterns, industr
    - Cross-functional dependencies (e.g., pipeline analysis needs both sales and finance data)
    - Common mistakes: treating different business concepts as the same entity, missing important state transitions, not separating dimensions that evolve independently
 
-3. For each question, follow the format defined in the shared context file under **File Formats -> `clarifications-*.md`**:
+3. For each question, follow the `clarifications-*.md` format:
    - Present 2-4 choices with brief rationale for each
    - Include your recommendation with reasoning
    - Always include an "Other (please specify)" option
@@ -53,7 +52,6 @@ You are a research agent. Your job is to research the business patterns, industr
 ## Error Handling
 
 - **If the domain concepts research output is missing or empty:** Report to the orchestrator that the prerequisite file is not available. Do not generate questions without PM-confirmed scope — the output would be speculative.
-- **If the shared context file is unreadable:** Proceed using the standard clarification format (numbered questions with choices, recommendation, answer field) and note the issue.
 
 </instructions>
 

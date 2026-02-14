@@ -30,6 +30,7 @@
       "../sidecar/dist/": "sidecar/dist",
       "../../agents/": "agents",
       "../../references/": "references",
+      "../../workspace/": "workspace",
       "resources/node/": "node"
     },
     "icon": [

@@ -14,17 +14,15 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
-  - The **shared context** file path (domain definitions and content principles)
   - The **context directory** path (for reading `decisions.md` and `clarifications.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **domain name**
-- Read the shared context file for domain context and content principles
 - Read `decisions.md` from the context directory — this is your primary input
 - Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
 
 ## Rerun / Resume Mode
 
-See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
+Follow the Rerun/Resume Mode protocol. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
 
 ---
 
@@ -38,7 +36,7 @@ Before writing any files, plan the overall skill structure:
 
 ## Before You Start
 
-See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
+Follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
 
 ## Phase 1: Plan the Skill Structure
 
@@ -105,7 +103,7 @@ The file should:
 Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decisions]
 ```
 
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+**Sub-agent communication:** Include this directive verbatim in your sub-agent prompt: *Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.*
 
 ## Phase 4: Review and Fix Gaps
 
@@ -119,7 +117,7 @@ Prompt it to:
 5. Ensure SKILL.md's pointers accurately describe each reference file
 6. Respond with only: `Done — reviewed and fixed [N] issues`
 
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+**Sub-agent communication:** Include this directive verbatim in your sub-agent prompt: *Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.*
 
 ## Error Handling
 
