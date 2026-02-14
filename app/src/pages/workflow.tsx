@@ -44,12 +44,9 @@ import {
   resetWorkflowStep,
   getWorkflowState,
   saveWorkflowState,
-  captureStepArtifacts,
-  getArtifactContent,
-  saveArtifactContent,
   readFile,
+  writeFile,
   cleanupSkillSidecar,
-  hasStepArtifacts,
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
@@ -296,14 +293,9 @@ export default function WorkflowPage() {
       if (cfg?.outputFiles && stepStatus === "pending") {
         const path = cfg.outputFiles[0];
         if (path) {
-          getArtifactContent(skillName, path)
-            .catch(() => null)
-            .then(async (artifact) => {
-              if (artifact?.content) return true;
-              const filePath = `${workspacePath}/${skillName}/${path}`;
-              return readFile(filePath).then((content) => !!content).catch(() => false);
-            })
-            .then((exists) => setHasPartialOutput(exists))
+          const filePath = `${workspacePath}/${skillName}/${path}`;
+          readFile(filePath)
+            .then((content) => setHasPartialOutput(!!content))
             .catch(() => setHasPartialOutput(false));
         }
       } else {
@@ -312,10 +304,16 @@ export default function WorkflowPage() {
     }
 
     // --- Error-state artifact check ---
-    if (stepStatus === "error" && skillName) {
-      hasStepArtifacts(skillName, currentStep)
-        .then(setErrorHasArtifacts)
-        .catch(() => setErrorHasArtifacts(false));
+    if (stepStatus === "error" && skillName && workspacePath) {
+      const cfg2 = STEP_CONFIGS[currentStep];
+      const firstOutput = cfg2?.outputFiles?.[0];
+      if (firstOutput) {
+        readFile(`${workspacePath}/${skillName}/${firstOutput}`)
+          .then((content) => setErrorHasArtifacts(!!content))
+          .catch(() => setErrorHasArtifacts(false));
+      } else {
+        setErrorHasArtifacts(false);
+      }
     } else {
       setErrorHasArtifacts(false);
     }
@@ -376,14 +374,8 @@ export default function WorkflowPage() {
     trySkillsPath
       .then((content) => {
         if (content) return content;
-        // 2. Try SQLite artifact
-        return getArtifactContent(skillName, relativePath)
-          .catch(() => null)
-          .then(async (artifact) => {
-            if (artifact?.content) return artifact.content;
-            // 3. Fallback: read from workspace filesystem
-            return readFile(workspaceFilePath).catch(() => null);
-          });
+        // 2. Fallback: read from workspace filesystem
+        return readFile(workspaceFilePath).catch(() => null);
       })
       .then((content) => setReviewContent(content ?? null))
       .finally(() => setLoadingReview(false));
@@ -432,8 +424,6 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
-      // Capture artifacts before marking step complete so the next
-      // human review step can read them from SQLite immediately.
       const finish = () => {
         updateStepStatus(step, "completed");
         setRunning(false);
@@ -447,13 +437,7 @@ export default function WorkflowPage() {
         }
       };
 
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath)
-          .catch(() => {})
-          .then(finish);
-      } else {
-        finish();
-      }
+      finish();
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -555,11 +539,11 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the content as-is to DB
+    // Save the content to workspace filesystem
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && reviewContent !== null) {
+    if (config && reviewContent !== null && workspacePath) {
       try {
-        await saveArtifactContent(skillName, currentStep, config.relativePath, reviewContent);
+        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, reviewContent);
       } catch {
         // best-effort
       }
@@ -577,7 +561,7 @@ export default function WorkflowPage() {
   }, [currentStep, updateStepStatus]);
 
   // Reload the file content (after user edits externally).
-  // Same priority as initial load: skill context dir > SQLite > workspace.
+  // Same priority as initial load: skill context dir > workspace.
   const handleReviewReload = () => {
     if (!reviewFilePath || !workspacePath) return;
     setLoadingReview(true);
@@ -592,14 +576,8 @@ export default function WorkflowPage() {
     trySkillsPath
       .then((content) => {
         if (content) return content;
-        // 2. Try SQLite artifact
-        return getArtifactContent(skillName, reviewFilePath)
-          .catch(() => null)
-          .then(async (artifact) => {
-            if (artifact?.content) return artifact.content;
-            // 3. Fallback: workspace filesystem
-            return readFile(workspaceFilePath).catch(() => null);
-          });
+        // 2. Fallback: workspace filesystem
+        return readFile(workspaceFilePath).catch(() => null);
       })
       .then((content) => {
         setReviewContent(content ?? null);

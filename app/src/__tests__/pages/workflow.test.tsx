@@ -34,14 +34,11 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: vi.fn(),
   readFile: vi.fn(() => Promise.reject("not found")),
+  writeFile: vi.fn(() => Promise.resolve()),
   getWorkflowState: vi.fn(() => Promise.reject("not found")),
   saveWorkflowState: vi.fn(() => Promise.resolve()),
   resetWorkflowStep: vi.fn(() => Promise.resolve()),
-  captureStepArtifacts: vi.fn(() => Promise.resolve([])),
-  getArtifactContent: vi.fn(() => Promise.resolve(null)),
-  saveArtifactContent: vi.fn(() => Promise.resolve()),
   cleanupSkillSidecar: vi.fn(() => Promise.resolve()),
-  hasStepArtifacts: vi.fn(() => Promise.resolve(false)),
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
 }));
@@ -72,7 +69,7 @@ vi.mock("@/components/step-rerun-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, getArtifactContent, saveArtifactContent, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -400,9 +397,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
   });
 
-  it("shows Resume when partial output exists on disk but not in SQLite", async () => {
-    // Simulate: step 0 was interrupted — files on disk but never captured to SQLite
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
+  it("shows Resume when partial output exists on disk", async () => {
+    // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path.includes("clarifications-concepts.md")) {
         return Promise.resolve("# Partial research output");
@@ -422,8 +418,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   });
 
   it("does not show Resume when no partial output exists anywhere", async () => {
-    // Neither SQLite nor filesystem has output
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
+    // Filesystem has no output
     vi.mocked(readFile).mockRejectedValue("not found");
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -440,28 +435,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(screen.queryByText("Resume")).toBeNull();
   });
 
-  it("shows Resume when partial output exists in SQLite", async () => {
-    // SQLite has the artifact — no filesystem fallback needed
-    vi.mocked(getArtifactContent).mockResolvedValue({
-      skill_name: "test-skill",
-      step_id: 0,
-      relative_path: "context/clarifications-concepts.md",
-      content: "# Research output from SQLite",
-      size_bytes: 100,
-      created_at: "",
-      updated_at: "",
-    });
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.queryByText("Resume")).toBeTruthy();
-    });
-  });
-
   it("renders completion screen on last step (step 7)", async () => {
     // Simulate all steps complete, on step 7 (the last step)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -470,9 +443,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
     useWorkflowStore.getState().setCurrentStep(7);
-
-    // No artifact
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     render(<WorkflowPage />);
 
@@ -493,8 +463,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     }
     useWorkflowStore.getState().setCurrentStep(7);
 
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     render(<WorkflowPage />);
 
     await act(async () => {
@@ -512,8 +480,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
     useWorkflowStore.getState().setCurrentStep(7);
-
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     render(<WorkflowPage />);
 
@@ -533,8 +499,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
     useWorkflowStore.getState().setCurrentStep(7);
-
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     render(<WorkflowPage />);
 
@@ -563,8 +527,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     }
     useWorkflowStore.getState().setCurrentStep(7);
 
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     render(<WorkflowPage />);
 
     await act(async () => {
@@ -591,8 +553,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
     useWorkflowStore.getState().setCurrentStep(7);
-
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     render(<WorkflowPage />);
 
@@ -628,7 +588,6 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(getArtifactContent).mockClear();
     vi.mocked(readFile).mockClear();
   });
 
@@ -639,7 +598,7 @@ describe("WorkflowPage — human review file loading priority", () => {
   });
 
   it("loads review content from skillsPath context directory first", async () => {
-    // skillsPath has the file — should use it even though SQLite and workspace also have content
+    // skillsPath has the file — should use it even though workspace also has content
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
         return Promise.resolve("# From skills context dir");
@@ -648,15 +607,6 @@ describe("WorkflowPage — human review file loading priority", () => {
         return Promise.resolve("# From workspace");
       }
       return Promise.reject("not found");
-    });
-    vi.mocked(getArtifactContent).mockResolvedValue({
-      skill_name: "test-skill",
-      step_id: 0,
-      relative_path: "context/clarifications-concepts.md",
-      content: "# From SQLite",
-      size_bytes: 50,
-      created_at: "",
-      updated_at: "",
     });
 
     // Navigate to step 1 (human review for concepts)
@@ -679,8 +629,8 @@ describe("WorkflowPage — human review file loading priority", () => {
     );
   });
 
-  it("falls back to SQLite when skillsPath context file is not found", async () => {
-    // skillsPath does NOT have the file — should fall back to SQLite
+  it("falls back to workspace when skillsPath context file is not found", async () => {
+    // skillsPath does NOT have the file — should fall back to workspace
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path.startsWith("/test/skills/")) {
         return Promise.reject("not found");
@@ -690,15 +640,6 @@ describe("WorkflowPage — human review file loading priority", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue({
-      skill_name: "test-skill",
-      step_id: 0,
-      relative_path: "context/clarifications-concepts.md",
-      content: "# From SQLite",
-      size_bytes: 50,
-      created_at: "",
-      updated_at: "",
-    });
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -709,38 +650,12 @@ describe("WorkflowPage — human review file loading priority", () => {
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("From SQLite")).toBeTruthy();
-    });
-  });
-
-  it("falls back to workspace filesystem when both skillsPath and SQLite fail", async () => {
-    // Neither skillsPath nor SQLite has the content — workspace should be used
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.startsWith("/test/skills/")) {
-        return Promise.reject("not found");
-      }
-      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
-        return Promise.resolve("# From workspace fallback");
-      }
-      return Promise.reject("not found");
-    });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "completed");
-    useWorkflowStore.getState().setCurrentStep(1);
-    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
-
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("From workspace fallback")).toBeTruthy();
+      expect(screen.getByText("From workspace")).toBeTruthy();
     });
   });
 
   it("skips skillsPath lookup when skillsPath is null", async () => {
-    // No skillsPath configured — should go straight to SQLite then workspace
+    // No skillsPath configured — should go straight to workspace
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: null,
@@ -753,7 +668,6 @@ describe("WorkflowPage — human review file loading priority", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -780,8 +694,6 @@ describe("WorkflowPage — human review file loading priority", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -824,9 +736,8 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(getArtifactContent).mockClear();
     vi.mocked(readFile).mockClear();
-    vi.mocked(saveArtifactContent).mockClear();
+    vi.mocked(writeFile).mockClear();
   });
 
   afterEach(() => {
@@ -853,7 +764,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     // Set up step 1 (human review for concepts)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -874,12 +784,14 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       screen.getByText("Complete Step").click();
     });
 
-    // saveArtifactContent should be called with the ORIGINAL content (empty answers preserved)
+    // writeFile should be called with the ORIGINAL content (empty answers preserved)
     await waitFor(() => {
-      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+    const writePath = vi.mocked(writeFile).mock.calls[0][0];
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    expect(writePath).toBe("/test/workspace/test-skill/context/clarifications-concepts.md");
     expect(savedContent).toBe(reviewContent);
 
     // Verify no auto-fill happened
@@ -898,8 +810,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   it("debug mode auto-completes human review steps on advance", async () => {
     // Enable debug mode
     useSettingsStore.getState().setSettings({ debugMode: true });
-
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -935,8 +845,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     // Enable debug mode
     useSettingsStore.getState().setSettings({ debugMode: true });
 
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     // Simulate: steps 0-5 completed, step 6 (validate & test) running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -970,8 +878,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   it("normal mode does not auto-complete human review steps", async () => {
     // Ensure debug mode is OFF (default)
     useSettingsStore.getState().setSettings({ debugMode: false });
-
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -1020,8 +926,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1039,10 +943,10 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
 
     // User-filled answers should be preserved
     expect(savedContent).toContain("**Answer**: We use full refresh for this table");
@@ -1070,8 +974,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       }
       return Promise.reject("not found");
     });
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1091,18 +993,16 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
 
     await waitFor(() => {
-      expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    // Verify it saved to the correct artifact path for step 3
-    expect(vi.mocked(saveArtifactContent)).toHaveBeenCalledWith(
-      "test-skill",
-      3,
-      "context/clarifications.md",
+    // Verify it saved to the correct filesystem path for step 3
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+      "/test/workspace/test-skill/context/clarifications.md",
       reviewContent,
     );
 
-    const savedContent = vi.mocked(saveArtifactContent).mock.calls[0][3];
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
 
     // Empty answers should remain empty — no auto-fill
     expect(savedContent).not.toContain("auto-selected from recommendation");
@@ -1139,9 +1039,8 @@ describe("WorkflowPage — debug auto-start behavior", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(getArtifactContent).mockClear();
     vi.mocked(readFile).mockClear();
-    vi.mocked(saveArtifactContent).mockClear();
+    vi.mocked(writeFile).mockClear();
     vi.mocked(runWorkflowStep).mockClear();
   });
 
@@ -1154,7 +1053,6 @@ describe("WorkflowPage — debug auto-start behavior", () => {
   it("auto-starts step 2 (agent) after step 0 completes and step 1 is auto-completed in debug mode", async () => {
     // Mock runWorkflowStep to return an agent ID so handleStartAgentStep succeeds
     vi.mocked(runWorkflowStep).mockResolvedValue("auto-agent-2");
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -1211,7 +1109,6 @@ describe("WorkflowPage — debug auto-start behavior", () => {
   it("debugAutoStartedRef prevents duplicate auto-starts on re-render", async () => {
     // Mock runWorkflowStep to return an agent ID
     vi.mocked(runWorkflowStep).mockResolvedValue("auto-agent-0");
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
 
     // Set up: step 0 is pending and debug mode is on — auto-start should fire
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
@@ -1262,9 +1159,8 @@ describe("WorkflowPage — rerun integration", () => {
 
     vi.mocked(saveWorkflowState).mockClear();
     vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(getArtifactContent).mockClear();
     vi.mocked(readFile).mockClear();
-    vi.mocked(saveArtifactContent).mockClear();
+    vi.mocked(writeFile).mockClear();
     vi.mocked(runWorkflowStep).mockClear();
     vi.mocked(resetWorkflowStep).mockClear();
   });
@@ -1278,16 +1174,6 @@ describe("WorkflowPage — rerun integration", () => {
   it("clicking Rerun on a completed agent step enters rerun chat mode", async () => {
     // Step 0 is a completed agent step — clicking "Rerun Step" should render StepRerunChat
     // instead of calling resetWorkflowStep (destructive reset).
-    vi.mocked(getArtifactContent).mockResolvedValue({
-      skill_name: "test-skill",
-      step_id: 0,
-      relative_path: "context/clarifications-concepts.md",
-      content: "# Research output",
-      size_bytes: 100,
-      created_at: "",
-      updated_at: "",
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -1317,7 +1203,6 @@ describe("WorkflowPage — rerun integration", () => {
   it("resume with partial output enters rerun chat for agent steps", async () => {
     // Step 0 has partial output on disk — clicking "Resume" should enter rerun chat
     // mode instead of calling handleStartStep with resume=true.
-    vi.mocked(getArtifactContent).mockResolvedValue(null);
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path.includes("clarifications-concepts.md")) {
         return Promise.resolve("# Partial research output");
@@ -1354,16 +1239,6 @@ describe("WorkflowPage — rerun integration", () => {
   it("rerun on step 4 (reasoning) does NOT enter rerun chat", async () => {
     // Step 4 (reasoning) has its own chat component — rerun should use
     // the legacy destructive reset path, not StepRerunChat.
-    vi.mocked(getArtifactContent).mockResolvedValue({
-      skill_name: "test-skill",
-      step_id: 4,
-      relative_path: "context/decisions.md",
-      content: "# Decisions",
-      size_bytes: 50,
-      created_at: "",
-      updated_at: "",
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     for (let i = 0; i < 4; i++) {

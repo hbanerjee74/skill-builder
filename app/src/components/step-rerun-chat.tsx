@@ -20,8 +20,7 @@ import { useWorkflowStore } from "@/stores/workflow-store";
 import {
   runWorkflowStep,
   startAgent,
-  captureStepArtifacts,
-  getArtifactContent,
+  readFile,
 } from "@/lib/tauri";
 import { countDecisions } from "@/lib/reasoning-parser";
 import { saveChatSession, loadChatSession } from "@/lib/chat-storage";
@@ -176,21 +175,18 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
 
   // Load decisions on mount (may already exist from a previous step)
   useEffect(() => {
-    getArtifactContent(skillName, "context/decisions.md")
-      .then((artifact) => {
-        if (artifact?.content) setDecisionsContent(artifact.content);
-      })
-      .catch(() => {});
+    loadDecisions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skillName]);
 
   const loadDecisions = useCallback(async () => {
     try {
-      const artifact = await getArtifactContent(skillName, "context/decisions.md");
-      if (artifact?.content) setDecisionsContent(artifact.content);
+      const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
+      if (content && content.trim().length > 0) setDecisionsContent(content);
     } catch {
       // Decisions may not exist yet
     }
-  }, [skillName]);
+  }, [skillName, workspacePath]);
 
   // --- Agent completion handler ---
 
@@ -224,10 +220,8 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
         });
       }
 
-      // Capture artifacts after each turn, then refresh decisions
-      captureStepArtifacts(skillName, stepId, workspacePath)
-        .then(() => loadDecisions())
-        .catch(() => {});
+      // Refresh decisions after each turn
+      loadDecisions();
 
       setRunning(false);
     } else if (currentRun.status === "error") {
@@ -338,16 +332,10 @@ export const StepRerunChat = forwardRef<StepRerunChatHandle, StepRerunChatProps>
   };
 
   const handleComplete = useCallback(async () => {
-    // Final artifact capture
-    try {
-      await captureStepArtifacts(skillName, stepId, workspacePath);
-    } catch {
-      // Best-effort
-    }
     // Update step status to completed (handles error → completed transition)
     updateStepStatus(stepId, "completed");
     onComplete();
-  }, [skillName, stepId, workspacePath, updateStepStatus, onComplete]);
+  }, [stepId, updateStepStatus, onComplete]);
 
   // Expose completeStep to parent via ref
   useImperativeHandle(ref, () => ({ completeStep: handleComplete }), [handleComplete]);
