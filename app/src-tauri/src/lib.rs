@@ -8,9 +8,6 @@ pub use types::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Truncate the log file before the plugin opens it so each session starts fresh.
-    logging::truncate_log_file();
-
     tauri::Builder::default()
         .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
@@ -18,6 +15,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
+
+            // Truncate the log file now that the Tauri path resolver is available.
+            // Uses app_log_dir() so the path always matches the log plugin's target.
+            logging::truncate_log_file(app.handle());
+
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
 
