@@ -49,6 +49,7 @@ import {
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
+  verifyStepOutput,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -424,7 +425,22 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
-      const finish = () => {
+      const finish = async () => {
+        // Verify the agent actually produced output files before marking complete
+        if (workspacePath && skillName) {
+          try {
+            const hasOutput = await verifyStepOutput(workspacePath, skillName, step);
+            if (!hasOutput) {
+              updateStepStatus(step, "error");
+              setRunning(false);
+              toast.error(`Step ${step + 1} completed but produced no output files`, { duration: Infinity });
+              return;
+            }
+          } catch {
+            // Verification failed — proceed optimistically
+          }
+        }
+
         updateStepStatus(step, "completed");
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
@@ -553,12 +569,24 @@ export default function WorkflowPage() {
   };
 
   // Handle completion from the rerun chat
-  const handleRerunComplete = useCallback(() => {
+  const handleRerunComplete = useCallback(async () => {
     setRerunStepId(null);
-    // Ensure the step is marked as completed (handles error -> completed transition)
+    // Verify output before marking as completed
+    if (workspacePath && skillName) {
+      try {
+        const hasOutput = await verifyStepOutput(workspacePath, skillName, currentStep);
+        if (!hasOutput) {
+          updateStepStatus(currentStep, "error");
+          toast.error(`Step ${currentStep + 1} rerun produced no output files`, { duration: Infinity });
+          return;
+        }
+      } catch {
+        // Verification failed — proceed optimistically
+      }
+    }
     updateStepStatus(currentStep, "completed");
     toast.success(`Step ${currentStep + 1} rerun completed`);
-  }, [currentStep, updateStepStatus]);
+  }, [currentStep, updateStepStatus, workspacePath, skillName]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > workspace.

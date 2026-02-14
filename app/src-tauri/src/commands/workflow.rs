@@ -961,6 +961,43 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     }
 }
 
+/// Check if at least one expected output file exists for a completed step.
+/// Returns `true` if the step produced output, `false` if no files were written.
+/// Human review steps (1, 3) and refinement (7) always return `true` since they
+/// produce no files by design.
+#[tauri::command]
+pub fn verify_step_output(
+    workspace_path: String,
+    skill_name: String,
+    step_id: u32,
+    db: tauri::State<'_, Db>,
+) -> Result<bool, String> {
+    let files = get_step_output_files(step_id);
+    // Steps with no expected output files are always valid
+    if files.is_empty() {
+        return Ok(true);
+    }
+
+    let skills_path = read_skills_path(&db);
+    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+
+    let has_output = if step_id == 5 {
+        let output_dir = if let Some(ref sp) = skills_path {
+            Path::new(sp).join(&skill_name)
+        } else {
+            skill_dir.clone()
+        };
+        output_dir.join("SKILL.md").exists() || output_dir.join("references").is_dir()
+    } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
+        let target_dir = Path::new(skills_path.as_ref().unwrap()).join(&skill_name);
+        files.iter().any(|f| target_dir.join(f).exists())
+    } else {
+        files.iter().any(|f| skill_dir.join(f).exists())
+    };
+
+    Ok(has_output)
+}
+
 /// Delete output files for a single step.
 /// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name or
 /// workspace_path/skill_name). For other steps, files are in workspace_path/skill_name.

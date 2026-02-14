@@ -98,6 +98,12 @@ export const previewStepReset = (
   fromStepId: number,
 ) => invoke<StepResetPreview[]>("preview_step_reset", { workspacePath, skillName, fromStepId });
 
+export const verifyStepOutput = (
+  workspacePath: string,
+  skillName: string,
+  stepId: number,
+) => invoke<boolean>("verify_step_output", { workspacePath, skillName, stepId });
+
 // --- Workflow State (SQLite) ---
 
 export interface WorkflowRunRow {
