@@ -13,6 +13,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
 | `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
 | `src/stores/imported-skills-store.ts` | `stores/imported-skills-store.test.ts` (13) | `components/imported-skill-card.test.tsx`, `pages/skills.test.tsx` | -- |
+| `src/stores/auth-store.ts` | -- | `components/feedback-dialog.test.tsx`, `components/github-login-dialog.test.tsx`, `pages/settings.test.tsx` | `@settings` |
 
 ### Hooks
 
@@ -37,7 +38,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|---|
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
 | `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (37) | `@workflow`, `@workflow-agent` |
-| `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (30) | `@settings` |
+| `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (32) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
 
@@ -52,7 +53,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
-| `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (16) | `@workflow` |
+| `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
 | `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (16) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
@@ -61,6 +62,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |
+| `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (pending) | `@settings` |
 | `src/components/layout/app-layout.tsx` | -- | `components/app-layout.test.tsx` (8) | `@navigation` |
 
 ### Rust Backend
@@ -77,6 +79,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/settings.rs` | `cargo test commands::settings` (7) | `@settings` |
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
+| `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
 | `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
 | `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (23) | `@workflow-agent` |
 
