@@ -88,8 +88,8 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Step 3 => Math.round((3/8)*100) = 38%
-    expect(screen.getByText("38%")).toBeInTheDocument();
+    // Step 3 => Math.round((3/7)*100) = 43%
+    expect(screen.getByText("43%")).toBeInTheDocument();
   });
 
   it("shows 100% for completed step", () => {
@@ -198,18 +198,13 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step 6 (Validate -- not yet 100%)", () => {
+  it("returns false for step 6 (Validate & Test -- not yet 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step 7 (Test -- not yet 100%)", () => {
+  it("returns true for step 7 (Refine -- last step, 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 7", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns true for step 8 (Refine -- last step, 100%)", () => {
-    const skill = { ...baseSkill, current_step: "Step 8", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(true);
   });
 
@@ -238,8 +233,8 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns true for step numbers above 8", () => {
-    const skill = { ...baseSkill, current_step: "Step 9", status: "in_progress" };
+  it("returns true for step numbers above 7", () => {
+    const skill = { ...baseSkill, current_step: "Step 8", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(true);
   });
 });
@@ -253,12 +248,12 @@ describe("parseStepProgress boundary tests", () => {
     expect(screen.getByText("0%")).toBeInTheDocument();
   });
 
-  it("Step 4 shows 50%", () => {
+  it("Step 4 shows 57%", () => {
     const skill = { ...baseSkill, current_step: "Step 4" };
     render(
       <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("57%")).toBeInTheDocument();
   });
 
   it("completed shows 100%", () => {
