@@ -99,6 +99,7 @@ interface TestWrapperProps {
   domain: string;
   workspacePath: string;
   onPhaseChange?: (phase: ReasoningPhase) => void;
+  onReset?: () => void;
 }
 
 function TestWrapper(props: TestWrapperProps) {
@@ -119,6 +120,7 @@ function TestWrapper(props: TestWrapperProps) {
           setPhase(p);
           props.onPhaseChange?.(p);
         }}
+        onReset={props.onReset}
       />
     </>
   );
@@ -727,5 +729,64 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
     // Should advance to step 5
     expect(useWorkflowStore.getState().currentStep).toBe(5);
+  });
+
+  // --- Reset button tests ---
+
+  it("renders Reset button when onReset is provided and phase is awaiting_feedback", async () => {
+    const user = userEvent.setup();
+    const onReset = vi.fn();
+    render(<TestWrapper {...defaultProps} onReset={onReset} />);
+
+    // Start reasoning and get to awaiting_feedback phase
+    await user.click(screen.getByText("Start Reasoning"));
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_SUMMARY_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    // Reset button should be visible
+    expect(screen.getByText("Reset")).toBeInTheDocument();
+  });
+
+  it("does not render Reset button when onReset is not provided", async () => {
+    const user = userEvent.setup();
+    render(<TestWrapper {...defaultProps} />);
+
+    // Start reasoning and get to awaiting_feedback phase
+    await user.click(screen.getByText("Start Reasoning"));
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_SUMMARY_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    // Reset button should NOT be visible (no onReset prop)
+    expect(screen.queryByText("Reset")).not.toBeInTheDocument();
+  });
+
+  it("calls onReset callback when Reset button is clicked", async () => {
+    const user = userEvent.setup();
+    const onReset = vi.fn();
+    render(<TestWrapper {...defaultProps} onReset={onReset} />);
+
+    // Start reasoning and get to awaiting_feedback phase
+    await user.click(screen.getByText("Start Reasoning"));
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_SUMMARY_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Reset")).toBeInTheDocument();
+    });
+
+    // Click Reset button
+    await user.click(screen.getByText("Reset"));
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });

@@ -55,7 +55,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
-| `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (16) | `@workflow` |
+| `src/components/reasoning-chat.tsx` | -- | `components/reasoning-chat.test.tsx` (19) | `@workflow` |
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
