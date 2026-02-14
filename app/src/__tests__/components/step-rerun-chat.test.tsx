@@ -16,13 +16,15 @@ if (!Element.prototype.scrollIntoView) {
 const {
   mockRunWorkflowStep,
   mockStartAgent,
-  mockReadFile,
+  mockCaptureStepArtifacts,
+  mockGetArtifactContent,
   mockLoadChatSession,
   mockSaveChatSession,
 } = vi.hoisted(() => ({
   mockRunWorkflowStep: vi.fn((..._args: unknown[]) => Promise.resolve("agent-1")),
   mockStartAgent: vi.fn((..._args: unknown[]) => Promise.resolve("agent-2")),
-  mockReadFile: vi.fn((..._args: unknown[]) => Promise.reject(new Error("not found"))),
+  mockCaptureStepArtifacts: vi.fn((..._args: unknown[]) => Promise.resolve()),
+  mockGetArtifactContent: vi.fn((..._args: unknown[]) => Promise.resolve(null)),
   mockLoadChatSession: vi.fn((..._args: unknown[]): Promise<Record<string, unknown> | null> => Promise.resolve(null)),
   mockSaveChatSession: vi.fn((..._args: unknown[]) => Promise.resolve()),
 }));
@@ -30,7 +32,8 @@ const {
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
   startAgent: mockStartAgent,
-  readFile: mockReadFile,
+  captureStepArtifacts: mockCaptureStepArtifacts,
+  getArtifactContent: mockGetArtifactContent,
 }));
 
 vi.mock("@/lib/chat-storage", () => ({
