@@ -27,17 +27,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            app/package-lock.json
+            app/sidecar/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "app/src-tauri -> target"
+
       - name: Install npm dependencies
         working-directory: app
-        run: npm install
+        run: npm ci
+
+      - name: Install sidecar dependencies
+        working-directory: app/sidecar
+        run: npm ci
 
       - name: Build sidecar
-        working-directory: app
-        run: npm run sidecar:build
+        working-directory: app/sidecar
+        run: node build.js
 
       - name: Stamp version into config files
         working-directory: app
@@ -48,12 +61,19 @@ jobs:
           node -e "const fs=require('fs'); const f='src-tauri/tauri.conf.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
           node -e "const fs=require('fs'); const f='package.json'; const c=JSON.parse(fs.readFileSync(f,'utf8')); c.version=process.env.RELEASE_VERSION; fs.writeFileSync(f,JSON.stringify(c,null,2)+'\n');"
 
+      - name: Cache bundled Node.js binary
+        id: node-cache
+        uses: actions/cache@v4
+        with:
+          path: app/src-tauri/resources/node
+          key: bundled-node-v22.14.0-${{ matrix.os }}
+
       # Bundle Node.js 22 LTS binary into the app so it works on clean machines
       # without Node.js installed. Adds ~40-70MB to the app package size.
       # macOS: downloads the official Node.js tar.gz and extracts just the `node` binary.
       # Windows: downloads the official Node.js zip and extracts `node.exe`.
       - name: Bundle Node.js 22 LTS binary (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-latest' && steps.node-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -96,7 +116,7 @@ jobs:
           rm -rf "/tmp/${TARBALL}" "/tmp/node-${NODE_VERSION}-${NODE_ARCH}"
 
       - name: Bundle Node.js 22 LTS binary (Windows)
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-latest' && steps.node-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
