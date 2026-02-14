@@ -359,6 +359,8 @@ describe("DashboardPage", () => {
           last_modified: new Date().toISOString(),
           tags: ["salesforce"],
           skill_type: "platform",
+          author_login: null,
+          author_avatar: null,
         },
       ],
     });

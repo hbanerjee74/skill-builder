@@ -86,6 +86,7 @@ pub fn create_skill(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_skill_inner(
     workspace_path: &str,
     name: &str,
