@@ -673,7 +673,7 @@ impl SidecarPool {
                                             let subtype = msg.get("subtype")
                                                 .and_then(|s| s.as_str())
                                                 .unwrap_or("unknown");
-                                            log::info!(
+                                            log::debug!(
                                                 "[persistent-sidecar:{}] Agent '{}': {}",
                                                 skill_name_stdout,
                                                 request_id,
@@ -690,7 +690,7 @@ impl SidecarPool {
                                     let is_terminal = msg_type == "result" || msg_type == "error";
 
                                     if msg_type == "result" {
-                                        log::info!(
+                                        log::debug!(
                                             "[persistent-sidecar:{}] Agent '{}' completed successfully",
                                             skill_name_stdout,
                                             request_id,
@@ -902,7 +902,7 @@ impl SidecarPool {
                     let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
                     let mut logs = self.request_logs.lock().await;
                     logs.insert(agent_id.to_string(), log_handle);
-                    log::info!(
+                    log::debug!(
                         "JSONL transcript: {}",
                         log_path.display(),
                     );
@@ -996,7 +996,7 @@ impl SidecarPool {
             }
         }
 
-        log::info!(
+        log::debug!(
             "Sent agent request '{}' to persistent sidecar for '{}' (pid {})",
             agent_id,
             skill_name,

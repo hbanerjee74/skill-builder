@@ -40,7 +40,7 @@ pub fn handle_sidecar_message(app_handle: &tauri::AppHandle, agent_id: &str, lin
                         subtype: subtype.to_string(),
                         timestamp,
                     };
-                    log::info!("[event:agent-init-progress:{}] {}", agent_id, subtype);
+                    log::debug!("[event:agent-init-progress:{}] {}", agent_id, subtype);
                     if let Err(e) = app_handle.emit("agent-init-progress", &progress) {
                         log::warn!(
                             "Failed to emit agent-init-progress for {}: {}",
