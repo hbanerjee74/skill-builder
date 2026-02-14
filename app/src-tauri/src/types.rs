@@ -152,17 +152,6 @@ pub struct StepStatusUpdate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArtifactRow {
-    pub skill_name: String,
-    pub step_id: i32,
-    pub relative_path: String,
-    pub content: String,
-    pub size_bytes: i64,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportedSkill {
     pub skill_id: String,
     pub skill_name: String,

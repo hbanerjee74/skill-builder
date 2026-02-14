@@ -1,7 +1,7 @@
 /**
- * Parsing helpers for the autonomous reasoning loop (Step 6).
- * Classifies agent responses and extracts structured data to drive
- * phase transitions in the ReasoningChat component.
+ * Parsing helpers for the reasoning step (Step 4).
+ * Provides utilities for parsing decisions.md format, used by
+ * the ReasoningReview component.
  */
 
 /**

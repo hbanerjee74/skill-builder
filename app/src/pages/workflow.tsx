@@ -31,7 +31,7 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
+import { ReasoningReview } from "@/components/reasoning-review";
 import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import ResetStepDialog from "@/components/reset-step-dialog";
@@ -44,12 +44,9 @@ import {
   resetWorkflowStep,
   getWorkflowState,
   saveWorkflowState,
-  captureStepArtifacts,
-  getArtifactContent,
-  saveArtifactContent,
   readFile,
+  writeFile,
   cleanupSkillSidecar,
-  hasStepArtifacts,
   acquireLock,
   releaseLock,
 } from "@/lib/tauri";
@@ -186,10 +183,7 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Reasoning step state — phase tracked via callback so header can render Complete button
-  const reasoningRef = useRef<ReasoningChatHandle>(null);
   const rerunRef = useRef<StepRerunChatHandle>(null);
-  const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
 
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
@@ -283,7 +277,6 @@ export default function WorkflowPage() {
   // Reset state when moving to a new step
   useEffect(() => {
     setHasPartialOutput(false);
-    setReasoningPhase("not_started");
     setRerunStepId(null);
     setErrorHasArtifacts(false);
   }, [currentStep]);
@@ -300,14 +293,9 @@ export default function WorkflowPage() {
       if (cfg?.outputFiles && stepStatus === "pending") {
         const path = cfg.outputFiles[0];
         if (path) {
-          getArtifactContent(skillName, path)
-            .catch(() => null)
-            .then(async (artifact) => {
-              if (artifact?.content) return true;
-              const filePath = `${workspacePath}/${skillName}/${path}`;
-              return readFile(filePath).then((content) => !!content).catch(() => false);
-            })
-            .then((exists) => setHasPartialOutput(exists))
+          const filePath = `${workspacePath}/${skillName}/${path}`;
+          readFile(filePath)
+            .then((content) => setHasPartialOutput(!!content))
             .catch(() => setHasPartialOutput(false));
         }
       } else {
@@ -316,10 +304,16 @@ export default function WorkflowPage() {
     }
 
     // --- Error-state artifact check ---
-    if (stepStatus === "error" && skillName) {
-      hasStepArtifacts(skillName, currentStep)
-        .then(setErrorHasArtifacts)
-        .catch(() => setErrorHasArtifacts(false));
+    if (stepStatus === "error" && skillName && workspacePath) {
+      const cfg2 = STEP_CONFIGS[currentStep];
+      const firstOutput = cfg2?.outputFiles?.[0];
+      if (firstOutput) {
+        readFile(`${workspacePath}/${skillName}/${firstOutput}`)
+          .then((content) => setErrorHasArtifacts(!!content))
+          .catch(() => setErrorHasArtifacts(false));
+      } else {
+        setErrorHasArtifacts(false);
+      }
     } else {
       setErrorHasArtifacts(false);
     }
@@ -380,14 +374,8 @@ export default function WorkflowPage() {
     trySkillsPath
       .then((content) => {
         if (content) return content;
-        // 2. Try SQLite artifact
-        return getArtifactContent(skillName, relativePath)
-          .catch(() => null)
-          .then(async (artifact) => {
-            if (artifact?.content) return artifact.content;
-            // 3. Fallback: read from workspace filesystem
-            return readFile(workspaceFilePath).catch(() => null);
-          });
+        // 2. Fallback: read from workspace filesystem
+        return readFile(workspaceFilePath).catch(() => null);
       })
       .then((content) => setReviewContent(content ?? null))
       .finally(() => setLoadingReview(false));
@@ -436,8 +424,6 @@ export default function WorkflowPage() {
     if (activeRunStatus === "completed") {
       setActiveAgent(null);
 
-      // Capture artifacts before marking step complete so the next
-      // human review step can read them from SQLite immediately.
       const finish = () => {
         updateStepStatus(step, "completed");
         setRunning(false);
@@ -451,13 +437,7 @@ export default function WorkflowPage() {
         }
       };
 
-      if (workspacePath) {
-        captureStepArtifacts(skillName, step, workspacePath)
-          .catch(() => {})
-          .then(finish);
-      } else {
-        finish();
-      }
+      finish();
     } else if (activeRunStatus === "error") {
       updateStepStatus(step, "error");
       setRunning(false);
@@ -559,11 +539,11 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the content as-is to DB
+    // Save the content to workspace filesystem
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && reviewContent !== null) {
+    if (config && reviewContent !== null && workspacePath) {
       try {
-        await saveArtifactContent(skillName, currentStep, config.relativePath, reviewContent);
+        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, reviewContent);
       } catch {
         // best-effort
       }
@@ -581,7 +561,7 @@ export default function WorkflowPage() {
   }, [currentStep, updateStepStatus]);
 
   // Reload the file content (after user edits externally).
-  // Same priority as initial load: skill context dir > SQLite > workspace.
+  // Same priority as initial load: skill context dir > workspace.
   const handleReviewReload = () => {
     if (!reviewFilePath || !workspacePath) return;
     setLoadingReview(true);
@@ -596,14 +576,8 @@ export default function WorkflowPage() {
     trySkillsPath
       .then((content) => {
         if (content) return content;
-        // 2. Try SQLite artifact
-        return getArtifactContent(skillName, reviewFilePath)
-          .catch(() => null)
-          .then(async (artifact) => {
-            if (artifact?.content) return artifact.content;
-            // 3. Fallback: workspace filesystem
-            return readFile(workspaceFilePath).catch(() => null);
-          });
+        // 2. Fallback: workspace filesystem
+        return readFile(workspaceFilePath).catch(() => null);
       })
       .then((content) => {
         setReviewContent(content ?? null);
@@ -629,7 +603,7 @@ export default function WorkflowPage() {
 
     // Agent step in debug mode — auto-start it after a small delay
     // so React state updates settle before we start the agent.
-    // Reasoning step auto-start is handled inside reasoning-chat.tsx.
+    // Reasoning step auto-start is handled inside reasoning-review.tsx.
     if (cfg.type === "agent") {
       const timer = setTimeout(() => {
         const store = useWorkflowStore.getState();
@@ -769,16 +743,14 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 4) — multi-turn chat
+    // Reasoning step (Step 4) — single-shot generation with review
     if (stepConfig?.type === "reasoning") {
       return (
-        <ReasoningChat
-          ref={reasoningRef}
+        <ReasoningReview
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
-          onPhaseChange={setReasoningPhase}
-          onReset={handleRerunStep}
+          onStepComplete={advanceToNextStep}
         />
       );
     }
@@ -998,7 +970,7 @@ export default function WorkflowPage() {
         }}
       />
 
-      <div className="flex h-full -m-6">
+      <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar
           steps={steps}
           currentStep={currentStep}
@@ -1066,15 +1038,6 @@ export default function WorkflowPage() {
                   Complete Step
                 </Button>
               )}
-              {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
-                <Button
-                  size="sm"
-                  onClick={() => reasoningRef.current?.completeStep()}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
-              )}
               {stepConfig?.type === "refinement" && currentStepDef?.status !== "completed" && (
                 <>
                   <Button
@@ -1103,8 +1066,12 @@ export default function WorkflowPage() {
             </div>
           </div>
 
-          {/* Content area */}
-          <div className="flex flex-1 flex-col overflow-hidden p-4">
+          {/* Content area — reasoning/refinement/rerun/agent panels manage their own padding */}
+          <div className={`flex flex-1 flex-col overflow-hidden ${
+            stepConfig?.type === "reasoning" || stepConfig?.type === "refinement" || rerunStepId !== null || activeAgentId
+              ? ""
+              : "p-4"
+          }`}>
             {renderContent()}
           </div>
         </div>

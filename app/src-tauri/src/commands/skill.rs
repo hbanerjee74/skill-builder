@@ -177,7 +177,7 @@ fn delete_skill_inner(
         }
     }
 
-    // Full DB cleanup: workflow_run + steps + agent_runs + tags + artifacts
+    // Full DB cleanup: workflow_run + steps + agent_runs + tags
     if let Some(conn) = conn {
         crate::db::delete_workflow_run(conn, name)?;
     }
@@ -469,9 +469,8 @@ mod tests {
         )
         .unwrap();
 
-        // Add workflow steps and artifacts
+        // Add workflow steps
         crate::db::save_workflow_step(&conn, "db-cleanup", 0, "completed").unwrap();
-        crate::db::save_artifact(&conn, "db-cleanup", 0, "context/test.md", "content").unwrap();
 
         delete_skill_inner(workspace, "db-cleanup", Some(&conn), None).unwrap();
 
@@ -480,9 +479,6 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(crate::db::get_workflow_steps(&conn, "db-cleanup")
-            .unwrap()
-            .is_empty());
-        assert!(crate::db::get_skill_artifacts(&conn, "db-cleanup")
             .unwrap()
             .is_empty());
         let tags = crate::db::get_tags_for_skills(&conn, &["db-cleanup".into()])

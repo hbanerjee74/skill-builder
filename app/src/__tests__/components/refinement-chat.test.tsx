@@ -13,19 +13,16 @@ if (!Element.prototype.scrollIntoView) {
 // Mock Tauri commands
 const {
   mockStartAgent,
-  mockGetArtifactContent,
   mockSaveChatSession,
   mockLoadChatSession,
 } = vi.hoisted(() => ({
   mockStartAgent: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.resolve("agent-1")),
-  mockGetArtifactContent: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
   mockSaveChatSession: vi.fn<(...args: unknown[]) => Promise<void>>(() => Promise.resolve()),
   mockLoadChatSession: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
-  getArtifactContent: mockGetArtifactContent,
 }));
 
 vi.mock("@/lib/chat-storage", () => ({
@@ -122,7 +119,6 @@ describe("RefinementChat", () => {
     useSettingsStore.getState().setSettings({ skillsPath: "/skills" });
 
     mockStartAgent.mockReset().mockResolvedValue("agent-1");
-    mockGetArtifactContent.mockReset().mockResolvedValue(null);
     mockSaveChatSession.mockReset().mockResolvedValue(undefined);
     mockLoadChatSession.mockReset().mockResolvedValue(null);
   });
@@ -162,41 +158,6 @@ describe("RefinementChat", () => {
 
     // Should call loadChatSession
     expect(mockLoadChatSession).toHaveBeenCalledWith("/workspace", "test-skill", "refinement");
-  });
-
-  it("falls back to SQLite artifact when disk file not found", async () => {
-    const savedSession = {
-      messages: [
-        { role: "user", content: "Can you improve the skill description?" },
-        { role: "agent", content: "I've updated the description with more clarity." },
-      ],
-      sessionId: "session-456",
-      lastUpdated: "2025-01-01T00:00:00.000Z",
-    };
-
-    // Disk returns null
-    mockLoadChatSession.mockResolvedValueOnce(null);
-    // SQLite has the session
-    mockGetArtifactContent.mockResolvedValueOnce({
-      content: JSON.stringify(savedSession),
-      skill_name: "test-skill",
-      step_id: 8,
-      relative_path: "context/refinement-chat.json",
-      size_bytes: 100,
-      created_at: "2025-01-01T00:00:00.000Z",
-      updated_at: "2025-01-01T00:00:00.000Z",
-    });
-
-    render(<RefinementChat {...defaultProps} />);
-
-    // Should restore messages from SQLite fallback
-    await waitFor(() => {
-      expect(screen.getByText("Can you improve the skill description?")).toBeInTheDocument();
-      expect(screen.getByText("I've updated the description with more clarity.")).toBeInTheDocument();
-    });
-
-    // Should call getArtifactContent as fallback
-    expect(mockGetArtifactContent).toHaveBeenCalledWith("test-skill", "context/refinement-chat.json");
   });
 
   it("shows user message after sending", async () => {

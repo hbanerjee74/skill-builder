@@ -16,7 +16,6 @@ import { useAgentStore } from "@/stores/agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   startAgent,
-  getArtifactContent,
 } from "@/lib/tauri";
 import { saveChatSession, loadChatSession } from "@/lib/chat-storage";
 import { AgentStatusHeader } from "@/components/agent-status-header";
@@ -38,7 +37,6 @@ interface ChatMessage {
 
 type RefinementPhase = "idle" | "agent_running" | "error";
 
-const SESSION_ARTIFACT = "context/refinement-chat.json";
 
 interface RefinementSessionState {
   messages: ChatMessage[];
@@ -95,7 +93,7 @@ export function RefinementChat({
     [skillName, workspacePath],
   );
 
-  // Load saved session on mount — try disk first, fall back to SQLite
+  // Load saved session on mount from disk
   useEffect(() => {
     if (restored) return;
 
@@ -112,46 +110,15 @@ export function RefinementChat({
       }
     };
 
-    // Try disk first
     loadChatSession(workspacePath, skillName, "refinement")
       .then((diskSession) => {
         if (diskSession) {
-          // Disk session found — restore from it
           const state = diskSession as unknown as RefinementSessionState;
           restoreFromState(state);
-          setRestored(true);
-          return;
         }
-        // Disk not found — fall back to SQLite artifact
-        return getArtifactContent(skillName, SESSION_ARTIFACT)
-          .then((artifact) => {
-            if (artifact?.content) {
-              try {
-                const state: RefinementSessionState = JSON.parse(artifact.content);
-                restoreFromState(state);
-              } catch {
-                // Corrupt JSON — ignore
-              }
-            }
-            setRestored(true);
-          });
+        setRestored(true);
       })
-      .catch(() => {
-        // Disk read failed — try SQLite fallback
-        getArtifactContent(skillName, SESSION_ARTIFACT)
-          .then((artifact) => {
-            if (artifact?.content) {
-              try {
-                const state: RefinementSessionState = JSON.parse(artifact.content);
-                restoreFromState(state);
-              } catch {
-                // Corrupt JSON — ignore
-              }
-            }
-            setRestored(true);
-          })
-          .catch(() => setRestored(true));
-      });
+      .catch(() => setRestored(true));
   }, [skillName, workspacePath, restored]);
 
   // Scroll to bottom on new messages
