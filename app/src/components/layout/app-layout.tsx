@@ -35,6 +35,7 @@ export function AppLayout() {
         githubUserLogin: s.github_user_login,
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
+        mcpServers: Array.isArray(s.mcp_servers) ? s.mcp_servers : [],
       });
       setSettingsLoaded(true);
     }).catch(() => {
@@ -99,6 +100,11 @@ export function AppLayout() {
       if ((e.metaKey || e.ctrlKey) && e.key === "3") {
         e.preventDefault();
         navigate({ to: "/prompts" });
+      }
+      // Cmd+4 -> MCP Servers
+      if ((e.metaKey || e.ctrlKey) && e.key === "4") {
+        e.preventDefault();
+        navigate({ to: "/mcp-servers" });
       }
     };
 

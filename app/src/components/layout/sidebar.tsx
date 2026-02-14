@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, Github, LogOut } from "lucide-react";
+import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, Server, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
   { to: "/skills" as const, label: "Skills Library", icon: BookOpen },
   { to: "/prompts" as const, label: "Prompts", icon: FileText },
+  { to: "/mcp-servers" as const, label: "MCP Servers", icon: Server },
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
 

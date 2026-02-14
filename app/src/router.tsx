@@ -9,6 +9,7 @@ import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import PromptsPage from "./pages/prompts";
 import SkillsPage from "./pages/skills";
+import McpServersPage from "./pages/mcp-servers";
 
 const rootRoute = createRootRoute({
   component: AppLayout,
@@ -44,11 +45,18 @@ const skillsRoute = createRoute({
   component: SkillsPage,
 });
 
+const mcpServersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/mcp-servers",
+  component: McpServersPage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   promptsRoute,
   skillsRoute,
+  mcpServersRoute,
   workflowRoute,
 ]);
 
