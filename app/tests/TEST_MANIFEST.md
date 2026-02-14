@@ -8,8 +8,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (47) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
-| `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (27) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
+| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
+| `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (19) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
 | `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-chat.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
 | `src/stores/imported-skills-store.ts` | `stores/imported-skills-store.test.ts` (13) | `components/imported-skill-card.test.tsx`, `pages/skills.test.tsx` | -- |
@@ -37,7 +37,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
-| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (42) | `@workflow`, `@workflow-agent` |
+| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (37) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
@@ -72,7 +72,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (42) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (80) | `@workflow` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (82) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
@@ -112,7 +112,7 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 
 | Source Pattern | Plugin Tag | Plugin Tiers | Desktop App Impact |
 |---|---|---|---|
-| `agents/{type}/*.md` (24 files) | `@agents` | t1, t4 | -- |
+| `agents/{type}/*.md` (28 files) | `@agents` | t1, t4 | -- |
 | `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
 | `skills/start/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
 | `references/shared-context.md` | `@agents` | t1, t4 | -- |
