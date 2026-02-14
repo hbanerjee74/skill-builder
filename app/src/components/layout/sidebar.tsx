@@ -1,6 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen, BookOpen, Github, LogOut } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,18 +22,11 @@ const navItems = [
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
 
-const themeOptions = [
-  { value: "system", icon: Monitor, label: "System" },
-  { value: "light", icon: Sun, label: "Light" },
-  { value: "dark", icon: Moon, label: "Dark" },
-] as const;
-
 const STORAGE_KEY = "sidebar-collapsed";
 
 export function Sidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
-  const { theme, setTheme } = useTheme();
   const { user, isLoggedIn, logout } = useAuthStore();
   const [loginDialogOpen, setLoginDialogOpen] = useState(false);
 
@@ -123,26 +115,6 @@ export function Sidebar() {
             </>
           )}
         </button>
-
-        <div className={cn("rounded-md bg-muted p-1", collapsed ? "flex flex-col" : "flex items-center")}>
-          {themeOptions.map(({ value, icon: Icon, label }) => (
-            <button
-              key={value}
-              onClick={() => setTheme(value)}
-              className={cn(
-                "flex items-center justify-center rounded-sm text-xs font-medium transition-colors",
-                collapsed ? "w-full py-1.5" : "flex-1 gap-1.5 px-2 py-1.5",
-                theme === value
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-              title={label}
-            >
-              <Icon className="size-3.5" />
-              {!collapsed && label}
-            </button>
-          ))}
-        </div>
 
         {/* Auth UI */}
         {isLoggedIn && user ? (

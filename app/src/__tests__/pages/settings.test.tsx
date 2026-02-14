@@ -17,6 +17,12 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock next-themes
+const mockSetTheme = vi.fn();
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ theme: "system", setTheme: mockSetTheme }),
+}));
+
 
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
@@ -110,6 +116,7 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
     expect(screen.getByText("Node.js Runtime")).toBeInTheDocument();
@@ -580,6 +587,33 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Not available")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open/i })).toBeDisabled();
+  });
+
+  it("renders Appearance card with theme buttons", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeInTheDocument();
+  });
+
+  it("calls setTheme when a theme button is clicked", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Dark" }));
+    expect(mockSetTheme).toHaveBeenCalledWith("dark");
   });
 
   it("shows sign in button when not logged in", async () => {
