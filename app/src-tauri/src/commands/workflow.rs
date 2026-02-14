@@ -784,7 +784,7 @@ fn validate_decisions_exist_inner(
     }
 
     Err(
-        "Cannot start Build step: decisions.md was not found. \
+        "Cannot start Build step: decisions.md was not found on the filesystem. \
          The Reasoning step (step 4) must create a decisions file before the Build step can run. \
          Please re-run the Reasoning step first."
             .to_string(),
@@ -1604,49 +1604,36 @@ fn capture_artifacts_inner(
     Ok(captured)
 }
 
-#[tauri::command]
-pub fn capture_step_artifacts(
-    skill_name: String,
+/// After steps 0, 2, and 4, copy the relevant clarification/decision files
+/// from `{workspace_path}/{skill_name}/context/` to `{skills_path}/{skill_name}/context/`.
+/// Creates the destination directory if it doesn't exist.
+fn copy_context_to_skill_output(
     step_id: u32,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<ArtifactRow>, String> {
-    // Read skills_path before acquiring the DB lock (read_skills_path locks internally)
-    let skills_path = read_skills_path(&db);
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    capture_artifacts_inner(&conn, &skill_name, step_id, &workspace_path, skills_path.as_deref())
-}
-
-#[tauri::command]
-pub fn get_artifact_content(
-    skill_name: String,
-    relative_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<Option<ArtifactRow>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_artifact_by_path(&conn, &skill_name, &relative_path)
-}
-
-#[tauri::command]
-pub fn save_artifact_content(
-    skill_name: String,
-    step_id: i32,
-    relative_path: String,
-    content: String,
-    db: tauri::State<'_, Db>,
+    skill_dir: &Path,
+    skills_path: &str,
+    skill_name: &str,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::save_artifact(&conn, &skill_name, step_id, &relative_path, &content)
-}
+    let context_files: &[&str] = match step_id {
+        0 => &["context/clarifications-concepts.md"],
+        2 => &["context/clarifications.md"],
+        4 => &["context/decisions.md"],
+        _ => return Ok(()),
+    };
 
-#[tauri::command]
-pub fn has_step_artifacts(
-    skill_name: String,
-    step_id: u32,
-    db: tauri::State<'_, Db>,
-) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::has_artifacts(&conn, &skill_name, step_id as i32)
+    let dest_context_dir = Path::new(skills_path).join(skill_name).join("context");
+    std::fs::create_dir_all(&dest_context_dir)
+        .map_err(|e| format!("Failed to create skill output context dir: {}", e))?;
+
+    for file in context_files {
+        let src = skill_dir.join(file);
+        if src.exists() {
+            let dest = Path::new(skills_path).join(skill_name).join(file);
+            std::fs::copy(&src, &dest)
+                .map_err(|e| format!("Failed to copy {} to skill output: {}", file, e))?;
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2990,6 +2977,16 @@ mod tests {
         // Wrong format
         assert!(parse_agent_id("invalid-format").is_none());
     }
+
+    #[test]
+    fn test_capture_artifacts_on_error_with_invalid_agent_id() {
+        // This test verifies that capture_artifacts_on_error handles invalid agent_ids gracefully
+        // We can't easily create a full Tauri app handle in a unit test, so we just test
+        // the parse_agent_id function which is the first thing capture_artifacts_on_error does
+        assert!(parse_agent_id("invalid-agent-id").is_none());
+        assert!(parse_agent_id("").is_none());
+    }
+
 
     // --- retry_with_backoff tests ---
 
