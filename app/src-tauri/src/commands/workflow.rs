@@ -729,13 +729,12 @@ pub async fn run_review_step(
 }
 
 /// Core logic for validating decisions.md existence — testable without tauri::State.
-/// Checks in order: skill output dir (skillsPath), workspace dir, SQLite artifact.
+/// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
     skill_name: &str,
     workspace_path: &str,
     skills_path: Option<&str>,
-    conn: &rusqlite::Connection,
 ) -> Result<(), String> {
     // 1. Check skill output directory (primary per VD-405)
     if let Some(sp) = skills_path {
@@ -760,15 +759,8 @@ fn validate_decisions_exist_inner(
         }
     }
 
-    // 3. Check SQLite artifact (last resort)
-    if let Ok(Some(artifact)) = crate::db::get_artifact_by_path(conn, skill_name, "context/decisions.md") {
-        if !artifact.content.trim().is_empty() {
-            return Ok(());
-        }
-    }
-
     Err(
-        "Cannot start Build step: decisions.md was not found. \
+        "Cannot start Build step: decisions.md was not found on the filesystem. \
          The Reasoning step (step 4) must create a decisions file before the Build step can run. \
          Please re-run the Reasoning step first."
             .to_string(),
@@ -819,7 +811,7 @@ fn read_workflow_settings(
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
-        validate_decisions_exist_inner(skill_name, workspace_path, skills_path.as_deref(), &conn)?;
+        validate_decisions_exist_inner(skill_name, workspace_path, skills_path.as_deref())?;
     }
 
     // Get skill type
@@ -1616,51 +1608,6 @@ fn copy_context_to_skill_output(
     }
 
     Ok(())
-}
-
-#[tauri::command]
-pub fn capture_step_artifacts(
-    skill_name: String,
-    step_id: u32,
-    workspace_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<Vec<ArtifactRow>, String> {
-    // Read skills_path before acquiring the DB lock (read_skills_path locks internally)
-    let skills_path = read_skills_path(&db);
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    capture_artifacts_inner(&conn, &skill_name, step_id, &workspace_path, skills_path.as_deref())
-}
-
-#[tauri::command]
-pub fn get_artifact_content(
-    skill_name: String,
-    relative_path: String,
-    db: tauri::State<'_, Db>,
-) -> Result<Option<ArtifactRow>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_artifact_by_path(&conn, &skill_name, &relative_path)
-}
-
-#[tauri::command]
-pub fn save_artifact_content(
-    skill_name: String,
-    step_id: i32,
-    relative_path: String,
-    content: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::save_artifact(&conn, &skill_name, step_id, &relative_path, &content)
-}
-
-#[tauri::command]
-pub fn has_step_artifacts(
-    skill_name: String,
-    step_id: u32,
-    db: tauri::State<'_, Db>,
-) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::has_artifacts(&conn, &skill_name, step_id as i32)
 }
 
 #[cfg(test)]
@@ -2649,12 +2596,10 @@ mod tests {
         let workspace = tmp.path().join("workspace");
         std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
-        let conn = create_test_conn();
         let result = validate_decisions_exist_inner(
             "my-skill",
             workspace.to_str().unwrap(),
             None,
-            &conn,
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
@@ -2672,12 +2617,10 @@ mod tests {
             "# Decisions\n\nD1: Use periodic recognition",
         ).unwrap();
 
-        let conn = create_test_conn();
         let result = validate_decisions_exist_inner(
             "my-skill",
             workspace.to_str().unwrap(),
             Some(skills.to_str().unwrap()),
-            &conn,
         );
         assert!(result.is_ok());
     }
@@ -2692,33 +2635,10 @@ mod tests {
             "# Decisions\n\nD1: Use periodic recognition",
         ).unwrap();
 
-        let conn = create_test_conn();
         let result = validate_decisions_exist_inner(
             "my-skill",
             workspace.to_str().unwrap(),
             None,
-            &conn,
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_decisions_found_in_sqlite() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-
-        let conn = create_test_conn();
-        crate::db::save_artifact(
-            &conn, "my-skill", 4,
-            "context/decisions.md", "# Decisions\n\nD1: Use periodic recognition",
-        ).unwrap();
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            None,
-            &conn,
         );
         assert!(result.is_ok());
     }
@@ -2734,41 +2654,18 @@ mod tests {
             "   \n\n  ",
         ).unwrap();
 
-        let conn = create_test_conn();
         let result = validate_decisions_exist_inner(
             "my-skill",
             workspace.to_str().unwrap(),
             None,
-            &conn,
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
     }
 
     #[test]
-    fn test_validate_decisions_rejects_empty_sqlite_artifact() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-
-        let conn = create_test_conn();
-        crate::db::save_artifact(
-            &conn, "my-skill", 4,
-            "context/decisions.md", "  \n  ",
-        ).unwrap();
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            None,
-            &conn,
-        );
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_validate_decisions_priority_order() {
-        // skills_path takes priority over workspace, which takes priority over SQLite
+        // skills_path takes priority over workspace
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
@@ -2780,14 +2677,12 @@ mod tests {
             skills.join("my-skill").join("context").join("decisions.md"),
             "# Decisions from skills path",
         ).unwrap();
-        // workspace has no decisions.md, SQLite has no artifact
+        // workspace has no decisions.md
 
-        let conn = create_test_conn();
         let result = validate_decisions_exist_inner(
             "my-skill",
             workspace.to_str().unwrap(),
             Some(skills.to_str().unwrap()),
-            &conn,
         );
         assert!(result.is_ok());
     }
@@ -3126,63 +3021,6 @@ mod tests {
 
         // Wrong format
         assert!(parse_agent_id("invalid-format").is_none());
-    }
-
-    #[test]
-    fn test_has_step_artifacts_integration() {
-        // Create a temporary database
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-
-        // Create the workflow_artifacts table
-        conn.execute(
-            "CREATE TABLE workflow_artifacts (
-                skill_name TEXT NOT NULL,
-                step_id INTEGER NOT NULL,
-                relative_path TEXT NOT NULL,
-                content TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                PRIMARY KEY (skill_name, step_id, relative_path)
-            )",
-            [],
-        )
-        .unwrap();
-
-        // Initially, no artifacts exist
-        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), false);
-
-        // Insert an artifact
-        crate::db::save_artifact(
-            &conn,
-            "test-skill",
-            0,
-            "context/clarifications-concepts.md",
-            "# Test content",
-        )
-        .unwrap();
-
-        // Now has_artifacts should return true
-        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), true);
-
-        // Different step should still return false
-        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 1).unwrap(), false);
-
-        // Different skill should return false
-        assert_eq!(crate::db::has_artifacts(&conn, "other-skill", 0).unwrap(), false);
-
-        // Add another artifact to the same step
-        crate::db::save_artifact(
-            &conn,
-            "test-skill",
-            0,
-            "context/another-file.md",
-            "# More content",
-        )
-        .unwrap();
-
-        // Should still return true
-        assert_eq!(crate::db::has_artifacts(&conn, "test-skill", 0).unwrap(), true);
     }
 
     #[test]
