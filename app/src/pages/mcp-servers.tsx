@@ -102,7 +102,10 @@ export default function McpServersPage() {
 
     const headers: Record<string, string> = {}
     if (authHeader.trim()) {
-      headers.Authorization = authHeader.trim()
+      const token = authHeader.trim()
+      headers.Authorization = token.toLowerCase().startsWith("bearer ")
+        ? token
+        : `Bearer ${token}`
     }
 
     const server: McpServerConfig = {
@@ -268,7 +271,7 @@ export default function McpServersPage() {
                 type="password"
                 value={authHeader}
                 onChange={(e) => setAuthHeader(e.target.value)}
-                placeholder="Bearer token..."
+                placeholder="Paste API key or Bearer token"
               />
             </div>
           </div>
