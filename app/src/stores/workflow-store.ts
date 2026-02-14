@@ -33,7 +33,7 @@ interface WorkflowState {
   clearInitializing: () => void;
   setInitProgressMessage: (message: string) => void;
   rerunFromStep: (stepId: number) => void;
-  loadWorkflowState: (completedStepIds: number[]) => void;
+  loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
   /** Set a structured runtime error from a sidecar startup failure. */
   setRuntimeError: (error: RuntimeError) => void;
@@ -159,7 +159,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       ),
     })),
 
-  loadWorkflowState: (completedStepIds) =>
+  loadWorkflowState: (completedStepIds, savedCurrentStep) =>
     set((state) => {
       // Filter out step IDs that no longer exist in the workflow (e.g. the
       // legacy Package step or any higher IDs from old workflow data).
@@ -169,10 +169,20 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       const steps = state.steps.map((s) =>
         filtered.includes(s.id) ? { ...s, status: "completed" as const } : s
       );
-      const firstIncomplete = steps.find((s) => s.status !== "completed");
+
+      // Use saved currentStep from SQLite if valid, otherwise fall back to
+      // the first incomplete step.
+      let currentStep: number;
+      if (savedCurrentStep !== undefined && validStepIds.has(savedCurrentStep)) {
+        currentStep = savedCurrentStep;
+      } else {
+        const firstIncomplete = steps.find((s) => s.status !== "completed");
+        currentStep = firstIncomplete ? firstIncomplete.id : state.steps.length - 1;
+      }
+
       return {
         steps,
-        currentStep: firstIncomplete ? firstIncomplete.id : state.steps.length - 1,
+        currentStep,
         hydrated: true,
       };
     }),

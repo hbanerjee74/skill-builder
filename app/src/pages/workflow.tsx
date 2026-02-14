@@ -242,7 +242,7 @@ export default function WorkflowPage() {
           .filter((s) => s.status === "completed")
           .map((s) => s.step_id);
         if (completedIds.length > 0) {
-          loadWorkflowState(completedIds);
+          loadWorkflowState(completedIds, state.run.current_step);
         } else {
           setHydrated(true);
         }
