@@ -501,26 +501,16 @@ fn stage_artifacts(
     let artifacts = crate::db::get_skill_artifacts(conn, skill_name)?;
     let skill_dir = Path::new(workspace_path).join(skill_name);
 
-    // Ensure context/ directory exists
-    std::fs::create_dir_all(skill_dir.join("context"))
-        .map_err(|e| format!("Failed to create context dir: {}", e))?;
-
-    // Context files that should also be written to skill output dir
+    // Context files that should be written to skill output dir when skills_path is set
     let context_files: &[&str] = &[
         "context/clarifications-concepts.md",
         "context/clarifications.md",
         "context/decisions.md",
     ];
 
-    // Create skill output context dir if skills_path is set
-    let skill_output_context_dir = if let Some(sp) = skills_path {
-        let dir = Path::new(sp).join(skill_name).join("context");
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("Failed to create skill output context dir {}: {}", dir.display(), e))?;
-        Some(dir)
-    } else {
-        None
-    };
+    // Directories are created upfront by create_skill — just resolve the path
+    let skill_output_context_dir = skills_path
+        .map(|sp| Path::new(sp).join(skill_name).join("context"));
 
     for artifact in &artifacts {
         let is_context_file = context_files.contains(&artifact.relative_path.as_str());
@@ -550,10 +540,6 @@ fn stage_artifacts(
             };
 
             if needs_write {
-                if let Some(parent) = file_path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| format!("Failed to create dir {}: {}", parent.display(), e))?;
-                }
                 std::fs::write(&file_path, &artifact.content)
                     .map_err(|e| format!("Failed to write {}: {}", file_path.display(), e))?;
             }
@@ -2425,6 +2411,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
+        // Simulate create_skill: workspace marker + skills_path dirs
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
 
         let conn = create_test_conn();
         crate::db::save_artifact(
@@ -2468,6 +2457,8 @@ mod tests {
     fn test_stage_artifacts_without_skills_path_no_output_copy() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
+        // Simulate create_skill without skills_path
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
 
         let conn = create_test_conn();
         crate::db::save_artifact(
@@ -2491,6 +2482,9 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
+        // Simulate create_skill: workspace context (for non-context files) + skills_path dirs
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
 
         let conn = create_test_conn();
         // Validation log should NOT be copied to skill output context
