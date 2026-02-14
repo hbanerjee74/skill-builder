@@ -353,12 +353,16 @@ describe("runPersistent", () => {
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
-  it("handles multiple sequential requests", async () => {
+  it("rejects a second request while one is in flight", async () => {
+    // The first request takes time (resolves via a deferred promise)
+    let resolveFirst!: () => void;
+    const firstDone = new Promise<void>((r) => { resolveFirst = r; });
     let callCount = 0;
     mockQuery.mockImplementation(() => {
       callCount++;
       const current = callCount;
       async function* fakeConversation() {
+        if (current === 1) await firstDone;
         yield { type: "result", content: `result_${current}` };
       }
       return fakeConversation() as ReturnType<typeof query>;
@@ -384,17 +388,88 @@ describe("runPersistent", () => {
     const exitFn = vi.fn();
     const capture = captureStdout();
 
-    try {
-      await runPersistent(input, exitFn);
-    } finally {
-      capture.restore();
-    }
+    // Start persistent mode but don't await yet — let event loop process lines
+    const runPromise = runPersistent(input, exitFn);
 
-    // Filter out sidecar_ready and system init events
+    // Give the event loop time to process all buffered lines
+    await new Promise((r) => setTimeout(r, 10));
+
+    // req_b should have been rejected while req_a is in flight
+    const errorLine = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_b" && parsed.type === "error";
+    });
+    expect(errorLine).toBeDefined();
+    expect(JSON.parse(errorLine!).message).toBe(
+      "Another agent request is already in progress",
+    );
+
+    // Now let req_a finish so shutdown can complete
+    resolveFirst();
+    await runPromise;
+
+    // req_a should have completed successfully
+    const successLine = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_a" && parsed.content === "result_1";
+    });
+    expect(successLine).toBeDefined();
+
+    capture.restore();
+    expect(exitFn).toHaveBeenCalledWith(0);
+  });
+
+  it("handles sequential requests when first completes before second arrives", async () => {
+    let callCount = 0;
+    mockQuery.mockImplementation(() => {
+      callCount++;
+      const current = callCount;
+      async function* fakeConversation() {
+        yield { type: "result", content: `result_${current}` };
+      }
+      return fakeConversation() as ReturnType<typeof query>;
+    });
+
+    const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
+    const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
+
+    // Send requests one at a time with a gap so the first completes
+    const { Readable } = await import("node:stream");
+    const input = new Readable({ read() {} });
+
+    const exitFn = vi.fn();
+    const capture = captureStdout();
+
+    const runPromise = runPersistent(input, exitFn);
+
+    // Send first request and wait for it to complete
+    input.push(JSON.stringify({
+      type: "agent_request",
+      request_id: "req_a",
+      config: config1,
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Send second request after first is done
+    input.push(JSON.stringify({
+      type: "agent_request",
+      request_id: "req_b",
+      config: config2,
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Shutdown
+    input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+    input.push(null);
+    await runPromise;
+
+    capture.restore();
+
+    // Both requests should have succeeded
     const responses = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type !== "system";
+        return parsed.request_id && parsed.type !== "system" && parsed.type !== "error";
       })
       .map((l) => JSON.parse(l));
 
@@ -403,6 +478,7 @@ describe("runPersistent", () => {
     expect(responses[0].content).toBe("result_1");
     expect(responses[1].request_id).toBe("req_b");
     expect(responses[1].content).toBe("result_2");
+    expect(exitFn).toHaveBeenCalledWith(0);
   });
 
   it("emits error for unrecognized input lines", async () => {

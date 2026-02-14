@@ -134,9 +134,21 @@ export async function runPersistent(
     }
 
     if (message.type === "agent_request") {
+      // Reject if an agent request is already running (protocol is sequential)
+      if (inFlight.size > 0) {
+        writeLine(
+          wrapWithRequestId(message.request_id, {
+            type: "error",
+            message: "Another agent request is already in progress",
+          }),
+        );
+        continue;
+      }
+
       const { request_id, config } = message;
 
-      // Run the agent request, streaming wrapped messages
+      // Run the agent request without blocking the readline loop.
+      // This lets ping/shutdown messages be processed while the agent runs.
       const requestPromise = (async () => {
         try {
           await runAgentRequest(config, (msg) => {
@@ -156,10 +168,6 @@ export async function runPersistent(
 
       inFlight.add(requestPromise);
       requestPromise.finally(() => inFlight.delete(requestPromise));
-
-      // Wait for this request to finish before accepting the next one.
-      // The protocol is sequential: one request at a time.
-      await requestPromise;
     }
   }
 
