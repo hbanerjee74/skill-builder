@@ -104,7 +104,7 @@ Quick routing:
 ## Gotchas
 
 - Claude Agent SDK has no team tools (`TeamCreate`, `TaskCreate`, `SendMessage`); use `Task`.
-- Parallel worktrees: set `DEV_PORT=<port>` to avoid conflicts.
+- Parallel worktrees: `npm run dev` auto-assigns a free port.
 
 ## Skills
 
