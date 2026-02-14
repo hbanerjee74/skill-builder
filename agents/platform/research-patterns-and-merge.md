@@ -42,8 +42,9 @@ Prompt it to:
 - **Before starting research:** Check if `clarifications-patterns.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
 - Read the shared context file and the research-patterns agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
-- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
-- Write output to: `clarifications-patterns.md` in the context directory
+- The context directory is: [pass the context directory path]
+- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]
+- Write output to: `clarifications-patterns.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
@@ -53,8 +54,9 @@ Prompt it to:
 - **Before starting research:** Check if `clarifications-data.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
 - Read the shared context file and the research-data agent prompt file (paths provided by coordinator) and follow the instructions
 - The domain is: [pass the domain]
-- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory
-- Write output to: `clarifications-data.md` in the context directory
+- The context directory is: [pass the context directory path]
+- The answered domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]
+- Write output to: `clarifications-data.md` in the context directory [pass the full absolute path]
 
 **Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
 
