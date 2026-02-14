@@ -14,7 +14,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 4. **Human Review** -- user answers merged questions
 5. **Reasoning** -- multi-turn conversation, produces `decisions.md`
 6. **Build** -- creates SKILL.md + reference files
-7. **Validate & Test** -- checks against best practices, generates and evaluates test prompts
+7. **Validate** -- checks against best practices, generates and evaluates test prompts
 8. **Package / Refine** -- zip for distribution (plugin) or iterative chat (app)
 
 ## Model Tiers
@@ -24,7 +24,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 | Research agents (Steps 1, 3) | sonnet |
 | Merge (Step 3) | haiku |
 | Reasoning (Step 5) | opus |
-| Build / Validate & Test (Steps 6-7) | sonnet |
+| Build / Validate (Steps 6-7) | sonnet |
 
 The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
 

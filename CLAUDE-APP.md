@@ -60,7 +60,7 @@ Optional fields (`sessionId`, `betas`, `pathToClaudeCodeExecutable`) are omitted
 
 ### Parallel step execution
 
-Steps 6 (Validate) and 7 (Test) can run in parallel via a combined `validate-and-test` agent. The Rust backend spawns both agents concurrently and tracks them as separate entries in the sidecar pool. If one fails, the other is terminated via `pool.shutdown_skill()`.
+Steps 6 (Validate) and 7 (Test) can run in parallel via a combined `validate-and-test` agent. The Rust backend spawns a single agent and tracks it in the sidecar pool.
 
 ### Model selection
 
