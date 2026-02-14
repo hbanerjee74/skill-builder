@@ -99,6 +99,7 @@ export interface AgentRun {
   contextWindow: number;
   compactionEvents: CompactionEvent[];
   thinkingEnabled: boolean;
+  agentName?: string;
 }
 
 interface AgentState {
@@ -327,14 +328,18 @@ export const useAgentStore = create<AgentState>((set) => ({
           ];
         }
 
-        // Extract thinkingEnabled from config messages
+        // Extract thinkingEnabled and agentName from config messages
         let thinkingEnabled = run.thinkingEnabled;
+        let agentName = run.agentName;
         if (message.type === "config") {
           const configObj = (raw as Record<string, unknown>).config as
-            | { maxThinkingTokens?: number }
+            | { maxThinkingTokens?: number; agentName?: string }
             | undefined;
           if (configObj?.maxThinkingTokens && configObj.maxThinkingTokens > 0) {
             thinkingEnabled = true;
+          }
+          if (configObj?.agentName) {
+            agentName = configObj.agentName;
           }
         }
 
@@ -360,6 +365,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           totalCost,
           sessionId,
           thinkingEnabled,
+          agentName,
           contextHistory,
           contextWindow,
           compactionEvents,
