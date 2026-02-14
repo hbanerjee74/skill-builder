@@ -105,23 +105,38 @@ pub fn reconcile_on_startup(
         match (working_dir_exists, skill_output_exists) {
             (true, _) => {
                 // Working dir exists — reconcile DB state with disk reality
-                let disk_step = detect_furthest_step(workspace_path, &run.skill_name, skills_path)
-                    .map(|s| s as i32)
-                    .unwrap_or(0);
+                let maybe_disk_step = detect_furthest_step(workspace_path, &run.skill_name, skills_path);
 
-                if run.current_step > disk_step {
-                    // Steps 1, 3, 7 produce no output files so detect_furthest_step
-                    // can never return them. Only reset if disk evidence is genuinely
-                    // behind — i.e. the prerequisite agent step's output is missing.
-                    let is_non_detectable = matches!(run.current_step, 1 | 3 | 7);
-                    let should_reset = if is_non_detectable {
-                        disk_step < run.current_step - 1
-                    } else {
-                        true
-                    };
+                if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
+                    if run.current_step > disk_step {
+                        // Steps 1, 3, 7 produce no output files so detect_furthest_step
+                        // can never return them. Only reset if disk evidence is genuinely
+                        // behind — i.e. the prerequisite agent step's output is missing.
+                        let is_non_detectable = matches!(run.current_step, 1 | 3 | 7);
+                        let should_reset = if is_non_detectable {
+                            disk_step < run.current_step - 1
+                        } else {
+                            true
+                        };
 
-                    if should_reset {
-                        // Scenario 2: DB ahead of disk → reset to disk reality
+                        if should_reset {
+                            // Scenario 2: DB ahead of disk → reset to disk reality
+                            crate::db::save_workflow_run(
+                                conn,
+                                &run.skill_name,
+                                &run.domain,
+                                disk_step,
+                                "pending",
+                                &run.skill_type,
+                            )?;
+                            crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
+                            notifications.push(format!(
+                                "'{}' was reset from step {} to step {} (disk state behind DB)",
+                                run.skill_name, run.current_step, disk_step
+                            ));
+                        }
+                    } else if disk_step > run.current_step {
+                        // Disk is ahead of DB — advance to match
                         crate::db::save_workflow_run(
                             conn,
                             &run.skill_name,
@@ -130,34 +145,34 @@ pub fn reconcile_on_startup(
                             "pending",
                             &run.skill_type,
                         )?;
-                        crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
                         notifications.push(format!(
-                            "'{}' was reset from step {} to step {} (disk state behind DB)",
+                            "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
                             run.skill_name, run.current_step, disk_step
                         ));
                     }
-                } else if disk_step > run.current_step {
-                    // Disk is ahead of DB — advance to match
+
+                    // Mark steps with output on disk as completed.
+                    for s in 0..=disk_step {
+                        crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
+                    }
+                } else if run.current_step > 0 {
+                    // No output files on disk but DB thinks we're past step 0.
+                    // Reset to step 0 pending — all work was lost.
                     crate::db::save_workflow_run(
                         conn,
                         &run.skill_name,
                         &run.domain,
-                        disk_step,
+                        0,
                         "pending",
                         &run.skill_type,
                     )?;
+                    crate::db::reset_workflow_steps_from(conn, &run.skill_name, 0)?;
                     notifications.push(format!(
-                        "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
-                        run.skill_name, run.current_step, disk_step
+                        "'{}' was reset from step {} to step 0 (no output files found)",
+                        run.skill_name, run.current_step
                     ));
                 }
-
-                // Always mark steps with output on disk as completed.
-                // This covers: reset (step left as pending), advance (new steps),
-                // and normal (ensure consistency after crash/interruption).
-                for s in 0..=disk_step {
-                    crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
-                }
+                // else: No output files and DB at step 0 — fresh skill, no action needed
             }
             (false, true) => {
                 // Scenario 3: Orphan — skill output exists but working dir is gone
@@ -608,6 +623,59 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(run.current_step, 2);
+    }
+
+    #[test]
+    fn test_fresh_skill_step_0_not_falsely_completed() {
+        // Fresh skill: working dir exists but no output files.
+        // Step 0 must NOT be marked as completed.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "fresh-skill", "sales", 0, "pending", "domain")
+            .unwrap();
+        // Only create the working directory — no output files
+        std::fs::create_dir_all(tmp.path().join("fresh-skill")).unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // No notifications — fresh skill, no action needed
+        assert!(result.notifications.is_empty());
+
+        // Step 0 should still be absent from steps table (not falsely completed)
+        let steps = crate::db::get_workflow_steps(&conn, "fresh-skill").unwrap();
+        assert!(
+            steps.is_empty() || steps.iter().all(|s| s.status != "completed"),
+            "Step 0 should not be marked completed for a fresh skill with no output"
+        );
+    }
+
+    #[test]
+    fn test_db_ahead_no_output_resets_to_zero() {
+        // DB says step 4 but no output files exist at all.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "lost-skill", "sales", 4, "pending", "domain")
+            .unwrap();
+        std::fs::create_dir_all(tmp.path().join("lost-skill")).unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("reset from step 4 to step 0"));
+
+        let run = crate::db::get_workflow_run(&conn, "lost-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 0);
+
+        // No steps should be marked completed
+        let steps = crate::db::get_workflow_steps(&conn, "lost-skill").unwrap();
+        assert!(
+            steps.is_empty() || steps.iter().all(|s| s.status != "completed"),
+            "No steps should be completed when there are no output files"
+        );
     }
 
     // --- Non-detectable step tests ---
