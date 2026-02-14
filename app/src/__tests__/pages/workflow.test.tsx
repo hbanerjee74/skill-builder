@@ -147,7 +147,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("auto-advances from step 5 (build) to step 6 (validate)", async () => {
+  it("auto-advances from step 5 (build) to step 6 (validate & test)", async () => {
     // Simulate: steps 0-4 completed, step 5 running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -175,7 +175,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 5 completed
     expect(wf.steps[5].status).toBe("completed");
 
-    // Auto-advances to step 6 (validate)
+    // Auto-advances to step 6 (validate & test)
     expect(wf.currentStep).toBe(6);
 
     // Step 6 is an agent step — stays pending (not waiting_for_user)
@@ -415,7 +415,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Filesystem fallback should detect partial output → show "Resume"
+    // Filesystem fallback should detect partial output -> show "Resume"
     await waitFor(() => {
       expect(screen.queryByText("Resume")).toBeTruthy();
     });
@@ -462,14 +462,14 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     });
   });
 
-  it("renders completion screen on last step (step 8)", async () => {
-    // Simulate all steps complete, on step 8 (the last step)
+  it("renders completion screen on last step (step 7)", async () => {
+    // Simulate all steps complete, on step 7 (the last step)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 8; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     // No artifact
     vi.mocked(getArtifactContent).mockResolvedValue(null);
@@ -484,14 +484,14 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(screen.queryByTestId("step-complete")).toBeTruthy();
   });
 
-  it("renders RefinementChat on step 8 when step is not completed", async () => {
+  it("renders RefinementChat on step 7 when step is not completed", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    // Complete steps 0-7 so we can be on step 8
-    for (let i = 0; i < 8; i++) {
+    // Complete steps 0-6 so we can be on step 7
+    for (let i = 0; i < 7; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
@@ -508,10 +508,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("shows Mark Complete and Skip buttons on refinement step", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 7; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
@@ -526,13 +526,13 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(screen.getByText("Skip")).toBeTruthy();
   });
 
-  it("Mark Complete button marks step 8 as completed", async () => {
+  it("Mark Complete button marks step 7 as completed", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 7; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
@@ -549,19 +549,19 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[8].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 9 marked complete");
+    expect(mockToast.success).toHaveBeenCalledWith("Step 8 marked complete");
   });
 
-  it("Skip button marks step 8 as completed", async () => {
+  it("Skip button marks step 7 as completed", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 7; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
@@ -578,19 +578,19 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[8].status).toBe("completed");
+      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 9 skipped");
+    expect(mockToast.success).toHaveBeenCalledWith("Step 8 skipped");
   });
 
-  it("does not show Mark Complete / Skip buttons when step 8 is completed", async () => {
+  it("does not show Mark Complete / Skip buttons when step 7 is completed", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 8; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(8);
+    useWorkflowStore.getState().setCurrentStep(7);
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
@@ -931,44 +931,40 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 2 auto-completed (debug)");
   });
 
-  it("debug mode skips validate and test steps (6, 7) on advance", async () => {
+  it("debug mode skips refinement step (7) on advance from step 6", async () => {
     // Enable debug mode
     useSettingsStore.getState().setSettings({ debugMode: true });
 
     vi.mocked(getArtifactContent).mockResolvedValue(null);
 
-    // Simulate: steps 0-4 completed, step 5 (build) running
+    // Simulate: steps 0-5 completed, step 6 (validate & test) running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(5);
-    useWorkflowStore.getState().updateStepStatus(5, "in_progress");
+    useWorkflowStore.getState().setCurrentStep(6);
+    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
     useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-build", "sonnet");
+    useAgentStore.getState().startRun("agent-validate-test", "sonnet");
 
     render(<WorkflowPage />);
 
-    // Agent completes step 5 (build) — should skip validate (6), test (7), refinement (8)
+    // Agent completes step 6 (validate & test) — should skip refinement (7)
     act(() => {
-      useAgentStore.getState().completeRun("agent-build", true);
+      useAgentStore.getState().completeRun("agent-validate-test", true);
     });
 
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[5].status).toBe("completed");
-    });
-
-    // Steps 6, 7, and 8 should all be auto-completed in debug mode
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
-      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
-      expect(useWorkflowStore.getState().steps[8].status).toBe("completed");
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Step 7 auto-completed (debug)");
+    // Step 7 (refinement) should be auto-completed in debug mode
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
+    });
+
     expect(mockToast.success).toHaveBeenCalledWith("Step 8 auto-completed (debug)");
-    expect(mockToast.success).toHaveBeenCalledWith("Step 9 auto-completed (debug)");
   });
 
   it("normal mode does not auto-complete human review steps", async () => {
@@ -1407,7 +1403,7 @@ describe("WorkflowPage — rerun integration", () => {
   it("handleRerunComplete marks step as completed", async () => {
     // This test verifies that when the rerun chat completes,
     // the workflow properly marks the step as completed.
-    // The actual error → completed transition is tested in step-rerun-chat.test.tsx.
+    // The actual error -> completed transition is tested in step-rerun-chat.test.tsx.
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -1424,7 +1420,7 @@ describe("WorkflowPage — rerun integration", () => {
       useWorkflowStore.getState().updateStepStatus(0, "completed");
     });
 
-    // Verify step status changed from error → completed
+    // Verify step status changed from error -> completed
     expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
   });
 });

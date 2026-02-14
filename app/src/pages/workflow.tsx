@@ -69,9 +69,8 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
-  6: { type: "agent", outputFiles: ["context/agent-validation-log.md"], model: "sonnet" },
-  7: { type: "agent", outputFiles: ["context/test-skill.md"], model: "sonnet" },
-  8: { type: "refinement" },
+  6: { type: "agent", outputFiles: ["context/agent-validation-log.md", "context/test-skill.md"], model: "sonnet" },
+  7: { type: "refinement" },
 };
 
 // Human review steps: step id -> relative artifact path
@@ -81,15 +80,14 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
 };
 
 // Agent step IDs eligible for rerun chat (not reasoning or refinement — those have their own chat)
-const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6, 7]);
+const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6]);
 
 // Map step IDs to human-readable labels for the rerun chat header
 const STEP_LABELS: Record<number, string> = {
   0: "research-concepts",
   2: "perform-research",
   5: "build",
-  6: "validate",
-  7: "test",
+  6: "validate-and-test",
 };
 
 export default function WorkflowPage() {
@@ -143,8 +141,8 @@ export default function WorkflowPage() {
   }, [resetBlocker]);
 
   const handleNavLeave = useCallback(() => {
-    // Revert step to pending so SQLite persists the correct state.
-    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    const store = useWorkflowStore.getState();
+    const { currentStep: step, steps: curSteps } = store;
     if (curSteps[step]?.status === "in_progress") {
       useWorkflowStore.getState().updateStepStatus(step, "pending");
     }
@@ -395,37 +393,33 @@ export default function WorkflowPage() {
   const isDebugAutoCompleteStep = useCallback((stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
     if (!cfg) return false;
-    // Auto-complete: human review (1, 3), validate (6), test (7), refinement (8)
-    return cfg.type === "human" || stepId === 6 || stepId === 7 || cfg.type === "refinement";
+    // Auto-complete: human review and refinement steps
+    return cfg.type === "human" || cfg.type === "refinement";
   }, []);
 
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
-
     let nextStep = currentStep + 1;
     setCurrentStep(nextStep);
 
     if (debugMode) {
-      // In debug mode, skip through auto-completable steps in a chain
       while (nextStep < steps.length && isDebugAutoCompleteStep(nextStep)) {
         updateStepStatus(nextStep, "completed");
         toast.success(`Step ${nextStep + 1} auto-completed (debug)`);
-        if (nextStep >= steps.length - 1) return; // Last step, stop
+        if (nextStep >= steps.length - 1) return;
         nextStep += 1;
         setCurrentStep(nextStep);
       }
-      // Now nextStep is an agent or reasoning step — auto-start effect will handle it
     } else {
-      // Normal mode: set human steps to waiting_for_user
       const nextConfig = STEP_CONFIGS[nextStep];
       if (nextConfig?.type === "human") {
         updateStepStatus(nextStep, "waiting_for_user");
       }
     }
-  }, [currentStep, steps.length, setCurrentStep, updateStepStatus, debugMode, isDebugAutoCompleteStep]);
+  }, [currentStep, steps, setCurrentStep, updateStepStatus, debugMode, isDebugAutoCompleteStep]);
 
-  // Watch for single agent completion
+  // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
@@ -537,7 +531,7 @@ export default function WorkflowPage() {
 
     // For agent steps eligible for rerun chat, enter interactive rerun mode
     // instead of destructively resetting.
-    // Steps 4 (reasoning) and 8 (refinement) have their own chat components.
+    // Steps 4 (reasoning) and 7 (refinement) have their own chat components.
     if (RERUN_CHAT_STEPS.has(currentStep)) {
       clearRuns();
       setRerunStepId(currentStep);
@@ -577,7 +571,7 @@ export default function WorkflowPage() {
   // Handle completion from the rerun chat
   const handleRerunComplete = useCallback(() => {
     setRerunStepId(null);
-    // Ensure the step is marked as completed (handles error → completed transition)
+    // Ensure the step is marked as completed (handles error -> completed transition)
     updateStepStatus(currentStep, "completed");
     toast.success(`Step ${currentStep + 1} rerun completed`);
   }, [currentStep, updateStepStatus]);
@@ -674,7 +668,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Completed step with output files
+    // Completed step with output files.
     if (
       currentStepDef?.status === "completed" &&
       !activeAgentId
@@ -771,7 +765,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 6) — multi-turn chat
+    // Reasoning step (Step 4) — multi-turn chat
     if (stepConfig?.type === "reasoning") {
       return (
         <ReasoningChat
@@ -785,7 +779,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Refinement step (Step 8) — open-ended chat for skill polish
+    // Refinement step (Step 7) — open-ended chat for skill polish
     if (stepConfig?.type === "refinement") {
       return (
         <RefinementChat
@@ -796,12 +790,14 @@ export default function WorkflowPage() {
       );
     }
 
-    // Initializing state — show spinner before first agent message arrives
-    if (isInitializing && (!activeAgentId || !runs[activeAgentId]?.messages.length)) {
-      return <AgentInitializingIndicator />;
+    // Initializing state — show spinner before first agent message arrives.
+    if (isInitializing) {
+      if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
+        return <AgentInitializingIndicator />;
+      }
     }
 
-    // Single agent with output
+    // Agent with output
     if (activeAgentId) {
       return <AgentOutputPanel agentId={activeAgentId} />;
     }

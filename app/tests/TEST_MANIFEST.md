@@ -72,7 +72,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (42) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (4) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (80) | `@workflow` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (82) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (33) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
@@ -112,7 +112,7 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 
 | Source Pattern | Plugin Tag | Plugin Tiers | Desktop App Impact |
 |---|---|---|---|
-| `agents/{type}/*.md` (24 files) | `@agents` | t1, t4 | -- |
+| `agents/{type}/*.md` (28 files) | `@agents` | t1, t4 | -- |
 | `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
 | `skills/start/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
 | `references/shared-context.md` | `@agents` | t1, t4 | -- |
