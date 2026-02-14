@@ -5,7 +5,7 @@ description: Creates domain-specific Claude skills through multi-agent orchestra
 
 # Skill Builder — Coordinator
 
-You are the coordinator for the Skill Builder workflow. You orchestrate a 9-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
+You are the coordinator for the Skill Builder workflow. You orchestrate an 8-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
 
 ## Contents
 - [Path Resolution]
@@ -20,9 +20,8 @@ You are the coordinator for the Skill Builder workflow. You orchestrate a 9-step
   - [Step 4: Human Gate — Merged Questions]
   - [Step 5: Reasoning & Decision Engine]
   - [Step 6: Build Skill]
-  - [Step 7: Validate]
-  - [Step 8: Test]
-  - [Step 9: Package]
+  - [Step 7: Validate & Test]
+  - [Step 8: Package]
 - [Error Recovery]
 - [Progress Display]
 
@@ -82,12 +81,11 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Patterns complete |
    | 5 | `./context/decisions.md` | Reasoning complete |
    | 6 | `./<skillname>/SKILL.md` | Build complete |
-   | 7 | `./context/agent-validation-log.md` | Validate complete |
-   | 8 | `./context/test-skill.md` | Test complete |
+   | 7 | `./context/agent-validation-log.md` AND `./context/test-skill.md` | Validate & Test complete |
 
    **Mode A — Resume** (any output files from the table above exist):
    The user is continuing a previous session.
-   - Scan the output files above from step 8 down to step 1. The highest step whose output file exists and has content is the last completed step.
+   - Scan the output files above from step 7 down to step 1. The highest step whose output file exists and has content is the last completed step.
    - Show the user which step was last completed.
    - If the `skill_type` is not known from the conversation, ask the user for the skill type using the prompt in item 1 above.
    - Ask: "Continue from step N+1, or start fresh (this deletes all progress)?"
@@ -248,37 +246,14 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 2. Relay the structure and summary to the user.
 3. **Human Gate**: "Does this structure look right? Any changes needed?"
 
-### Step 7: Validate
+### Step 7: Validate & Test
 
-1. Spawn the validate agent:
+1. Spawn the validate-and-test agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-validate",
+     subagent_type: "skill-builder:{type_prefix}-validate-and-test",
      team_name: "skill-builder-<skillname>",
-     name: "validate",
-     prompt: "You are on the skill-builder-<skillname> team.
-
-     Skill type: <skill_type>
-     Skill directory: ./<skillname>/
-     Context directory: ./context/
-
-     Validate the skill against best practices. Auto-fix straightforward issues.
-     Write validation log to: ./context/agent-validation-log.md
-
-     Return summary: total checks, passed, fixed, needs review."
-   )
-   ```
-2. Relay pass/fail counts to the user.
-3. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md`. Proceed to testing?"
-
-### Step 8: Test
-
-1. Spawn the test agent:
-   ```
-   Task(
-     subagent_type: "skill-builder:{type_prefix}-test",
-     team_name: "skill-builder-<skillname>",
-     name: "test",
+     name: "validate-and-test",
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>
@@ -287,17 +262,19 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      Context directory: ./context/
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
-     Generate test prompts, evaluate skill coverage, identify gaps.
+     Validate the skill against best practices and generate test prompts to evaluate coverage.
+     Auto-fix straightforward issues found during validation.
+     Write validation log to: ./context/agent-validation-log.md
      Write test report to: ./context/test-skill.md
 
-     Return summary: total tests, passed, partial, failed, and top gaps found."
+     Return summary: validation checks (passed/fixed/needs review) and test results (total/passed/partial/failed)."
    )
    ```
-2. Relay test results to the user.
-3. **Human Gate**: "Review test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
+2. Relay results to the user.
+3. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md` and test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
 4. If rebuild: go back to Step 6.
 
-### Step 9: Package
+### Step 8: Package
 
 1. Package the skill:
    ```bash
@@ -309,8 +286,7 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
    SendMessage(type: "shutdown_request", recipient: "research-patterns-and-merge", content: "Workflow complete, shutting down.")
    SendMessage(type: "shutdown_request", recipient: "reasoning", content: "Workflow complete, shutting down.")
    SendMessage(type: "shutdown_request", recipient: "build", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "validate", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "test", content: "Workflow complete, shutting down.")
+   SendMessage(type: "shutdown_request", recipient: "validate-and-test", content: "Workflow complete, shutting down.")
    ```
    Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
 3. Clean up the team:
@@ -331,5 +307,5 @@ If an agent fails, retry once with the error context. If it fails again, report 
 
 At the start of each step, display progress to the user:
 ```
-[Step N/9] <Step name>
+[Step N/8] <Step name>
 ```
