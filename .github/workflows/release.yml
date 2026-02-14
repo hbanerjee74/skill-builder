@@ -125,48 +125,7 @@ jobs:
           # Cleanup
           rm -f "/tmp/${ZIPFILE}"
 
-      # Bundle git-bash for Windows — required by the Claude Code SDK.
-      # Copies the bash runtime from the runner's pre-installed Git for Windows.
-      # The bin/ directory contains bash.exe and its MSYS2 DLLs (msys-2.0.dll etc).
-      # Licensed under GPL v2.
-      - name: Bundle git-bash for Windows
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Git for Windows is pre-installed on windows-latest runners
-          GIT_ROOT="C:/Program Files/Git"
-          DEST="app/src-tauri/resources/git-bash"
-
-          if [ ! -f "$GIT_ROOT/bin/bash.exe" ]; then
-            echo "::error::Git for Windows not found at $GIT_ROOT"
-            exit 1
-          fi
-
-          # Copy bin/ (bash.exe, sh.exe, and co-located MSYS2 DLLs)
-          mkdir -p "$DEST"
-          cp -r "$GIT_ROOT/bin" "$DEST/bin"
-
-          # Copy etc/ (minimal config needed by bash)
-          cp -r "$GIT_ROOT/etc" "$DEST/etc"
-
-          # Copy MSYS2 usr/bin/ for bash dependencies (coreutils, DLLs)
-          mkdir -p "$DEST/usr"
-          cp -r "$GIT_ROOT/usr/bin" "$DEST/usr/bin"
-
-          # Include GPL license
-          cp "$GIT_ROOT/LICENSE.txt" "$DEST/" 2>/dev/null || true
-
-          # Verify the bundled bash works
-          "$DEST/bin/bash.exe" -c "echo bash bundled OK"
-
-          # Report version and size
-          "$DEST/bin/bash.exe" --version | head -1
-          BASH_SIZE=$(du -sh "$DEST" | cut -f1)
-          echo "Bundled git-bash size: ${BASH_SIZE}"
-
-      - name: Build Tauri app (macOS)
+- name: Build Tauri app (macOS)
         if: matrix.os == 'macos-latest'
         working-directory: app
         run: npx tauri build --bundles app
@@ -222,12 +181,6 @@ jobs:
           if [ -d "app/src-tauri/resources/node" ]; then
             mkdir -p "$STAGE/resources"
             cp -r "app/src-tauri/resources/node" "$STAGE/resources/node"
-          fi
-
-          # Copy bundled MinGit (git-bash for Claude Code SDK)
-          if [ -d "app/src-tauri/resources/git-bash" ]; then
-            mkdir -p "$STAGE/resources"
-            cp -r "app/src-tauri/resources/git-bash" "$STAGE/resources/git-bash"
           fi
 
           # Copy agents and references (used by the sidecar at runtime)

@@ -1473,27 +1473,13 @@ fn is_node_compatible(version: &str) -> bool {
 }
 
 /// Auto-detect git-bash on Windows.
-/// Priority: bundled MinGit → PATH → standard install locations.
+/// Checks PATH then standard install locations.
 /// Public so `check_startup_deps` can call it for preflight validation.
 #[cfg(target_os = "windows")]
 pub fn find_git_bash() -> Option<String> {
     use std::path::PathBuf;
 
-    // 1. Check bundled MinGit next to the exe: {exe_dir}/resources/git-bash/bin/bash.exe
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let bundled = exe_dir
-                .join("resources")
-                .join("git-bash")
-                .join("bin")
-                .join("bash.exe");
-            if bundled.exists() {
-                return Some(bundled.to_string_lossy().to_string());
-            }
-        }
-    }
-
-    // 2. Check if bash.exe is already in PATH
+    // 1. Check if bash.exe is already in PATH
     if let Ok(output) = std::process::Command::new("where").arg("bash.exe").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -1507,7 +1493,7 @@ pub fn find_git_bash() -> Option<String> {
         }
     }
 
-    // 3. Check standard install locations
+    // 2. Check standard install locations
     let candidates = [
         r"C:\Program Files\Git\bin\bash.exe",
         r"C:\Program Files (x86)\Git\bin\bash.exe",
