@@ -224,6 +224,8 @@ fn spawn_heartbeat_task(
                 break;
             }
 
+            log::debug!("[heartbeat:{}] ping sent", skill_name);
+
             // Wait 5 seconds for pong response
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
@@ -629,6 +631,7 @@ impl SidecarPool {
                             if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
                                 let mut pong_guard = stdout_last_pong.lock().await;
                                 *pong_guard = tokio::time::Instant::now();
+                                log::debug!("[heartbeat:{}] pong received", skill_name_stdout);
                                 return;
                             }
 
