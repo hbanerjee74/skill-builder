@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, Plus, Pencil, X, Server, Globe } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,12 +17,19 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { AppSettings } from "@/lib/types"
+import type { AppSettings, McpServerConfig } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
 import { getDataDir } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 
@@ -52,7 +59,14 @@ export default function SettingsPage() {
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false)
+  const [editingMcp, setEditingMcp] = useState<McpServerConfig | null>(null)
+  const [mcpName, setMcpName] = useState("")
+  const [mcpType, setMcpType] = useState<"http" | "sse">("http")
+  const [mcpUrl, setMcpUrl] = useState("")
+  const [mcpAuthHeader, setMcpAuthHeader] = useState("")
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const { mcpServers, addMcpServer, updateMcpServer, removeMcpServer } = useSettingsStore()
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
 
@@ -71,6 +85,11 @@ export default function SettingsPage() {
             setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
+            // MCP servers — populate store from persisted settings
+            const mcpFromSettings = (result as any).mcp_servers;
+            if (Array.isArray(mcpFromSettings)) {
+              setStoreSettings({ mcpServers: mcpFromSettings });
+            }
             setLoading(false)
           }
           return
@@ -128,6 +147,7 @@ export default function SettingsPage() {
       github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
       github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
+      mcp_servers: useSettingsStore.getState().mcpServers,
     }
     try {
       await invoke("save_settings", { settings })
@@ -201,6 +221,96 @@ export default function SettingsPage() {
     }
   }
 
+  const autoSaveMcp = async (servers: McpServerConfig[]) => {
+    const settings: AppSettings = {
+      anthropic_api_key: apiKey,
+      workspace_path: workspacePath,
+      skills_path: skillsPath,
+      preferred_model: preferredModel,
+      debug_mode: debugMode,
+      log_level: logLevel,
+      extended_context: extendedContext,
+      extended_thinking: extendedThinking,
+      splash_shown: false,
+      github_oauth_token: useSettingsStore.getState().githubOauthToken ?? null,
+      github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
+      github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
+      github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
+      mcp_servers: servers,
+    }
+    try {
+      await invoke("save_settings", { settings })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } catch (err) {
+      toast.error(`Failed to save: ${err}`, { duration: Infinity })
+    }
+  }
+
+  const handleMcpPreset = (preset: "linear" | "notion") => {
+    if (preset === "linear") {
+      setMcpName("linear")
+      setMcpType("http")
+      setMcpUrl("https://mcp.linear.app/mcp")
+      setMcpAuthHeader("")
+    } else {
+      setMcpName("notion")
+      setMcpType("http")
+      setMcpUrl("https://mcp.notion.com/mcp")
+      setMcpAuthHeader("")
+    }
+    setEditingMcp(null)
+    setMcpDialogOpen(true)
+  }
+
+  const handleMcpEdit = (server: McpServerConfig) => {
+    setMcpName(server.name)
+    setMcpType(server.type)
+    setMcpUrl(server.url)
+    setMcpAuthHeader(server.headers["Authorization"] || "")
+    setEditingMcp(server)
+    setMcpDialogOpen(true)
+  }
+
+  const handleMcpSave = () => {
+    const server: McpServerConfig = {
+      name: mcpName.trim(),
+      type: mcpType,
+      url: mcpUrl.trim(),
+      headers: mcpAuthHeader.trim() ? { Authorization: mcpAuthHeader.trim() } : {},
+    }
+    if (editingMcp) {
+      updateMcpServer(editingMcp.name, server)
+    } else {
+      addMcpServer(server)
+    }
+    setMcpDialogOpen(false)
+    setMcpName("")
+    setMcpUrl("")
+    setMcpAuthHeader("")
+    setEditingMcp(null)
+
+    // Auto-save to backend
+    const updatedServers = editingMcp
+      ? mcpServers.map((s) => (s.name === editingMcp.name ? server : s))
+      : [...mcpServers, server]
+    autoSaveMcp(updatedServers)
+  }
+
+  const handleMcpRemove = (name: string) => {
+    removeMcpServer(name)
+    const updatedServers = mcpServers.filter((s) => s.name !== name)
+    autoSaveMcp(updatedServers)
+  }
+
+  const handleMcpAdd = () => {
+    setMcpName("")
+    setMcpType("http")
+    setMcpUrl("")
+    setMcpAuthHeader("")
+    setEditingMcp(null)
+    setMcpDialogOpen(true)
+  }
 
   if (loading) {
     return (
@@ -336,6 +446,51 @@ export default function SettingsPage() {
               checked={extendedThinking}
               onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>MCP Servers</CardTitle>
+          <CardDescription>
+            Connect external data sources (Notion, Linear) via remote MCP servers. Agents can query these during skill building.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {mcpServers.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {mcpServers.map((server) => (
+                <div key={server.name} className="flex items-center gap-3 rounded-md border p-3">
+                  <Globe className="size-4 text-muted-foreground shrink-0" />
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="text-sm font-medium">{server.name}</span>
+                    <span className="text-xs text-muted-foreground truncate">{server.url}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">{server.type.toUpperCase()}</span>
+                  <Button variant="ghost" size="icon-xs" onClick={() => handleMcpEdit(server)}>
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon-xs" onClick={() => handleMcpRemove(server.name)}>
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleMcpAdd}>
+              <Plus className="size-4" />
+              Add Server
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleMcpPreset("linear")}>
+              <Server className="size-4" />
+              Linear
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleMcpPreset("notion")}>
+              <Server className="size-4" />
+              Notion
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -583,6 +738,67 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      <Dialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingMcp ? "Edit MCP Server" : "Add MCP Server"}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-name">Name</Label>
+              <Input
+                id="mcp-name"
+                placeholder="e.g., linear, notion"
+                value={mcpName}
+                onChange={(e) => setMcpName(e.target.value)}
+                disabled={!!editingMcp}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-type">Transport</Label>
+              <select
+                id="mcp-type"
+                value={mcpType}
+                onChange={(e) => setMcpType(e.target.value as "http" | "sse")}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="http">HTTP (Streamable)</option>
+                <option value="sse">SSE (Legacy)</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-url">URL</Label>
+              <Input
+                id="mcp-url"
+                placeholder="https://mcp.example.com/mcp"
+                value={mcpUrl}
+                onChange={(e) => setMcpUrl(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-auth">Authorization Header</Label>
+              <Input
+                id="mcp-auth"
+                type="password"
+                placeholder="Bearer your-token-here"
+                value={mcpAuthHeader}
+                onChange={(e) => setMcpAuthHeader(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sent as the Authorization header with every request.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMcpDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleMcpSave} disabled={!mcpName.trim() || !mcpUrl.trim()}>
+              {editingMcp ? "Save" : "Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </div>

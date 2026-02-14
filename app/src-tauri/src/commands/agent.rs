@@ -19,13 +19,13 @@ pub async fn start_agent(
     _step_label: String,
     agent_name: Option<String>,
 ) -> Result<String, String> {
-    let (api_key, extended_context, extended_thinking) = {
+    let (api_key, extended_context, extended_thinking, mcp_servers) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings(&conn)?;
         let key = settings
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-        (key, settings.extended_context, settings.extended_thinking)
+        (key, settings.extended_context, settings.extended_thinking, settings.mcp_servers)
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
@@ -47,6 +47,7 @@ pub async fn start_agent(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name,
+        mcp_servers,
     };
 
     sidecar::spawn_sidecar(

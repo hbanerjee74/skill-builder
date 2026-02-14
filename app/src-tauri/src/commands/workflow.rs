@@ -567,6 +567,7 @@ pub async fn run_review_step(
         max_thinking_tokens: None,
         path_to_claude_code_executable: None,
         agent_name: None,
+        mcp_servers: None,
     };
 
     sidecar::spawn_sidecar(
@@ -630,6 +631,7 @@ struct WorkflowSettings {
     skill_type: String,
     author_login: Option<String>,
     created_at: Option<String>,
+    mcp_servers: Option<serde_json::Value>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -651,6 +653,7 @@ fn read_workflow_settings(
     let extended_context = settings.extended_context;
     let debug_mode = settings.debug_mode;
     let extended_thinking = settings.extended_thinking;
+    let mcp_servers = settings.mcp_servers;
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
@@ -676,6 +679,7 @@ fn read_workflow_settings(
         skill_type,
         author_login,
         created_at,
+        mcp_servers,
     })
 }
 
@@ -742,6 +746,7 @@ async fn run_workflow_step_inner(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
+        mcp_servers: settings.mcp_servers.clone(),
     };
 
     sidecar::spawn_sidecar(

@@ -26,6 +26,8 @@ pub struct AppSettings {
     pub github_user_avatar: Option<String>,
     #[serde(default)]
     pub github_user_email: Option<String>,
+    #[serde(default)]
+    pub mcp_servers: Option<serde_json::Value>,
 }
 
 impl Default for AppSettings {
@@ -44,6 +46,7 @@ impl Default for AppSettings {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
+            mcp_servers: None,
         }
     }
 }
@@ -246,6 +249,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
+        assert!(settings.mcp_servers.is_none());
     }
 
     #[test]
@@ -264,6 +268,7 @@ mod tests {
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -298,6 +303,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
+        assert!(settings.mcp_servers.is_none());
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
@@ -321,6 +327,7 @@ mod tests {
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("domain-research-concepts".to_string()),
+            mcp_servers: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));
