@@ -83,7 +83,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
 | `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
-| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (23) | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (21) | `@workflow-agent` |
 
 ### Sidecar (Node.js Agent Runner)
 

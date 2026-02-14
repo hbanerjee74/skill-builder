@@ -11,7 +11,7 @@ use crate::types::{
     WorkflowStateResponse,
 };
 
-const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
+const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
 /// If the input is already a full ID, pass it through unchanged.
