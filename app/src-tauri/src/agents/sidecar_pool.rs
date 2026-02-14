@@ -673,12 +673,27 @@ impl SidecarPool {
                                             let subtype = msg.get("subtype")
                                                 .and_then(|s| s.as_str())
                                                 .unwrap_or("unknown");
-                                            log::debug!(
-                                                "[persistent-sidecar:{}] Agent '{}': {}",
-                                                skill_name_stdout,
-                                                request_id,
-                                                subtype,
-                                            );
+                                            // Surface SDK stderr in the app log — this is
+                                            // diagnostic output (not agent content) and is
+                                            // critical for debugging startup failures.
+                                            if subtype == "sdk_stderr" {
+                                                let data = msg.get("data")
+                                                    .and_then(|d| d.as_str())
+                                                    .unwrap_or("");
+                                                log::warn!(
+                                                    "[persistent-sidecar:{}] Agent '{}' stderr: {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    data,
+                                                );
+                                            } else {
+                                                log::debug!(
+                                                    "[persistent-sidecar:{}] Agent '{}': {}",
+                                                    skill_name_stdout,
+                                                    request_id,
+                                                    subtype,
+                                                );
+                                            }
                                         }
                                         _ => {}
                                     }
