@@ -224,7 +224,7 @@ fn spawn_heartbeat_task(
                 break;
             }
 
-            log::debug!("[heartbeat:{}] ping sent", skill_name);
+            log::trace!("[heartbeat:{}] ping sent", skill_name);
 
             // Wait 5 seconds for pong response
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -466,7 +466,7 @@ impl SidecarPool {
             let mut lines = stderr_reader.lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let result = AssertUnwindSafe(async {
-                    log::debug!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
+                    log::trace!("[sidecar-stderr:{}] {}", skill_name_stderr, line);
                 })
                 .catch_unwind()
                 .await;
@@ -632,7 +632,7 @@ impl SidecarPool {
                             if msg.get("type").and_then(|t| t.as_str()) == Some("pong") {
                                 let mut pong_guard = stdout_last_pong.lock().await;
                                 *pong_guard = tokio::time::Instant::now();
-                                log::debug!("[heartbeat:{}] pong received", skill_name_stdout);
+                                log::trace!("[heartbeat:{}] pong received", skill_name_stdout);
                                 return;
                             }
 
@@ -739,18 +739,18 @@ impl SidecarPool {
                                 }
                             } else {
                                 log::warn!(
-                                    "[persistent-sidecar:{}] Message without request_id: {}",
+                                    "[persistent-sidecar:{}] Message without request_id (len={})",
                                     skill_name_stdout,
-                                    line
+                                    line.len(),
                                 );
                             }
                         }
                         Err(e) => {
-                            log::warn!(
-                                "[persistent-sidecar:{}] Failed to parse stdout: {} (line: {})",
+                            log::debug!(
+                                "[persistent-sidecar:{}] Failed to parse stdout as JSON: {} (len={})",
                                 skill_name_stdout,
                                 e,
-                                line
+                                line.len(),
                             );
                         }
                     }
@@ -1122,7 +1122,7 @@ impl SidecarPool {
                 }
             }
         } else {
-            log::debug!("No sidecar running for '{}', nothing to shut down", skill_name);
+            log::trace!("No sidecar running for '{}', nothing to shut down", skill_name);
         }
 
         Ok(())
