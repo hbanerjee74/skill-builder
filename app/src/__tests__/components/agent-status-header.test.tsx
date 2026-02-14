@@ -186,6 +186,100 @@ describe("AgentStatusHeader", () => {
   });
 });
 
+describe("VD-513: Skill badges in status header", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    useWorkflowStore.getState().reset();
+  });
+
+  it("renders skill badges when skillsUsed is populated", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    // Add an assistant message with a Skill tool_use to populate skillsUsed
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: {
+        message: {
+          content: [
+            { type: "tool_use", name: "Skill", input: { skill: "shadcn-ui" } },
+          ],
+        },
+      },
+      timestamp: Date.now(),
+    });
+
+    render(<AgentStatusHeader agentId="test-agent" />);
+    expect(screen.getByText("shadcn-ui")).toBeInTheDocument();
+  });
+
+  it("renders multiple skill badges for multiple skills", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: {
+        message: {
+          content: [
+            { type: "tool_use", name: "Skill", input: { skill: "shadcn-ui" } },
+          ],
+        },
+      },
+      timestamp: Date.now(),
+    });
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: {
+        message: {
+          content: [
+            { type: "tool_use", name: "Skill", input: { skill: "tailwind" } },
+          ],
+        },
+      },
+      timestamp: Date.now(),
+    });
+
+    render(<AgentStatusHeader agentId="test-agent" />);
+    expect(screen.getByText("shadcn-ui")).toBeInTheDocument();
+    expect(screen.getByText("tailwind")).toBeInTheDocument();
+  });
+
+  it("does not render skill badges when skillsUsed is empty", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: "Working...",
+      raw: { message: { content: [{ type: "text", text: "Working..." }] } },
+      timestamp: Date.now(),
+    });
+
+    const { container } = render(<AgentStatusHeader agentId="test-agent" />);
+    // Skill badges have violet styling — should not be present
+    const violetBadges = container.querySelectorAll(".bg-violet-100");
+    expect(violetBadges).toHaveLength(0);
+  });
+
+  it("skill badges have violet styling", () => {
+    useAgentStore.getState().startRun("test-agent", "sonnet");
+    useAgentStore.getState().addMessage("test-agent", {
+      type: "assistant",
+      content: null as unknown as string,
+      raw: {
+        message: {
+          content: [
+            { type: "tool_use", name: "Skill", input: { skill: "test-skill" } },
+          ],
+        },
+      },
+      timestamp: Date.now(),
+    });
+
+    const { container } = render(<AgentStatusHeader agentId="test-agent" />);
+    const violetBadges = container.querySelectorAll(".bg-violet-100");
+    expect(violetBadges.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
 describe("getDisplayStatus", () => {
   it("returns 'initializing' when running with zero messages", () => {
     expect(getDisplayStatus("running", 0)).toBe("initializing");

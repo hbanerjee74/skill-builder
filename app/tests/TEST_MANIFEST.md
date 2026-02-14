@@ -8,7 +8,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
+| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (45) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
 | `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (19) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-review.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
 | `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
@@ -46,9 +46,9 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (105) | `@workflow-agent` |
+| `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (108) | `@workflow-agent` |
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
-| `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
+| `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (24) | `@workflow-agent` |
 | `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (9) | `@settings` |
 | `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (36) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |

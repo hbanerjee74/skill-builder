@@ -1201,6 +1201,57 @@ describe("VD-374: Message transitions and animations", () => {
   });
 });
 
+// --- VD-513: Skill tool invocations ---
+
+describe("VD-513: Skill tool rendering", () => {
+  it("renders Skill tool_use with Sparkles icon and skill name summary", () => {
+    const skillMsg = makeToolCallMsg("Skill", { skill: "shadcn-ui", args: "" });
+    render(<CollapsibleToolCall message={skillMsg} />);
+    expect(screen.getByText("Skill: shadcn-ui")).toBeInTheDocument();
+    // Should render Sparkles SVG icon (size-3.5)
+    const testId = screen.getByTestId("collapsible-tool-call");
+    const svgs = testId.querySelectorAll("svg");
+    expect(svgs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders Skill tool_use as a CollapsibleToolCall in MessageItem", () => {
+    render(
+      <MessageItem
+        message={makeToolCallMsg("Skill", { skill: "tailwind-css", args: "how to configure" })}
+      />,
+    );
+    expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
+    expect(screen.getByText("Skill: tailwind-css")).toBeInTheDocument();
+  });
+
+  it("config message does NOT render discoveredSkills badges", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "config",
+          raw: {
+            config: {
+              model: "sonnet",
+              allowedTools: ["Read", "Write"],
+              agentName: "test-agent",
+            },
+            discoveredSkills: ["shadcn-ui", "tailwind"],
+          },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    // Should NOT render skill badges
+    expect(screen.queryByText("shadcn-ui")).not.toBeInTheDocument();
+    expect(screen.queryByText("tailwind")).not.toBeInTheDocument();
+    // Should NOT render "Skills:" label
+    expect(screen.queryByText("Skills:")).not.toBeInTheDocument();
+    // Should still render other config items
+    expect(screen.getByText("test-agent")).toBeInTheDocument();
+    expect(screen.getByText("sonnet")).toBeInTheDocument();
+  });
+});
+
 // --- VD-370: getToolInput ---
 
 describe("getToolInput", () => {
