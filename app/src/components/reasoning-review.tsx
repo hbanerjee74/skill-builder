@@ -5,7 +5,6 @@ import {
   Brain,
   CheckCircle2,
   Loader2,
-  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -59,7 +58,7 @@ export function ReasoningReview({
   // Stores
   const currentRun = useAgentStore((s) => currentAgentId ? s.runs[currentAgentId] : null);
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
-  const { updateStepStatus, setRunning, currentStep, setCurrentStep } = useWorkflowStore();
+  const { updateStepStatus, setRunning, currentStep } = useWorkflowStore();
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const debugMode = useSettingsStore((s) => s.debugMode);
 
@@ -191,7 +190,7 @@ export function ReasoningReview({
       if (!decisionsFound) {
         toast.error(
           "Decisions file was not created. The reasoning agent did not produce decisions.md. " +
-          "Try going back to Human Review to revise your answers, then re-run this step.",
+          "Navigate back to Human Review in the sidebar to revise your answers, then re-run this step.",
           { duration: Infinity },
         );
         return;
@@ -203,11 +202,6 @@ export function ReasoningReview({
     toast.success("Reasoning step completed");
     onStepComplete();
   }, [skillName, workspacePath, skillsPath, debugMode, currentStep, updateStepStatus, setRunning, onStepComplete]);
-
-  const handleReviseDecisions = useCallback(() => {
-    // Navigate back to step 3 (Human Review) so the user can edit answers
-    setCurrentStep(3);
-  }, [setCurrentStep]);
 
   // --- Pre-compute message groups for streaming output ---
 
@@ -318,14 +312,9 @@ export function ReasoningReview({
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-muted-foreground">
             {agentErrored ? (
-              <>
-                <p className="text-sm">
-                  The reasoning agent encountered an error and did not produce decisions.
-                </p>
-                <p className="text-xs">
-                  Go back to Human Review to revise your answers and try again.
-                </p>
-              </>
+              <p className="text-sm">
+                The reasoning agent encountered an error and did not produce decisions.
+              </p>
             ) : (
               <Loader2 className="size-5 animate-spin" />
             )}
@@ -334,15 +323,7 @@ export function ReasoningReview({
       </ScrollArea>
 
       {/* Action buttons */}
-      <div className="flex items-center justify-between border-t px-4 py-3">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleReviseDecisions}
-        >
-          <ArrowLeft className="size-3.5" />
-          Revise Decisions
-        </Button>
+      <div className="flex items-center justify-end border-t px-4 py-3">
         <Button
           size="sm"
           onClick={handleCompleteStep}

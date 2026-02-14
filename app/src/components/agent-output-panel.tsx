@@ -426,28 +426,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
   }
 
   if (category === "config") {
-    const raw = message.raw as Record<string, unknown>;
-    const config = raw.config as Record<string, unknown> | undefined;
-    if (!config) return null;
-    const tools = config.allowedTools as string[] | undefined;
-    const model = config.model as string | undefined;
-    const agentName = config.agentName as string | undefined;
-    return (
-      <div className={`${wrapperClass} text-xs text-muted-foreground space-y-0.5`}>
-        {agentName && <div><span className="font-medium">Agent:</span> {agentName}</div>}
-        {model && <div><span className="font-medium">Model:</span> {model}</div>}
-        {tools && (
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="font-medium">Tools:</span>
-            {tools.map((t) => (
-              <Badge key={t} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                {t}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
-    );
+    return null;
   }
 
   if (category === "error") {

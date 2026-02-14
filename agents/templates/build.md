@@ -18,27 +18,15 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
   - The **context directory** path (for reading `decisions.md` and `clarifications.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **domain name**
-- Read the shared context file for domain context and content principles
-- Read `decisions.md` from the context directory — this is your primary input
-- Read `clarifications.md` from the context directory — these are the answered clarification questions. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
+- Read the shared context file, `decisions.md` (primary input), and `clarifications.md`
 
 ## Rerun / Resume Mode
 
-See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
-
----
-
-## Planning
-
-Before writing any files, plan the overall skill structure:
-- Identify the key themes from the decisions document
-- Determine which reference files are needed and their scope
-- Ensure the SKILL.md entry point covers all identified entities and metrics
-- Verify no gaps exist between decisions and the planned content
+See CLAUDE.md and `references/agent-protocols.md`.
 
 ## Before You Start
 
-See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
+See CLAUDE.md and `references/agent-protocols.md`.
 
 ## Phase 1: Plan the Skill Structure
 
@@ -54,11 +42,9 @@ Read `decisions.md` and `clarifications.md`. Then plan the folder structure:
 ```
 
 **Rules:**
-- `SKILL.md` sits at the root of the skill output directory (the path provided by the coordinator). It is the only file Claude reads initially. Use progressive disclosure: SKILL.md provides the overview and pointers, reference files provide depth on demand.
-- All reference files go in a `references/` subfolder within the skill output directory. SKILL.md points to them by relative path (e.g., `See references/entity-model.md for details`).
-- Name reference files by topic using kebab-case (e.g., `pipeline-metrics.md`, `source-field-checklist.md`, `stage-modeling.md`).
+- Use progressive disclosure: SKILL.md provides overview and pointers, reference files provide depth on demand.
+- Name reference files by topic using kebab-case (e.g., `pipeline-metrics.md`, `stage-modeling.md`).
 - Each reference file should be self-contained for its topic.
-- No files outside of `SKILL.md` and `references/`. No README, CHANGELOG, or other auxiliary docs.
 
 Decide how many reference files are needed based on the decisions. Write out the proposed structure (file names + one-line descriptions).
 
@@ -81,56 +67,25 @@ Use the **Task tool** to spawn one sub-agent per reference file. Launch ALL Task
 
 For each sub-agent, use: `name: "writer-<topic>"`, `model: "sonnet"`, `mode: "bypassPermissions"`
 
-Each sub-agent's prompt should follow this template:
-
-```
-You are writing a single reference file for a skill about [DOMAIN].
-
-Read the file at [path to decisions.md] for context on what decisions were made.
-Read the file at [path to SKILL.md] to understand how this reference fits the overall skill.
-
-If the file at [full path to references/topic-name.md] already exists, read it first.
-Update it to reflect the current decisions — don't rewrite from scratch unless the content is substantially wrong.
-If it doesn't exist, write it fresh.
-
-Write the file: [full path to references/topic-name.md]
-
-The file should:
-- Start with a one-line summary of what it covers
-- Contain detailed, actionable guidance for its topic
-- Be written for data/analytics engineers (they know SQL/dbt — give them domain WHAT and WHY, not HOW)
-- Focus on hard-to-find domain knowledge, not things LLMs already know
-- Be self-contained — a reader should understand it without reading other reference files
-
-Topic: [TOPIC DESCRIPTION — what this file should cover, based on the decisions]
-```
-
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+Each sub-agent prompt must include:
+- Paths to `decisions.md` and `SKILL.md` for context
+- The full output path (`references/<topic>.md`) — update if it exists, create if not
+- The topic description: what this file should cover, based on the decisions
+- Instruction to start with a one-line summary and be self-contained
 
 ## Phase 4: Review and Fix Gaps
 
 After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
 
 Prompt it to:
-1. Read `decisions.md` from the context directory [pass the full absolute path to the file]
-2. Read `SKILL.md` and every file in `references/` from the skill output directory
-3. Cross-check against `decisions.md` to ensure every decision is addressed somewhere
-4. Fix any gaps, inconsistencies, or missing content directly in the files
-5. Ensure SKILL.md's pointers accurately describe each reference file
-6. Respond with only: `Done — reviewed and fixed [N] issues`
-
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+1. Read `decisions.md`, `SKILL.md`, and every file in `references/`
+2. Cross-check against `decisions.md` — fix gaps, inconsistencies, or missing content directly
+3. Ensure SKILL.md pointers accurately describe each reference file
 
 ## Error Handling
 
-- **If `decisions.md` is empty or malformed:** Report to the coordinator that decisions are missing or corrupt. Do not attempt to build a skill without confirmed decisions — the output would be speculative.
-- **If a reference file sub-agent fails:** Check if the file was partially written. If so, read and complete it yourself. If no file exists, write it directly rather than re-spawning.
-
-## General Principles
-- Handle all technical details invisibly
-- Use plain language, no jargon
-- No auxiliary documentation files — skills are for AI agents, not human onboarding
-- Content focuses on domain knowledge, not things LLMs already know
+- **Missing/malformed `decisions.md`:** Report to the coordinator — do not build without confirmed decisions.
+- **Sub-agent failure:** Complete the file yourself rather than re-spawning.
 
 ## Output Files
 - `SKILL.md` in the skill output directory

@@ -11,7 +11,7 @@ use crate::types::{
     WorkflowStateResponse,
 };
 
-const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task"];
+const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
 /// If the input is already a full ID, pass it through unchanged.
@@ -78,13 +78,13 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// so we only need to copy once per workspace.
 ///
 /// **Dev-mode caveat:** In development, prompts are read from the repo root.
-/// Edits to `agents/` or `references/` while the app is running won't be
+/// Edits to `agents/` or `workspace/` while the app is running won't be
 /// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
-/// Resolve source directories for agents and references from the app handle.
-/// Returns `(agents_dir, refs_dir)` as owned PathBufs. Either may be empty
-/// if not found (caller should check `.is_dir()` before using).
+/// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
+/// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
+/// if not found (caller should check `.is_dir()` / `.is_file()` before using).
 fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
     use tauri::Manager;
 
@@ -94,7 +94,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         .map(|p| p.to_path_buf());
 
     let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
-    let refs_src = repo_root.as_ref().map(|r| r.join("references"));
+    let claude_md_src = repo_root.as_ref().map(|r| r.join("workspace").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),
@@ -112,15 +112,15 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         }
     };
 
-    let refs_dir = match refs_src {
-        Some(ref p) if p.is_dir() => p.clone(),
+    let claude_md = match claude_md_src {
+        Some(ref p) if p.is_file() => p.clone(),
         _ => {
             let resource = app_handle
                 .path()
                 .resource_dir()
-                .map(|r| r.join("references"))
+                .map(|r| r.join("workspace").join("CLAUDE.md"))
                 .unwrap_or_default();
-            if resource.is_dir() {
+            if resource.is_file() {
                 resource
             } else {
                 PathBuf::new()
@@ -128,7 +128,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         }
     };
 
-    (agents_dir, refs_dir)
+    (agents_dir, claude_md)
 }
 
 /// Returns true if this workspace has already been initialized this session.
@@ -143,7 +143,7 @@ fn mark_workspace_copied(workspace_path: &str) {
     cache.get_or_insert_with(HashSet::new).insert(workspace_path.to_string());
 }
 
-/// Copy bundled agent .md files and references into workspace.
+/// Copy bundled agent .md files and workspace CLAUDE.md into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 ///
@@ -165,18 +165,18 @@ pub async fn ensure_workspace_prompts(
 
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
-    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+    if !agents_dir.is_dir() && !claude_md.is_file() {
         return Ok(()); // No sources found anywhere — skip silently
     }
 
     let workspace = workspace_path.to_string();
     let agents = agents_dir.clone();
-    let refs = refs_dir.clone();
+    let cmd = claude_md.clone();
 
     tokio::task::spawn_blocking(move || {
-        copy_prompts_sync(&agents, &refs, &workspace)
+        copy_prompts_sync(&agents, &cmd, &workspace)
     })
     .await
     .map_err(|e| format!("Prompt copy task failed: {}", e))??;
@@ -186,13 +186,15 @@ pub async fn ensure_workspace_prompts(
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
-fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, workspace_path: &str) -> Result<(), String> {
+fn copy_prompts_sync(agents_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_directory_to(agents_dir, workspace_path, "agents")?;
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
     }
-    if refs_dir.is_dir() {
-        copy_directory_to(refs_dir, workspace_path, "references")?;
+    if claude_md.is_file() {
+        let dest = Path::new(workspace_path).join("CLAUDE.md");
+        std::fs::copy(claude_md, &dest)
+            .map_err(|e| format!("Failed to copy CLAUDE.md to workspace: {}", e))?;
     }
     Ok(())
 }
@@ -208,13 +210,13 @@ pub fn ensure_workspace_prompts_sync(
         return Ok(());
     }
 
-    let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
+    let (agents_dir, claude_md) = resolve_prompt_source_dirs(app_handle);
 
-    if !agents_dir.is_dir() && !refs_dir.is_dir() {
+    if !agents_dir.is_dir() && !claude_md.is_file() {
         return Ok(());
     }
 
-    copy_prompts_sync(&agents_dir, &refs_dir, workspace_path)?;
+    copy_prompts_sync(&agents_dir, &claude_md, workspace_path)?;
     mark_workspace_copied(workspace_path);
     Ok(())
 }
@@ -363,7 +365,6 @@ fn build_prompt(
         skill_dir.clone() // fallback: workspace_path/skill_name
     };
     let skill_output_context_dir = skill_output_dir.join("context");
-    let shared_context = base.join("references").join("shared-context.md");
     // For build step (output_file starts with "skill/"), use skill_output_dir
     let output_path = if output_file.starts_with("skill/") {
         skill_output_dir.join(output_file.trim_start_matches("skill/"))
@@ -378,7 +379,6 @@ fn build_prompt(
 
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
-         The shared context file is: {}. \
          The skill directory is: {}. \
          The context directory (for reading and writing intermediate files) is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
@@ -386,7 +386,6 @@ fn build_prompt(
          Write output to {}.",
         domain,
         skill_name,
-        shared_context.display(),
         skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -545,7 +544,7 @@ pub async fn run_review_step(
          1. The file exists and is non-empty\n\
          2. The content is well-structured markdown\n\
          3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected format (check references/shared-context.md for format guidelines)\n\
+         4. The content follows the expected file formats (clarifications format with YAML frontmatter, numbered questions, choices, recommendation, answer field)\n\
          5. The content is substantive (not placeholder or minimal)\n\
          \n\nRespond with EXACTLY one line:\n\
          - If satisfactory: PASS\n\
@@ -1061,32 +1060,32 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
         return;
     }
 
-    if !skill_dir.exists() {
-        return;
-    }
+    // Context files (steps 0, 2, 4, 6) may live in skills_path when configured
+    let context_dir = if let Some(sp) = skills_path {
+        if matches!(step_id, 0 | 2 | 4 | 6) {
+            Path::new(sp).join(skill_name)
+        } else {
+            skill_dir.clone()
+        }
+    } else {
+        skill_dir.clone()
+    };
 
     for file in get_step_output_files(step_id) {
-        let path = skill_dir.join(file);
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
+        // Check both locations — workspace and skills_path
+        for dir in [&skill_dir, &context_dir] {
+            let path = dir.join(file);
+            if path.exists() {
+                let _ = std::fs::remove_file(&path);
+            }
         }
     }
 
-    // Step 4 (reasoning): also delete the chat session file so reset starts fresh,
-    // and remove decisions.md from the skill output directory (skills_path) if it exists.
+    // Step 4 (reasoning): also delete the chat session file so reset starts fresh
     if step_id == 4 {
         let session = skill_dir.join("logs").join("reasoning-chat.json");
         if session.exists() {
             let _ = std::fs::remove_file(&session);
-        }
-        if let Some(sp) = skills_path {
-            let skill_output_decisions = Path::new(sp)
-                .join(skill_name)
-                .join("context")
-                .join("decisions.md");
-            if skill_output_decisions.exists() {
-                let _ = std::fs::remove_file(&skill_output_decisions);
-            }
         }
     }
 }
@@ -1155,21 +1154,36 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=7 {
-        let base_dir = if step_id == 5 { &skill_output_dir } else { &skill_dir };
+        let base_dir = if step_id == 5
+            || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6))
+        {
+            &skill_output_dir
+        } else {
+            &skill_dir
+        };
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            let path = base_dir.join(file);
-            if path.exists() {
+            // Check both workspace and skills_path locations
+            if base_dir.join(file).exists() || skill_dir.join(file).exists() {
                 existing_files.push(file.to_string());
             }
         }
 
-        // Step 5: also check references/ directory
+        // Step 5: also list individual files in references/ directory
         if step_id == 5 {
             let refs_dir = base_dir.join("references");
             if refs_dir.is_dir() {
-                existing_files.push("references/".to_string());
+                if let Ok(entries) = std::fs::read_dir(&refs_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            if let Some(name) = path.file_name() {
+                                existing_files.push(format!("references/{}", name.to_string_lossy()));
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1266,7 +1280,6 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("The shared context file is: /home/user/.vibedata/references/shared-context.md"));
         assert!(prompt.contains("/home/user/.vibedata/my-skill/context/clarifications-concepts.md"));
         assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));

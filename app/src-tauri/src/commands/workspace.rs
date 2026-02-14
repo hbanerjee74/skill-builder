@@ -146,7 +146,10 @@ pub fn reconcile_on_startup(
                             ));
                         }
                     } else if disk_step > run.current_step {
-                        // Disk is ahead of DB — advance to match
+                        // Disk is ahead of DB — advance current_step to match.
+                        // The reset dialog always deletes both files and DB step
+                        // records when navigating back, so disk ahead always means
+                        // the DB is stale (never intentional navigation).
                         crate::db::save_workflow_run(
                             conn,
                             &run.skill_name,
@@ -866,6 +869,30 @@ mod tests {
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 4);
+    }
+
+    // --- Disk ahead: stale DB vs intentional navigation ---
+
+    #[test]
+    fn test_disk_ahead_stale_db_advances_current_step() {
+        // DB at step 0 with no step records, disk has output through step 5.
+        // This is a stale DB — reconciler should advance current_step to 5.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
+        create_skill_dir(tmp.path(), "my-skill", "sales");
+        for step in [0, 2, 4, 5] {
+            create_step_output(tmp.path(), "my-skill", step);
+        }
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("advanced from step 0 to step 5"));
+        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 5);
     }
 
     // --- Edge cases ---

@@ -19,59 +19,39 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Rerun / Resume Mode
 
-See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
+Follow the Rerun/Resume Mode protocol.
 
 ---
 
 ## Instructions
 
-### Step 1: Load context
-- Read `clarifications-concepts.md` from the context directory (domain concepts questions — already answered by the PM in an earlier step)
-- Read `clarifications.md` from the context directory (merged patterns + data modeling questions with the PM's answers — see the shared context file for the expected format)
-- Read `decisions.md` from the context directory if it exists (contains previously confirmed decisions — see the shared context file for the format)
+### Load and analyze
 
-For any question where the `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer. Do not skip unanswered questions — treat the recommendation as the PM's choice and proceed.
+Read `clarifications-concepts.md`, `clarifications.md`, and `decisions.md` (if it exists) from the context directory. Analyze all answered questions from both clarification files together.
 
-Analyze all answered questions from both files together.
+For each answer, identify:
+- **Implications** for the skill's scope, structure, or content
+- **Gaps**: unstated assumptions or unaddressed consequences
+- **Contradictions** with other answers or existing decisions in `decisions.md`
+- **Depth checks**: answers that need further research to validate — do the research now
 
-### Step 2: Analyze responses
+Consider multiple interpretations of ambiguous answers. Note the ambiguity and its design implications.
 
-Thoroughly analyze all answers for contradictions, gaps, and implicit assumptions. For each answered question, identify:
-- **Implications**: Concrete implications for the skill's scope, structure, or content
-- **Gaps**: Unstated assumptions or unaddressed consequences the PM's answer implies
-- **Contradictions**: Conflicts with any other answer or any existing decision in `decisions.md`
-- **Depth check**: Whether the answer needs further research to validate — if so, do the research now
+### Cross-reference
 
-Consider multiple possible interpretations of each PM answer before settling on conclusions. Where answers are ambiguous, note the ambiguity and its implications for the skill design.
+Examine answers holistically for internal consistency, conflicts with existing decisions, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model). Verify your analysis is internally consistent before proceeding.
 
-### Step 3: Cross-reference
+### Resolve conflicts and write decisions
 
-Examine the full set of answers holistically for internal consistency, conflicts with existing `decisions.md` entries, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model).
+Write `decisions.md` to the context directory following the decisions format. Merge with existing decisions: replace contradicted entries (keep D-number), append new ones, preserve unchanged ones. The result must be a clean, self-contained snapshot with no duplicates.
 
-Before finalizing your analysis, verify it is internally consistent:
-- Check each conclusion against the evidence that supports it
-- Ensure no contradictions exist between your identified gaps
-- Confirm follow-up questions are not already answered in the provided clarifications
-
-### Step 4: Resolve conflicts and write decisions
-
-Write `decisions.md` to the context directory:
-- Read existing `decisions.md` from the context directory (if it exists)
-- Merge existing decisions with new ones from this round:
-  - If a new decision **contradicts or refines** an existing one, **replace** the old entry (keep the same D-number)
-  - If a new decision is **entirely new**, add it at the end with the next D-number
-  - If an existing decision is **unchanged**, keep it as-is
-- Rewrite `decisions.md` in the context directory as a clean, complete snapshot — see the shared context file under **File Formats -> `decisions.md`** for the format and rules
-- The resulting file must read as a coherent, self-contained set of current decisions with no duplicates or contradictions
-
-**Handling conflicts**: If you find contradictions or ambiguities across clarification answers, resolve them yourself by picking the most reasonable option. Record your reasoning in the decision's `**Implication**` field — e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy. The gross revenue reference in Q3 appears to be shorthand."
+**Handling conflicts**: Resolve contradictions yourself by picking the most reasonable option. Record your reasoning in the `**Implication**` field — e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy. The gross revenue reference in Q3 appears to be shorthand."
 
 Do NOT ask the user to resolve conflicts. Make the call, document why, and move on.
 
 ## Error Handling
 
-- **If `decisions.md` is empty or malformed:** Start fresh — create a new `decisions.md` with decisions derived solely from the current round of clarification answers. Note in the file header that no prior decisions were found.
-- **If clarification files are missing:** Report to the coordinator which files are missing. Do not fabricate answers or proceed without PM input.
+If `decisions.md` is malformed, start fresh from current clarification answers. If clarification files are missing, report to the coordinator — do not fabricate answers.
 
 ## Output Files
 - Writes `decisions.md` in the context directory as a single complete pass

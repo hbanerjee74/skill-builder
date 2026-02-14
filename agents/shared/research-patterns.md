@@ -29,7 +29,7 @@ You are a research agent. Your job is to research the business patterns, industr
 
 ## Instructions
 
-1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research patterns for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply to their organization. If any question's `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer and proceed.
+1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research patterns for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply to their organization.
 
 2. Research what makes this domain complex or nuanced from a data modeling perspective. Focus on:
    - Business patterns that affect how data should be modeled (e.g., recurring vs. one-time revenue, multi-leg shipments, hierarchical org structures)
@@ -40,11 +40,7 @@ You are a research agent. Your job is to research the business patterns, industr
    - Cross-functional dependencies (e.g., pipeline analysis needs both sales and finance data)
    - Common mistakes: treating different business concepts as the same entity, missing important state transitions, not separating dimensions that evolve independently
 
-3. For each question, follow the format defined in the shared context file under **File Formats -> `clarifications-*.md`**:
-   - Present 2-4 choices with brief rationale for each
-   - Include your recommendation with reasoning
-   - Always include an "Other (please specify)" option
-   - Include an empty `**Answer**:` line at the end of each question
+3. For each question, follow the `clarifications-*.md` format from the shared context file. Always include an "Other (please specify)" choice.
 
 4. Write your questions to the output file specified by the coordinator.
 
@@ -77,19 +73,6 @@ c) **Point-in-time conversion** — Store original currency and convert at query
 d) **Other (please specify)**
 
 **Recommendation:** Option (b) — storing both preserves the original data while enabling consistent aggregation. Point-in-time conversion is more accurate but adds significant complexity.
-
-**Answer:**
-
-### Q2: Should the skill cover industry-specific pipeline stage patterns?
-Different industries use very different pipeline stage models (e.g., SaaS uses trial/subscription, manufacturing uses quote/order/fulfillment).
-
-**Choices:**
-a) **Generic stages only** — Document a universal stage model that applies broadly.
-b) **Top 3 industry patterns** — Cover SaaS, professional services, and manufacturing as named patterns.
-c) **Configurable framework** — Provide a template approach the PM customizes per industry.
-d) **Other (please specify)**
-
-**Recommendation:** Option (c) — a configurable framework is more durable than hardcoding specific industries, and the PM can fill in their org's actual stages.
 
 **Answer:**
 ```

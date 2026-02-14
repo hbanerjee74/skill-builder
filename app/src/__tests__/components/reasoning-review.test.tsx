@@ -354,38 +354,6 @@ describe("ReasoningReview", () => {
     expect(defaultProps.onStepComplete).toHaveBeenCalled();
   });
 
-  it("Revise Decisions button navigates back to step 3", async () => {
-    const user = userEvent.setup();
-
-    // Need decisions to load so the completed view renders
-    mockReadFile.mockImplementation((...args: unknown[]) => {
-      const filePath = args[0] as string;
-      if (filePath.includes("decisions.md")) {
-        return Promise.resolve(DECISIONS_MD);
-      }
-      return Promise.reject(new Error("not found"));
-    });
-
-    render(<ReasoningReview {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(mockRunWorkflowStep).toHaveBeenCalled();
-    });
-
-    act(() => {
-      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Revise Decisions")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Revise Decisions"));
-
-    // Should set current step to 3 (Human Review)
-    expect(useWorkflowStore.getState().currentStep).toBe(3);
-  });
-
   it("debug mode auto-completes after agent finishes, skipping decisions validation", async () => {
     // Enable debug mode
     useSettingsStore.getState().setSettings({ debugMode: true });
@@ -447,10 +415,8 @@ describe("ReasoningReview", () => {
 
     // Should show error guidance text
     expect(screen.getByText(/reasoning agent encountered an error/)).toBeInTheDocument();
-    expect(screen.getByText(/Go back to Human Review/)).toBeInTheDocument();
 
-    // Should still show action buttons so user can navigate back
-    expect(screen.getByText("Revise Decisions")).toBeInTheDocument();
+    // Should still show Complete Step button
     expect(screen.getByText("Complete Step")).toBeInTheDocument();
   });
 

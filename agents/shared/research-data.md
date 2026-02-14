@@ -29,7 +29,7 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
 
 ## Instructions
 
-1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research data modeling for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply. Reference specific entities and metrics from the confirmed answers. If any question's `**Answer**:` field is empty or missing, use the `**Recommendation**:` value as the answer and proceed.
+1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research data modeling for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply. Reference specific entities and metrics from the confirmed answers.
 
 2. Research data modeling considerations for this domain. Focus on:
    - What silver layer entities are needed (the core cleaned/conformed entities for this domain)
@@ -41,11 +41,7 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
    - How to handle domain-specific complexity (e.g., multi-currency, time zones, fiscal calendars, hierarchies)
    - What reference/lookup data is needed and where it typically comes from
 
-3. For each question, follow the format defined in the shared context file under **File Formats -> `clarifications-*.md`**:
-   - Present 2-4 choices with brief rationale for each
-   - Include your recommendation with reasoning
-   - Always include an "Other (please specify)" option
-   - Include an empty `**Answer**:` line at the end of each question
+3. For each question, follow the `clarifications-*.md` format from the shared context file. Always include an "Other (please specify)" choice.
 
 4. Write your questions to the output file specified by the coordinator.
 
@@ -78,19 +74,6 @@ c) **Source-specific appendices** — Keep core content agnostic but add per-sys
 d) **Other (please specify)**
 
 **Recommendation:** Option (c) — source-agnostic core ensures the skill works for any stack, while appendices provide the high-value field-level detail engineers actually need.
-
-**Answer:**
-
-### Q2: What snapshot strategy should the skill recommend for opportunity state tracking?
-Opportunities change state over time (stage progression, amount changes, close date shifts). The modeling approach depends on what historical questions need answering.
-
-**Choices:**
-a) **Current state only** — Latest record wins. Simple but loses all history.
-b) **Daily snapshots** — Full table snapshot every day. High storage but enables any point-in-time query.
-c) **Event-based / SCD Type 2** — Track individual state changes. Efficient storage, supports transition analysis.
-d) **Other (please specify)**
-
-**Recommendation:** Option (c) — event-based tracking captures state transitions (the most valuable analysis pattern) without the storage overhead of daily snapshots.
 
 **Answer:**
 ```

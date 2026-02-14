@@ -23,70 +23,47 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
 
 ## Rerun / Resume Mode
 
-See `references/agent-protocols.md` — read and follow the Rerun/Resume Mode protocol defined there. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
+Follow the Rerun/Resume Mode protocol.
 
 ---
 
 ## Before You Start
 
-See `references/agent-protocols.md` — read and follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
+Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
-Spawn two sub-agents via the **Task tool** — both in the **same turn** so they run in parallel:
+Spawn two sub-agents in the **same turn** so they run in parallel:
 
-**Sub-agent 1: Entity & Relationship Research** (`name: "entity-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+**Sub-agent 1: Entity & Relationship Research**
 
-Prompt it to:
-- **Before starting research:** Check if `research-entities.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- The context directory is: [pass the context directory path]
 - Research key entities and their relationships for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory)
 - Identify 5-10 core entities, their cardinality relationships, and 3+ analysis patterns per entity
-- Research common analysis patterns (trend analysis, cohort analysis, forecasting)
-- Research cross-functional dependencies between entities
-- For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
-- Write output to: `research-entities.md` in the context directory [pass the full absolute path]
+- Research common analysis patterns and cross-functional dependencies between entities
+- Write clarification questions in the `clarifications-*.md` format
+- Output: `research-entities.md` in the context directory
 
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+**Sub-agent 2: Metrics & KPI Research**
 
-**Sub-agent 2: Metrics & KPI Research** (`name: "metrics-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+- Research core metrics, KPIs, and how they are calculated with applicable business rules
+- Research metrics that vary by industry vertical or company size, and common calculation pitfalls
+- Write clarification questions in the `clarifications-*.md` format
+- Output: `research-metrics.md` in the context directory
 
-Prompt it to:
-- **Before starting research:** Check if `research-metrics.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- The context directory is: [pass the context directory path]
-- Research core metrics and KPIs that matter for this domain
-- Research how these metrics are typically calculated and what business rules affect them
-- Research metrics that vary significantly by industry vertical or company size
-- Research common pitfalls in metric calculation or interpretation
-- For each finding, write a clarification question following the format in the shared context file (`clarifications-*.md` format): 2-4 choices, recommendation, empty `**Answer**:` line
-- Write output to: `research-metrics.md` in the context directory [pass the full absolute path]
-
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
-
-Both sub-agents should read the shared context file for file formats. Pass the full path to the shared context file in their prompts.
+Pass the shared context file path and context directory path to both sub-agents.
 
 ## Phase 2: Merge Results
 
-After both sub-agents return, spawn a fresh **merger** sub-agent via the Task tool (`name: "merger"`, `model: "sonnet"`, `mode: "bypassPermissions"`).
+After both sub-agents return, spawn a fresh **merger** sub-agent.
 
-Prompt it to:
-1. Read the shared context file for the clarification file format
-2. The context directory is: [pass the context directory path]
-3. Read `research-entities.md` and `research-metrics.md` from the context directory
-4. Merge into a single file at [the output file path provided by coordinator]:
-   - Organize questions by topic section (entities, metrics, analysis patterns, etc.)
-   - Deduplicate any overlapping questions
-   - Number questions sequentially within each section (Q1, Q2, etc.)
-   - Keep the exact `clarifications-*.md` format from the shared context file
-4. Keep the intermediate research files for reference
-5. Respond with only: `Done — wrote [filename] ([N] questions)`
-
-**Sub-agent communication:** Follow the protocol in `references/agent-protocols.md`. Include the directive in your sub-agent prompt.
+- Read `research-entities.md` and `research-metrics.md` from the context directory
+- Merge into a single file at the output file path provided by coordinator
+- Organize by topic section, deduplicate overlapping questions, number sequentially
+- Keep intermediate research files for reference
 
 ## Error Handling
 
-- **If a sub-agent fails or returns no output:** Check whether its output file was written. If the file exists with content, proceed. If the file is missing or empty, log the failure and re-spawn the sub-agent once. If it fails again, proceed with the output from the successful sub-agent only and note the gap in the merge.
-- **If both sub-agents fail:** Report the failure to the coordinator with the error details. Do not produce a partial output file.
+If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If both fail, report the error to the coordinator.
 
 ## Output
 The merged clarification file at the output file path provided by the coordinator.
@@ -126,5 +103,4 @@ d) **Other (please specify)**
 ## Success Criteria
 - Both sub-agents produce research files with 5+ clarification questions each
 - Merged output contains 8-15 deduplicated questions organized by topic
-- All questions follow the shared context file format (choices, recommendation, empty answer line)
 - No duplicate or near-duplicate questions survive the merge

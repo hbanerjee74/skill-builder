@@ -87,6 +87,7 @@ export function AgentStatusHeader({
   title = "Agent Output",
 }: AgentStatusHeaderProps) {
   const run = useAgentStore((s) => s.runs[agentId]);
+  const displayTitle = run?.agentName ?? title;
 
   // Read initializing state from workflow store
   const workflowIsInitializing = useWorkflowStore((s) => s.isInitializing);
@@ -138,7 +139,7 @@ export function AgentStatusHeader({
     <CardHeader className="shrink-0 flex-row items-center justify-between space-y-0 pb-3">
       <CardTitle className="flex items-center gap-2 text-sm font-medium">
         <Cpu className="size-4" />
-        {title}
+        {displayTitle}
       </CardTitle>
       <div className="flex items-center gap-2">
         <Badge variant="outline" className="gap-1 text-xs transition-colors">
