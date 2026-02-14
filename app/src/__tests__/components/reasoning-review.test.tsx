@@ -14,14 +14,20 @@ if (!Element.prototype.scrollIntoView) {
 // Mock Tauri commands -- vi.hoisted ensures these are available during vi.mock hoisting
 const {
   mockRunWorkflowStep,
+  mockCaptureStepArtifacts,
+  mockGetArtifactContent,
   mockReadFile,
 } = vi.hoisted(() => ({
   mockRunWorkflowStep: vi.fn(() => Promise.resolve("agent-1")),
+  mockCaptureStepArtifacts: vi.fn(() => Promise.resolve()),
+  mockGetArtifactContent: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
   mockReadFile: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.reject(new Error("not found"))),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
+  captureStepArtifacts: mockCaptureStepArtifacts,
+  getArtifactContent: mockGetArtifactContent,
   readFile: mockReadFile,
 }));
 
@@ -163,6 +169,8 @@ describe("ReasoningReview", () => {
     });
 
     mockRunWorkflowStep.mockReset().mockResolvedValue("agent-1");
+    mockCaptureStepArtifacts.mockReset().mockResolvedValue(undefined);
+    mockGetArtifactContent.mockReset().mockResolvedValue(null);
     mockReadFile.mockReset().mockRejectedValue(new Error("not found"));
     defaultProps.onStepComplete.mockReset();
   });
@@ -228,6 +236,11 @@ describe("ReasoningReview", () => {
       simulateAgentCompletion("agent-1", AGENT_RESPONSE);
     });
 
+    // Should capture step artifacts
+    await waitFor(() => {
+      expect(mockCaptureStepArtifacts).toHaveBeenCalledWith("saas-revenue", 4, "/workspace");
+    });
+
     // Should render the decisions content
     await waitFor(() => {
       expect(screen.getByText(/Revenue Recognition Method/)).toBeInTheDocument();
@@ -265,8 +278,16 @@ describe("ReasoningReview", () => {
       expect(screen.getByText("Complete Step")).toBeInTheDocument();
     });
 
+    // Reset mock to track the complete-step capture call
+    mockCaptureStepArtifacts.mockReset().mockResolvedValue(undefined);
+
     // Click Complete Step
     await user.click(screen.getByText("Complete Step"));
+
+    // Should capture artifacts
+    await waitFor(() => {
+      expect(mockCaptureStepArtifacts).toHaveBeenCalledWith("saas-revenue", 4, "/workspace");
+    });
 
     // Should mark step as completed
     await waitFor(() => {
@@ -297,7 +318,7 @@ describe("ReasoningReview", () => {
       expect(screen.getByText("Complete Step")).toBeInTheDocument();
     });
 
-    // readFile rejects for all paths (default mock behavior)
+    // readFile rejects (default mock) and getArtifactContent returns null (default mock)
 
     // Click Complete Step
     await user.click(screen.getByText("Complete Step"));
@@ -354,6 +375,42 @@ describe("ReasoningReview", () => {
     expect(defaultProps.onStepComplete).toHaveBeenCalled();
   });
 
+  it("allows Complete Step when decisions.md found in SQLite artifact (fallback)", async () => {
+    const user = userEvent.setup();
+
+    render(<ReasoningReview {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    });
+
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    // readFile rejects everywhere, but SQLite has the artifact
+    mockGetArtifactContent.mockImplementation((...args: unknown[]) => {
+      const path = args[1] as string;
+      if (path === "context/decisions.md") {
+        return Promise.resolve({ content: DECISIONS_MD });
+      }
+      return Promise.resolve(null);
+    });
+
+    await user.click(screen.getByText("Complete Step"));
+
+    await waitFor(() => {
+      const store = useWorkflowStore.getState();
+      expect(store.steps[4].status).toBe("completed");
+    });
+
+    expect(defaultProps.onStepComplete).toHaveBeenCalled();
+  });
+
   it("Revise Decisions button navigates back to step 3", async () => {
     const user = userEvent.setup();
 
@@ -392,6 +449,7 @@ describe("ReasoningReview", () => {
 
     // No decisions.md exists anywhere -- would normally block completion
     mockReadFile.mockRejectedValue(new Error("not found"));
+    mockGetArtifactContent.mockResolvedValue(null);
 
     render(<ReasoningReview {...defaultProps} />);
 
