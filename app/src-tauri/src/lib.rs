@@ -44,8 +44,12 @@ pub fn run() {
             // Initialize workspace directory and deploy bundled prompts
             let db_state = app.state::<db::Db>();
             let handle = app.handle().clone();
-            commands::workspace::init_workspace(&handle, &db_state)
+            let workspace_path = commands::workspace::init_workspace(&handle, &db_state)
                 .expect("failed to initialize workspace");
+
+            // Prune old transcript files before any agents are spawned.
+            // Non-fatal: errors are logged as warnings and startup continues.
+            logging::prune_transcript_files(&workspace_path);
 
             Ok(())
         })
