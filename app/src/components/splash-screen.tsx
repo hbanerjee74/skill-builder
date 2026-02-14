@@ -55,17 +55,16 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
     >
       <div className="flex max-w-lg flex-col items-center gap-6 rounded-xl border bg-card p-10 text-center shadow-lg">
         <img
-          src="/ad-favicon.svg"
-          alt="Accelerated Data"
-          className="h-20 w-auto"
+          src="/icon-256.png"
+          alt="Skill Builder"
+          className="size-20"
         />
 
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold tracking-tight">Skill Builder</h1>
           <p className="text-muted-foreground">
-            Build Claude skills for Vibedata with AI-powered multi-agent
-            workflows. Create domain knowledge packages that help data and
-            analytics engineers build silver and gold layer models.
+            Build domain-specific Claude skills with AI-powered multi-agent
+            workflows.
           </p>
         </div>
 
