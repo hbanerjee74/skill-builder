@@ -23,12 +23,13 @@ describe("initAgentStream", () => {
     });
   });
 
-  it("subscribes to agent-message, agent-exit, and agent-init-progress events", () => {
+  it("subscribes to agent-message, agent-exit, agent-init-progress, and agent-shutdown events", () => {
     initAgentStream();
 
     expect(mockListen).toHaveBeenCalledWith("agent-init-progress", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-message", expect.any(Function));
     expect(mockListen).toHaveBeenCalledWith("agent-exit", expect.any(Function));
+    expect(mockListen).toHaveBeenCalledWith("agent-shutdown", expect.any(Function));
   });
 
   it("adds assistant message content to agent store", () => {
@@ -141,8 +142,8 @@ describe("initAgentStream", () => {
     initAgentStream();
     initAgentStream();
 
-    // listen should only be called 4 times (agent-init-progress, agent-message, agent-exit, agent-init-error)
-    expect(mockListen).toHaveBeenCalledTimes(4);
+    // listen should only be called 5 times (agent-init-progress, agent-init-error, agent-message, agent-exit, agent-shutdown)
+    expect(mockListen).toHaveBeenCalledTimes(5);
   });
 
   it("auto-creates run for messages arriving before startRun", () => {
@@ -424,5 +425,31 @@ describe("initAgentStream", () => {
     });
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
     expect(useWorkflowStore.getState().initProgressMessage).toBeNull();
+  });
+
+  it("calls shutdownRun on agent-shutdown event", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    initAgentStream();
+
+    listeners["agent-shutdown"]({
+      payload: { agent_id: "agent-1" },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("shutdown");
+    expect(run.endTime).toBeDefined();
+  });
+
+  it("agent-shutdown is a no-op for non-running agents", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().completeRun("agent-1", true);
+    initAgentStream();
+
+    listeners["agent-shutdown"]({
+      payload: { agent_id: "agent-1" },
+    });
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("completed"); // unchanged
   });
 });

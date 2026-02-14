@@ -243,6 +243,53 @@ describe("useAgentStore", () => {
   });
 });
 
+describe("shutdownRun", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    vi.restoreAllMocks();
+  });
+
+  it("sets status to 'shutdown' and endTime when run is 'running'", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    const beforeShutdown = Date.now();
+    useAgentStore.getState().shutdownRun("agent-1");
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("shutdown");
+    expect(run.endTime).toBeDefined();
+    expect(run.endTime).toBeGreaterThanOrEqual(beforeShutdown);
+  });
+
+  it("no-ops when run doesn't exist", () => {
+    useAgentStore.getState().shutdownRun("nonexistent");
+    const state = useAgentStore.getState();
+    expect(state.runs["nonexistent"]).toBeUndefined();
+  });
+
+  it("no-ops when run is already completed", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().completeRun("agent-1", true);
+    const completedRun = useAgentStore.getState().runs["agent-1"];
+    const originalEndTime = completedRun.endTime;
+
+    useAgentStore.getState().shutdownRun("agent-1");
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("completed"); // unchanged
+    expect(run.endTime).toBe(originalEndTime); // unchanged
+  });
+
+  it("no-ops when run is already in error state", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    useAgentStore.getState().completeRun("agent-1", false);
+
+    useAgentStore.getState().shutdownRun("agent-1");
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.status).toBe("error"); // unchanged
+  });
+});
+
 describe("context tracking", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();

@@ -11,13 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { markShuttingDown } from "@/hooks/use-agent-stream";
 
 export function CloseGuard() {
   const [showDialog, setShowDialog] = useState(false);
 
   const destroyWindow = useCallback(async () => {
-    markShuttingDown();
     try {
       await getCurrentWindow().destroy();
     } catch {
