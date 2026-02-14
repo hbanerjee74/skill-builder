@@ -24,10 +24,8 @@ const {
   mockRunWorkflowStep: vi.fn(() => Promise.resolve("agent-1")),
   mockStartAgent: vi.fn(() => Promise.resolve("agent-2")),
   mockCaptureStepArtifacts: vi.fn(() => Promise.resolve()),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mockGetArtifactContent: vi.fn((_skill?: any, _path?: any) => Promise.resolve(null)) as any,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  mockReadFile: vi.fn((_path?: any): Promise<string> => Promise.reject(new Error("not found"))) as any,
+  mockGetArtifactContent: vi.fn<(...args: unknown[]) => Promise<Record<string, unknown> | null>>(() => Promise.resolve(null)),
+  mockReadFile: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.reject(new Error("not found"))),
   mockSaveChatSession: vi.fn(() => Promise.resolve()),
   mockLoadChatSession: vi.fn(() => Promise.resolve(null)),
 }));
@@ -317,8 +315,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
     const user = userEvent.setup();
 
     // Mock getArtifactContent to return decisions after second turn
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockGetArtifactContent as any).mockImplementation((_skill: string, path: string) => {
+    mockGetArtifactContent.mockImplementation((...args: unknown[]) => {
+      const path = args[1] as string;
       if (path === "context/decisions.md") {
         return Promise.resolve({ content: DECISIONS_MD });
       }
@@ -362,8 +360,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
   it("updates decisions panel after each agent turn", async () => {
     const user = userEvent.setup();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockGetArtifactContent as any).mockImplementation((_skill: string, path: string) => {
+    mockGetArtifactContent.mockImplementation((...args: unknown[]) => {
+      const path = args[1] as string;
       if (path === "context/decisions.md") {
         return Promise.resolve({ content: DECISIONS_MD });
       }
@@ -415,7 +413,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
     });
 
     // Mock decisions file exists (required by VD-403 validation)
-    mockReadFile.mockImplementation((filePath: string) => {
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
       if (filePath.includes("decisions.md")) {
         return Promise.resolve(DECISIONS_MD);
       }
@@ -525,7 +524,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
     });
 
     // Mock readFile to succeed for skills path
-    mockReadFile.mockImplementation((filePath: string) => {
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
       if (filePath === "/skills/saas-revenue/context/decisions.md") {
         return Promise.resolve(DECISIONS_MD);
       }
@@ -558,7 +558,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
     });
 
     // Mock readFile to fail for skills path but succeed for workspace
-    mockReadFile.mockImplementation((filePath: string) => {
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
       if (filePath === "/workspace/saas-revenue/context/decisions.md") {
         return Promise.resolve(DECISIONS_MD);
       }
@@ -592,7 +593,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
 
     // readFile rejects everywhere, but SQLite has the artifact
     // Override getArtifactContent for the complete-step validation check
-    mockGetArtifactContent.mockImplementation((_skill: string, path: string) => {
+    mockGetArtifactContent.mockImplementation((...args: unknown[]) => {
+      const path = args[1] as string;
       if (path === "context/decisions.md") {
         return Promise.resolve({ content: DECISIONS_MD });
       }
@@ -626,7 +628,8 @@ describe("ReasoningChat — simplified write-first flow", () => {
     });
 
     // Mock readFile to return empty content
-    mockReadFile.mockImplementation((filePath: string) => {
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
       if (filePath.includes("decisions.md")) {
         return Promise.resolve("   ");
       }
