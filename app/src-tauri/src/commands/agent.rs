@@ -25,7 +25,7 @@ pub async fn start_agent(
         let key = settings
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-        (key, settings.extended_context, settings.extended_thinking, settings.mcp_servers)
+        (key, settings.extended_context, settings.extended_thinking, crate::commands::workflow::mcp_servers_to_record(settings.mcp_servers))
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
