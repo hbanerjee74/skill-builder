@@ -18,6 +18,7 @@ You merge the three research agents' output files into a single, deduplicated `c
 
 ## Context
 - The coordinator will tell you:
+  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the expected file formats
   - The **context directory** path where the research output files are and where to write the merged file
 
 </context>
@@ -52,13 +53,11 @@ For questions that are unique (no duplicates), include them as-is.
 
 ### Step 4: Write `clarifications.md`
 
-Write the merged output to `clarifications.md` in the context directory. Organize as follows:
+Write the merged output to `clarifications.md` in the context directory. Follow the `clarifications-*.md` format from the shared context file, with these merge-specific rules:
 1. Keep the original section headings (`## Domain Concepts & Metrics`, `## Business Patterns & Edge Cases`, `## Data Modeling & Source Systems`)
-2. If a merged question doesn't fit neatly into one section, place it in the most relevant section
-3. Add a `## Cross-cutting Questions` section for questions that span multiple areas
+2. Place cross-section questions in a `## Cross-cutting Questions` section
+3. If a merged question doesn't fit neatly into one section, place it in the most relevant section
 4. Number all questions sequentially across sections (Q1, Q2, Q3...)
-5. Add an empty **Answer**: field to each question for the PM to fill in
-6. Follow the `clarifications.md` format
 
 ### Step 5: Write merge log
 
@@ -101,11 +100,6 @@ d) **Other (please specify)**
 _Consolidated from: Business Patterns Q3, Data Modeling Q7_
 
 **Answer:**
-
-## Data Modeling & Source Systems
-
-### Q8: Should the skill reference specific source systems or stay source-agnostic?
-...
 
 ## Cross-cutting Questions
 

@@ -4,7 +4,7 @@
 name: domain-research-patterns-and-merge
 description: Orchestrates parallel research into business patterns and data modeling then merges results. Called during Step 3 to orchestrate parallel research and merge results.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task, Skill
+tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
 # Orchestrator: Research Domain Patterns, Data Modeling & Merge
@@ -16,6 +16,7 @@ Emphasize business logic patterns, cross-domain dependencies, and industry-speci
 
 ## Context
 - The coordinator tells you:
+  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - The **domain** name
   - The **skill name**
   - The **context directory** path
@@ -23,58 +24,44 @@ Emphasize business logic patterns, cross-domain dependencies, and industry-speci
 
 ## Rerun / Resume Mode
 
-Follow the Rerun/Resume Mode protocol. The coordinator's prompt will contain `[RERUN MODE]` if this is a rerun.
+Follow the Rerun/Resume Mode protocol.
 
 ---
 
 ## Before You Start
 
-Follow the Before You Start protocol. Check if your output file already exists and update rather than overwrite.
+Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
-Spawn two sub-agents via the **Task tool** — both in the **same turn** so they run in parallel:
+Spawn two sub-agents in the **same turn** so they run in parallel:
 
-**Sub-agent 1: Business Patterns & Edge Cases** (`name: "patterns-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+**Sub-agent 1: Business Patterns & Edge Cases**
 
-Prompt it to:
-- **Before starting research:** Check if `clarifications-patterns.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read the research-patterns agent prompt file (path provided by coordinator) and follow the instructions
-- The domain is: [pass the domain]
-- The context directory is: [pass the context directory path]
-- The domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
-- Write output to: `clarifications-patterns.md` in the context directory [pass the full absolute path]
+- Read the shared context file and the research-patterns agent prompt file, then follow the instructions
+- Read `clarifications-concepts.md` from the context directory as input
+- Output: `clarifications-patterns.md` in the context directory
 
-**Sub-agent communication:** Include this directive verbatim in your sub-agent prompt: *Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.*
+**Sub-agent 2: Data Modeling & Source Systems**
 
-**Sub-agent 2: Data Modeling & Source Systems** (`name: "data-researcher"`, `model: "sonnet"`, `mode: "bypassPermissions"`)
+- Read the shared context file and the research-data agent prompt file, then follow the instructions
+- Read `clarifications-concepts.md` from the context directory as input
+- Output: `clarifications-data.md` in the context directory
 
-Prompt it to:
-- **Before starting research:** Check if `clarifications-data.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from research, remove outdated ones.
-- Read the research-data agent prompt file (path provided by coordinator) and follow the instructions
-- The domain is: [pass the domain]
-- The context directory is: [pass the context directory path]
-- The domain concepts file is at: `clarifications-concepts.md` in the context directory [pass the full absolute path]. If any question's `**Answer**:` field is empty, use the `**Recommendation**:` value as the answer.
-- Write output to: `clarifications-data.md` in the context directory [pass the full absolute path]
-
-**Sub-agent communication:** Include this directive verbatim in your sub-agent prompt: *Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.*
+Pass the domain, shared context file path, context directory path, and agent prompt file paths to both sub-agents.
 
 ## Phase 2: Merge
 
-After both sub-agents return, spawn a fresh **merger** sub-agent via the Task tool (`name: "merger"`, `model: "haiku"`, `mode: "bypassPermissions"`).
+After both sub-agents return, spawn a fresh **merger** sub-agent (use haiku model).
 
-Prompt it to:
-- **Before starting merge:** Check if `clarifications.md` in the context directory already exists. If it does, read it first and UPDATE rather than overwrite — preserve relevant existing questions, refine wording, add new questions from the research files, remove outdated ones.
-- Read the merge agent prompt file (path provided by coordinator) and follow the instructions
-- The context directory is: [pass the context directory path]
-- Write merged output to: `clarifications.md` in the context directory
+- Read the shared context file and the merge agent prompt file, then follow the instructions
+- Merge `clarifications-patterns.md` and `clarifications-data.md` into `clarifications.md` in the context directory
 
-**Sub-agent communication:** Include this directive verbatim in your sub-agent prompt: *Do not provide progress updates, status messages, or explanations during your work. When finished, respond with only a single line: `Done — wrote [filename] ([N] items)`. Do not echo file contents or summarize what you wrote.*
+Pass the shared context file path, context directory path, and merge agent prompt file path.
 
 ## Error Handling
 
-- **If one research sub-agent fails:** Check whether its output file was written. If the file is missing or empty, re-spawn the sub-agent once. If it fails again, proceed with the successful sub-agent's output only — pass this context to the merger so it knows only one input file is available.
-- **If the merger fails:** Re-read both research files and attempt the merge yourself directly rather than spawning another sub-agent.
+If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merger fails, perform the merge yourself directly.
 
 ## Output
 Three files in the context directory: `clarifications-patterns.md`, `clarifications-data.md`, and `clarifications.md`.
@@ -84,5 +71,4 @@ When all three sub-agents have completed, respond with only a single line: Done 
 ## Success Criteria
 - Both research sub-agents produce output files with 5+ questions each
 - Merger produces a deduplicated `clarifications.md` with clear section organization
-- All questions follow the clarifications file format
 - Cross-cutting questions that span patterns and data modeling are identified and grouped
