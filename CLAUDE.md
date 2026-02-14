@@ -56,6 +56,8 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
+./scripts/build-agents.sh               # Regenerate 24 agent files from templates
+./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
@@ -133,13 +135,20 @@ When you add, remove, or rename tests (including adding tests to existing files)
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Parallel worktrees**: Set `DEV_PORT=<port>` to avoid conflicts (convention: `1000 + issue_number`).
+- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agents/templates/` or `agents/types/` instead, then run `./scripts/build-agents.sh`.
 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/{type}/` -- 7 agents per type (domain, platform, source, data-engineering)
+- `agents/{type}/` -- 7 agents per type, **generated** by `scripts/build-agents.sh` from templates + configs
+- `agents/templates/` -- 6 phase templates (source of truth for agent content)
+- `agents/types/` -- 4 type configs (focus lines, entity examples, output examples)
 - `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
 - `references/shared-context.md` -- domain definitions, file formats, content principles
+- `references/agent-protocols.md` -- rerun/resume, before-you-start, sub-agent communication protocols
+- `references/validate-best-practices.md` -- embedded skill best practices for validate agents
+
+**Adding a new skill type:** Create `agents/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
 
 ## Skill Configuration
 
