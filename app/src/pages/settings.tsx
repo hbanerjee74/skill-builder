@@ -428,21 +428,26 @@ export default function SettingsPage() {
         <CardContent>
           <div className="flex flex-col gap-2">
             <Label htmlFor="log-level-select">Log Level</Label>
-            <select
-              id="log-level-select"
-              value={logLevel}
-              onChange={(e) => {
-                setLogLevel(e.target.value)
-                autoSave({ logLevel: e.target.value })
-                invoke("set_log_level", { level: e.target.value }).catch(() => {})
-              }}
-              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="error">Error — only errors</option>
-              <option value="warn">Warn — errors + warnings</option>
-              <option value="info">Info — errors + warnings + lifecycle (default)</option>
-              <option value="debug">Debug — everything (verbose)</option>
-            </select>
+            <div className="flex items-center gap-3">
+              <select
+                id="log-level-select"
+                value={logLevel}
+                onChange={(e) => {
+                  setLogLevel(e.target.value)
+                  autoSave({ logLevel: e.target.value })
+                  invoke("set_log_level", { level: e.target.value }).catch(() => {})
+                }}
+                className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                <option value="error">Error</option>
+                <option value="warn">Warn</option>
+                <option value="info">Info</option>
+                <option value="debug">Debug</option>
+              </select>
+              <span className="text-sm text-muted-foreground">
+                {{ error: "Only errors", warn: "Errors + warnings", info: "Errors + warnings + lifecycle (default)", debug: "Everything (verbose)" }[logLevel]}
+              </span>
+            </div>
           </div>
         </CardContent>
       </Card>

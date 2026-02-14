@@ -85,3 +85,265 @@ pub fn get_log_file_path(app: &tauri::AppHandle) -> Result<String, String> {
         .map(|s| s.to_string())
         .ok_or_else(|| "Log file path contains invalid UTF-8".to_string())
 }
+
+/// Delete `.jsonl` transcript files older than today from all `{skill}/logs/`
+/// directories under the workspace path.
+///
+/// Called early in the startup sequence (inside `.setup()`) after the workspace
+/// path is known. Errors are non-fatal: each failure is logged as a warning
+/// and cleanup continues.
+pub fn prune_transcript_files(workspace_path: &str) {
+    use chrono::Local;
+    use std::path::Path;
+
+    let workspace = Path::new(workspace_path);
+    if !workspace.exists() {
+        return;
+    }
+
+    let today = Local::now().date_naive();
+    let mut pruned: u32 = 0;
+    let mut skills_affected: u32 = 0;
+
+    // Infrastructure directories to skip (same list as workspace reconciliation)
+    const SKIP_DIRS: &[&str] = &["agents", "references", ".claude"];
+
+    let entries = match std::fs::read_dir(workspace) {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("Transcript pruning: failed to read workspace dir: {}", e);
+            return;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        if SKIP_DIRS.contains(&name_str.as_ref()) {
+            continue;
+        }
+
+        let logs_dir = path.join("logs");
+        if !logs_dir.is_dir() {
+            continue;
+        }
+
+        let mut skill_pruned: u32 = 0;
+
+        let log_entries = match std::fs::read_dir(&logs_dir) {
+            Ok(e) => e,
+            Err(e) => {
+                log::warn!(
+                    "Transcript pruning: failed to read logs dir for '{}': {}",
+                    name_str,
+                    e
+                );
+                continue;
+            }
+        };
+
+        for log_entry in log_entries.flatten() {
+            let log_path = log_entry.path();
+
+            // Only target .jsonl files
+            if log_path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+
+            // Check modification time
+            let metadata = match std::fs::metadata(&log_path) {
+                Ok(m) => m,
+                Err(e) => {
+                    log::warn!(
+                        "Transcript pruning: failed to read metadata for '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let modified = match metadata.modified() {
+                Ok(t) => t,
+                Err(e) => {
+                    log::warn!(
+                        "Transcript pruning: failed to get mtime for '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let modified_date: chrono::NaiveDate =
+                chrono::DateTime::<Local>::from(modified).date_naive();
+
+            if modified_date < today {
+                if let Err(e) = std::fs::remove_file(&log_path) {
+                    log::warn!(
+                        "Transcript pruning: failed to delete '{}': {}",
+                        log_path.display(),
+                        e
+                    );
+                } else {
+                    skill_pruned += 1;
+                }
+            }
+        }
+
+        if skill_pruned > 0 {
+            pruned += skill_pruned;
+            skills_affected += 1;
+        }
+    }
+
+    if pruned > 0 {
+        log::info!(
+            "Pruned {} transcript files from {} skills",
+            pruned,
+            skills_affected
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+    use tempfile::tempdir;
+
+    /// Helper: create a `.jsonl` file inside `{workspace}/{skill}/logs/` with
+    /// the given name and set its modification time to `days_ago` days in the past.
+    fn create_jsonl(workspace: &Path, skill: &str, filename: &str, days_ago: i64) {
+        let logs_dir = workspace.join(skill).join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        let file_path = logs_dir.join(filename);
+        fs::write(&file_path, r#"{"type":"test"}"#).unwrap();
+
+        if days_ago > 0 {
+            let past = std::time::SystemTime::now()
+                - std::time::Duration::from_secs(days_ago as u64 * 86400);
+            let file = fs::File::options().write(true).open(&file_path).unwrap();
+            file.set_times(
+                fs::FileTimes::new()
+                    .set_accessed(past)
+                    .set_modified(past),
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_prune_deletes_old_jsonl_files() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Old file (2 days ago) should be pruned
+        create_jsonl(workspace, "my-skill", "step0-research-2025-01-01.jsonl", 2);
+        // Today's file should be kept
+        create_jsonl(workspace, "my-skill", "step0-research-today.jsonl", 0);
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        let logs_dir = workspace.join("my-skill").join("logs");
+        assert!(
+            !logs_dir
+                .join("step0-research-2025-01-01.jsonl")
+                .exists(),
+            "Old JSONL file should be pruned"
+        );
+        assert!(
+            logs_dir.join("step0-research-today.jsonl").exists(),
+            "Today's JSONL file should be kept"
+        );
+    }
+
+    #[test]
+    fn test_prune_skips_non_jsonl_files() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Create an old .log file (not .jsonl) — should NOT be deleted
+        let logs_dir = workspace.join("my-skill").join("logs");
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("step0.log"), "old log").unwrap();
+
+        // Create an old .json chat file — should NOT be deleted
+        fs::write(logs_dir.join("reasoning-chat.json"), "{}").unwrap();
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        assert!(
+            logs_dir.join("step0.log").exists(),
+            ".log files should not be pruned"
+        );
+        assert!(
+            logs_dir.join("reasoning-chat.json").exists(),
+            ".json files should not be pruned"
+        );
+    }
+
+    #[test]
+    fn test_prune_skips_infrastructure_dirs() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Create a logs/ dir inside an infrastructure directory (should be skipped)
+        let agents_logs = workspace.join("agents").join("logs");
+        fs::create_dir_all(&agents_logs).unwrap();
+        fs::write(agents_logs.join("old.jsonl"), "{}").unwrap();
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        assert!(
+            agents_logs.join("old.jsonl").exists(),
+            "Files in infrastructure dirs should not be touched"
+        );
+    }
+
+    #[test]
+    fn test_prune_multiple_skills() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        create_jsonl(workspace, "skill-a", "old.jsonl", 3);
+        create_jsonl(workspace, "skill-b", "old.jsonl", 5);
+        create_jsonl(workspace, "skill-b", "today.jsonl", 0);
+
+        prune_transcript_files(workspace.to_str().unwrap());
+
+        assert!(!workspace.join("skill-a").join("logs").join("old.jsonl").exists());
+        assert!(!workspace.join("skill-b").join("logs").join("old.jsonl").exists());
+        assert!(workspace.join("skill-b").join("logs").join("today.jsonl").exists());
+    }
+
+    #[test]
+    fn test_prune_empty_workspace() {
+        let tmp = tempdir().unwrap();
+        // Should not panic or error on an empty workspace
+        prune_transcript_files(tmp.path().to_str().unwrap());
+    }
+
+    #[test]
+    fn test_prune_nonexistent_workspace() {
+        // Should not panic on a nonexistent path
+        prune_transcript_files("/nonexistent/workspace/path");
+    }
+
+    #[test]
+    fn test_prune_skill_without_logs_dir() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path();
+
+        // Skill directory exists but has no logs/ subdirectory
+        fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+
+        prune_transcript_files(workspace.to_str().unwrap());
+        // Should complete without error
+    }
+}
