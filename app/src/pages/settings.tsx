@@ -294,6 +294,70 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Model</CardTitle>
+          <CardDescription>
+            Model used for chat sessions. Workflow steps use per-agent models defined in agent files.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="model-select">Chat Model</Label>
+            <select
+              id="model-select"
+              value={preferredModel}
+              onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
+              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {MODEL_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} — {opt.description}
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Context</CardTitle>
+          <CardDescription>
+            Enable 1M token context window for all agents. Requires a compatible API plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+            <Switch
+              id="extended-context"
+              checked={extendedContext}
+              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Thinking</CardTitle>
+          <CardDescription>
+            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
+            <Switch
+              id="extended-thinking"
+              checked={extendedThinking}
+              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>GitHub Account</CardTitle>
           <CardDescription>
             Connect your GitHub account to submit feedback and report issues.
@@ -359,70 +423,6 @@ export default function SettingsPage() {
                 {label}
               </button>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Model</CardTitle>
-          <CardDescription>
-            Model used for chat sessions. Workflow steps use per-agent models defined in agent files.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="model-select">Chat Model</Label>
-            <select
-              id="model-select"
-              value={preferredModel}
-              onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} — {opt.description}
-                </option>
-              ))}
-            </select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Context</CardTitle>
-          <CardDescription>
-            Enable 1M token context window for all agents. Requires a compatible API plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
-            <Switch
-              id="extended-context"
-              checked={extendedContext}
-              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Thinking</CardTitle>
-          <CardDescription>
-            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
-            <Switch
-              id="extended-thinking"
-              checked={extendedThinking}
-              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
-            />
           </div>
         </CardContent>
       </Card>
