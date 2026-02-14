@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
@@ -244,6 +245,10 @@ fn spawn_heartbeat_task(
     })
 }
 
+/// A per-request JSONL log file handle, shared between `do_send_request` (which creates it)
+/// and the stdout reader task (which appends each message line).
+type RequestLogFile = Arc<Mutex<Option<std::fs::File>>>;
+
 /// Pool of persistent sidecar processes, one per skill.
 /// Reuses existing processes across agent invocations to reduce startup latency.
 /// Wraps an `Arc` so cloning is cheap and all clones share the same pool.
@@ -256,6 +261,9 @@ pub struct SidecarPool {
     /// Tracks agent_ids of in-flight requests (removed when result/error received).
     /// Used by timeout tasks to determine whether a request already completed.
     pending_requests: Arc<Mutex<HashSet<String>>>,
+    /// Per-request JSONL log files, keyed by agent_id.
+    /// The stdout reader appends each message to the matching file.
+    request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
 }
 
 impl SidecarPool {
@@ -264,6 +272,7 @@ impl SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
             pending_requests: Arc::new(Mutex::new(HashSet::new())),
+            request_logs: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -594,6 +603,7 @@ impl SidecarPool {
         // Spawn stdout reader that routes messages by request_id
         let stdout_pool = self.sidecars.clone();
         let stdout_pending = self.pending_requests.clone();
+        let stdout_request_logs = self.request_logs.clone();
         let skill_name_stdout = skill_name.to_string();
         let app_handle_stdout = app_handle.clone();
         let stdout_last_pong = last_pong.clone();
@@ -630,6 +640,17 @@ impl SidecarPool {
                                     &line,
                                 );
 
+                                // Append to per-request JSONL transcript
+                                {
+                                    let logs = stdout_request_logs.lock().await;
+                                    if let Some(log_file) = logs.get(request_id) {
+                                        let mut guard = log_file.lock().await;
+                                        if let Some(ref mut f) = *guard {
+                                            let _ = writeln!(f, "{}", line);
+                                        }
+                                    }
+                                }
+
                                 // Log lifecycle events at INFO so the log file tells the full story.
                                 // Streaming messages (assistant, user, tool_use, etc.) stay at debug.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
@@ -652,6 +673,8 @@ impl SidecarPool {
                                 // Check if this is a result or error — if so, emit exit event
                                 // and remove from pending_requests so timeout tasks know it completed.
                                 if let Some(msg_type) = msg.get("type").and_then(|t| t.as_str()) {
+                                    let is_terminal = msg_type == "result" || msg_type == "error";
+
                                     if msg_type == "result" {
                                         log::info!(
                                             "[persistent-sidecar:{}] Agent '{}' completed successfully",
@@ -691,6 +714,12 @@ impl SidecarPool {
                                             request_id,
                                             false,
                                         );
+                                    }
+
+                                    // Close and remove the JSONL log file on terminal messages
+                                    if is_terminal {
+                                        let mut logs = stdout_request_logs.lock().await;
+                                        logs.remove(request_id);
                                     }
                                 }
                             } else {
@@ -819,7 +848,7 @@ impl SidecarPool {
         request_line.push('\n');
 
         // Emit redacted config to frontend (same as spawn_sidecar does)
-        {
+        let config_event = {
             let mut config_val = serde_json::to_value(&config).unwrap_or_default();
             if let Some(obj) = config_val.as_object_mut() {
                 obj.insert("apiKey".to_string(), serde_json::json!("[REDACTED]"));
@@ -828,12 +857,51 @@ impl SidecarPool {
 
             let discovered_skills = scan_skills_dir(Path::new(&config.cwd));
 
-            let config_event = serde_json::json!({
+            let event = serde_json::json!({
                 "type": "config",
                 "config": config_val,
                 "discoveredSkills": discovered_skills,
             });
-            events::handle_sidecar_message(app_handle, agent_id, &config_event.to_string());
+            events::handle_sidecar_message(app_handle, agent_id, &event.to_string());
+            event
+        };
+
+        // Create per-request JSONL transcript file alongside chat storage:
+        //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
+        //
+        // The step_label is extracted from agent_id which has the format:
+        //   {skill_name}-{label}-{timestamp_ms}
+        // e.g. "dbt-step5-1707654321000" → label = "step5"
+        {
+            let step_label = extract_step_label(agent_id, skill_name);
+            let now = chrono::Local::now();
+            let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
+            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
+
+            match std::fs::create_dir_all(&log_dir)
+                .and_then(|_| std::fs::File::create(&log_path))
+            {
+                Ok(mut f) => {
+                    // Write redacted config as the first line
+                    let _ = writeln!(f, "{}", config_event);
+                    let log_handle: RequestLogFile = Arc::new(Mutex::new(Some(f)));
+                    let mut logs = self.request_logs.lock().await;
+                    logs.insert(agent_id.to_string(), log_handle);
+                    log::info!(
+                        "JSONL transcript: {}",
+                        log_path.display(),
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to create JSONL transcript at {}: {}",
+                        log_path.display(),
+                        e,
+                    );
+                    // Non-fatal — agent still runs, just no transcript
+                }
+            }
         }
 
         // Register this request as pending BEFORE sending to stdin, so the
@@ -923,6 +991,7 @@ impl SidecarPool {
 
         // Spawn response timeout watchdog (5 minutes)
         let timeout_pending = self.pending_requests.clone();
+        let timeout_request_logs = self.request_logs.clone();
         let timeout_app_handle = app_handle.clone();
         let timeout_agent_id = agent_id.to_string();
         tokio::spawn(async move {
@@ -939,6 +1008,11 @@ impl SidecarPool {
                     "Agent request '{}' timed out after 5 minutes",
                     timeout_agent_id
                 );
+                // Close JSONL transcript on timeout
+                {
+                    let mut logs = timeout_request_logs.lock().await;
+                    logs.remove(&timeout_agent_id);
+                }
                 // Capture partial artifacts before emitting exit
                 crate::commands::workflow::capture_artifacts_on_error(
                     &timeout_app_handle,
@@ -980,6 +1054,19 @@ impl SidecarPool {
                 for agent_id in &to_shutdown {
                     events::handle_agent_shutdown(app_handle, agent_id);
                     pending.remove(agent_id);
+                }
+            }
+
+            // Close JSONL transcripts for this skill's requests
+            {
+                let mut logs = self.request_logs.lock().await;
+                let to_close: Vec<String> = logs
+                    .keys()
+                    .filter(|agent_id| agent_id.starts_with(&format!("{}-", skill_name)))
+                    .cloned()
+                    .collect();
+                for agent_id in to_close {
+                    logs.remove(&agent_id);
                 }
             }
 
@@ -1062,6 +1149,26 @@ impl SidecarPool {
 
         log::info!("All persistent sidecars shut down");
     }
+}
+
+/// Extract the step label (e.g. "step5", "review-step2") from an agent_id.
+///
+/// Agent IDs have the format `{skill_name}-{label}-{timestamp_ms}`.
+/// We strip the `{skill_name}-` prefix and the `-{timestamp_ms}` suffix.
+fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
+    let without_prefix = agent_id
+        .strip_prefix(skill_name)
+        .and_then(|s| s.strip_prefix('-'))
+        .unwrap_or(agent_id);
+
+    // The timestamp is the last `-` separated numeric segment
+    if let Some(last_dash) = without_prefix.rfind('-') {
+        let suffix = &without_prefix[last_dash + 1..];
+        if suffix.chars().all(|c| c.is_ascii_digit()) && !suffix.is_empty() {
+            return &without_prefix[..last_dash];
+        }
+    }
+    without_prefix
 }
 
 /// Scan `{cwd}/.claude/skills/` for active skill directories (those containing SKILL.md).
@@ -1639,5 +1746,76 @@ mod tests {
 
         assert!(result.is_ok(), "Non-panicking code should return Ok");
         assert_eq!(result.unwrap(), "result");
+    }
+
+    // -----------------------------------------------------------------
+    // extract_step_label tests
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn test_extract_step_label_basic() {
+        assert_eq!(extract_step_label("dbt-step5-1707654321000", "dbt"), "step5");
+    }
+
+    #[test]
+    fn test_extract_step_label_review() {
+        assert_eq!(
+            extract_step_label("dbt-review-step2-1707654321000", "dbt"),
+            "review-step2"
+        );
+    }
+
+    #[test]
+    fn test_extract_step_label_no_timestamp() {
+        // If there's no numeric suffix, return everything after skill name
+        assert_eq!(extract_step_label("dbt-step5", "dbt"), "step5");
+    }
+
+    #[test]
+    fn test_extract_step_label_skill_name_mismatch() {
+        // If skill_name doesn't match the prefix, fall back to stripping timestamp from full id
+        assert_eq!(
+            extract_step_label("other-step5-1707654321000", "dbt"),
+            "other-step5"
+        );
+    }
+
+    #[test]
+    fn test_extract_step_label_multi_word_skill() {
+        assert_eq!(
+            extract_step_label("my-skill-step0-1707654321000", "my-skill"),
+            "step0"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // request_logs tests
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_request_logs_empty_after_init() {
+        let pool = SidecarPool::new();
+        let logs = pool.request_logs.lock().await;
+        assert!(logs.is_empty(), "Request logs should be empty after creation");
+    }
+
+    #[tokio::test]
+    async fn test_request_logs_insert_and_remove() {
+        let pool = SidecarPool::new();
+
+        // Simulate creating a log file handle
+        let log_handle: RequestLogFile = Arc::new(Mutex::new(None));
+        {
+            let mut logs = pool.request_logs.lock().await;
+            logs.insert("agent-123".to_string(), log_handle);
+            assert!(logs.contains_key("agent-123"));
+        }
+
+        // Simulate terminal message cleanup
+        {
+            let mut logs = pool.request_logs.lock().await;
+            logs.remove("agent-123");
+            assert!(!logs.contains_key("agent-123"));
+        }
     }
 }
