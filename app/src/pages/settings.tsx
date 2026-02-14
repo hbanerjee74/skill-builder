@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,13 +16,12 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { checkNode, getDataDir, type NodeStatus } from "@/lib/tauri"
+import { getDataDir } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
@@ -46,8 +45,6 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
-  const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
-  const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
@@ -85,21 +82,6 @@ export default function SettingsPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    const check = async () => {
-      setNodeLoading(true)
-      try {
-        const result = await checkNode()
-        setNodeStatus(result)
-      } catch {
-        setNodeStatus({ available: false, version: null, meets_minimum: false, error: "Failed to check Node.js", source: "" })
-      } finally {
-        setNodeLoading(false)
-      }
-    }
-    check()
   }, [])
 
   useEffect(() => {
@@ -581,77 +563,6 @@ export default function SettingsPage() {
               {dataDir || "Unknown"}
             </code>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Node.js Runtime</CardTitle>
-          <CardDescription>
-            Required for running AI agents. Minimum version: 18.0.0
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {nodeLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Checking Node.js...
-            </div>
-          ) : nodeStatus?.available && nodeStatus.meets_minimum ? (
-            <div className="flex items-center gap-2">
-              <Badge variant="default" className="gap-1 bg-green-600">
-                <CheckCircle2 className="size-3" />
-                Available
-              </Badge>
-              <span className="text-sm text-muted-foreground">
-                v{nodeStatus.version}
-              </span>
-            </div>
-          ) : nodeStatus?.available && !nodeStatus.meets_minimum ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="destructive" className="gap-1">
-                  <XCircle className="size-3" />
-                  Version too old
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  v{nodeStatus.version} (need 18.0.0+)
-                </span>
-              </div>
-              <a
-                href="https://nodejs.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                Download Node.js
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="destructive" className="gap-1">
-                  <XCircle className="size-3" />
-                  Not found
-                </Badge>
-                {nodeStatus?.error && (
-                  <span className="text-sm text-muted-foreground">
-                    {nodeStatus.error}
-                  </span>
-                )}
-              </div>
-              <a
-                href="https://nodejs.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                Download Node.js
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
-          )}
         </CardContent>
       </Card>
 

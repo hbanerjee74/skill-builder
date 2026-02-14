@@ -26,15 +26,6 @@ vi.mock("next-themes", () => ({
 
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
-  checkNode: vi.fn(() =>
-    Promise.resolve({
-      available: true,
-      version: "20.0.0",
-      meets_minimum: true,
-      error: null,
-      source: "system",
-    })
-  ),
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
   githubStartDeviceFlow: vi.fn(),
   githubPollForToken: vi.fn(),
@@ -87,13 +78,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_settings: settings,
     save_settings: undefined,
     test_api_key: true,
-    check_node: {
-      available: true,
-      version: "20.0.0",
-      meets_minimum: true,
-      error: null,
-      source: "system",
-    },
     get_log_file_path: "/tmp/com.skillbuilder.app/skill-builder.log",
     set_log_level: undefined,
   });
@@ -110,16 +94,14 @@ describe("SettingsPage", () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
-    // Wait for loading to finish
     await waitFor(() => {
-      expect(screen.queryByText("Checking Node.js...")).not.toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
     expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
-    expect(screen.getByText("Node.js Runtime")).toBeInTheDocument();
   });
 
   it("shows loading spinner initially", () => {
@@ -286,17 +268,6 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
     });
-  });
-
-  it("displays Node.js available status after check", async () => {
-    setupDefaultMocks();
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Available")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("v20.0.0")).toBeInTheDocument();
   });
 
   it("has the page title 'Settings'", async () => {
@@ -571,12 +542,6 @@ describe("SettingsPage", () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "get_log_file_path") return Promise.reject(new Error("not available"));
-      if (cmd === "check_node") return Promise.resolve({
-        available: true,
-        version: "20.0.0",
-        meets_minimum: true,
-        error: null,
-      });
       return Promise.resolve(undefined);
     });
     render(<SettingsPage />);
