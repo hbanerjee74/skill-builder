@@ -708,7 +708,7 @@ impl SidecarPool {
                                         let error_detail = msg.get("message")
                                             .and_then(|m| m.as_str())
                                             .unwrap_or("(no message)");
-                                        log::error!(
+                                        log::info!(
                                             "[persistent-sidecar:{}] Agent error for '{}': {}",
                                             skill_name_stdout,
                                             request_id,
@@ -759,10 +759,10 @@ impl SidecarPool {
 
                 if let Err(panic_info) = process_result {
                     log::error!(
-                        "stdout reader panicked for skill '{}': {:?} (line: {}) — removing from pool",
+                        "stdout reader panicked for skill '{}': {:?} (len={}) — removing from pool",
                         skill_name_stdout,
                         panic_info,
-                        line
+                        line.len()
                     );
                     remove_and_cleanup_sidecar(&panic_pool, &skill_name_stdout).await;
                     return; // exit the task — sidecar is cleaned up
@@ -827,7 +827,7 @@ impl SidecarPool {
             .await;
 
         if let Err(ref e) = result {
-            log::error!(
+            log::warn!(
                 "send_request failed for agent '{}' on skill '{}': {}",
                 agent_id,
                 skill_name,

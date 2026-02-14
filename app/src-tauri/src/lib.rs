@@ -23,13 +23,19 @@ pub fn run() {
             let db = db::init_db(app).expect("failed to initialize database");
             app.manage(db);
 
-            // Apply persisted log level setting
+            // Apply persisted log level setting (fall back to info if DB read fails)
             {
                 let db_state = app.state::<db::Db>();
                 let conn = db_state.0.lock().expect("failed to lock db for settings");
-                if let Ok(settings) = db::read_settings(&conn) {
-                    logging::set_log_level(&settings.log_level);
-                    log::debug!("Log level initialized from settings: {}", settings.log_level);
+                match db::read_settings(&conn) {
+                    Ok(settings) => {
+                        logging::set_log_level(&settings.log_level);
+                        log::debug!("Log level initialized from settings: {}", settings.log_level);
+                    }
+                    Err(e) => {
+                        logging::set_log_level("info");
+                        log::warn!("Failed to read settings for log level, defaulting to info: {}", e);
+                    }
                 }
             }
 
