@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { initAgentStream, _resetForTesting } from "@/hooks/use-agent-stream";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { mockListen } from "@/test/mocks/tauri";
 
@@ -50,6 +50,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.messages).toHaveLength(1);
@@ -70,6 +71,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.messages).toHaveLength(1);
@@ -90,6 +92,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.messages[0].type).toBe("error");
@@ -108,6 +111,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["agent-1"];
     expect(run.messages[0].content).toBe("Unknown error");
@@ -161,6 +165,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     const run = useAgentStore.getState().runs["unknown-agent"];
     expect(run).toBeDefined();
@@ -183,6 +188,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     // Now startRun is called (e.g. by workflow page)
     useAgentStore.getState().startRun("early-agent", "sonnet");
@@ -211,6 +217,8 @@ describe("initAgentStream", () => {
         },
       },
     });
+    // Note: clearInitializing happens synchronously in the listener before addMessage buffers,
+    // so we don't need flushMessageBuffer() to check isInitializing — but we do if checking messages.
 
     // After first message, initializing should be cleared
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
@@ -234,6 +242,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
 
@@ -249,6 +258,7 @@ describe("initAgentStream", () => {
         },
       },
     });
+    flushMessageBuffer();
 
     expect(useWorkflowStore.getState().isInitializing).toBe(false);
     expect(useAgentStore.getState().runs["agent-1"].messages).toHaveLength(2);

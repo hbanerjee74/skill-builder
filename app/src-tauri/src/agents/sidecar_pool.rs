@@ -2,8 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::FutureExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -889,7 +890,7 @@ impl SidecarPool {
                 obj.remove("prompt");
             }
 
-            let discovered_skills = scan_skills_dir(Path::new(&config.cwd));
+            let discovered_skills = scan_skills_dir_cached(Path::new(&config.cwd));
 
             let event = serde_json::json!({
                 "type": "config",
@@ -1169,6 +1170,40 @@ fn extract_step_label<'a>(agent_id: &'a str, skill_name: &str) -> &'a str {
         }
     }
     without_prefix
+}
+
+/// TTL cache for `scan_skills_dir` results, keyed by workspace path.
+/// Each entry stores the discovered skill names and the instant they were cached.
+/// A 30-second TTL avoids redundant filesystem scans on every `do_send_request`.
+#[allow(clippy::type_complexity)]
+static SKILLS_DIR_CACHE: std::sync::Mutex<Option<HashMap<PathBuf, (Vec<String>, Instant)>>> =
+    std::sync::Mutex::new(None);
+
+/// Cached wrapper around `scan_skills_dir`. Returns cached results if the
+/// entry is less than 30 seconds old; otherwise re-scans and updates the cache.
+fn scan_skills_dir_cached(cwd: &Path) -> Vec<String> {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+    let key = cwd.to_path_buf();
+    {
+        let cache = SKILLS_DIR_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(ref map) = *cache {
+            if let Some((skills, cached_at)) = map.get(&key) {
+                if cached_at.elapsed() < TTL {
+                    return skills.clone();
+                }
+            }
+        }
+    }
+
+    // Cache miss or expired — scan and update
+    let result = scan_skills_dir(cwd);
+    {
+        let mut cache = SKILLS_DIR_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let map = cache.get_or_insert_with(HashMap::new);
+        map.insert(key, (result.clone(), Instant::now()));
+    }
+    result
 }
 
 /// Scan `{cwd}/.claude/skills/` for active skill directories (those containing SKILL.md).
