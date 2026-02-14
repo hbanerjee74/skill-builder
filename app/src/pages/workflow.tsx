@@ -31,7 +31,7 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningChat, type ReasoningChatHandle, type ReasoningPhase } from "@/components/reasoning-chat";
+import { ReasoningReview } from "@/components/reasoning-review";
 import { RefinementChat } from "@/components/refinement-chat";
 import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import ResetStepDialog from "@/components/reset-step-dialog";
@@ -186,10 +186,7 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Reasoning step state — phase tracked via callback so header can render Complete button
-  const reasoningRef = useRef<ReasoningChatHandle>(null);
   const rerunRef = useRef<StepRerunChatHandle>(null);
-  const [reasoningPhase, setReasoningPhase] = useState<ReasoningPhase>("not_started");
 
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
@@ -283,7 +280,6 @@ export default function WorkflowPage() {
   // Reset state when moving to a new step
   useEffect(() => {
     setHasPartialOutput(false);
-    setReasoningPhase("not_started");
     setRerunStepId(null);
     setErrorHasArtifacts(false);
   }, [currentStep]);
@@ -769,16 +765,14 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 4) — multi-turn chat
+    // Reasoning step (Step 4) — single-shot generation with review
     if (stepConfig?.type === "reasoning") {
       return (
-        <ReasoningChat
-          ref={reasoningRef}
+        <ReasoningReview
           skillName={skillName}
           domain={domain ?? ""}
           workspacePath={workspacePath ?? ""}
-          onPhaseChange={setReasoningPhase}
-          onReset={handleRerunStep}
+          onStepComplete={advanceToNextStep}
         />
       );
     }
@@ -1061,15 +1055,6 @@ export default function WorkflowPage() {
                 <Button
                   size="sm"
                   onClick={() => rerunRef.current?.completeStep()}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
-              )}
-              {stepConfig?.type === "reasoning" && reasoningPhase === "awaiting_feedback" && (
-                <Button
-                  size="sm"
-                  onClick={() => reasoningRef.current?.completeStep()}
                 >
                   <CheckCircle2 className="size-3.5" />
                   Complete Step
