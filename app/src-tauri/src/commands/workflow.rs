@@ -1,8 +1,7 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::SystemTime;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
@@ -82,10 +81,10 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     }
 }
 
-/// Static cache of source directory mtimes, keyed by workspace_path.
-/// Used by `ensure_workspace_prompts` to skip redundant copies when
-/// source files haven't changed since the last invocation.
-static PROMPT_MTIME_CACHE: Mutex<Option<HashMap<String, SystemTime>>> = Mutex::new(None);
+/// Session-scoped set of workspaces whose prompts have already been copied.
+/// Prompts are bundled with the app and don't change during a session,
+/// so we only need to copy once per workspace.
+static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// Resolve source directories for agents and references from the app handle.
 /// Returns `(agents_dir, refs_dir)` as owned PathBufs. Either may be empty
@@ -136,75 +135,24 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
     (agents_dir, refs_dir)
 }
 
-/// Get the latest mtime from a directory tree (non-recursive for top-level entries).
-fn get_dir_mtime(dir: &Path) -> Option<SystemTime> {
-    let dir_mtime = std::fs::metadata(dir).ok()?.modified().ok()?;
-    let mut latest = dir_mtime;
-    if let Ok(entries) = std::fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            if let Ok(meta) = entry.metadata() {
-                if let Ok(mtime) = meta.modified() {
-                    if mtime > latest {
-                        latest = mtime;
-                    }
-                }
-            }
-            // Check subdirectory entries too
-            if entry.path().is_dir() {
-                if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
-                    for sub_entry in sub_entries.flatten() {
-                        if let Ok(meta) = sub_entry.metadata() {
-                            if let Ok(mtime) = meta.modified() {
-                                if mtime > latest {
-                                    latest = mtime;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    Some(latest)
+/// Returns true if this workspace has already been initialized this session.
+fn workspace_already_copied(workspace_path: &str) -> bool {
+    let cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
+    cache.as_ref().is_some_and(|set| set.contains(workspace_path))
 }
 
-/// Check if prompt sources have changed since last copy for this workspace.
-/// Returns true if a copy is needed, false if cached mtimes match.
-fn prompts_need_copy(workspace_path: &str, agents_dir: &Path, refs_dir: &Path) -> bool {
-    let mut latest = SystemTime::UNIX_EPOCH;
-    if agents_dir.is_dir() {
-        if let Some(mtime) = get_dir_mtime(agents_dir) {
-            if mtime > latest {
-                latest = mtime;
-            }
-        }
-    }
-    if refs_dir.is_dir() {
-        if let Some(mtime) = get_dir_mtime(refs_dir) {
-            if mtime > latest {
-                latest = mtime;
-            }
-        }
-    }
-
-    let mut cache = PROMPT_MTIME_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    let map = cache.get_or_insert_with(HashMap::new);
-    if let Some(cached_mtime) = map.get(workspace_path) {
-        if *cached_mtime >= latest {
-            return false; // No changes since last copy
-        }
-    }
-    // Update cache with current mtime
-    map.insert(workspace_path.to_string(), latest);
-    true
+/// Mark a workspace as initialized for this session.
+fn mark_workspace_copied(workspace_path: &str) {
+    let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
+    cache.get_or_insert_with(HashSet::new).insert(workspace_path.to_string());
 }
 
 /// Copy bundled agent .md files and references into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
 ///
-/// Uses an mtime-based cache to skip redundant copies when source files
-/// haven't changed since the last invocation for this workspace.
+/// Copies once per workspace per session — prompts are bundled with the app
+/// and don't change at runtime.
 ///
 /// File I/O is offloaded to `spawn_blocking` to avoid blocking the tokio runtime.
 ///
@@ -215,17 +163,16 @@ pub async fn ensure_workspace_prompts(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
+    if workspace_already_copied(workspace_path) {
+        return Ok(());
+    }
+
     // Extract paths from AppHandle before moving into the blocking closure
     // (AppHandle is !Send so it cannot cross the spawn_blocking boundary)
     let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
 
     if !agents_dir.is_dir() && !refs_dir.is_dir() {
         return Ok(()); // No sources found anywhere — skip silently
-    }
-
-    // Check mtime cache — skip copy if sources haven't changed
-    if !prompts_need_copy(workspace_path, &agents_dir, &refs_dir) {
-        return Ok(());
     }
 
     let workspace = workspace_path.to_string();
@@ -236,7 +183,10 @@ pub async fn ensure_workspace_prompts(
         copy_prompts_sync(&agents, &refs, &workspace)
     })
     .await
-    .map_err(|e| format!("Prompt copy task failed: {}", e))?
+    .map_err(|e| format!("Prompt copy task failed: {}", e))??;
+
+    mark_workspace_copied(workspace_path);
+    Ok(())
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
@@ -253,22 +203,24 @@ fn copy_prompts_sync(agents_dir: &Path, refs_dir: &Path, workspace_path: &str) -
 
 /// Synchronous variant of `ensure_workspace_prompts` for callers that cannot be async
 /// (e.g. `init_workspace` called from Tauri's synchronous `setup` hook).
-/// Includes the same mtime-based caching to skip redundant copies.
+/// Uses the same session-scoped cache to skip redundant copies.
 pub fn ensure_workspace_prompts_sync(
     app_handle: &tauri::AppHandle,
     workspace_path: &str,
 ) -> Result<(), String> {
+    if workspace_already_copied(workspace_path) {
+        return Ok(());
+    }
+
     let (agents_dir, refs_dir) = resolve_prompt_source_dirs(app_handle);
 
     if !agents_dir.is_dir() && !refs_dir.is_dir() {
         return Ok(());
     }
 
-    if !prompts_need_copy(workspace_path, &agents_dir, &refs_dir) {
-        return Ok(());
-    }
-
-    copy_prompts_sync(&agents_dir, &refs_dir, workspace_path)
+    copy_prompts_sync(&agents_dir, &refs_dir, workspace_path)?;
+    mark_workspace_copied(workspace_path);
+    Ok(())
 }
 
 /// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
