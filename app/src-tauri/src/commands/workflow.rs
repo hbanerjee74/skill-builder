@@ -491,32 +491,6 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     }
 }
 
-/// Convert MCP servers from the UI's array format `[{name, type, url, headers}]`
-/// to the SDK's Record format `{name: {type, url, headers}}`.
-/// Passes through values that are already in Record format (or None).
-pub fn mcp_servers_to_record(value: Option<serde_json::Value>) -> Option<serde_json::Value> {
-    value.and_then(|val| {
-        if let Some(arr) = val.as_array() {
-            let mut map = serde_json::Map::new();
-            for item in arr {
-                if let (Some(name), Some(obj)) = (
-                    item.get("name").and_then(|v| v.as_str()),
-                    item.as_object(),
-                ) {
-                    let mut server = obj.clone();
-                    server.remove("name");
-                    map.insert(name.to_string(), serde_json::Value::Object(server));
-                }
-            }
-            if map.is_empty() { None } else { Some(serde_json::Value::Object(map)) }
-        } else if val.is_object() {
-            Some(val)
-        } else {
-            None
-        }
-    })
-}
-
 pub fn build_betas(extended_context: bool, thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
     let mut betas = Vec::new();
     if extended_context {
@@ -593,7 +567,6 @@ pub async fn run_review_step(
         max_thinking_tokens: None,
         path_to_claude_code_executable: None,
         agent_name: None,
-        mcp_servers: None,
     };
 
     sidecar::spawn_sidecar(
@@ -657,7 +630,6 @@ struct WorkflowSettings {
     skill_type: String,
     author_login: Option<String>,
     created_at: Option<String>,
-    mcp_servers: Option<serde_json::Value>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -679,7 +651,6 @@ fn read_workflow_settings(
     let extended_context = settings.extended_context;
     let debug_mode = settings.debug_mode;
     let extended_thinking = settings.extended_thinking;
-    let mcp_servers = mcp_servers_to_record(settings.mcp_servers);
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
@@ -705,7 +676,6 @@ fn read_workflow_settings(
         skill_type,
         author_login,
         created_at,
-        mcp_servers,
     })
 }
 
@@ -772,7 +742,6 @@ async fn run_workflow_step_inner(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
-        mcp_servers: settings.mcp_servers.clone(),
     };
 
     sidecar::spawn_sidecar(
@@ -2312,50 +2281,4 @@ mod tests {
         assert!(!super::workspace_already_copied(&path_b));
     }
 
-    #[test]
-    fn test_mcp_servers_to_record_converts_array() {
-        let array = serde_json::json!([
-            {
-                "name": "linear",
-                "type": "http",
-                "url": "https://mcp.linear.app/mcp",
-                "headers": { "Authorization": "Bearer tok" }
-            },
-            {
-                "name": "notion",
-                "type": "http",
-                "url": "https://mcp.notion.com/mcp",
-                "headers": {}
-            }
-        ]);
-        let result = mcp_servers_to_record(Some(array)).unwrap();
-        assert!(result.is_object());
-        let obj = result.as_object().unwrap();
-        assert_eq!(obj.len(), 2);
-        assert_eq!(obj["linear"]["type"], "http");
-        assert_eq!(obj["linear"]["url"], "https://mcp.linear.app/mcp");
-        assert_eq!(obj["notion"]["url"], "https://mcp.notion.com/mcp");
-        // "name" key should be removed from inner objects
-        assert!(obj["linear"].get("name").is_none());
-    }
-
-    #[test]
-    fn test_mcp_servers_to_record_passes_through_object() {
-        let record = serde_json::json!({
-            "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }
-        });
-        let result = mcp_servers_to_record(Some(record.clone())).unwrap();
-        assert_eq!(result, record);
-    }
-
-    #[test]
-    fn test_mcp_servers_to_record_none() {
-        assert!(mcp_servers_to_record(None).is_none());
-    }
-
-    #[test]
-    fn test_mcp_servers_to_record_empty_array() {
-        let empty = serde_json::json!([]);
-        assert!(mcp_servers_to_record(Some(empty)).is_none());
-    }
 }

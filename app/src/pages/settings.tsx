@@ -128,7 +128,6 @@ export default function SettingsPage() {
       github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
       github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
-      mcp_servers: useSettingsStore.getState().mcpServers,
     }
     try {
       await invoke("save_settings", { settings })

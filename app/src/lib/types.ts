@@ -15,13 +15,6 @@ export const SKILL_TYPE_COLORS: Record<SkillType, string> = {
   "data-engineering": "bg-[#F0ECF5] text-[#5E4B8B] dark:bg-[#5E4B8B]/15 dark:text-[#A08DC4]",
 };
 
-export interface McpServerConfig {
-  name: string;
-  type: "http" | "sse";
-  url: string;
-  headers: Record<string, string>;
-}
-
 export interface AppSettings {
   anthropic_api_key: string | null
   workspace_path: string | null
@@ -36,7 +29,6 @@ export interface AppSettings {
   github_user_login: string | null
   github_user_avatar: string | null
   github_user_email: string | null
-  mcp_servers: McpServerConfig[]
 }
 
 export interface DeviceFlowResponse {

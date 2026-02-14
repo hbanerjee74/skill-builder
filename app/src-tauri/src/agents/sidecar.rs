@@ -27,8 +27,6 @@ pub struct SidecarConfig {
     pub path_to_claude_code_executable: Option<String>,
     #[serde(rename = "agentName", skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
-    #[serde(rename = "mcpServers", skip_serializing_if = "Option::is_none")]
-    pub mcp_servers: Option<serde_json::Value>,
 }
 
 /// Spawn an agent using the persistent sidecar pool, which reuses a long-lived
@@ -124,7 +122,7 @@ mod tests {
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
             agent_name: Some("domain-research-concepts".to_string()),
-            mcp_servers: None,
+
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -143,8 +141,6 @@ mod tests {
         assert!(parsed.get("betas").is_none());
         // max_thinking_tokens is None + skip_serializing_if — should be absent
         assert!(parsed.get("maxThinkingTokens").is_none());
-        // mcp_servers is None + skip_serializing_if — should be absent
-        assert!(parsed.get("mcpServers").is_none());
     }
 
     #[test]
@@ -162,7 +158,7 @@ mod tests {
             max_thinking_tokens: Some(32000),
             path_to_claude_code_executable: None,
             agent_name: None,
-            mcp_servers: None,
+
         };
 
         let json = serde_json::to_string(&config).unwrap();
@@ -171,33 +167,4 @@ mod tests {
         assert_eq!(parsed["maxThinkingTokens"], 32000);
     }
 
-    #[test]
-    fn test_sidecar_config_serialization_with_mcp_servers() {
-        let mcp = serde_json::json!({
-            "linear": {
-                "type": "http",
-                "url": "https://mcp.linear.app/mcp",
-                "headers": { "Authorization": "Bearer lin_test_token" }
-            }
-        });
-        let config = SidecarConfig {
-            prompt: "Test".to_string(),
-            model: None,
-            api_key: "sk-ant-test".to_string(),
-            cwd: "/tmp".to_string(),
-            allowed_tools: None,
-            max_turns: None,
-            permission_mode: None,
-            session_id: None,
-            betas: None,
-            max_thinking_tokens: None,
-            path_to_claude_code_executable: None,
-            agent_name: None,
-            mcp_servers: Some(mcp.clone()),
-        };
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["mcpServers"]["linear"]["type"], "http");
-        assert_eq!(parsed["mcpServers"]["linear"]["url"], "https://mcp.linear.app/mcp");
-    }
 }
