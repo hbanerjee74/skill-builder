@@ -1005,6 +1005,8 @@ impl SidecarPool {
         let timeout_request_logs = self.request_logs.clone();
         let timeout_app_handle = app_handle.clone();
         let timeout_agent_id = agent_id.to_string();
+        let timeout_sidecars = self.sidecars.clone();
+        let timeout_skill_name = skill_name.to_string();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(300)).await;
 
@@ -1019,6 +1021,24 @@ impl SidecarPool {
                     "Agent request '{}' timed out after 5 minutes",
                     timeout_agent_id
                 );
+
+                // Tell the sidecar to abort the stuck SDK request so it doesn't
+                // keep running after we've already told the UI it failed.
+                {
+                    let pool = timeout_sidecars.lock().await;
+                    if let Some(sidecar) = pool.get(&timeout_skill_name) {
+                        let cancel_msg = format!(
+                            "{{\"type\":\"cancel\",\"request_id\":\"{}\"}}\n",
+                            timeout_agent_id
+                        );
+                        let mut stdin = sidecar.stdin.lock().await;
+                        if let Err(e) = stdin.write_all(cancel_msg.as_bytes()).await {
+                            log::debug!("Failed to send cancel to sidecar: {}", e);
+                        }
+                        let _ = stdin.flush().await;
+                    }
+                }
+
                 // Close JSONL transcript on timeout
                 {
                     let mut logs = timeout_request_logs.lock().await;

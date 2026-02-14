@@ -88,7 +88,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `sidecar/agent-runner.ts` | `sidecar/__tests__/agent-runner.test.ts` (13) | -- |
 | `sidecar/config.ts` | `sidecar/__tests__/config.test.ts` (5) | -- |
 | `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (19) | -- |
-| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (28) | -- |
+| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (33) | -- |
 | `sidecar/shutdown.ts` | `sidecar/__tests__/shutdown.test.ts` (5) | -- |
 
 ### E2E Test Files
