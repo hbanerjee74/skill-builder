@@ -1090,6 +1090,7 @@ pub fn preview_step_reset(
 
 /// Parse agent_id (format: "{skill_name}-step{step_id}-{timestamp}") to extract skill_name and step_id.
 /// Returns None if the format doesn't match the expected pattern.
+#[allow(dead_code)]
 fn parse_agent_id(agent_id: &str) -> Option<(String, u32)> {
     // agent_id format: {skill_name}-step{step_id}-{timestamp}
     // We need to extract skill_name and step_id
@@ -1112,6 +1113,7 @@ fn parse_agent_id(agent_id: &str) -> Option<(String, u32)> {
 }
 
 /// Configuration for retry with backoff.
+#[allow(dead_code)]
 pub struct RetryConfig {
     /// Maximum number of attempts (including the first try).
     pub max_attempts: u32,
@@ -1131,6 +1133,7 @@ impl Default for RetryConfig {
 /// Retry a fallible closure with backoff delays between attempts.
 /// Returns `Ok(T)` on the first successful attempt, or the last `Err` after all retries.
 /// Calls `on_retry(attempt, max_attempts, &error, delay_ms)` before each retry sleep.
+#[allow(dead_code)]
 pub fn retry_with_backoff<T, E, F, R>(
     config: &RetryConfig,
     mut operation: F,
@@ -1166,6 +1169,7 @@ where
 /// After steps 0, 2, and 4, copy the relevant clarification/decision files
 /// from `{workspace_path}/{skill_name}/context/` to `{skills_path}/{skill_name}/context/`.
 /// Creates the destination directory if it doesn't exist.
+#[allow(dead_code)]
 fn copy_context_to_skill_output(
     step_id: u32,
     skill_dir: &Path,

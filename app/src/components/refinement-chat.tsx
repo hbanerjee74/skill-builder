@@ -37,7 +37,6 @@ interface ChatMessage {
 
 type RefinementPhase = "idle" | "agent_running" | "error";
 
-const SESSION_ARTIFACT = "context/refinement-chat.json";
 
 interface RefinementSessionState {
   messages: ChatMessage[];
