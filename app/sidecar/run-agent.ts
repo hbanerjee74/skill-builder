@@ -21,18 +21,39 @@ export function emitSystemEvent(
  * The callback receives raw SDK message objects (the caller is responsible
  * for any wrapping, e.g., adding `request_id`).
  *
- * @param config     The sidecar config for this request
- * @param onMessage  Called for each message from the SDK conversation
+ * @param config          The sidecar config for this request
+ * @param onMessage       Called for each message from the SDK conversation
+ * @param externalSignal  Optional AbortSignal to cancel from outside (e.g., when persistent-mode
+ *                        aborts a stuck request to start a new one)
  */
 export async function runAgentRequest(
   config: SidecarConfig,
   onMessage: (message: Record<string, unknown>) => void,
+  externalSignal?: AbortSignal,
 ): Promise<void> {
   if (config.apiKey) {
     process.env.ANTHROPIC_API_KEY = config.apiKey;
   }
 
   const state = createAbortState();
+
+  // Link external signal to internal abort so callers can cancel us
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      state.aborted = true;
+      state.abortController.abort();
+    } else {
+      externalSignal.addEventListener(
+        "abort",
+        () => {
+          state.aborted = true;
+          state.abortController.abort();
+        },
+        { once: true },
+      );
+    }
+  }
+
   const options = buildQueryOptions(config, state.abortController);
 
   // Notify the UI that we're about to initialize the SDK

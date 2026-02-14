@@ -289,10 +289,10 @@ describe("runPersistent", () => {
       capture.restore();
     }
 
-    // Filter out the sidecar_ready and system init lines
+    // Filter out the sidecar_ready, system init, and request_complete lines
     const responseLinesRaw = capture.lines.filter((l) => {
       const parsed = JSON.parse(l);
-      return parsed.type !== "sidecar_ready" && parsed.type !== "system";
+      return parsed.type !== "sidecar_ready" && parsed.type !== "system" && parsed.type !== "request_complete";
     });
 
     expect(responseLinesRaw).toHaveLength(2);
@@ -353,16 +353,32 @@ describe("runPersistent", () => {
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
-  it("rejects a second request while one is in flight", async () => {
-    // The first request takes time (resolves via a deferred promise)
-    let resolveFirst!: () => void;
-    const firstDone = new Promise<void>((r) => { resolveFirst = r; });
+  it("aborts a stuck request when a new one arrives", async () => {
+    // The first request hangs until its AbortSignal fires.
+    // When req_b arrives, persistent-mode should abort req_a and run req_b.
     let callCount = 0;
-    mockQuery.mockImplementation(() => {
+    mockQuery.mockImplementation((args: Record<string, unknown>) => {
+      // Extract the abortController from options so the mock can simulate
+      // real SDK behavior: abort causes the generator to throw.
+      const opts = args.options as Record<string, unknown> | undefined;
+      const ac = opts?.abortController as AbortController | undefined;
       callCount++;
       const current = callCount;
       async function* fakeConversation() {
-        if (current === 1) await firstDone;
+        if (current === 1) {
+          // Simulate a stuck API call — wait until abort signal fires
+          await new Promise<void>((_, reject) => {
+            if (ac?.signal.aborted) {
+              reject(new Error("aborted"));
+              return;
+            }
+            ac?.signal.addEventListener(
+              "abort",
+              () => reject(new Error("aborted")),
+              { once: true },
+            );
+          });
+        }
         yield { type: "result", content: `result_${current}` };
       }
       return fakeConversation() as ReturnType<typeof query>;
@@ -371,51 +387,58 @@ describe("runPersistent", () => {
     const config1 = { prompt: "first", apiKey: "sk-test", cwd: "/tmp" };
     const config2 = { prompt: "second", apiKey: "sk-test", cwd: "/tmp" };
 
-    const input = createInputStream([
-      JSON.stringify({
-        type: "agent_request",
-        request_id: "req_a",
-        config: config1,
-      }),
-      JSON.stringify({
-        type: "agent_request",
-        request_id: "req_b",
-        config: config2,
-      }),
-      JSON.stringify({ type: "shutdown" }),
-    ]);
+    const { Readable } = await import("node:stream");
+    const input = new Readable({ read() {} });
 
     const exitFn = vi.fn();
     const capture = captureStdout();
 
-    // Start persistent mode but don't await yet — let event loop process lines
     const runPromise = runPersistent(input, exitFn);
 
-    // Give the event loop time to process all buffered lines
-    await new Promise((r) => setTimeout(r, 10));
+    // Send first request (will hang)
+    input.push(JSON.stringify({
+      type: "agent_request",
+      request_id: "req_a",
+      config: config1,
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
 
-    // req_b should have been rejected while req_a is in flight
-    const errorLine = capture.lines.find((l) => {
-      const parsed = JSON.parse(l);
-      return parsed.request_id === "req_b" && parsed.type === "error";
-    });
-    expect(errorLine).toBeDefined();
-    expect(JSON.parse(errorLine!).message).toBe(
-      "Another agent request is already in progress",
-    );
+    // Send second request — should abort req_a and run req_b
+    input.push(JSON.stringify({
+      type: "agent_request",
+      request_id: "req_b",
+      config: config2,
+    }) + "\n");
+    await new Promise((r) => setTimeout(r, 20));
 
-    // Now let req_a finish so shutdown can complete
-    resolveFirst();
+    // Shutdown
+    input.push(JSON.stringify({ type: "shutdown" }) + "\n");
+    input.push(null);
     await runPromise;
 
-    // req_a should have completed successfully
-    const successLine = capture.lines.find((l) => {
-      const parsed = JSON.parse(l);
-      return parsed.request_id === "req_a" && parsed.content === "result_1";
-    });
-    expect(successLine).toBeDefined();
-
     capture.restore();
+
+    // req_a should have a request_complete (from abort cleanup)
+    const reqAComplete = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_a" && parsed.type === "request_complete";
+    });
+    expect(reqAComplete).toBeDefined();
+
+    // req_b should have completed successfully
+    const reqBResult = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_b" && parsed.content === "result_2";
+    });
+    expect(reqBResult).toBeDefined();
+
+    // req_b should also have request_complete
+    const reqBComplete = capture.lines.find((l) => {
+      const parsed = JSON.parse(l);
+      return parsed.request_id === "req_b" && parsed.type === "request_complete";
+    });
+    expect(reqBComplete).toBeDefined();
+
     expect(exitFn).toHaveBeenCalledWith(0);
   });
 
@@ -469,7 +492,7 @@ describe("runPersistent", () => {
     const responses = capture.lines
       .filter((l) => {
         const parsed = JSON.parse(l);
-        return parsed.request_id && parsed.type !== "system" && parsed.type !== "error";
+        return parsed.request_id && parsed.type !== "system" && parsed.type !== "error" && parsed.type !== "request_complete";
       })
       .map((l) => JSON.parse(l));
 

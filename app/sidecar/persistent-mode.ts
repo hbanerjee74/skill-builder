@@ -103,8 +103,11 @@ export async function runPersistent(
     crlfDelay: Infinity,
   });
 
-  // Track in-flight requests so we can wait for them before shutdown
+  // Track in-flight requests so we can wait for them before shutdown.
+  // Also track the current request's AbortController so we can cancel a stuck
+  // request when a new one arrives (e.g., when the API hangs and Rust retries).
   const inFlight = new Set<Promise<void>>();
+  let currentAbort: AbortController | null = null;
 
   for await (const line of rl) {
     const message = parseIncomingMessage(line);
@@ -134,18 +137,16 @@ export async function runPersistent(
     }
 
     if (message.type === "agent_request") {
-      // Reject if an agent request is already running (protocol is sequential)
-      if (inFlight.size > 0) {
-        writeLine(
-          wrapWithRequestId(message.request_id, {
-            type: "error",
-            message: "Another agent request is already in progress",
-          }),
-        );
-        continue;
+      // If a previous request is still in-flight (e.g., SDK hanging on API),
+      // abort it before starting the new one.
+      if (inFlight.size > 0 && currentAbort) {
+        currentAbort.abort();
+        await Promise.allSettled(inFlight);
       }
 
       const { request_id, config } = message;
+      const abortController = new AbortController();
+      currentAbort = abortController;
 
       // Run the agent request without blocking the readline loop.
       // This lets ping/shutdown messages be processed while the agent runs.
@@ -153,7 +154,7 @@ export async function runPersistent(
         try {
           await runAgentRequest(config, (msg) => {
             writeLine(wrapWithRequestId(request_id, msg));
-          });
+          }, abortController.signal);
         } catch (err) {
           const errorMessage =
             err instanceof Error ? err.message : String(err);
@@ -163,11 +164,22 @@ export async function runPersistent(
               message: errorMessage,
             }),
           );
+        } finally {
+          // Signal to Rust that this request is fully complete and the sidecar
+          // is ready for the next one.
+          writeLine(
+            wrapWithRequestId(request_id, { type: "request_complete" }),
+          );
         }
       })();
 
       inFlight.add(requestPromise);
-      requestPromise.finally(() => inFlight.delete(requestPromise));
+      requestPromise.finally(() => {
+        inFlight.delete(requestPromise);
+        if (currentAbort === abortController) {
+          currentAbort = null;
+        }
+      });
     }
   }
 

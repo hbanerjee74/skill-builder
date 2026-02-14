@@ -636,6 +636,17 @@ impl SidecarPool {
                             }
 
                             if let Some(request_id) = msg.get("request_id").and_then(|r| r.as_str()) {
+                                // Intercept request_complete — sidecar signals it's ready for
+                                // the next request. Log but don't forward to the event system.
+                                if msg.get("type").and_then(|t| t.as_str()) == Some("request_complete") {
+                                    log::debug!(
+                                        "[persistent-sidecar:{}] Request '{}' complete — sidecar ready",
+                                        skill_name_stdout,
+                                        request_id,
+                                    );
+                                    return;
+                                }
+
                                 // Route this message to the correct agent using the request_id as agent_id
                                 events::handle_sidecar_message(
                                     &app_handle_stdout,
