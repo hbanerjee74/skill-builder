@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.js",
+    "build": "npm update @anthropic-ai/claude-agent-sdk --silent && node build.js",
     "dev": "node --loader ts-node/esm agent-runner.ts",
     "test": "vitest run"
   },
