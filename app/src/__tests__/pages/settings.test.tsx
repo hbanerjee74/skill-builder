@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 
 import type { AppSettings } from "@/lib/types";
 
@@ -16,20 +17,24 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock next-themes
+const mockSetTheme = vi.fn();
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ theme: "system", setTheme: mockSetTheme }),
+}));
+
 
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
-  checkNode: vi.fn(() =>
-    Promise.resolve({
-      available: true,
-      version: "20.0.0",
-      meets_minimum: true,
-      error: null,
-      source: "system",
-    })
-  ),
   getDataDir: vi.fn(() => Promise.resolve("/Users/test/Library/Application Support/com.skill-builder.app")),
-  testGithubPat: vi.fn(() => Promise.resolve("Authenticated as 'testuser' — can access hbanerjee74/skill-builder")),
+  githubStartDeviceFlow: vi.fn(),
+  githubPollForToken: vi.fn(),
+  githubGetUser: vi.fn(() => Promise.resolve(null)),
+  githubLogout: vi.fn(),
+}));
+
+vi.mock("@/components/github-login-dialog", () => ({
+  GitHubLoginDialog: () => null,
 }));
 
 // Import after mocks are set up
@@ -45,7 +50,10 @@ const defaultSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
-  github_pat: null,
+  github_oauth_token: null,
+  github_user_login: null,
+  github_user_avatar: null,
+  github_user_email: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -58,7 +66,10 @@ const populatedSettings: AppSettings = {
   extended_context: false,
   extended_thinking: false,
   splash_shown: false,
-  github_pat: null,
+  github_oauth_token: null,
+  github_user_login: null,
+  github_user_avatar: null,
+  github_user_email: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
@@ -67,13 +78,6 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
     get_settings: settings,
     save_settings: undefined,
     test_api_key: true,
-    check_node: {
-      available: true,
-      version: "20.0.0",
-      meets_minimum: true,
-      error: null,
-      source: "system",
-    },
     get_log_file_path: "/tmp/com.skillbuilder.app/skill-builder.log",
     set_log_level: undefined,
   });
@@ -82,21 +86,22 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
 describe("SettingsPage", () => {
   beforeEach(() => {
     resetTauriMocks();
+    // Default to logged-out state
+    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
   });
 
   it("renders all card sections", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
-    // Wait for loading to finish
     await waitFor(() => {
-      expect(screen.queryByText("Checking Node.js...")).not.toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
     expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
-    expect(screen.getByText("Node.js Runtime")).toBeInTheDocument();
   });
 
   it("shows loading spinner initially", () => {
@@ -263,17 +268,6 @@ describe("SettingsPage", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
     });
-  });
-
-  it("displays Node.js available status after check", async () => {
-    setupDefaultMocks();
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Available")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("v20.0.0")).toBeInTheDocument();
   });
 
   it("has the page title 'Settings'", async () => {
@@ -548,12 +542,6 @@ describe("SettingsPage", () => {
     mockInvoke.mockImplementation((cmd: string) => {
       if (cmd === "get_settings") return Promise.resolve(defaultSettings);
       if (cmd === "get_log_file_path") return Promise.reject(new Error("not available"));
-      if (cmd === "check_node") return Promise.resolve({
-        available: true,
-        version: "20.0.0",
-        meets_minimum: true,
-        error: null,
-      });
       return Promise.resolve(undefined);
     });
     render(<SettingsPage />);
@@ -564,5 +552,66 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Not available")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open/i })).toBeDisabled();
+  });
+
+  it("renders Appearance card with theme buttons", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Appearance")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeInTheDocument();
+  });
+
+  it("calls setTheme when a theme button is clicked", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Dark" }));
+    expect(mockSetTheme).toHaveBeenCalledWith("dark");
+  });
+
+  it("shows sign in button when not logged in", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("GitHub Account")).toBeInTheDocument();
+    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sign in with GitHub/i })).toBeInTheDocument();
+  });
+
+  it("shows user info when logged in", async () => {
+    useAuthStore.setState({
+      user: { login: "octocat", avatar_url: "https://github.com/octocat.png", email: "octocat@github.com" },
+      isLoggedIn: true,
+      isLoading: false,
+    });
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("GitHub Account")).toBeInTheDocument();
+    expect(screen.getByText("@octocat")).toBeInTheDocument();
+    expect(screen.getByText("octocat@github.com")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sign Out/i })).toBeInTheDocument();
+    // Should NOT show "Not connected"
+    expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
   });
 });

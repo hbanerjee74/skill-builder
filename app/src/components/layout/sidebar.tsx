@@ -1,8 +1,19 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, Moon, Sun, Monitor, PanelLeftClose, PanelLeftOpen, BookOpen } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { GitHubLoginDialog } from "@/components/github-login-dialog";
+import { useAuthStore } from "@/stores/auth-store";
 
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
@@ -11,18 +22,14 @@ const navItems = [
   { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
 
-const themeOptions = [
-  { value: "system", icon: Monitor, label: "System" },
-  { value: "light", icon: Sun, label: "Light" },
-  { value: "dark", icon: Moon, label: "Dark" },
-] as const;
-
 const STORAGE_KEY = "sidebar-collapsed";
 
 export function Sidebar() {
   const routerState = useRouterState();
   const currentPath = routerState.location.pathname;
-  const { theme, setTheme } = useTheme();
+  const { user, isLoggedIn, logout } = useAuthStore();
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
+
   // Initialize collapsed state from localStorage
   const [collapsed, setCollapsed] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -109,26 +116,65 @@ export function Sidebar() {
           )}
         </button>
 
-        <div className={cn("rounded-md bg-muted p-1", collapsed ? "flex flex-col" : "flex items-center")}>
-          {themeOptions.map(({ value, icon: Icon, label }) => (
-            <button
-              key={value}
-              onClick={() => setTheme(value)}
-              className={cn(
-                "flex items-center justify-center rounded-sm text-xs font-medium transition-colors",
-                collapsed ? "w-full py-1.5" : "flex-1 gap-1.5 px-2 py-1.5",
-                theme === value
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+        {/* Auth UI */}
+        {isLoggedIn && user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              {collapsed ? (
+                <button
+                  className="flex w-full items-center justify-center rounded-md py-2 transition-colors hover:bg-sidebar-accent/50"
+                  title={user.login}
+                >
+                  <Avatar size="sm">
+                    <AvatarImage src={user.avatar_url} alt={user.login} />
+                    <AvatarFallback>{user.login[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                </button>
+              ) : (
+                <button className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground">
+                  <Avatar size="sm">
+                    <AvatarImage src={user.avatar_url} alt={user.login} />
+                    <AvatarFallback>{user.login[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="truncate text-sm font-medium">{user.login}</span>
+                </button>
               )}
-              title={label}
-            >
-              <Icon className="size-3.5" />
-              {!collapsed && label}
-            </button>
-          ))}
-        </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align={collapsed ? "center" : "start"}>
+              <DropdownMenuLabel className="font-normal">
+                <span className="text-xs text-muted-foreground">{user.login}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => logout()}>
+                <LogOut className="size-4" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : collapsed ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mx-auto"
+            onClick={() => setLoginDialogOpen(true)}
+            title="Sign in with GitHub"
+          >
+            <Github className="size-4" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start gap-2 px-3 text-sidebar-foreground/70 hover:text-sidebar-accent-foreground"
+            onClick={() => setLoginDialogOpen(true)}
+          >
+            <Github className="size-4" />
+            Sign in
+          </Button>
+        )}
       </div>
+
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </aside>
   );
 }

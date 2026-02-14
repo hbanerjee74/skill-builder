@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAgentStore } from "@/stores/agent-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
@@ -33,10 +34,16 @@ vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
   getWorkspacePath: mockGetWorkspacePath,
   createGithubIssue: mockCreateGithubIssue,
+  githubGetUser: vi.fn(() => Promise.resolve(null)),
+  githubLogout: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn(() => Promise.resolve()),
+}));
+
+vi.mock("@/components/github-login-dialog", () => ({
+  GitHubLoginDialog: () => null,
 }));
 
 import {
@@ -133,6 +140,8 @@ describe("parseEnrichmentResponse", () => {
 describe("FeedbackDialog", () => {
   beforeEach(() => {
     useAgentStore.getState().clearRuns();
+    // Default to logged-in state for existing form tests
+    useAuthStore.setState({ user: { login: "testuser", avatar_url: "https://example.com/avatar.png", email: "test@example.com" }, isLoggedIn: true, isLoading: false });
     mockStartAgent.mockReset().mockResolvedValue("feedback-123");
     mockGetWorkspacePath.mockReset().mockResolvedValue("/workspace");
     mockCreateGithubIssue.mockReset().mockResolvedValue({
@@ -147,6 +156,32 @@ describe("FeedbackDialog", () => {
   it("renders the feedback trigger button", () => {
     render(<FeedbackDialog />);
     expect(screen.getByTitle("Send feedback")).toBeInTheDocument();
+  });
+
+  it("shows sign in prompt when not logged in", async () => {
+    useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+
+    expect(screen.getByText("Sign in to GitHub to submit feedback as an issue.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Sign in with GitHub/i })).toBeInTheDocument();
+    // Should NOT show the feedback form
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Description")).not.toBeInTheDocument();
+  });
+
+  it("shows feedback form when logged in", async () => {
+    const user = userEvent.setup();
+    render(<FeedbackDialog />);
+
+    await user.click(screen.getByTitle("Send feedback"));
+
+    expect(screen.getByLabelText("Title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
+    // Should NOT show the sign-in prompt
+    expect(screen.queryByText("Sign in to GitHub to submit feedback as an issue.")).not.toBeInTheDocument();
   });
 
   it("opens dialog with title/description fields and NO type selector in input state", async () => {

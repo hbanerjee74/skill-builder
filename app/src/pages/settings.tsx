@@ -4,7 +4,8 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -15,11 +16,14 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
-import { checkNode, getDataDir, testGithubPat, type NodeStatus } from "@/lib/tauri"
+import { useAuthStore } from "@/stores/auth-store"
+import { getDataDir } from "@/lib/tauri"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
 const MODEL_OPTIONS = [
   { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
@@ -36,22 +40,19 @@ export default function SettingsPage() {
   const [logLevel, setLogLevel] = useState("info")
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
-  const [githubPat, setGithubPat] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
-  const [showGithubPat, setShowGithubPat] = useState(false)
-  const [testingPat, setTestingPat] = useState(false)
-  const [patValid, setPatValid] = useState<boolean | null>(null)
-  const [nodeStatus, setNodeStatus] = useState<NodeStatus | null>(null)
-  const [nodeLoading, setNodeLoading] = useState(true)
   const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const { user, isLoggedIn, logout } = useAuthStore()
+  const { theme, setTheme } = useTheme()
 
   useEffect(() => {
     let cancelled = false
@@ -68,7 +69,6 @@ export default function SettingsPage() {
             setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
-            setGithubPat(result.github_pat)
             setLoading(false)
           }
           return
@@ -82,21 +82,6 @@ export default function SettingsPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    const check = async () => {
-      setNodeLoading(true)
-      try {
-        const result = await checkNode()
-        setNodeStatus(result)
-      } catch {
-        setNodeStatus({ available: false, version: null, meets_minimum: false, error: "Failed to check Node.js", source: "" })
-      } finally {
-        setNodeLoading(false)
-      }
-    }
-    check()
   }, [])
 
   useEffect(() => {
@@ -125,9 +110,8 @@ export default function SettingsPage() {
     logLevel: string;
     extendedContext: boolean;
     extendedThinking: boolean;
-    githubPat: string | null;
   }>) => {
-    const settings = {
+    const settings: AppSettings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
       workspace_path: workspacePath,
       skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
@@ -136,7 +120,12 @@ export default function SettingsPage() {
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
-      github_pat: overrides.githubPat !== undefined ? overrides.githubPat : githubPat,
+      splash_shown: false,
+      // Preserve OAuth fields — these are managed by the auth flow, not settings
+      github_oauth_token: useSettingsStore.getState().githubOauthToken ?? null,
+      github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
+      github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
+      github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
     }
     try {
       await invoke("save_settings", { settings })
@@ -150,7 +139,6 @@ export default function SettingsPage() {
         logLevel: settings.log_level,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
-        githubPat: settings.github_pat,
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
@@ -211,27 +199,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleTestGithubPat = async () => {
-    if (!githubPat) {
-      toast.error("Enter a GitHub token first", { duration: Infinity })
-      return
-    }
-    setTestingPat(true)
-    setPatValid(null)
-    try {
-      const message = await testGithubPat(githubPat)
-      setPatValid(true)
-      toast.success(message)
-    } catch (err) {
-      setPatValid(false)
-      toast.error(
-        `GitHub PAT error: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      )
-    } finally {
-      setTestingPat(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -309,69 +276,6 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>GitHub Integration</CardTitle>
-          <CardDescription>
-            Personal access token for submitting feedback as GitHub issues.
-            Create one at{" "}
-            <a
-              href="https://github.com/settings/tokens"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              github.com/settings/tokens
-            </a>
-            {" "}with the <code className="text-xs">public_repo</code> scope (classic token required).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="github-pat">GitHub Personal Access Token</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="github-pat"
-                  type={showGithubPat ? "text" : "password"}
-                  placeholder="ghp_..."
-                  value={githubPat || ""}
-                  onChange={(e) => setGithubPat(e.target.value || null)}
-                  onBlur={(e) => autoSave({ githubPat: e.target.value || null })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="absolute right-2 top-1/2 -translate-y-1/2"
-                  onClick={() => setShowGithubPat(!showGithubPat)}
-                >
-                  {showGithubPat ? (
-                    <EyeOff className="size-3.5" />
-                  ) : (
-                    <Eye className="size-3.5" />
-                  )}
-                </Button>
-              </div>
-              <Button
-                variant={patValid ? "default" : "outline"}
-                size="sm"
-                onClick={handleTestGithubPat}
-                disabled={testingPat || !githubPat}
-                className={patValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-              >
-                {testingPat ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : patValid ? (
-                  <CheckCircle2 className="size-3.5" />
-                ) : null}
-                {patValid ? "Valid" : "Test"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Model</CardTitle>
           <CardDescription>
             Model used for chat sessions. Workflow steps use per-agent models defined in agent files.
@@ -392,6 +296,115 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Context</CardTitle>
+          <CardDescription>
+            Enable 1M token context window for all agents. Requires a compatible API plan.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+            <Switch
+              id="extended-context"
+              checked={extendedContext}
+              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Extended Thinking</CardTitle>
+          <CardDescription>
+            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
+            <Switch
+              id="extended-thinking"
+              checked={extendedThinking}
+              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>GitHub Account</CardTitle>
+          <CardDescription>
+            Connect your GitHub account to submit feedback and report issues.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {isLoggedIn && user ? (
+            <>
+              <div className="flex items-center gap-3">
+                <Avatar>
+                  <AvatarImage src={user.avatar_url} alt={user.login} />
+                  <AvatarFallback>{user.login[0].toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium">@{user.login}</span>
+                  {user.email && (
+                    <span className="text-sm text-muted-foreground">{user.email}</span>
+                  )}
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="w-fit" onClick={logout}>
+                <LogOut className="size-4" />
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">Not connected</p>
+              <Button variant="outline" size="sm" className="w-fit" onClick={() => setLoginDialogOpen(true)}>
+                <Github className="size-4" />
+                Sign in with GitHub
+              </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>
+            Choose a theme for the application.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-1 rounded-md bg-muted p-1">
+            {([
+              { value: "system", icon: Monitor, label: "System" },
+              { value: "light", icon: Sun, label: "Light" },
+              { value: "dark", icon: Moon, label: "Dark" },
+            ] as const).map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                onClick={() => setTheme(value)}
+                className={cn(
+                  "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
+                  theme === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="size-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -486,44 +499,6 @@ export default function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Extended Context</CardTitle>
-          <CardDescription>
-            Enable 1M token context window for all agents. Requires a compatible API plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
-            <Switch
-              id="extended-context"
-              checked={extendedContext}
-              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Thinking</CardTitle>
-          <CardDescription>
-            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
-            <Switch
-              id="extended-thinking"
-              checked={extendedThinking}
-              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Skills Folder</CardTitle>
           <CardDescription>
             Persistent folder for finished skill outputs (SKILL.md, references, .skill packages). Not affected by workspace clearing.
@@ -591,77 +566,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Node.js Runtime</CardTitle>
-          <CardDescription>
-            Required for running AI agents. Minimum version: 18.0.0
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {nodeLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Checking Node.js...
-            </div>
-          ) : nodeStatus?.available && nodeStatus.meets_minimum ? (
-            <div className="flex items-center gap-2">
-              <Badge variant="default" className="gap-1 bg-green-600">
-                <CheckCircle2 className="size-3" />
-                Available
-              </Badge>
-              <span className="text-sm text-muted-foreground">
-                v{nodeStatus.version}
-              </span>
-            </div>
-          ) : nodeStatus?.available && !nodeStatus.meets_minimum ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="destructive" className="gap-1">
-                  <XCircle className="size-3" />
-                  Version too old
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  v{nodeStatus.version} (need 18.0.0+)
-                </span>
-              </div>
-              <a
-                href="https://nodejs.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                Download Node.js
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <Badge variant="destructive" className="gap-1">
-                  <XCircle className="size-3" />
-                  Not found
-                </Badge>
-                {nodeStatus?.error && (
-                  <span className="text-sm text-muted-foreground">
-                    {nodeStatus.error}
-                  </span>
-                )}
-              </div>
-              <a
-                href="https://nodejs.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                Download Node.js
-                <ExternalLink className="size-3" />
-              </a>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
     </div>
   )
 }

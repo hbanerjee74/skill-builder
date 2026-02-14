@@ -14,7 +14,10 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     extended_context: false,
     extended_thinking: false,
     splash_shown: false,
-    github_pat: null,
+    github_oauth_token: null,
+    github_user_login: null,
+    github_user_avatar: null,
+    github_user_email: null,
     ...overrides,
   };
 }

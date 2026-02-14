@@ -9,7 +9,10 @@ interface SettingsState {
   logLevel: string;
   extendedContext: boolean;
   extendedThinking: boolean;
-  githubPat: string | null;
+  githubOauthToken: string | null;
+  githubUserLogin: string | null;
+  githubUserAvatar: string | null;
+  githubUserEmail: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -24,7 +27,10 @@ const initialState = {
   logLevel: "info",
   extendedContext: false,
   extendedThinking: false,
-  githubPat: null,
+  githubOauthToken: null,
+  githubUserLogin: null,
+  githubUserAvatar: null,
+  githubUserEmail: null,
   isConfigured: false,
 };
 

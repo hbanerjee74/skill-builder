@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import { getVersion } from "@tauri-apps/api/app"
-import { Bug, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
+import { Bug, Github, Lightbulb, Loader2, MessageSquarePlus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,6 +22,8 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { startAgent, getWorkspacePath, createGithubIssue } from "@/lib/tauri"
 import { useAgentStore } from "@/stores/agent-store"
+import { useAuthStore } from "@/stores/auth-store"
+import { GitHubLoginDialog } from "@/components/github-login-dialog"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,6 +133,10 @@ export function FeedbackDialog() {
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => setAppVersion("unknown"))
   }, [])
+
+  // --- Auth state ---
+  const { isLoggedIn } = useAuthStore()
+  const [loginDialogOpen, setLoginDialogOpen] = useState(false)
 
   // --- Dialog & step state ---
   const [open, setOpen] = useState(false)
@@ -432,28 +438,47 @@ export function FeedbackDialog() {
   // -----------------------------------------------------------------------
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="icon-sm" title="Send feedback">
-          <MessageSquarePlus className="size-4" />
-          <span className="sr-only">Send feedback</span>
-        </Button>
-      </DialogTrigger>
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="icon-sm" title="Send feedback">
+            <MessageSquarePlus className="size-4" />
+            <span className="sr-only">Send feedback</span>
+          </Button>
+        </DialogTrigger>
 
-      <DialogContent className={step === "review" ? "max-w-2xl" : undefined}>
-        <DialogHeader>
-          <DialogTitle>Send Feedback</DialogTitle>
-          <DialogDescription>
-            Report a bug or request a feature. Your feedback will be analyzed
-            and submitted as a GitHub issue.
-          </DialogDescription>
-        </DialogHeader>
+        <DialogContent className={step === "review" ? "max-w-2xl" : undefined}>
+          <DialogHeader>
+            <DialogTitle>Send Feedback</DialogTitle>
+            <DialogDescription>
+              Report a bug or request a feature. Your feedback will be analyzed
+              and submitted as a GitHub issue.
+            </DialogDescription>
+          </DialogHeader>
 
-        {step === "input" && renderInputStep()}
-        {step === "enriching" && renderLoadingStep("Analyzing your feedback...")}
-        {step === "review" && renderReviewStep()}
-        {step === "submitting" && renderLoadingStep("Creating GitHub issue...")}
-      </DialogContent>
-    </Dialog>
+          {!isLoggedIn ? (
+            <div className="flex flex-col items-center gap-4 py-8">
+              <Github className="size-10 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground text-center">
+                Sign in to GitHub to submit feedback as an issue.
+              </p>
+              <Button onClick={() => setLoginDialogOpen(true)}>
+                <Github className="size-4" />
+                Sign in with GitHub
+              </Button>
+            </div>
+          ) : (
+            <>
+              {step === "input" && renderInputStep()}
+              {step === "enriching" && renderLoadingStep("Analyzing your feedback...")}
+              {step === "review" && renderReviewStep()}
+              {step === "submitting" && renderLoadingStep("Creating GitHub issue...")}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
+    </>
   )
 }
