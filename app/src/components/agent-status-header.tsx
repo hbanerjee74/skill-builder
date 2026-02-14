@@ -6,6 +6,7 @@ import {
   Clock,
   Cpu,
   Brain,
+  Sparkles,
 } from "lucide-react";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -173,6 +174,16 @@ export function AgentStatusHeader({
             ${run.totalCost.toFixed(4)}
           </Badge>
         )}
+        {run.skillsUsed.map((skill) => (
+          <Badge
+            key={skill}
+            variant="secondary"
+            className="gap-1 text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400"
+          >
+            <Sparkles className="size-3" />
+            {skill}
+          </Badge>
+        ))}
         <ContextMeter agentId={agentId} />
       </div>
     </CardHeader>
