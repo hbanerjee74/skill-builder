@@ -60,8 +60,8 @@ vi.mock("@/components/workflow-step-complete", () => ({
     </div>
   ),
 }));
-vi.mock("@/components/reasoning-chat", () => ({
-  ReasoningChat: () => <div data-testid="reasoning-chat" />,
+vi.mock("@/components/reasoning-review", () => ({
+  ReasoningReview: () => <div data-testid="reasoning-review" />,
 }));
 vi.mock("@/components/refinement-chat", () => ({
   RefinementChat: () => <div data-testid="refinement-chat" />,

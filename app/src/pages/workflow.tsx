@@ -625,7 +625,7 @@ export default function WorkflowPage() {
 
     // Agent step in debug mode — auto-start it after a small delay
     // so React state updates settle before we start the agent.
-    // Reasoning step auto-start is handled inside reasoning-chat.tsx.
+    // Reasoning step auto-start is handled inside reasoning-review.tsx.
     if (cfg.type === "agent") {
       const timer = setTimeout(() => {
         const store = useWorkflowStore.getState();
