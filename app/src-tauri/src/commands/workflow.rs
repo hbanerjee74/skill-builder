@@ -1016,7 +1016,7 @@ pub fn verify_step_output(
         } else {
             skill_dir.clone()
         };
-        output_dir.join("SKILL.md").exists() || output_dir.join("references").is_dir()
+        output_dir.join("SKILL.md").exists()
     } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
         let target_dir = Path::new(skills_path.as_ref().unwrap()).join(&skill_name);
         files.iter().any(|f| target_dir.join(f).exists())

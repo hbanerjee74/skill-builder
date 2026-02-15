@@ -32,7 +32,6 @@ fn detect_furthest_step(
                 skill_dir.clone()
             };
             output_dir.join("SKILL.md").exists()
-                || output_dir.join("references").is_dir()
         } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
             // Context files (all steps) live in skills_path when configured
             let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
@@ -1069,6 +1068,32 @@ mod tests {
     fn test_detect_furthest_step_nonexistent_dir() {
         let step = detect_furthest_step("/nonexistent/path", "no-skill", None);
         assert_eq!(step, None);
+    }
+
+    #[test]
+    fn test_detect_step5_ignores_empty_references_dir() {
+        // Regression: create_skill_inner creates an empty references/ dir in
+        // skills_path at skill creation time. detect_furthest_step must not
+        // treat this as proof that step 5 (build) completed.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+        // Simulate create_skill_inner: empty context/ and references/ dirs
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        std::fs::create_dir_all(skills.join("my-skill").join("references")).unwrap();
+
+        // Only step 0 output files exist
+        create_step_output(&skills, "my-skill", 0);
+
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            Some(skills.to_str().unwrap()),
+        );
+        // Should detect step 0 only — NOT step 5
+        assert_eq!(step, Some(0));
     }
 
     // --- read_domain_from_disk tests ---
