@@ -79,7 +79,7 @@ export default function SkillPreviewDialog({
               Failed to load skill content: {error}
             </div>
           ) : content ? (
-            <div className="markdown-body compact pr-4">
+            <div className="markdown-body compact pr-4 overflow-hidden break-words">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {content}
               </ReactMarkdown>

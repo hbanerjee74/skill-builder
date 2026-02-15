@@ -59,7 +59,7 @@ export default function ImportedSkillCard({
   }
 
   return (
-    <Card className={cn(!skill.is_active && "opacity-60")}>
+    <Card className={cn("flex flex-col", !skill.is_active && "opacity-60")}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{skill.skill_name}</CardTitle>
@@ -79,7 +79,7 @@ export default function ImportedSkillCard({
         )}
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex-1">
         {skill.description ? (
           <p className="text-sm text-muted-foreground line-clamp-2">
             {skill.description}
@@ -91,7 +91,7 @@ export default function ImportedSkillCard({
         )}
       </CardContent>
 
-      <CardFooter className="flex items-center justify-between">
+      <CardFooter className="flex items-center justify-between mt-auto">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
