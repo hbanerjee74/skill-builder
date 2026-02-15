@@ -147,16 +147,51 @@ describe("UsagePage", () => {
     expect(screen.getByText("Recent Workflow Runs")).toBeInTheDocument();
     expect(screen.getByText("my-skill")).toBeInTheDocument();
     expect(screen.getByText("another-skill")).toBeInTheDocument();
-    // Agent count badges
-    expect(screen.getByText("3 agents")).toBeInTheDocument();
-    expect(screen.getByText("1 agent")).toBeInTheDocument();
+    // Session header shows total tokens
+    expect(screen.getByText("18,000 tokens")).toBeInTheDocument(); // 15000 + 3000
+    expect(screen.getByText("58,000 tokens")).toBeInTheDocument(); // 50000 + 8000
   });
 
-  it("expanding a session shows token summary", async () => {
+  it("expanding a session shows step table", async () => {
+    const { getSessionAgentRuns } = await import("@/lib/tauri");
+    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
+      {
+        agent_id: "a1",
+        skill_name: "my-skill",
+        step_id: 1,
+        model: "sonnet",
+        status: "completed",
+        input_tokens: 10000,
+        output_tokens: 2000,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        total_cost: 0.05,
+        duration_ms: 10000,
+        session_id: "ws-1",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      },
+      {
+        agent_id: "a2",
+        skill_name: "my-skill",
+        step_id: 5,
+        model: "opus",
+        status: "completed",
+        input_tokens: 5000,
+        output_tokens: 1000,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        total_cost: 0.10,
+        duration_ms: 20000,
+        session_id: "ws-1",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      },
+    ]);
+
     const user = userEvent.setup();
     render(<UsagePage />);
 
-    // Find expand button for first session
     const expandButton = screen.getByLabelText(/Toggle details for my-skill workflow run/);
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
 
@@ -164,12 +199,16 @@ describe("UsagePage", () => {
 
     expect(expandButton).toHaveAttribute("aria-expanded", "true");
 
-    // Session summary details should be visible
+    // Step table should render with grouped data
     await waitFor(() => {
-      expect(screen.getByText("18,000")).toBeInTheDocument(); // total tokens (15000 + 3000)
-      expect(screen.getByText("15,000")).toBeInTheDocument(); // input tokens
-      expect(screen.getByText("3,000")).toBeInTheDocument(); // output tokens
-      expect(screen.getByText("36s")).toBeInTheDocument(); // duration
+      const table = screen.getByTestId("step-table");
+      expect(table).toBeInTheDocument();
+      // Step names appear in both the breakdown chart and step table
+      expect(screen.getAllByText("Research Concepts").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("Reasoning").length).toBeGreaterThanOrEqual(2);
+      // Model names appear only in the step table
+      expect(table.textContent).toContain("sonnet");
+      expect(table.textContent).toContain("opus");
     });
   });
 
@@ -249,6 +288,26 @@ describe("UsagePage", () => {
   });
 
   it("collapsing an expanded session hides details", async () => {
+    const { getSessionAgentRuns } = await import("@/lib/tauri");
+    vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
+      {
+        agent_id: "a1",
+        skill_name: "my-skill",
+        step_id: 1,
+        model: "sonnet",
+        status: "completed",
+        input_tokens: 10000,
+        output_tokens: 2000,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        total_cost: 0.05,
+        duration_ms: 10000,
+        session_id: "ws-1",
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      },
+    ]);
+
     const user = userEvent.setup();
     render(<UsagePage />);
 
@@ -257,13 +316,13 @@ describe("UsagePage", () => {
     // Expand
     await user.click(expandButton);
     await waitFor(() => {
-      expect(screen.getByText("18,000")).toBeInTheDocument();
+      expect(screen.getByTestId("step-table")).toBeInTheDocument();
     });
 
     // Collapse
     await user.click(expandButton);
     await waitFor(() => {
-      expect(screen.queryByText("18,000")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("step-table")).not.toBeInTheDocument();
     });
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
   });

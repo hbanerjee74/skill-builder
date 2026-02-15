@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { Loader2, DollarSign, Activity, TrendingUp, RotateCcw, ChevronDown, ChevronRight } from "lucide-react"
+import type { AgentRunRecord } from "@/lib/types"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,7 +23,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useUsageStore } from "@/stores/usage-store"
 import { getSessionAgentRuns } from "@/lib/tauri"
-import type { AgentRunRecord } from "@/lib/types"
 
 const STEP_NAMES: Record<number, string> = {
   0: "Init",
@@ -80,43 +80,32 @@ function formatTokens(count: number): string {
   return count.toLocaleString()
 }
 
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.round(ms / 1000)
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+interface StepSummary {
+  stepId: number
+  name: string
+  model: string
+  cost: number
+  tokens: number
 }
 
-function formatRelativeTime(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diffMs = now - then
-
-  const seconds = Math.floor(diffMs / 1000)
-  if (seconds < 60) return `${seconds}s ago`
-
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-function formatStepsRange(stepsCsv: string): string {
-  const steps = stepsCsv.split(",").map(Number).sort((a, b) => a - b)
-  if (steps.length === 0) return "No steps"
-  if (steps.length === 1) return getStepName(steps[0])
-
-  // Check if contiguous
-  const isContiguous = steps.every((s, i) => i === 0 || s === steps[i - 1] + 1)
-  if (isContiguous) {
-    return `${getStepName(steps[0])} → ${getStepName(steps[steps.length - 1])}`
+function groupByStep(agents: AgentRunRecord[]): StepSummary[] {
+  const map = new Map<number, { cost: number; tokens: number; models: Set<string> }>()
+  for (const a of agents) {
+    const entry = map.get(a.step_id) ?? { cost: 0, tokens: 0, models: new Set<string>() }
+    entry.cost += a.total_cost
+    entry.tokens += a.input_tokens + a.output_tokens
+    entry.models.add(a.model)
+    map.set(a.step_id, entry)
   }
-  return steps.map(getStepName).join(", ")
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([stepId, { cost, tokens, models }]) => ({
+      stepId,
+      name: getStepName(stepId),
+      model: models.size === 1 ? [...models][0] : "mixed",
+      cost,
+      tokens,
+    }))
 }
 
 export default function UsagePage() {
@@ -385,58 +374,37 @@ export default function UsagePage() {
                         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="font-medium truncate">{session.skill_name}</span>
-                      <Badge variant="secondary" className="text-xs shrink-0">
-                        {formatStepsRange(session.steps_csv)}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs shrink-0">
-                        {session.agent_count} {session.agent_count === 1 ? "agent" : "agents"}
-                      </Badge>
                       <span className="ml-auto shrink-0 font-mono">{formatCost(session.total_cost)}</span>
-                      <span className="text-muted-foreground shrink-0 text-right text-xs" title="UTC">
-                        {formatRelativeTime(session.started_at)} (UTC)
+                      <span className="shrink-0 text-muted-foreground font-mono text-xs">
+                        {formatTokens(session.total_input_tokens + session.total_output_tokens)} tokens
                       </span>
                     </button>
 
                     {isExpanded && (
-                      <div className="ml-9 mt-2 pb-2">
-                        {/* Session summary */}
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-muted-foreground mb-3">
-                          <div>Total tokens: <span className="text-foreground font-mono">{formatTokens(session.total_input_tokens + session.total_output_tokens)}</span></div>
-                          <div>Duration: <span className="text-foreground font-mono">{formatDuration(session.total_duration_ms)}</span></div>
-                          <div>Input: <span className="text-foreground font-mono">{formatTokens(session.total_input_tokens)}</span></div>
-                          <div>Output: <span className="text-foreground font-mono">{formatTokens(session.total_output_tokens)}</span></div>
-                          <div>Cache read: <span className="text-foreground font-mono">{formatTokens(session.total_cache_read)}</span></div>
-                          <div>Cache write: <span className="text-foreground font-mono">{formatTokens(session.total_cache_write)}</span></div>
-                        </div>
-
-                        {/* Individual agent runs */}
+                      <div className="ml-6 mt-1 flex flex-col gap-0.5" data-testid="step-table">
                         {isLoading ? (
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Loader2 className="size-3 animate-spin" />
-                            Loading agent details...
+                            Loading step details...
                           </div>
                         ) : agents && agents.length > 0 ? (
-                          <div className="flex flex-col gap-1">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">Agent Runs</p>
-                            {agents.map((agent) => (
-                              <div
-                                key={agent.agent_id}
-                                className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-muted/30"
-                              >
-                                <Badge variant="secondary" className="text-xs shrink-0">
-                                  {getStepName(agent.step_id)}
+                          groupByStep(agents).map((step) => (
+                            <div
+                              key={step.stepId}
+                              className="flex items-center justify-between py-1 px-2 hover:bg-muted/40 rounded text-xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="truncate font-medium">{step.name}</span>
+                                <Badge variant="outline" className="shrink-0 text-xs">
+                                  {step.model}
                                 </Badge>
-                                <Badge variant="outline" className="text-xs shrink-0">
-                                  {agent.model}
-                                </Badge>
-                                <span className="text-muted-foreground">
-                                  {formatTokens(agent.input_tokens)}&rarr;{formatTokens(agent.output_tokens)} tokens
-                                </span>
-                                <span className="ml-auto font-mono">{formatCost(agent.total_cost)}</span>
-                                <span className="text-muted-foreground">{formatDuration(agent.duration_ms)}</span>
                               </div>
-                            ))}
-                          </div>
+                              <div className="flex items-center gap-3 shrink-0 ml-4">
+                                <span className="font-mono w-16 text-right">{formatCost(step.cost)}</span>
+                                <span className="font-mono w-16 text-right text-muted-foreground">{formatTokens(step.tokens)}</span>
+                              </div>
+                            </div>
+                          ))
                         ) : null}
                       </div>
                     )}

@@ -280,7 +280,7 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<Usag
                  FROM (
                    SELECT workflow_session_id, SUM(total_cost) as session_cost
                    FROM agent_runs
-                   WHERE reset_marker IS NULL AND status != 'running'
+                   WHERE reset_marker IS NULL
                      AND workflow_session_id IS NOT NULL
                    GROUP BY workflow_session_id
                    HAVING SUM(total_cost) > 0
@@ -303,7 +303,7 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<Usag
                         COUNT(DISTINCT workflow_session_id),
                         COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
                  FROM agent_runs
-                 WHERE reset_marker IS NULL AND status != 'running'
+                 WHERE reset_marker IS NULL
                    AND workflow_session_id IS NOT NULL",
             )
             .map_err(|e| e.to_string())?;
@@ -328,7 +328,7 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
-             WHERE reset_marker IS NULL AND completed_at IS NOT NULL
+             WHERE reset_marker IS NULL
              ORDER BY completed_at DESC
              LIMIT ?1",
         )
@@ -371,7 +371,7 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
                 COALESCE(SUM(duration_ms), 0),
                 MIN(started_at), MAX(completed_at)
          FROM agent_runs
-         WHERE reset_marker IS NULL AND completed_at IS NOT NULL
+         WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL
          GROUP BY workflow_session_id, skill_name
          {}
@@ -452,7 +452,7 @@ pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<
     let sql = format!(
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
-         WHERE reset_marker IS NULL AND status != 'running'
+         WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL{}
          GROUP BY step_id
          ORDER BY SUM(total_cost) DESC",
@@ -483,7 +483,7 @@ pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec
     let sql = format!(
         "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
-         WHERE reset_marker IS NULL AND status != 'running'
+         WHERE reset_marker IS NULL
            AND workflow_session_id IS NOT NULL{}
          GROUP BY model
          ORDER BY SUM(total_cost) DESC",
@@ -1745,7 +1745,7 @@ mod tests {
             2000, 1000, 0, 0, 0.30, 10000, None, ws,
         )
         .unwrap();
-        // Running agents should be excluded
+        // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
         persist_agent_run(
             &conn, "agent-3", "skill-a", 5, "sonnet", "running",
             100, 50, 0, 0, 0.01, 0, None, ws,
@@ -1753,10 +1753,10 @@ mod tests {
         .unwrap();
 
         let summary = get_usage_summary(&conn, false).unwrap();
-        // Both completed agents share one workflow session → 1 run
+        // All three agents share one workflow session → 1 run, total 0.41
         assert_eq!(summary.total_runs, 1);
-        assert!((summary.total_cost - 0.40).abs() < 1e-10);
-        assert!((summary.avg_cost_per_run - 0.40).abs() < 1e-10);
+        assert!((summary.total_cost - 0.41).abs() < 1e-10);
+        assert!((summary.avg_cost_per_run - 0.41).abs() < 1e-10);
     }
 
     #[test]
