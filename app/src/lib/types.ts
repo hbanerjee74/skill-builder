@@ -170,6 +170,7 @@ export interface ImportedSkill {
   description: string | null
   is_active: boolean
   disk_path: string
+  trigger_text: string | null
   imported_at: string
 }
 

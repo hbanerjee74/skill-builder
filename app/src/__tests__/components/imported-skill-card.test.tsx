@@ -11,6 +11,7 @@ const baseSkill: ImportedSkill = {
   description: "Analytics skill for sales data pipelines",
   is_active: true,
   disk_path: "/skills/sales-analytics",
+  trigger_text: null,
   imported_at: new Date().toISOString(),
 };
 

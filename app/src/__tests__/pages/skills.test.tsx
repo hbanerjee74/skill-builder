@@ -40,6 +40,7 @@ const sampleSkills: ImportedSkill[] = [
     description: "Analytics skill for sales pipelines",
     is_active: true,
     disk_path: "/skills/sales-analytics",
+    trigger_text: null,
     imported_at: new Date().toISOString(),
   },
   {
@@ -49,6 +50,7 @@ const sampleSkills: ImportedSkill[] = [
     description: null,
     is_active: false,
     disk_path: "/skills/hr-metrics",
+    trigger_text: null,
     imported_at: new Date().toISOString(),
   },
 ];
@@ -94,7 +96,7 @@ describe("SkillsPage", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Upload a .skill package to add it to your library.")
+      screen.getByText("Upload a .skill package or import from GitHub to add skills to your library.")
     ).toBeInTheDocument();
   });
 
@@ -137,6 +139,7 @@ describe("SkillsPage", () => {
       description: "A new skill",
       is_active: true,
       disk_path: "/skills/new-skill",
+      trigger_text: null,
       imported_at: new Date().toISOString(),
     };
 

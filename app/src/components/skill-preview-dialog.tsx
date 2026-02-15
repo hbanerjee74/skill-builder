@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
+import TriggerTextEditor from "@/components/trigger-text-editor"
 
 interface SkillPreviewDialogProps {
   skill: ImportedSkill | null
@@ -67,6 +68,10 @@ export default function SkillPreviewDialog({
             SKILL.md content preview
           </DialogDescription>
         </DialogHeader>
+
+        {skill && (
+          <TriggerTextEditor skill={skill} />
+        )}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           {loading ? (
