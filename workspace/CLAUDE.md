@@ -61,13 +61,16 @@ Clean snapshot, not a log. Each update rewrites the file, merging existing + new
 ```
 ---
 decision_count: 5
+conflicts_resolved: 2
 round: 2
 ---
 ### D1: [Title]
 - **Question**: [original question]
 - **Decision**: [chosen answer]
 - **Implication**: [design impact]
+- **Status**: resolved | conflict-resolved | needs-review
 ```
+Frontmatter counts give the user an at-a-glance summary: total decisions, how many had contradictions that the agent resolved (review these first). Each decision's `**Status**` field indicates whether it was straightforward (`resolved`), required the agent to pick between contradicting answers (`conflict-resolved`), or needs user input (`needs-review`).
 
 ---
 
