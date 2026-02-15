@@ -87,43 +87,6 @@ Write to the target file path. Follow the Clarifications file format from the sh
 
 </instructions>
 
-<output_format>
-
-<output_example>
-
-```markdown
----
-question_count: 16
-sections: ["Business Patterns & Edge Cases", "Data Modeling & Source Systems", "Cross-cutting Questions"]
-duplicates_removed: 4
----
-
-## Business Patterns & Edge Cases
-
-### Q1: How should the skill handle recurring vs. one-time revenue?
-Revenue recognition varies significantly. How should the skill distinguish these?
-
-**Choices:**
-a) **Treat all revenue the same** — Simplest approach, ignores the distinction entirely.
-b) **Flag recurring vs. one-time in metadata** — Tag but don't change modeling approach.
-c) **Separate modeling patterns** — Different entity structures for recurring and one-time.
-d) **Other (please specify)**
-
-**Recommendation:** Option (c) — recurring revenue has fundamentally different grain and lifecycle needs.
-_Consolidated from: Business Patterns Q3, Data Modeling Q7_
-
-**Answer:**
-
-## Cross-cutting Questions
-
-### Q15: How should temporal consistency be handled when source systems use different fiscal calendars?
-...
-```
-
-</output_example>
-
-</output_format>
-
 ## Success Criteria
 - All questions from source files are accounted for (kept, merged, or noted as duplicate)
 - Frontmatter accurately reports question count, sections, and duplicates removed
