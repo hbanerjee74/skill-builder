@@ -25,7 +25,7 @@ Focus on extraction patterns, API rate limit handling, webhook vs. polling trade
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - **Which domain** to research
   - **Where to write** your output file
-  - The **path to the concepts research** output
+  - The **paths to the concepts research** outputs (entity and metrics files)
 
 </context>
 
@@ -35,7 +35,7 @@ Focus on extraction patterns, API rate limit handling, webhook vs. polling trade
 
 **Goal**: Produce clarification questions about patterns and edge cases where different answers produce meaningfully different skill content. The PM will answer these to determine what the skill covers.
 
-**Input**: Read the concepts research output (provided by the coordinator). The PM has already answered these questions to narrow scope — only research patterns for concepts the PM confirmed are in scope. Skip anything excluded. Use the confirmed concepts to determine which patterns, variations, and edge cases to investigate.
+**Input**: Read the concepts research outputs — entity and metrics files (provided by the coordinator). These files show what concept areas were researched. Use them to determine which patterns, variations, and edge cases to investigate. Focus on areas covered by the entity and metrics research.
 
 **Constraints**:
 - Follow the `clarifications-*.md` format from the shared context file; always include "Other (please specify)"
@@ -44,13 +44,13 @@ Focus on extraction patterns, API rate limit handling, webhook vs. polling trade
 
 ## Error Handling
 
-- **If the concepts research output is missing or empty:** Report to the orchestrator that the prerequisite file is not available. Do not generate questions without PM-confirmed scope — the output would be speculative.
+- **If the concepts research outputs are missing or empty:** Report to the orchestrator that the prerequisite files are not available. Do not generate questions without concept context — the output would be speculative.
 - **If the shared context file is unreadable:** Proceed using the standard clarification format (numbered questions with choices, recommendation, answer field) and note the issue.
 
 </instructions>
 
 ## Success Criteria
-- All questions are anchored to PM-confirmed concepts (nothing out of scope)
+- All questions are anchored to concepts from the entity and metrics research
 - Each question has 2-4 specific, differentiated choices (not just "yes/no/maybe")
 - Recommendations include clear reasoning, not just a preference
 - Questions focus on decisions that change skill design, not general knowledge

@@ -14,7 +14,7 @@ run_t3() {
   log_verbose "Mode C workspace: $dir_c"
 
   local prompt_c="Check the current working directory for:
-1. context/ directory with output files (e.g., context/clarifications-concepts.md)
+1. context/ directory with output files (e.g., context/research-entities.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:
@@ -39,7 +39,7 @@ Reply with ONLY the mode label, e.g. 'Mode C'. Nothing else."
   log_verbose "Mode A workspace: $dir_a"
 
   local prompt_a="Check the current working directory for:
-1. context/ directory with output files (e.g., context/clarifications-concepts.md)
+1. context/ directory with output files (e.g., context/research-entities.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:
@@ -64,7 +64,7 @@ Reply with ONLY the mode label, e.g. 'Mode A'. Nothing else."
   log_verbose "Mode B workspace: $dir_b"
 
   local prompt_b="Check the current working directory for:
-1. context/ directory with output files (e.g., context/clarifications-concepts.md)
+1. context/ directory with output files (e.g., context/research-entities.md)
 2. $skill_name/SKILL.md
 
 Then apply these rules:

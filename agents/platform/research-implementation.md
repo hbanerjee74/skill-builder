@@ -25,7 +25,7 @@ Focus on configuration schemas, deployment patterns, state management approaches
   - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - **Which domain** to research
   - **Where to write** your output file
-  - The **path to the concepts research** output
+  - The **paths to the concepts research** outputs (entity and metrics files)
 
 </context>
 
@@ -35,7 +35,7 @@ Focus on configuration schemas, deployment patterns, state management approaches
 
 **Goal**: Produce clarification questions about technical implementation decisions where different answers produce meaningfully different skill content. The PM will answer these to determine what the skill covers.
 
-**Input**: Read the concepts research output (provided by the coordinator). The PM has already answered these questions to narrow scope — only research implementation details for concepts the PM confirmed are in scope. Reference specific entities and concepts from confirmed answers. Use the confirmed concepts to determine which technical decisions and system considerations to investigate.
+**Input**: Read the concepts research outputs — entity and metrics files (provided by the coordinator). These files show what concept areas were researched. Reference specific entities and concepts from these files. Use them to determine which technical decisions and system considerations to investigate.
 
 **Constraints**:
 - Follow the `clarifications-*.md` format from the shared context file; always include "Other (please specify)"
@@ -44,13 +44,13 @@ Focus on configuration schemas, deployment patterns, state management approaches
 
 ## Error Handling
 
-- **If the concepts research output is missing or empty:** Report to the orchestrator that the prerequisite file is not available. Do not generate questions without PM-confirmed scope — the output would be speculative.
+- **If the concepts research outputs are missing or empty:** Report to the orchestrator that the prerequisite files are not available. Do not generate questions without concept context — the output would be speculative.
 - **If the shared context file is unreadable:** Proceed using the standard clarification format (numbered questions with choices, recommendation, answer field) and note the issue.
 
 </instructions>
 
 ## Success Criteria
-- All questions reference specific entities or concepts the PM confirmed are in scope
+- All questions reference specific entities or concepts from the entity and metrics research
 - Each question has 2-4 specific choices with clear trade-offs explained
 - Recommendations include reasoning tied to the domain's technical context
 - Output contains 5-10 questions focused on decisions that change skill content

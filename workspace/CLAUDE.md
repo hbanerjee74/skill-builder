@@ -42,7 +42,7 @@ IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing i
 ---
 question_count: 12
 sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # clarifications.md only (post-merge)
+duplicates_removed: 3  # clarifications.md only (post-consolidation)
 ---
 ## [Section]
 ### Q1: [Title]

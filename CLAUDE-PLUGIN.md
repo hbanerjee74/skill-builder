@@ -43,7 +43,7 @@ Agent files in `agents/{type}/` are **generated** — do not edit them directly.
 1. Edit the template in `agents/templates/` (5 templates: research-concepts, research-practices, research-implementation, research, generate-skill) or the config in `agents/types/{type}/` (type-specific content)
 2. Run `./scripts/build-agents.sh` to regenerate all 20 type-specific agent files
 3. Use `./scripts/build-agents.sh --check` to verify generated files match templates (used in CI)
-4. Shared agents (`agents/shared/`: merge, confirm-decisions, validate-skill, detailed-research) are edited directly — they are not generated
+4. Shared agents (`agents/shared/`: consolidate-research, confirm-decisions, validate-skill, detailed-research) are edited directly — they are not generated
 
 ### Modifying the workflow
 

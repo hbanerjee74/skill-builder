@@ -38,7 +38,7 @@ run_t1() {
   # ---- T1.4: Each expected agent exists in correct subdirectory ----
   local type_dirs="domain platform source data-engineering"
   local type_agents="research-concepts research-practices research-implementation research generate-skill"
-  local shared_agents="merge confirm-decisions validate-skill detailed-research"
+  local shared_agents="consolidate-research confirm-decisions validate-skill detailed-research"
 
   for dir in $type_dirs; do
     for agent in $type_agents; do
@@ -84,7 +84,8 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       research-concepts|research-practices|research-implementation|research|generate-skill) echo "sonnet" ;;
-      merge|validate-skill|detailed-research) echo "sonnet" ;;
+      validate-skill|detailed-research) echo "sonnet" ;;
+      consolidate-research) echo "opus" ;;
       confirm-decisions) echo "opus" ;;
       *) echo "unknown" ;;
     esac
@@ -154,7 +155,7 @@ run_t1() {
   # ---- T1.10: Coordinator references key concepts ----
   local coord_content
   coord_content=$(cat "$PLUGIN_DIR/skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "clarifications-concepts.md" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "research-entities.md" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
     local safe_name
     safe_name=$(echo "$keyword" | tr ' :' '__' | tr -cd '[:alnum:]_')
     if echo "$coord_content" | grep -q "$keyword"; then

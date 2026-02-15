@@ -2,7 +2,7 @@
 # AUTO-GENERATED — do not edit. Source: agents/templates/research.md + agents/types/domain/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: domain-research
-description: Orchestrates all research phases by spawning concepts, practices, and implementation sub-agents in parallel, then merging results. Called during Step 1.
+description: Orchestrates all research phases by spawning concepts, practices, and implementation sub-agents, then consolidating results into a cohesive questionnaire. Called during Step 1.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-Orchestrate parallel research by spawning three sub-agents via the Task tool — concepts, practices, and implementation — then have a merge sub-agent combine all results into a single clarifications file.
+Orchestrate parallel research by spawning three sub-agents via the Task tool — concepts, practices, and implementation — then have a consolidation agent reason about the full question set and produce a cohesive clarifications file.
 
 </role>
 
@@ -45,40 +45,40 @@ Follow the Sub-agent Spawning protocol. Spawn three sub-agents in a single turn:
 
 **Sub-agent 1: Concepts & Metrics** (`name: "domain-research-concepts"`)
 
-- Output: `clarifications-concepts.md` in the context directory
+- Output: `research-entities.md` and `research-metrics.md` in the context directory
 - This sub-agent orchestrates its own entity and metrics research internally
 
 **Sub-agent 2: Practices & Edge Cases** (`name: "domain-research-practices"`)
 
-- Input: `clarifications-concepts.md` from the context directory (once Sub-agent 1 completes)
+- Input: `research-entities.md` and `research-metrics.md` from the context directory (once Sub-agent 1 completes)
 - Output: `clarifications-practices.md` in the context directory
 
 **Sub-agent 3: Technical Implementation** (`name: "domain-research-implementation"`)
 
-- Input: `clarifications-concepts.md` from the context directory (once Sub-agent 1 completes)
+- Input: `research-entities.md` and `research-metrics.md` from the context directory (once Sub-agent 1 completes)
 - Output: `clarifications-implementation.md` in the context directory
 
-**Execution order**: Spawn Sub-agent 1 first and wait for it to complete (it produces the concepts file that Sub-agents 2 and 3 need as input). Then spawn Sub-agents 2 and 3 in parallel.
+**Execution order**: Spawn Sub-agent 1 first and wait for it to complete (it produces the concept files that Sub-agents 2 and 3 need as input). Then spawn Sub-agents 2 and 3 in parallel.
 
 Pass the domain, shared context file path, context directory path, and output file path to each sub-agent. Each agent's own prompt defines what to research.
 
-## Phase 2: Merge
+## Phase 2: Consolidate
 
-After all three sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`). Pass it:
+After all three sub-agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`). Pass it:
 - The shared context file path
-- The three source files: `clarifications-concepts.md`, `clarifications-practices.md`, `clarifications-implementation.md`
+- The four source files: `research-entities.md`, `research-metrics.md`, `clarifications-practices.md`, `clarifications-implementation.md`
 - The target file: `clarifications.md` in the context directory
 
-The merge agent's own prompt covers deduplication, organization, and formatting.
+The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow.
 
 ## Error Handling
 
-If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merge agent fails, perform the merge yourself directly.
+If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the consolidation agent fails, perform the consolidation yourself directly.
 
 </instructions>
 
 ## Success Criteria
-- Concepts sub-agent produces output with 8-15 deduplicated questions
+- Concepts sub-agent produces entity and metrics research files with 5+ questions each
 - Practices and implementation sub-agents each produce 5+ questions
-- Merge agent produces a single `clarifications.md` with clear section organization
+- Consolidation agent produces a cohesive `clarifications.md` with logical section flow
 - Cross-cutting questions that span multiple research areas are identified and grouped

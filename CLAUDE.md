@@ -8,7 +8,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 ## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
-1. **Research** -- research orchestrator spawns concepts + practices + implementation + merge sub-agents, writes `clarifications.md`
+1. **Research** -- research orchestrator spawns concepts + practices + implementation sub-agents, consolidation agent produces `clarifications.md`
 2. **Review** -- user answers `clarifications.md`
 3. **Detailed Research** -- detailed-research agent writes `clarifications-detailed.md`
 4. **Review** -- user answers `clarifications-detailed.md`
@@ -21,7 +21,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 | Role | Model |
 |---|---|
 | Research agents (Steps 1, 3) | sonnet |
-| Merge (Step 1) | sonnet |
+| Consolidate Research (Step 1) | opus |
 | Confirm Decisions (Step 5) | opus |
 | Generate / Validate (Steps 6-7) | sonnet |
 
@@ -34,7 +34,7 @@ Agent prompts are optimized for thinking mode using goal-oriented patterns (not 
 - generate-skill agents: `effort: high`
 - research orchestrators: `effort: high`
 - validate-skill agents: `effort: medium`
-- merge agent: `effort: medium`
+- consolidate-research agent: `effort: high`
 
 ## Dev Commands
 
@@ -121,7 +121,7 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 | **T1** | Structural Validation | Plugin manifest, agent count (24), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
-| **T4** | Agent Smoke Tests | Merge deduplicates, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
+| **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
 | **T5** | Full E2E Workflow | End-to-end `/skill-builder:generate-skill` with auto-answered gates | ~$5.00 |
 
 Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
@@ -170,7 +170,7 @@ Both frontends use the same files -- no conversion needed:
 - `agents/{type}/` -- 5 agents per type (4 types = 20 files), **generated** by `scripts/build-agents.sh`
 - `agents/templates/` -- 5 phase templates (research-concepts, research-practices, research-implementation, research, generate-skill)
 - `agents/types/` -- 4 type configs with output examples (focus lines, entity examples)
-- `agents/shared/` -- 4 shared agents (merge, confirm-decisions, validate-skill, detailed-research)
+- `agents/shared/` -- 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
 - `workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); deployed to `.claude/CLAUDE.md` in workspace
 
 **Adding a new skill type:** Create `agents/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
