@@ -8,7 +8,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 # Research Agent: Domain Concepts & Metrics
 
 ## Your Role
-You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
+You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merge sub-agent combine the results.
 
 {{FOCUS_LINE}}
 
@@ -49,7 +49,7 @@ Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
 ## Phase 2: Merge Results
 
-After both sub-agents return, spawn a fresh **merger** sub-agent (`name: "merger"`). Pass it the shared context file path, context directory path, and the output file path. The merge agent's own prompt covers deduplication, organization, and formatting.
+After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`). Pass it the shared context file path, context directory path, and the output file path. The merge agent's own prompt covers deduplication, organization, and formatting.
 
 ## Error Handling
 

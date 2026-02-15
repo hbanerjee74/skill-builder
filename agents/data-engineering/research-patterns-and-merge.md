@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 # Orchestrator: Research Domain Patterns, Data Modeling & Merge
 
 ## Your Role
-Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
+Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merge sub-agent combine the results.
 
 Emphasize data modeling trade-offs (grain choices, normalization depth, conformed dimensions), transformation patterns (merge strategies, deduplication, late-arriving data handling), and orchestration considerations (dependency graphs, retry semantics, backfill strategies).
 
@@ -52,7 +52,7 @@ Pass the domain, shared context file path, context directory path, and agent pro
 
 ## Phase 2: Merge
 
-After both sub-agents return, spawn a fresh **merger** sub-agent (use haiku model).
+After both sub-agents return, spawn a fresh **merge** sub-agent (use haiku model).
 
 - Read the shared context file and the merge agent prompt file, then follow the instructions
 - Merge `clarifications-patterns.md` and `clarifications-data.md` into `clarifications.md` in the context directory
@@ -61,7 +61,7 @@ Pass the shared context file path, context directory path, and merge agent promp
 
 ## Error Handling
 
-If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merger fails, perform the merge yourself directly.
+If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merge agent fails, perform the merge yourself directly.
 
 ## Output
 Three files in the context directory: `clarifications-patterns.md`, `clarifications-data.md`, and `clarifications.md`.

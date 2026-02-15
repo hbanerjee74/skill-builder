@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 # Research Agent: Domain Concepts & Metrics
 
 ## Your Role
-You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merger sub-agent combine the results.
+You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merge sub-agent combine the results.
 
 Focus on historization strategies (SCD types, snapshots, event logs), load patterns (full, incremental, CDC), data quality rules and validation frameworks, and pipeline dependency and orchestration requirements.
 
@@ -51,12 +51,7 @@ Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
 ## Phase 2: Merge Results
 
-After both sub-agents return, spawn a fresh **merger** sub-agent (`name: "merger"`).
-
-- Read `research-entities.md` and `research-metrics.md` from the context directory
-- Merge into a single file at the output file path provided by coordinator
-- Organize by topic section, deduplicate overlapping questions, number sequentially
-- Keep intermediate research files for reference
+After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`). Pass it the shared context file path, context directory path, and the output file path. The merge agent's own prompt covers deduplication, organization, and formatting.
 
 ## Error Handling
 
