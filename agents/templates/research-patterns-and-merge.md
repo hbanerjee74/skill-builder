@@ -56,11 +56,6 @@ After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`
 
 If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merge agent fails, perform the merge yourself directly.
 
-## Output
-Three files in the context directory: `clarifications-patterns.md`, `clarifications-data.md`, and `clarifications.md`.
-
-When all three sub-agents have completed, respond with only a single line: Done — research and merge complete. Do not echo file contents.
-
 ## Success Criteria
 - Both research sub-agents produce output files with 5+ questions each
 - Merge agent produces a deduplicated `clarifications.md` with clear section organization
