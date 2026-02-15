@@ -28,6 +28,7 @@ export default function SkillPreviewDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const getSkillContent = useImportedSkillsStore((s) => s.getSkillContent)
+  const fetchSkills = useImportedSkillsStore((s) => s.fetchSkills)
 
   useEffect(() => {
     if (!open || !skill) {
@@ -70,7 +71,7 @@ export default function SkillPreviewDialog({
         </DialogHeader>
 
         {skill && (
-          <TriggerTextEditor skill={skill} />
+          <TriggerTextEditor skill={skill} onSaved={fetchSkills} />
         )}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">

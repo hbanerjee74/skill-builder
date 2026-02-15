@@ -50,7 +50,7 @@ export default function TriggerTextEditor({ skill, onSaved }: TriggerTextEditorP
           </Button>
         </div>
         <p className="text-sm text-muted-foreground italic">
-          {skill.trigger_text || "No trigger text set. Click Edit to add one."}
+          {text || "No trigger text set. Click Edit to add one."}
         </p>
       </div>
     )
