@@ -42,7 +42,7 @@ fi
 echo "=== Agents ==="
 
 # Shared agents (no type prefix)
-SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:haiku"
+SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:sonnet"
 
 # Type-specific agents: each type dir has 5 agents
 TYPE_DIRS="domain platform source data-engineering"

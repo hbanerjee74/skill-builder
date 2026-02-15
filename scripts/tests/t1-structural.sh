@@ -85,7 +85,7 @@ run_t1() {
     case "$1" in
       research-concepts|research-patterns|research-data|research-patterns-and-merge) echo "sonnet" ;;
       build|validate-and-test) echo "sonnet" ;;
-      merge) echo "haiku" ;;
+      merge) echo "sonnet" ;;
       reasoning) echo "opus" ;;
       *) echo "unknown" ;;
     esac
