@@ -73,7 +73,7 @@ function getModelColor(model: string): string {
 }
 
 function formatCost(amount: number): string {
-  return `$${amount.toFixed(4)}`
+  return `$${amount.toFixed(2)}`
 }
 
 function formatTokens(count: number): string {

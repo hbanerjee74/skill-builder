@@ -112,7 +112,7 @@ describe("UsagePage", () => {
     expect(screen.getByText("Usage")).toBeInTheDocument();
     expect(screen.getByTestId("total-cost")).toHaveTextContent("$12.57");
     expect(screen.getByTestId("total-runs")).toHaveTextContent("42");
-    expect(screen.getByTestId("avg-cost")).toHaveTextContent("$0.2992");
+    expect(screen.getByTestId("avg-cost")).toHaveTextContent("$0.30");
   });
 
   it("renders cost-by-step breakdown", () => {
@@ -125,8 +125,8 @@ describe("UsagePage", () => {
     expect(screen.getAllByText("Reasoning").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Build").length).toBeGreaterThanOrEqual(1);
     // Check cost text is rendered (unique to the breakdown section)
-    expect(screen.getByText(/\$3\.5000 \(10 agents\)/)).toBeInTheDocument();
-    expect(screen.getByText(/\$6\.0000 \(8 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$3\.50 \(10 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$6\.00 \(8 agents\)/)).toBeInTheDocument();
   });
 
   it("renders cost-by-model breakdown", () => {
@@ -137,8 +137,8 @@ describe("UsagePage", () => {
     expect(screen.getAllByText("claude-sonnet-4-520250514").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("claude-opus-4-20250514").length).toBeGreaterThanOrEqual(1);
     // Cost text is unique to the breakdown section
-    expect(screen.getByText(/\$5\.5000 \(20 agents\)/)).toBeInTheDocument();
-    expect(screen.getByText(/\$7\.0000 \(12 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$5\.50 \(20 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$7\.00 \(12 agents\)/)).toBeInTheDocument();
   });
 
   it("renders recent workflow sessions list", () => {
