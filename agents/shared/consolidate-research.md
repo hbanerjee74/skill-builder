@@ -18,7 +18,7 @@ You take the raw clarification questions from multiple research agents and produ
 
 ## Context
 - The coordinator will tell you:
-  - The **source content** to consolidate (either as inline text in the prompt, or as file paths to read)
+  - The **source content** to consolidate (passed as inline text in the prompt)
   - The **target file** to write (file path)
 
 </context>
@@ -33,7 +33,7 @@ Transform 3 independent research outputs into a unified questionnaire that reads
 
 ### Step 1: Read and understand all sources
 
-If given file paths, read them. If given text directly in the prompt, use it as-is. Build a mental model of:
+The orchestrator passes all source content as inline text in the prompt. Build a mental model of:
 - What domain areas each source covers
 - Where sources overlap (same decision from different angles)
 - Where sources complement each other (different aspects of the same topic)
