@@ -31,7 +31,7 @@ Set the plugin root at the start of the session:
 PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
 
 Output layout in the user's CWD:
-- `./context/` — working files (clarifications, decisions, logs)
+- `./<skillname>/context/` — working files (clarifications, decisions, logs)
 - `./<skillname>/` — the deployable skill (SKILL.md + references/)
 
 ## Context Conservation Rules
@@ -72,13 +72,13 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
    | Step | Output File | Meaning |
    |------|------------|---------|
-   | 1 | `./context/clarifications.md` | Research complete |
+   | 1 | `./<skillname>/context/clarifications.md` | Research complete |
    | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
-   | 3 | `./context/clarifications-detailed.md` | Detailed Research complete |
+   | 3 | `./<skillname>/context/clarifications-detailed.md` | Detailed Research complete |
    | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
-   | 5 | `./context/decisions.md` | Confirm Decisions complete |
+   | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
    | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
-   | 7 | `./context/agent-validation-log.md` AND `./context/test-skill.md` | Validate Skill complete |
+   | 7 | `./<skillname>/context/agent-validation-log.md` AND `./<skillname>/context/test-skill.md` | Validate Skill complete |
 
    **Mode A — Resume** (any output files from the table above exist):
    The user is continuing a previous session.
@@ -87,21 +87,21 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    - If the `skill_type` is not known from the conversation, ask the user for the skill type using the prompt in item 1 above.
    - Ask: "Continue from step N+1, or start fresh (this deletes all progress)?"
    - If continue: skip to the next step after the highest completed step.
-   - If start fresh: delete `./context/` and `./<skillname>/` then fall through to Mode C.
+   - If start fresh: delete `./<skillname>/` then fall through to Mode C.
 
    **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but NO context/ output files exist):
    The user has a finished skill and wants to improve it.
    - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the confirm decisions step so you can refine it."
    - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in item 1 above.
-   - Create `./context/` if it doesn't exist.
+   - Create `./<skillname>/context/` if it doesn't exist.
    - Skip to Step 5 (Confirm Decisions). The confirm-decisions agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the generate-skill agent will revise the skill.
 
    **Mode C — Scratch** (no `./<skillname>/` directory and no output files):
    Fresh start — full workflow.
    - Create the directory structure:
      ```
-     ./context/
      ./<skillname>/
+     ├── context/
      └── references/
      ```
 
@@ -125,7 +125,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./context/clarifications.md")
+   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
 2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation). It writes intermediate files like `research-entities.md` in the context directory before producing the final consolidated output:
    ```
@@ -137,8 +137,8 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Context directory: ./context/
-     Write consolidated output to: ./context/clarifications.md
+     Context directory: ./<skillname>/context/
+     Write consolidated output to: ./<skillname>/context/clarifications.md
 
      Return a 5-10 bullet summary of the key questions you generated."
    )
@@ -148,7 +148,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 ### Step 2: Human Gate — Review
 
 1. Tell the user:
-   "Please review and answer the questions in `./context/clarifications.md`.
+   "Please review and answer the questions in `./<skillname>/context/clarifications.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 2. Wait for the user to confirm they've answered the questions.
@@ -157,7 +157,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./context/clarifications-detailed.md")
+   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./<skillname>/context/clarifications-detailed.md")
    ```
 2. Spawn the detailed-research shared agent as a teammate:
    ```
@@ -169,9 +169,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Answered clarifications: ./context/clarifications.md
-     Context directory: ./context/
-     Write your output to: ./context/clarifications-detailed.md
+     Answered clarifications: ./<skillname>/context/clarifications.md
+     Context directory: ./<skillname>/context/
+     Write your output to: ./<skillname>/context/clarifications-detailed.md
 
      Return a 5-10 bullet summary of the detailed questions you generated."
    )
@@ -181,7 +181,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 ### Step 4: Human Gate — Detailed Review
 
 1. Tell the user:
-   "Please review and answer the detailed questions in `./context/clarifications-detailed.md`.
+   "Please review and answer the detailed questions in `./<skillname>/context/clarifications-detailed.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 2. Wait for the user to confirm.
@@ -197,7 +197,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>
-     Context directory: ./context/
+     Context directory: ./<skillname>/context/
 
      Analyze all answered clarifications and produce decisions.
      Think thoroughly about contradictions, gaps, and implications across all provided answers.
@@ -206,13 +206,13 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
-     Write/update: ./context/decisions.md
+     Write/update: ./<skillname>/context/decisions.md
 
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )
    ```
 2. Relay the reasoning summary to the user.
-3. **Validate** that `./context/decisions.md` exists. If missing, re-run the confirm-decisions agent.
+3. **Validate** that `./<skillname>/context/decisions.md` exists. If missing, re-run the confirm-decisions agent.
 4. **Human Gate**: "Do you agree with these decisions? Any corrections?"
 5. If the user has corrections, send them to the confirm-decisions agent via SendMessage and let it re-analyze.
 6. Once confirmed, proceed.
@@ -229,7 +229,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Context directory: ./context/
+     Context directory: ./<skillname>/context/
      Skill directory: ./<skillname>/
 
      Plan the skill structure before writing. Verify all decisions are reflected in the output.
@@ -253,18 +253,18 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Skill type: <skill_type>
      Domain: <domain>
      Skill directory: ./<skillname>/
-     Context directory: ./context/
+     Context directory: ./<skillname>/context/
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
      Auto-fix straightforward issues found during validation.
-     Write validation log to: ./context/agent-validation-log.md
-     Write test report to: ./context/test-skill.md
+     Write validation log to: ./<skillname>/context/agent-validation-log.md
+     Write test report to: ./<skillname>/context/test-skill.md
 
      Return summary: validation checks (passed/fixed/needs review) and test results (total/passed/partial/failed)."
    )
    ```
 2. Relay results to the user.
-3. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md` and test results at `./context/test-skill.md`. Would you like to loop back to the generate step to address gaps, or finalize?"
+3. **Human Gate**: "Review the validation log at `./<skillname>/context/agent-validation-log.md` and test results at `./<skillname>/context/test-skill.md`. Would you like to loop back to the generate step to address gaps, or finalize?"
 4. If rebuild: go back to Step 6.
 5. If finalize:
    a. Package the skill:
@@ -288,7 +288,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
       "Skill built successfully!
       - Skill files: `./<skillname>/`
       - Archive: `./<skillname>.skill`
-      - Working files: `./context/`"
+      - Working files: `./<skillname>/context/`"
 
 ## Error Recovery
 
