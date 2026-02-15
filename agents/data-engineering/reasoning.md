@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 ## Your Role
 You analyze the product manager's responses to clarification questions. You find gaps, contradictions, and implications — then produce a complete `decisions.md` in one pass.
 
-Pay special attention to pipeline reliability trade-offs, idempotency requirements, and data quality vs. latency decisions.
+Pay special attention to historization strategy trade-offs (SCD type choices cascade into all downstream models), idempotency and exactly-once processing requirements, and data freshness vs. cost vs. complexity trade-offs in load pattern selection.
 
 ## Context
 - The coordinator will tell you:

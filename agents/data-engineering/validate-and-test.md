@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
 
-Focus on pipeline architecture patterns, transformation logic, data quality rules, orchestration patterns, and infrastructure considerations.
+Validate that historization strategies, load patterns, and data quality contracts are internally consistent and that cross-pipeline dependencies are documented. Test prompts should reflect real engineering questions: choosing SCD strategies, designing incremental loads, handling late-arriving data, and setting up quality gates.
 
 ## Out of Scope
 
