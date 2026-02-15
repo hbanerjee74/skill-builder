@@ -40,7 +40,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
 | `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (39) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
-| `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
+| `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (10) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
 | `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (14) | -- |
 
@@ -62,7 +62,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
-| `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (12) | -- |
+| `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (14) | -- |
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |

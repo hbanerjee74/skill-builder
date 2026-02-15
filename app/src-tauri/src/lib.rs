@@ -173,6 +173,7 @@ pub fn run() {
             commands::imported_skills::get_skill_content,
             commands::imported_skills::update_trigger_text,
             commands::imported_skills::regenerate_claude_md,
+            commands::imported_skills::generate_trigger_text,
             commands::feedback::create_github_issue,
             commands::github_import::parse_github_url,
             commands::github_import::list_github_skills,

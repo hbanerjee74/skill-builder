@@ -313,3 +313,6 @@ export const updateTriggerText = (skillName: string, triggerText: string) =>
 export const regenerateClaudeMd = () =>
   invoke<void>("regenerate_claude_md");
 
+export const generateTriggerText = (skillName: string) =>
+  invoke<string>("generate_trigger_text", { skillName });
+

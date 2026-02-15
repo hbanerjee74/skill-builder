@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, updateTriggerText, regenerateClaudeMd } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, updateTriggerText, regenerateClaudeMd, generateTriggerText } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, ImportedSkill } from "@/lib/types"
 
 type Step = "url" | "select" | "importing" | "review" | "done"
@@ -39,6 +39,7 @@ export default function GitHubImportDialog({
   const [importedCount, setImportedCount] = useState(0)
   const [importedSkillsList, setImportedSkillsList] = useState<ImportedSkill[]>([])
   const [triggerTexts, setTriggerTexts] = useState<Record<string, string>>({})
+  const [generatingTriggers, setGeneratingTriggers] = useState(false)
 
   const reset = useCallback(() => {
     setStep("url")
@@ -121,16 +122,24 @@ export default function GitHubImportDialog({
       )
       setImportedSkillsList(imported)
       setImportedCount(imported.length)
+      setStep("review")
+      setGeneratingTriggers(true)
 
-      // Generate default trigger text from frontmatter for each skill
+      // Generate trigger text via haiku in parallel for each skill
+      const results = await Promise.allSettled(
+        imported.map(async (skill) => {
+          const text = await generateTriggerText(skill.skill_name)
+          return { name: skill.skill_name, text }
+        })
+      )
       const texts: Record<string, string> = {}
-      for (const skill of imported) {
-        const name = skill.skill_name
-        const desc = skill.description || "this skill"
-        texts[name] = `This skill should be used when the user wants to "${desc}", read and follow the skill at \`.claude/skills/${name}/SKILL.md\`.`
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          texts[result.value.name] = result.value.text
+        }
       }
       setTriggerTexts(texts)
-      setStep("review")
+      setGeneratingTriggers(false)
 
       await onImported()
     } catch (err) {
@@ -316,17 +325,24 @@ export default function GitHubImportDialog({
                         </Badge>
                       )}
                     </div>
-                    <textarea
-                      className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={triggerTexts[skill.skill_name] || ""}
-                      onChange={(e) =>
-                        setTriggerTexts((prev) => ({
-                          ...prev,
-                          [skill.skill_name]: e.target.value,
-                        }))
-                      }
-                      placeholder="Describe when Claude should use this skill..."
-                    />
+                    {generatingTriggers && !triggerTexts[skill.skill_name] ? (
+                      <div className="flex items-center gap-2 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Generating trigger text...
+                      </div>
+                    ) : (
+                      <textarea
+                        className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={triggerTexts[skill.skill_name] || ""}
+                        onChange={(e) =>
+                          setTriggerTexts((prev) => ({
+                            ...prev,
+                            [skill.skill_name]: e.target.value,
+                          }))
+                        }
+                        placeholder="Describe when Claude should use this skill..."
+                      />
+                    )}
                   </div>
                 ))}
               </div>
@@ -341,7 +357,7 @@ export default function GitHubImportDialog({
               >
                 Skip
               </Button>
-              <Button onClick={handleSaveTriggers} disabled={loading}>
+              <Button onClick={handleSaveTriggers} disabled={loading || generatingTriggers}>
                 {loading && <Loader2 className="size-4 animate-spin" />}
                 Save Triggers
               </Button>
