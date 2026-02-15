@@ -578,68 +578,6 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
     format!("{}-{}-{}", skill_name, label, ts)
 }
 
-#[tauri::command]
-pub async fn run_review_step(
-    app: tauri::AppHandle,
-    pool: tauri::State<'_, SidecarPool>,
-    db: tauri::State<'_, Db>,
-    skill_name: String,
-    step_id: u32,
-    domain: String,
-    workspace_path: String,
-) -> Result<String, String> {
-    ensure_workspace_prompts(&app, &workspace_path).await?;
-
-    let step = get_step_config(step_id)?;
-    let api_key = read_api_key(&db)?;
-    let extended_context = read_extended_context(&db);
-    let agent_id = make_agent_id(&skill_name, &format!("review-step{}", step_id));
-
-    let output_path = format!("{}/{}", skill_name, step.output_file);
-
-    let prompt = format!(
-        "You are a quality reviewer for a skill-building workflow. \
-         Read the file at '{}' and evaluate whether the output is satisfactory. \
-         \n\nEvaluate based on:\n\
-         1. The file exists and is non-empty\n\
-         2. The content is well-structured markdown\n\
-         3. The content meaningfully addresses the domain: '{}'\n\
-         4. The content follows the expected file formats (clarifications format with YAML frontmatter, numbered questions, choices, recommendation, answer field)\n\
-         5. The content is substantive (not placeholder or minimal)\n\
-         \n\nRespond with EXACTLY one line:\n\
-         - If satisfactory: PASS\n\
-         - If needs regeneration: RETRY: <brief reason>\n\
-         \nDo not write any files. Only read and evaluate.",
-        output_path, domain
-    );
-
-    let config = SidecarConfig {
-        prompt,
-        model: Some(resolve_model_id("haiku")),
-        api_key,
-        cwd: workspace_path,
-        allowed_tools: Some(vec!["Read".to_string(), "Glob".to_string()]),
-        max_turns: Some(10),
-        permission_mode: Some("bypassPermissions".to_string()),
-        session_id: None,
-        betas: build_betas(extended_context, None, "haiku"),
-        max_thinking_tokens: None,
-        path_to_claude_code_executable: None,
-        agent_name: None,
-    };
-
-    sidecar::spawn_sidecar(
-        agent_id.clone(),
-        config,
-        pool.inner().clone(),
-        app,
-        skill_name,
-    )
-    .await?;
-
-    Ok(agent_id)
-}
-
 /// Core logic for validating decisions.md existence — testable without tauri::State.
 /// Checks in order: skill output dir (skillsPath), workspace dir.
 /// Returns Ok(()) if found, Err with a clear message if missing.
