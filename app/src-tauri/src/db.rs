@@ -24,6 +24,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_author_migration(&conn)?;
     run_usage_tracking_migration(&conn)?;
     run_workflow_session_migration(&conn)?;
+    run_sessions_table_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -140,6 +141,18 @@ fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
             instance_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
             acquired_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );",
+    )
+}
+
+fn run_sessions_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS workflow_sessions (
+            session_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL,
+            pid INTEGER NOT NULL,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            ended_at TEXT
         );",
     )
 }
@@ -671,6 +684,13 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     )
     .map_err(|e| e.to_string())?;
 
+    // Delete workflow sessions
+    conn.execute(
+        "DELETE FROM workflow_sessions WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+
     conn.execute(
         "DELETE FROM workflow_runs WHERE skill_name = ?1",
         [skill_name],
@@ -1135,6 +1155,101 @@ pub fn check_pid_alive(pid: u32) -> bool {
         .unwrap_or(false)
 }
 
+// --- Workflow Sessions ---
+
+pub fn create_workflow_session(
+    conn: &Connection,
+    session_id: &str,
+    skill_name: &str,
+    pid: u32,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, pid) VALUES (?1, ?2, ?3)",
+        rusqlite::params![session_id, skill_name, pid as i64],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn end_workflow_session(conn: &Connection, session_id: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE session_id = ?1 AND ended_at IS NULL",
+        [session_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, String> {
+    let count = conn
+        .execute(
+            "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE pid = ?1 AND ended_at IS NULL",
+            rusqlite::params![pid as i64],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count as u32)
+}
+
+pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
+    // Find all sessions that were never ended
+    let mut stmt = conn
+        .prepare("SELECT session_id, skill_name, pid FROM workflow_sessions WHERE ended_at IS NULL")
+        .map_err(|e| e.to_string())?;
+
+    let orphans: Vec<(String, String, u32)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)? as u32,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    let mut reconciled = 0u32;
+    for (session_id, skill_name, pid) in orphans {
+        if !check_pid_alive(pid) {
+            // Process is dead — close the session with the best available timestamp.
+            // Use the latest agent_runs completed_at for this session, or fall back to started_at.
+            let fallback_time: Option<String> = conn
+                .query_row(
+                    "SELECT COALESCE(
+                        (SELECT MAX(completed_at) FROM agent_runs WHERE session_id = ?1 AND completed_at IS NOT NULL),
+                        (SELECT started_at FROM workflow_sessions WHERE session_id = ?1)
+                    )",
+                    [&session_id],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(ended_at) = fallback_time {
+                conn.execute(
+                    "UPDATE workflow_sessions SET ended_at = ?1 WHERE session_id = ?2",
+                    rusqlite::params![ended_at, session_id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                // No timestamp available — use current time
+                conn.execute(
+                    "UPDATE workflow_sessions SET ended_at = datetime('now') || 'Z' WHERE session_id = ?1",
+                    [&session_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+
+            log::info!(
+                "Reconciled orphaned session {} for skill '{}' (PID {} is dead)",
+                session_id, skill_name, pid
+            );
+            reconciled += 1;
+        }
+    }
+
+    Ok(reconciled)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1147,6 +1262,7 @@ mod tests {
         run_author_migration(&conn).unwrap();
         run_usage_tracking_migration(&conn).unwrap();
         run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
         conn
     }
 
@@ -1905,5 +2021,170 @@ mod tests {
         assert_eq!(step_name(8), "Package/Refine");
         assert_eq!(step_name(-1), "Chat");
         assert_eq!(step_name(99), "Step 99");
+    }
+
+    // --- Workflow Session tests ---
+
+    #[test]
+    fn test_create_workflow_session() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_none());
+    }
+
+    #[test]
+    fn test_create_workflow_session_idempotent() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        // Second insert with same ID should be ignored (INSERT OR IGNORE)
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_end_workflow_session() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_some());
+    }
+
+    #[test]
+    fn test_end_workflow_session_idempotent() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let first_ended: String = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Calling again should not update (WHERE ended_at IS NULL won't match)
+        end_workflow_session(&conn, "sess-1").unwrap();
+
+        let second_ended: String = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(first_ended, second_ended);
+    }
+
+    #[test]
+    fn test_end_all_sessions_for_pid() {
+        let conn = create_test_db();
+        create_workflow_session(&conn, "sess-1", "skill-a", 100).unwrap();
+        create_workflow_session(&conn, "sess-2", "skill-b", 100).unwrap();
+        create_workflow_session(&conn, "sess-3", "skill-c", 200).unwrap();
+
+        let count = end_all_sessions_for_pid(&conn, 100).unwrap();
+        assert_eq!(count, 2);
+
+        // sess-3 (pid 200) should still be open
+        let ended: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-3'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended.is_none());
+    }
+
+    #[test]
+    fn test_reconcile_orphaned_sessions_dead_pid() {
+        let conn = create_test_db();
+        // PID 99999999 is dead
+        create_workflow_session(&conn, "sess-1", "my-skill", 99999999).unwrap();
+
+        let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
+        assert_eq!(reconciled, 1);
+
+        // Session should now be ended
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_some());
+    }
+
+    #[test]
+    fn test_reconcile_orphaned_sessions_live_pid() {
+        let conn = create_test_db();
+        let pid = std::process::id();
+        create_workflow_session(&conn, "sess-1", "my-skill", pid).unwrap();
+
+        let reconciled = reconcile_orphaned_sessions(&conn).unwrap();
+        assert_eq!(reconciled, 0);
+
+        // Session should still be open
+        let ended_at: Option<String> = conn
+            .query_row(
+                "SELECT ended_at FROM workflow_sessions WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(ended_at.is_none());
+    }
+
+    #[test]
+    fn test_delete_workflow_run_cascades_sessions() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "domain", 0, "pending", "domain").unwrap();
+        create_workflow_session(&conn, "sess-1", "my-skill", 12345).unwrap();
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_sessions WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_sessions_table_migration_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        // Running again should not error
+        run_sessions_table_migration(&conn).unwrap();
     }
 }
