@@ -868,6 +868,8 @@ export default function WorkflowPage() {
                   setShowResetConfirm(true);
                   return;
                 }
+                // End active session — reset starts a fresh workflow context
+                endActiveSession();
                 // Full reset: clear artifacts on disk, clear agent runs, then revert step
                 if (workspacePath) {
                   try {
@@ -982,6 +984,8 @@ export default function WorkflowPage() {
         onOpenChange={(open) => { if (!open) setResetTarget(null) }}
         onReset={() => {
           if (resetTarget !== null) {
+            // End active session — resetting to a prior step starts a fresh workflow context
+            endActiveSession();
             clearRuns();
             rerunFromStep(resetTarget);
             setResetTarget(null);
@@ -1005,6 +1009,8 @@ export default function WorkflowPage() {
               </Button>
               <Button variant="destructive" onClick={async () => {
                 setShowResetConfirm(false);
+                // End active session — reset starts a fresh workflow context
+                endActiveSession();
                 // Full reset: clear artifacts on disk, clear agent runs, then revert step
                 if (workspacePath) {
                   try {
