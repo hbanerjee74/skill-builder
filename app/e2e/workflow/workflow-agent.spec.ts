@@ -83,7 +83,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
 
     // Verify we're on the workflow page with Step 1 visible
-    await expect(page.getByText("Step 1: Research Concepts")).toBeVisible();
+    await expect(page.getByText("Step 1: Research")).toBeVisible();
 
     // Click Start Step
     const startButton = page.getByRole("button", { name: "Start Step" });
@@ -214,7 +214,7 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     await navigateToWorkflow(page);
 
     // Verify Step 1 header is visible
-    await expect(page.getByText("Step 1: Research Concepts")).toBeVisible();
+    await expect(page.getByText("Step 1: Research")).toBeVisible();
 
     // Start the step
     await page.getByRole("button", { name: "Start Step" }).click();
@@ -230,17 +230,17 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
 
     // Wait for the completion effect chain:
     // captureStepArtifacts -> mark step complete -> advanceToNextStep
-    // After advancing, Step 2 (Concepts Review) becomes the current step.
+    // After advancing, Step 2 (Review) becomes the current step.
     await page.waitForTimeout(500);
 
-    // The workflow should have advanced to Step 2 (Concepts Review).
+    // The workflow should have advanced to Step 2 (Review).
     // Step header should now show the next step.
-    await expect(page.getByText("Step 2: Concepts Review")).toBeVisible();
+    await expect(page.getByText("Step 2: Review")).toBeVisible();
 
     // Step 1 in the sidebar should show as completed (green checkmark icon
     // is rendered by WorkflowSidebar for completed status).
     // The sidebar button for step 1 should be clickable (completed steps are).
-    const step1Button = page.locator("button").filter({ hasText: "1. Research Concepts" });
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
     await expect(step1Button).toBeVisible();
     // Completed steps are NOT disabled in the sidebar
     await expect(step1Button).toBeEnabled();

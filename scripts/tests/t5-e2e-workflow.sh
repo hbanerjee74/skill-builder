@@ -9,7 +9,7 @@ run_t5() {
   workspace=$(make_temp_dir "t5-e2e")
   log_verbose "T5 workspace: $workspace"
 
-  local e2e_prompt="Run the /skill-builder:start workflow.
+  local e2e_prompt="Run the /skill-builder:generate-skill workflow.
 
 Domain: pet store analytics
 Skill name: pet-store-analytics

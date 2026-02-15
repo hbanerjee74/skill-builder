@@ -72,7 +72,7 @@ claude --plugin-dir .
 
 ## Plugin Notes
 
-- Entry point is `skills/start/SKILL.md` via `/skill-builder:start`.
+- Entry point is `skills/generate-skill/SKILL.md` via `/skill-builder:generate-skill`.
 - Plugin metadata/layout lives in `.claude-plugin/` and `.claude/`.
 - Agent prompts are in `agents/`; coordinator orchestrates them via `Task(...)`.
 - `references/shared-context.md` is read by all agents and is high-impact.

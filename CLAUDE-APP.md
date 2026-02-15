@@ -37,7 +37,7 @@ The sidecar creates log files under each skill's `logs/` directory: `{workspace}
 - stderr lines logged as `{"type":"stderr","content":"..."}`
 - Final line: `{"type":"agent-exit","success":true|false}`
 
-Debug with: `tail -f ~/.vibedata/my-skill/logs/step0-research-concepts-*.jsonl`
+Debug with: `tail -f ~/.vibedata/my-skill/logs/step1-research-*.jsonl`
 
 ### Sidecar config (passed as CLI argument)
 

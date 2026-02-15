@@ -259,14 +259,14 @@ fn run_workflow_session_migration(conn: &Connection) -> Result<(), rusqlite::Err
 fn step_name(step_id: i32) -> String {
     match step_id {
         0 => "Init".to_string(),
-        1 => "Research Concepts".to_string(),
-        2 => "Concepts Review".to_string(),
-        3 => "Research Patterns".to_string(),
-        4 => "Human Review".to_string(),
-        5 => "Reasoning".to_string(),
-        6 => "Build".to_string(),
-        7 => "Validate".to_string(),
-        8 => "Package/Refine".to_string(),
+        1 => "Research".to_string(),
+        2 => "Review".to_string(),
+        3 => "Detailed Research".to_string(),
+        4 => "Review".to_string(),
+        5 => "Confirm Decisions".to_string(),
+        6 => "Generate Skill".to_string(),
+        7 => "Validate Skill".to_string(),
+        8 => "Refine".to_string(),
         -1 => "Chat".to_string(),
         _ => format!("Step {}", step_id),
     }
@@ -2134,12 +2134,12 @@ mod tests {
 
         // Ordered by total_cost DESC: step 6 ($0.25) then step 1 ($0.18)
         assert_eq!(by_step[0].step_id, 6);
-        assert_eq!(by_step[0].step_name, "Build");
+        assert_eq!(by_step[0].step_name, "Generate Skill");
         assert_eq!(by_step[0].run_count, 1);
         assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
 
         assert_eq!(by_step[1].step_id, 1);
-        assert_eq!(by_step[1].step_name, "Research Concepts");
+        assert_eq!(by_step[1].step_name, "Research");
         assert_eq!(by_step[1].run_count, 2);
         assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
     }
@@ -2199,14 +2199,14 @@ mod tests {
     #[test]
     fn test_step_name_mapping() {
         assert_eq!(step_name(0), "Init");
-        assert_eq!(step_name(1), "Research Concepts");
-        assert_eq!(step_name(2), "Concepts Review");
-        assert_eq!(step_name(3), "Research Patterns");
-        assert_eq!(step_name(4), "Human Review");
-        assert_eq!(step_name(5), "Reasoning");
-        assert_eq!(step_name(6), "Build");
-        assert_eq!(step_name(7), "Validate");
-        assert_eq!(step_name(8), "Package/Refine");
+        assert_eq!(step_name(1), "Research");
+        assert_eq!(step_name(2), "Review");
+        assert_eq!(step_name(3), "Detailed Research");
+        assert_eq!(step_name(4), "Review");
+        assert_eq!(step_name(5), "Confirm Decisions");
+        assert_eq!(step_name(6), "Generate Skill");
+        assert_eq!(step_name(7), "Validate Skill");
+        assert_eq!(step_name(8), "Refine");
         assert_eq!(step_name(-1), "Chat");
         assert_eq!(step_name(99), "Step 99");
     }

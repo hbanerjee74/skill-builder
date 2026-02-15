@@ -28,40 +28,40 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
             step_id: 0,
-            name: "Research Concepts".to_string(),
-            prompt_template: "research-concepts.md".to_string(),
-            output_file: "context/clarifications-concepts.md".to_string(),
+            name: "Research".to_string(),
+            prompt_template: "research.md".to_string(),
+            output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         2 => Ok(StepConfig {
             step_id: 2,
-            name: "Perform Research".to_string(),
-            prompt_template: "research-patterns-and-merge.md".to_string(),
-            output_file: "context/clarifications.md".to_string(),
+            name: "Detailed Research".to_string(),
+            prompt_template: "detailed-research.md".to_string(),
+            output_file: "context/clarifications-detailed.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
         4 => Ok(StepConfig {
             step_id: 4,
-            name: "Reasoning".to_string(),
-            prompt_template: "reasoning.md".to_string(),
+            name: "Confirm Decisions".to_string(),
+            prompt_template: "confirm-decisions.md".to_string(),
             output_file: "context/decisions.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
         }),
         5 => Ok(StepConfig {
             step_id: 5,
-            name: "Build Skill".to_string(),
-            prompt_template: "build.md".to_string(),
+            name: "Generate Skill".to_string(),
+            prompt_template: "generate-skill.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
         }),
         6 => Ok(StepConfig {
             step_id: 6,
-            name: "Validate".to_string(),
-            prompt_template: "validate-and-test.md".to_string(),
+            name: "Validate Skill".to_string(),
+            prompt_template: "validate-skill.md".to_string(),
             output_file: "context/agent-validation-log.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 120,
@@ -390,7 +390,12 @@ fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &s
 /// file is missing or has no name field.
 fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &str) -> String {
     let phase = prompt_template.trim_end_matches(".md");
+    // Try type-specific first
     if let Some(name) = read_agent_frontmatter_name(workspace_path, skill_type, phase) {
+        return name;
+    }
+    // Fallback to shared
+    if let Some(name) = read_agent_frontmatter_name(workspace_path, "shared", phase) {
         return name;
     }
     format!("{}-{}", skill_type, phase)
@@ -467,15 +472,14 @@ fn build_prompt(
 const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
 const VALID_PHASES: &[&str] = &[
     "research-concepts",
-    "research-patterns-and-merge",
-    "reasoning",
-    "build",
-    "validate",
-    "test",
-    "validate-and-test",
+    "research",
+    "research-practices",
+    "research-implementation",
+    "confirm-decisions",
+    "generate-skill",
+    "validate-skill",
+    "detailed-research",
     "merge",
-    "research-patterns",
-    "research-data",
 ];
 
 #[tauri::command]
@@ -537,11 +541,11 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
 
 fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
-        0 => Some(8_000),   // research-concepts orchestrator
-        2 => Some(8_000),   // research-patterns-and-merge orchestrator
-        4 => Some(32_000),  // reasoning — highest priority
-        5 => Some(16_000),  // build — complex synthesis
-        6 => Some(8_000),   // validate
+        0 => Some(8_000),   // research
+        2 => Some(8_000),   // detailed-research
+        4 => Some(32_000),  // confirm-decisions — highest priority
+        5 => Some(16_000),  // generate-skill — complex synthesis
+        6 => Some(8_000),   // validate-skill
         _ => None,
     }
 }
@@ -668,9 +672,9 @@ fn validate_decisions_exist_inner(
     }
 
     Err(
-        "Cannot start Build step: decisions.md was not found on the filesystem. \
-         The Reasoning step (step 4) must create a decisions file before the Build step can run. \
-         Please re-run the Reasoning step first."
+        "Cannot start Generate Skill step: decisions.md was not found on the filesystem. \
+         The Confirm Decisions step (step 4) must create a decisions file before the Generate Skill step can run. \
+         Please re-run the Confirm Decisions step first."
             .to_string(),
     )
 }
@@ -1028,15 +1032,14 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
-            "context/research-entities.md",
-            "context/research-metrics.md",
             "context/clarifications-concepts.md",
+            "context/clarifications-practices.md",
+            "context/clarifications-implementation.md",
+            "context/clarifications.md",
         ],
         1 => vec![],  // Human review
         2 => vec![
-            "context/clarifications-patterns.md",
-            "context/clarifications-data.md",
-            "context/clarifications.md",
+            "context/clarifications-detailed.md",
         ],
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
@@ -1160,7 +1163,7 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
         }
     }
 
-    // Step 4 (reasoning): also delete the chat session file so reset starts fresh
+    // Step 4 (confirm-decisions): also delete the chat session file so reset starts fresh
     if step_id == 4 {
         let session = skill_dir.join("logs").join("reasoning-chat.json");
         if session.exists() {
@@ -1233,13 +1236,13 @@ pub fn preview_step_reset(
     };
 
     let step_names = [
-        "Research Concepts",
-        "Concepts Review",
-        "Perform Research",
-        "Human Review",
-        "Reasoning",
-        "Build Skill",
-        "Validate",
+        "Research",
+        "Review",
+        "Detailed Research",
+        "Review",
+        "Confirm Decisions",
+        "Generate Skill",
+        "Validate Skill",
         "Refine",
     ];
 
@@ -1382,7 +1385,7 @@ mod tests {
     fn test_build_prompt_with_skills_path() {
         // When skills_path is set, skill_output_dir uses skills_path/skill_name
         let prompt = build_prompt(
-            "build.md",
+            "generate-skill.md",
             "skill/SKILL.md",
             "my-skill",
             "e-commerce",
@@ -1410,7 +1413,7 @@ mod tests {
         // For non-build steps, output_file doesn't start with "skill/" so output_path
         // should still be in workspace even when skills_path is set
         let prompt = build_prompt(
-            "reasoning.md",
+            "confirm-decisions.md",
             "context/decisions.md",
             "my-skill",
             "e-commerce",
@@ -1453,7 +1456,7 @@ mod tests {
     #[test]
     fn test_build_prompt_with_author_info() {
         let prompt = build_prompt(
-            "build.md",
+            "generate-skill.md",
             "skill/SKILL.md",
             "my-skill",
             "e-commerce",
@@ -1471,7 +1474,7 @@ mod tests {
     #[test]
     fn test_build_prompt_without_author_info() {
         let prompt = build_prompt(
-            "build.md",
+            "generate-skill.md",
             "skill/SKILL.md",
             "my-skill",
             "e-commerce",
@@ -1615,16 +1618,15 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            skill_dir.join("context/clarifications-patterns.md"),
-            "step2",
+            skill_dir.join("context/clarifications.md"),
+            "step0",
         )
         .unwrap();
         std::fs::write(
-            skill_dir.join("context/clarifications-data.md"),
+            skill_dir.join("context/clarifications-detailed.md"),
             "step2",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/clarifications.md"), "step2").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step5").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
@@ -1635,7 +1637,7 @@ mod tests {
 
         // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications-concepts.md").exists());
-        assert!(skill_dir.join("context/clarifications.md").exists());
+        assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -1644,21 +1646,20 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step_output_step2_removes_merged_clarifications() {
+    fn test_clean_step_output_step2_removes_detailed_clarifications() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Step 2 output is only the merged clarifications (temp files
-        // are cleaned up by the agent, not tracked as step outputs)
-        std::fs::write(skill_dir.join("context/clarifications.md"), "m").unwrap();
+        // Step 2 output is only the detailed clarifications
+        std::fs::write(skill_dir.join("context/clarifications-detailed.md"), "d").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — step 4 should be untouched
         clean_step_output(workspace, "my-skill", 2, None);
 
-        assert!(!skill_dir.join("context/clarifications.md").exists());
+        assert!(!skill_dir.join("context/clarifications-detailed.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }
 
@@ -1789,12 +1790,12 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ws = tmp.path().to_str().unwrap();
         assert_eq!(
-            derive_agent_name(ws, "domain", "research-concepts.md"),
-            "domain-research-concepts"
+            derive_agent_name(ws, "domain", "research.md"),
+            "domain-research"
         );
         assert_eq!(
-            derive_agent_name(ws, "platform", "build.md"),
-            "platform-build"
+            derive_agent_name(ws, "platform", "generate-skill.md"),
+            "platform-generate-skill"
         );
     }
 
@@ -1807,13 +1808,13 @@ mod tests {
 
         // Write an agent file with a frontmatter name that differs from the filename
         std::fs::write(
-            agents_dir.join("data-engineering-research-patterns-and-merge.md"),
-            "---\nname: de-research-patterns-and-merge\nmodel: sonnet\n---\n# Agent\n",
+            agents_dir.join("data-engineering-research.md"),
+            "---\nname: de-research\nmodel: sonnet\n---\n# Agent\n",
         ).unwrap();
 
         assert_eq!(
-            derive_agent_name(ws, "data-engineering", "research-patterns-and-merge.md"),
-            "de-research-patterns-and-merge"
+            derive_agent_name(ws, "data-engineering", "research.md"),
+            "de-research"
         );
     }
 
@@ -1896,7 +1897,7 @@ mod tests {
     fn test_build_prompt_context_path_without_skills_path() {
         // When skills_path is None, skill output context dir falls back to workspace-based path
         let prompt = build_prompt(
-            "reasoning.md",
+            "confirm-decisions.md",
             "context/decisions.md",
             "my-skill",
             "analytics",
@@ -2065,11 +2066,11 @@ mod tests {
         // that get_step_config returns the *normal* turn limits for every step,
         // which is what run_workflow_step now uses unconditionally.
         let expected: Vec<(u32, u32)> = vec![
-            (0, 50),   // research concepts
-            (2, 50),   // research patterns
-            (4, 100),  // reasoning
-            (5, 120),  // build
-            (6, 120),  // validate
+            (0, 50),   // research
+            (2, 50),   // detailed research
+            (4, 100),  // confirm decisions
+            (5, 120),  // generate skill
+            (6, 120),  // validate skill
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2158,7 +2159,7 @@ mod tests {
     fn test_rerun_prompt_not_prepended_when_false() {
         // When rerun is false, the prompt should NOT have [RERUN MODE]
         let prompt = build_prompt(
-            "build.md",
+            "generate-skill.md",
             "skill/SKILL.md",
             "my-skill",
             "analytics",
@@ -2237,11 +2238,11 @@ mod tests {
     fn test_rerun_prompt_for_all_agent_steps() {
         // Verify rerun prompt works correctly for every agent step
         let agent_steps: Vec<(u32, &str, &str)> = vec![
-            (0, "research-concepts.md", "context/clarifications-concepts.md"),
-            (2, "research-patterns-and-merge.md", "context/clarifications.md"),
-            (4, "reasoning.md", "context/decisions.md"),
-            (5, "build.md", "skill/SKILL.md"),
-            (6, "validate-and-test.md", "context/agent-validation-log.md"),
+            (0, "research.md", "context/clarifications.md"),
+            (2, "detailed-research.md", "context/clarifications-detailed.md"),
+            (4, "confirm-decisions.md", "context/decisions.md"),
+            (5, "generate-skill.md", "skill/SKILL.md"),
+            (6, "validate-skill.md", "context/agent-validation-log.md"),
         ];
 
         for (step_id, prompt_template, output_file) in agent_steps {
@@ -2365,12 +2366,11 @@ mod tests {
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = [
-            "research-entities.md",
-            "research-metrics.md",
             "clarifications-concepts.md",
-            "clarifications-patterns.md",
-            "clarifications-data.md",
+            "clarifications-practices.md",
+            "clarifications-implementation.md",
             "clarifications.md",
+            "clarifications-detailed.md",
             "decisions.md",
         ];
         for file in &context_files {

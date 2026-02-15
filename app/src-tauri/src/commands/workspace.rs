@@ -1221,7 +1221,7 @@ mod tests {
 
     #[test]
     fn test_detect_partial_step0_output_cleaned_up() {
-        // If step 0 has only 2 of 3 expected files, it should not count as
+        // If step 0 has only 2 of 4 expected files, it should not count as
         // completed and the partial files should be cleaned up.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
@@ -1229,16 +1229,16 @@ mod tests {
 
         let skill_dir = tmp.path().join("partial");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        // Write only 2 of 3 step 0 files
-        std::fs::write(skill_dir.join("context/research-entities.md"), "# partial").unwrap();
-        std::fs::write(skill_dir.join("context/research-metrics.md"), "# partial").unwrap();
+        // Write only 2 of 4 step 0 files
+        std::fs::write(skill_dir.join("context/clarifications-concepts.md"), "# partial").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications-practices.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(workspace, "partial", None);
         assert_eq!(step, None, "partial step 0 should not be detected");
 
         // Partial files should have been cleaned up
-        assert!(!skill_dir.join("context/research-entities.md").exists());
-        assert!(!skill_dir.join("context/research-metrics.md").exists());
+        assert!(!skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(!skill_dir.join("context/clarifications-practices.md").exists());
     }
 
     #[test]
@@ -1251,9 +1251,9 @@ mod tests {
         std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
         let target = skills.join("my-skill");
         std::fs::create_dir_all(target.join("context")).unwrap();
-        // Write only 2 of 3 step 0 files in skills_path
-        std::fs::write(target.join("context/research-entities.md"), "# partial").unwrap();
-        std::fs::write(target.join("context/research-metrics.md"), "# partial").unwrap();
+        // Write only 2 of 4 step 0 files in skills_path
+        std::fs::write(target.join("context/clarifications-concepts.md"), "# partial").unwrap();
+        std::fs::write(target.join("context/clarifications-practices.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
@@ -1263,8 +1263,8 @@ mod tests {
         assert_eq!(step, None, "partial step 0 in skills_path should not be detected");
 
         // Partial files should have been cleaned up from skills_path
-        assert!(!target.join("context/research-entities.md").exists());
-        assert!(!target.join("context/research-metrics.md").exists());
+        assert!(!target.join("context/clarifications-concepts.md").exists());
+        assert!(!target.join("context/clarifications-practices.md").exists());
     }
 
     #[test]

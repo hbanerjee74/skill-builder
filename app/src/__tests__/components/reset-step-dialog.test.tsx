@@ -12,8 +12,8 @@ vi.mock("sonner", () => ({
 import ResetStepDialog from "@/components/reset-step-dialog";
 
 const mockPreview = [
-  { step_id: 2, step_name: "Perform Research", files: ["context/clarifications.md"] },
-  { step_id: 4, step_name: "Reasoning", files: ["context/decisions.md"] },
+  { step_id: 2, step_name: "Detailed Research", files: ["context/clarifications-detailed.md"] },
+  { step_id: 4, step_name: "Confirm Decisions", files: ["context/decisions.md"] },
 ];
 
 describe("ResetStepDialog", () => {
@@ -54,9 +54,9 @@ describe("ResetStepDialog", () => {
       />
     );
     await waitFor(() => {
-      expect(screen.getByText("Perform Research")).toBeInTheDocument();
+      expect(screen.getByText("Detailed Research")).toBeInTheDocument();
       expect(screen.getByText("context/clarifications.md")).toBeInTheDocument();
-      expect(screen.getByText("Reasoning")).toBeInTheDocument();
+      expect(screen.getByText("Confirm Decisions")).toBeInTheDocument();
       expect(screen.getByText("context/decisions.md")).toBeInTheDocument();
     });
   });
@@ -92,7 +92,7 @@ describe("ResetStepDialog", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Perform Research")).toBeInTheDocument();
+      expect(screen.getByText("Detailed Research")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /Reset/i }));
@@ -173,7 +173,7 @@ describe("ResetStepDialog", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Perform Research")).toBeInTheDocument();
+      expect(screen.getByText("Detailed Research")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /Reset/i }));
