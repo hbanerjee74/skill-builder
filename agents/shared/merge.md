@@ -83,12 +83,7 @@ For each group of duplicates:
 Unique questions (no duplicates) pass through as-is.
 
 ### Step 4: Write output
-Write to the target file path. Follow the Clarifications file format from the shared context. Organize by topic section, place cross-section questions in a `## Cross-cutting Questions` section, and number all questions sequentially (Q1, Q2, Q3...).
-
-Add a merge summary at the top:
-```
-<!-- Merge summary: X total questions from sources, Y duplicates removed, Z final questions -->
-```
+Write to the target file path. Follow the Clarifications file format from the shared context — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Organize by topic section, place cross-section questions in a `## Cross-cutting Questions` section, and number all questions sequentially (Q1, Q2, Q3...).
 
 </instructions>
 
@@ -97,7 +92,11 @@ Add a merge summary at the top:
 <output_example>
 
 ```markdown
-<!-- Merge summary: 20 total questions from research agents, 4 duplicates removed, 16 final questions -->
+---
+question_count: 16
+sections: ["Business Patterns & Edge Cases", "Data Modeling & Source Systems", "Cross-cutting Questions"]
+duplicates_removed: 4
+---
 
 ## Business Patterns & Edge Cases
 
@@ -127,7 +126,7 @@ _Consolidated from: Business Patterns Q3, Data Modeling Q7_
 
 ## Success Criteria
 - All questions from source files are accounted for (kept, merged, or noted as duplicate)
-- Merge summary accurately reports totals
+- Frontmatter accurately reports question count, sections, and duplicates removed
 - Consolidated questions fold in unique choices from all duplicate versions
 - No two remaining questions would produce the same design decision if answered
 - Sequential numbering is correct across all sections
