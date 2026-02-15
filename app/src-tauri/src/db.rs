@@ -152,9 +152,26 @@ fn run_sessions_table_migration(conn: &Connection) -> Result<(), rusqlite::Error
             skill_name TEXT NOT NULL,
             pid INTEGER NOT NULL,
             started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
-            ended_at TEXT
+            ended_at TEXT,
+            reset_marker TEXT
         );",
-    )
+    )?;
+
+    // Idempotent ALTER for existing databases that already have the table without reset_marker
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(workflow_sessions)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "reset_marker") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_sessions ADD COLUMN reset_marker TEXT;",
+        )?;
+    }
+    Ok(())
 }
 
 fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -283,53 +300,36 @@ pub fn persist_agent_run(
 }
 
 pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    if hide_cancelled {
-        // Aggregate at session level first, filtering zero-cost sessions
-        let mut stmt = conn
-            .prepare(
-                "SELECT COALESCE(SUM(sub.session_cost), 0.0),
-                        COUNT(*),
-                        COALESCE(AVG(sub.session_cost), 0.0)
-                 FROM (
-                   SELECT workflow_session_id, SUM(total_cost) as session_cost
-                   FROM agent_runs
-                   WHERE reset_marker IS NULL
-                     AND workflow_session_id IS NOT NULL
-                   GROUP BY workflow_session_id
-                   HAVING SUM(total_cost) > 0
-                 ) sub",
-            )
-            .map_err(|e| e.to_string())?;
-
-        stmt.query_row([], |row| {
-            Ok(UsageSummary {
-                total_cost: row.get(0)?,
-                total_runs: row.get(1)?,
-                avg_cost_per_run: row.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())
+    let having = if hide_cancelled {
+        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0"
     } else {
-        let mut stmt = conn
-            .prepare(
-                "SELECT COALESCE(SUM(total_cost), 0.0),
-                        COUNT(DISTINCT workflow_session_id),
-                        COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
-                 FROM agent_runs
-                 WHERE reset_marker IS NULL
-                   AND workflow_session_id IS NOT NULL",
-            )
-            .map_err(|e| e.to_string())?;
+        ""
+    };
+    let sql = format!(
+        "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                COUNT(*),
+                COALESCE(AVG(sub.session_cost), 0.0)
+         FROM (
+           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
+           FROM workflow_sessions ws
+           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                  AND ar.reset_marker IS NULL
+           WHERE ws.reset_marker IS NULL
+           GROUP BY ws.session_id
+           {}
+         ) sub",
+        having
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-        stmt.query_row([], |row| {
-            Ok(UsageSummary {
-                total_cost: row.get(0)?,
-                total_runs: row.get(1)?,
-                avg_cost_per_run: row.get(2)?,
-            })
+    stmt.query_row([], |row| {
+        Ok(UsageSummary {
+            total_cost: row.get(0)?,
+            total_runs: row.get(1)?,
+            avg_cost_per_run: row.get(2)?,
         })
-        .map_err(|e| e.to_string())
-    }
+    })
+    .map_err(|e| e.to_string())
 }
 
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
@@ -373,22 +373,33 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 }
 
 pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
-    let having = if hide_cancelled { "HAVING SUM(total_cost) > 0" } else { "" };
+    let having = if hide_cancelled {
+        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0"
+    } else {
+        ""
+    };
     let sql = format!(
-        "SELECT workflow_session_id,
-                skill_name, MIN(step_id), MAX(step_id),
-                GROUP_CONCAT(DISTINCT step_id), COUNT(*),
-                COALESCE(SUM(total_cost), 0.0),
-                COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-                COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
-                COALESCE(SUM(duration_ms), 0),
-                MIN(started_at), MAX(completed_at)
-         FROM agent_runs
-         WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL
-         GROUP BY workflow_session_id, skill_name
+        "SELECT ws.session_id,
+                ws.skill_name,
+                COALESCE(MIN(ar.step_id), 0),
+                COALESCE(MAX(ar.step_id), 0),
+                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
+                COUNT(ar.agent_id),
+                COALESCE(SUM(ar.total_cost), 0.0),
+                COALESCE(SUM(ar.input_tokens), 0),
+                COALESCE(SUM(ar.output_tokens), 0),
+                COALESCE(SUM(ar.cache_read_tokens), 0),
+                COALESCE(SUM(ar.cache_write_tokens), 0),
+                COALESCE(SUM(ar.duration_ms), 0),
+                ws.started_at,
+                ws.ended_at
+         FROM workflow_sessions ws
+         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                AND ar.reset_marker IS NULL
+         WHERE ws.reset_marker IS NULL
+         GROUP BY ws.session_id
          {}
-         ORDER BY MAX(completed_at) DESC
+         ORDER BY ws.started_at DESC
          LIMIT ?1",
         having
     );
@@ -523,6 +534,11 @@ pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec
 pub fn reset_usage(conn: &Connection) -> Result<(), String> {
     conn.execute(
         "UPDATE agent_runs SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE workflow_sessions SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -1851,6 +1867,7 @@ mod tests {
     fn test_get_usage_summary_correct_aggregates() {
         let conn = create_test_db();
         let ws = Some("wf-session-1");
+        create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1888,6 +1905,7 @@ mod tests {
     fn test_reset_usage_marks_runs() {
         let conn = create_test_db();
         let ws = Some("wf-session-r");
+        create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1901,7 +1919,7 @@ mod tests {
 
         reset_usage(&conn).unwrap();
 
-        // After reset, summary should show zero
+        // After reset, summary should show zero (both agent_runs and workflow_sessions are marked)
         let summary = get_usage_summary(&conn, false).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
@@ -1910,7 +1928,12 @@ mod tests {
         let runs = get_recent_runs(&conn, 10).unwrap();
         assert!(runs.is_empty());
 
+        // Recent workflow sessions should also be empty
+        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        assert!(sessions.is_empty());
+
         // New runs after reset should still be visible
+        create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
             500, 200, 0, 0, 0.05, 3000, None, Some("wf-session-r2"),
@@ -1926,6 +1949,7 @@ mod tests {
     fn test_get_usage_by_step_groups_correctly() {
         let conn = create_test_db();
         let ws = Some("wf-session-s");
+        create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
@@ -1961,6 +1985,7 @@ mod tests {
     fn test_get_usage_by_model_groups_correctly() {
         let conn = create_test_db();
         let ws = Some("wf-session-m");
+        create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
             1000, 500, 0, 0, 0.10, 5000, None, ws,
