@@ -22,7 +22,7 @@ Do NOT evaluate:
 - **Domain correctness** — whether the PM's business decisions are sound (those are captured in `decisions.md` and are authoritative)
 - **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
 
-Only evaluate: conformance to documented best practices, completeness against `decisions.md`, structural requirements, and content quality (actionability, specificity, domain depth, self-containment).
+Only evaluate: conformance to Skill Best Practices and Content Principles from the shared context, completeness against `decisions.md`, and content quality.
 
 ## Context
 - The coordinator will tell you:
@@ -41,13 +41,13 @@ Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validati
 
 1. Read `decisions.md` and `clarifications.md` from the context directory.
 2. Read the shared context file.
-4. Read `SKILL.md` and all files in `references/`. Understand:
+3. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, metrics, and patterns are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
-5. **Count the files** — you'll need this to know how many sub-agents to spawn.
-6. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
+4. **Count the files** — you'll need this to know how many sub-agents to spawn.
+5. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
    - **Basic domain concepts** (2 prompts) — "What are the key entities in [domain]?"
    - **Silver layer modeling** (2 prompts) — "What silver layer tables do I need for [specific entity]?"
    - **Gold layer / metrics modeling** (2 prompts) — "How should I model [specific metric]?"
@@ -65,20 +65,17 @@ Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1
 
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks:
-- Every decision and answered clarification is addressed (report COVERED with file+section, or MISSING)
-- SKILL.md conforms to Skill Best Practices (structure, required sections, line limits)
-- No orphaned or unnecessary files (README, CHANGELOG, etc.)
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from the shared context. Flags orphaned or unnecessary files.
 
 Writes findings to `validation-coverage-structure.md` in the context directory.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions from the shared context. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from the shared context. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
-Same approach as Sub-agent B, but for each file in `references/`. Each reads its reference file and `decisions.md`. Scores sections on the same Quality Dimensions. Writes `validation-<filename>.md` with PASS/FAIL and improvement suggestions.
+Same approach as Sub-agent B, but for each file in `references/`. Writes `validation-<filename>.md`.
 
 ### Test Evaluator Sub-agents
 
@@ -109,7 +106,7 @@ Prompt it to:
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
 4. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-5. Suggest 5-8 additional prompt categories the PM should write
+5. Suggest 5-8 additional test prompt categories for future evaluation
 6. Write TWO output files to the context directory (formats below)
 7. Delete all temporary files (`validation-*.md` and `test-result-*.md`) when done
 
@@ -158,14 +155,13 @@ Prompt it to:
 ## Success Criteria
 
 ### Validation
-- Every decision in `decisions.md` is mapped to a specific file and section
-- Every answered clarification is reflected in the skill content
-- All Skill Best Practices structural checks pass (line limits, required sections, naming, folder structure)
-- Each content file scores 3+ on all Quality Dimensions from the shared context
+- Every decision and answered clarification is mapped to a specific file and section
+- All Skill Best Practices checks pass (per the shared context)
+- Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
 
 ### Testing
-- Exactly 10 test prompts covering all 6 categories with the specified distribution
-- Each test result has a clear PASS/PARTIAL/FAIL with specific evidence from skill files
-- The report identifies actionable patterns, not just individual test results
-- Suggested PM prompts target real gaps found during testing, not hypothetical scenarios
+- 10 test prompts covering all 6 categories
+- Each result has PASS/PARTIAL/FAIL with specific evidence from skill files
+- Report identifies actionable patterns, not just individual results
+- Suggested prompts target real gaps found during testing
