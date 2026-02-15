@@ -34,16 +34,16 @@ Follow the Before You Start protocol.
 
 Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
-**Sub-agent 1: Business Patterns & Edge Cases**
+**Sub-agent 1: Business Patterns & Edge Cases** (`name: "research-patterns"`)
 
-- Read the shared context file and the research-patterns agent prompt file, then follow the instructions
-- Read `clarifications-concepts.md` from the context directory as input
+- Read the shared context file and the `research-patterns.md` agent prompt file, then follow the instructions
+- Input: `clarifications-concepts.md` from the context directory
 - Output: `clarifications-patterns.md` in the context directory
 
-**Sub-agent 2: Data Modeling & Source Systems**
+**Sub-agent 2: Data Modeling & Source Systems** (`name: "research-data"`)
 
-- Read the shared context file and the research-data agent prompt file, then follow the instructions
-- Read `clarifications-concepts.md` from the context directory as input
+- Read the shared context file and the `research-data.md` agent prompt file, then follow the instructions
+- Input: `clarifications-concepts.md` from the context directory
 - Output: `clarifications-data.md` in the context directory
 
 Pass the domain, shared context file path, context directory path, and agent prompt file paths to both sub-agents.
@@ -68,5 +68,5 @@ When all three sub-agents have completed, respond with only a single line: Done 
 
 ## Success Criteria
 - Both research sub-agents produce output files with 5+ questions each
-- Merger produces a deduplicated `clarifications.md` with clear section organization
+- Merge agent produces a deduplicated `clarifications.md` with clear section organization
 - Cross-cutting questions that span patterns and data modeling are identified and grouped
