@@ -497,6 +497,32 @@ mod tests {
         // Add workflow steps
         crate::db::save_workflow_step(&conn, "db-cleanup", 0, "completed").unwrap();
 
+        // Add chat session and message
+        conn.execute(
+            "INSERT INTO chat_sessions (id, skill_name, mode) VALUES ('sess-1', 'db-cleanup', 'conversational')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_messages (id, session_id, role, content) VALUES ('msg-1', 'sess-1', 'user', 'hello')",
+            [],
+        )
+        .unwrap();
+
+        // Add workflow artifact
+        conn.execute(
+            "INSERT INTO workflow_artifacts (skill_name, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', 0, 'test.md', '# Test', 6)",
+            [],
+        )
+        .unwrap();
+
+        // Add skill lock
+        conn.execute(
+            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES ('db-cleanup', 'inst-1', 12345)",
+            [],
+        )
+        .unwrap();
+
         delete_skill_inner(workspace, "db-cleanup", Some(&conn), None).unwrap();
 
         // Verify all DB records are cleaned up
@@ -509,6 +535,46 @@ mod tests {
         let tags = crate::db::get_tags_for_skills(&conn, &["db-cleanup".into()])
             .unwrap();
         assert!(tags.get("db-cleanup").is_none());
+
+        // Verify chat sessions are cleaned up
+        let session_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_sessions WHERE skill_name = ?1",
+                ["db-cleanup"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(session_count, 0);
+
+        // Verify chat messages are cleaned up
+        let message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_messages WHERE session_id = 'sess-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(message_count, 0);
+
+        // Verify workflow artifacts are cleaned up
+        let artifact_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM workflow_artifacts WHERE skill_name = ?1",
+                ["db-cleanup"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(artifact_count, 0);
+
+        // Verify skill locks are cleaned up
+        let lock_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM skill_locks WHERE skill_name = ?1",
+                ["db-cleanup"],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(lock_count, 0);
     }
 
     #[test]
