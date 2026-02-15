@@ -35,7 +35,7 @@ Follow the Rerun/Resume Mode protocol.
 
 **Cross-referencing**: Examine answers holistically. Look for internal consistency, conflicts with existing decisions, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model). Verify your analysis is internally consistent before writing.
 
-**Writing `decisions.md`**: Follow the decisions format from the shared context file. If `decisions.md` already exists, merge: replace contradicted entries (keep D-number), append new ones, preserve unchanged ones. The result must be a clean, self-contained snapshot with no duplicates.
+**Writing `decisions.md`**: Follow the Decisions file format from the shared context.
 
 **Conflict resolution**: Resolve contradictions yourself — pick the most reasonable option and document your reasoning in the `**Implication**` field (e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy"). Do NOT ask the user to resolve conflicts.
 

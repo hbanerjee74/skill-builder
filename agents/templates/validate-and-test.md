@@ -57,9 +57,7 @@ Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validati
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Use the **Task tool** to spawn ALL sub-agents in the **same turn** for parallel execution. Each uses `model: "sonnet"`, `mode: "bypassPermissions"`.
-
-This includes validation sub-agents (A + B + C1..CN) AND test evaluator sub-agents (T1..T10) — all launched together.
+Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN) AND test evaluator sub-agents (T1..T10) — all in the same turn.
 
 ### Validation Sub-agents
 
@@ -67,18 +65,18 @@ This includes validation sub-agents (A + B + C1..CN) AND test evaluator sub-agen
 
 Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks:
 - Every decision and answered clarification is addressed (report COVERED with file+section, or MISSING)
-- SKILL.md metadata present, under 500 lines, has pointers to all reference files
+- SKILL.md conforms to Skill Best Practices (structure, required sections, line limits)
 - No orphaned or unnecessary files (README, CHANGELOG, etc.)
 
 Writes findings to `validation-coverage-structure.md` in the context directory.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md`, `decisions.md`, and `validate-best-practices.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section 1-5 on: actionability, specificity, domain depth, self-containment. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions from the shared context. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
-Same approach as Sub-agent B, but for each file in `references/`. Each reads its reference file, `decisions.md`, and `validate-best-practices.md`. Scores sections 1-5 on the same four dimensions. Writes `validation-<filename>.md` with PASS/FAIL and improvement suggestions.
+Same approach as Sub-agent B, but for each file in `references/`. Each reads its reference file and `decisions.md`. Scores sections on the same Quality Dimensions. Writes `validation-<filename>.md` with PASS/FAIL and improvement suggestions.
 
 ### Test Evaluator Sub-agents
 
@@ -102,7 +100,7 @@ Writes `test-result-N.md` in the context directory using this format:
 
 ## Phase 3: Consolidate, Fix, and Report
 
-After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
+After all sub-agents return, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol. This keeps the context clean.
 
 Prompt it to:
 1. Read ALL `validation-*.md` and `test-result-*.md` files from the context directory
@@ -165,8 +163,8 @@ Prompt it to:
 ### Validation
 - Every decision in `decisions.md` is mapped to a specific file and section
 - Every answered clarification is reflected in the skill content
-- All structural checks pass (line count, folder structure, metadata, pointers)
-- Each content file scores 3+ on all four quality dimensions (actionability, specificity, domain depth, self-containment)
+- All Skill Best Practices structural checks pass (line limits, required sections, naming, folder structure)
+- Each content file scores 3+ on all Quality Dimensions from the shared context
 - All auto-fixable issues are fixed and verified
 
 ### Testing
