@@ -165,10 +165,14 @@ describe("useUsageStore", () => {
       expect(firstCall).toBe("reset_usage");
     });
 
-    it("propagates errors from resetUsage", async () => {
+    it("sets error state when resetUsage fails", async () => {
       mockInvoke.mockRejectedValue(new Error("Reset failed"));
 
-      await expect(useUsageStore.getState().resetCounter()).rejects.toThrow("Reset failed");
+      await useUsageStore.getState().resetCounter();
+
+      const state = useUsageStore.getState();
+      expect(state.error).toBe("Error: Reset failed");
+      expect(state.loading).toBe(false);
     });
   });
 });

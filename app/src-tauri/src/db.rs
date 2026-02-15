@@ -276,7 +276,7 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
-             WHERE reset_marker IS NULL
+             WHERE reset_marker IS NULL AND completed_at IS NOT NULL
              ORDER BY completed_at DESC
              LIMIT ?1",
         )

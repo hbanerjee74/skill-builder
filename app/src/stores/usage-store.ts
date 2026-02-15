@@ -38,14 +38,18 @@ export const useUsageStore = create<UsageState>((set) => ({
   },
 
   resetCounter: async () => {
-    await resetUsage();
-    // Re-fetch after reset
-    const [summary, recentRuns, byStep, byModel] = await Promise.all([
-      getUsageSummary(),
-      getRecentRuns(50),
-      getUsageByStep(),
-      getUsageByModel(),
-    ]);
-    set({ summary, recentRuns, byStep, byModel });
+    set({ loading: true, error: null });
+    try {
+      await resetUsage();
+      const [summary, recentRuns, byStep, byModel] = await Promise.all([
+        getUsageSummary(),
+        getRecentRuns(50),
+        getUsageByStep(),
+        getUsageByModel(),
+      ]);
+      set({ summary, recentRuns, byStep, byModel, loading: false });
+    } catch (err) {
+      set({ error: String(err), loading: false });
+    }
   },
 }));
