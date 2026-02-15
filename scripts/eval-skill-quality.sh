@@ -390,28 +390,47 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
     continue
   fi
 
-  # Extract JSON from judge output (strip any markdown fences or surrounding text)
+  # Extract JSON from judge output (handles markdown fences, nested objects, surrounding text)
   judge_raw=$(cat "$judge_file")
   judge_json=$(python3 -c "
 import sys, re, json
 text = sys.stdin.read()
-# Try to find JSON object in the text
-match = re.search(r'\{[^{}]*\"variant_a\"[^{}]*\{[^}]*\}[^{}]*\"variant_b\"[^{}]*\{[^}]*\}[^{}]*\}', text, re.DOTALL)
-if match:
-    # Validate it's parseable
-    try:
-        obj = json.loads(match.group())
+
+# Strip markdown code fences
+text = re.sub(r'\`\`\`(?:json)?\s*\n?', '', text)
+
+# Find first valid JSON object containing variant_a and variant_b using brace counting
+brace_count = 0
+start_idx = -1
+for i, char in enumerate(text):
+    if char == '{':
+        if start_idx == -1:
+            start_idx = i
+        brace_count += 1
+    elif char == '}':
+        brace_count -= 1
+        if brace_count == 0 and start_idx != -1:
+            candidate = text[start_idx:i+1]
+            try:
+                obj = json.loads(candidate)
+                if 'variant_a' in obj and 'variant_b' in obj:
+                    print(json.dumps(obj))
+                    sys.exit(0)
+            except json.JSONDecodeError:
+                pass
+            start_idx = -1
+
+# Fallback: try the whole text stripped
+try:
+    obj = json.loads(text.strip())
+    if 'variant_a' in obj and 'variant_b' in obj:
         print(json.dumps(obj))
         sys.exit(0)
-    except:
-        pass
-# Fallback: try the whole text
-try:
-    obj = json.loads(text)
-    print(json.dumps(obj))
-except:
-    print('{}', file=sys.stderr)
-    sys.exit(1)
+except json.JSONDecodeError:
+    pass
+
+print('{}', file=sys.stderr)
+sys.exit(1)
 " <<< "$judge_raw" 2>/dev/null)
 
   if [ $? -ne 0 ] || [ -z "$judge_json" ] || [ "$judge_json" = "{}" ]; then
