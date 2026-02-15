@@ -1,7 +1,11 @@
 import { vi } from "vitest";
 
 // Mock @tauri-apps/api/core
-export const mockInvoke = vi.fn();
+// Default: resolve for fire-and-forget commands, reject for unknown
+const FIRE_AND_FORGET_COMMANDS = new Set(["persist_agent_run"]);
+export const mockInvoke = vi.fn((cmd: string) =>
+  FIRE_AND_FORGET_COMMANDS.has(cmd) ? Promise.resolve() : undefined
+);
 export const mockListen = vi.fn(() => Promise.resolve(() => {}));
 
 vi.mock("@tauri-apps/api/core", () => ({

@@ -143,7 +143,7 @@ export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
 
-  startRun: (agentId, model) =>
+  startRun: (agentId, model) => {
     set((state) => {
       const existing = state.runs[agentId];
       const extendedContext = useSettingsStore.getState().extendedContext;
@@ -167,7 +167,25 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
         activeAgentId: agentId,
       };
-    }),
+    });
+
+    // Persist initial row so in-progress and shutdown runs are tracked
+    const workflow = useWorkflowStore.getState();
+    persistAgentRun({
+      agentId,
+      skillName: workflow.skillName ?? "unknown",
+      stepId: workflow.currentStep,
+      model,
+      status: "running",
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      totalCost: 0,
+      durationMs: 0,
+      workflowSessionId: workflow.workflowSessionId ?? undefined,
+    }).catch((err) => console.warn("Failed to persist agent start:", err));
+  },
 
   registerRun: (agentId, model) =>
     set((state) => {
@@ -262,6 +280,9 @@ export const useAgentStore = create<AgentState>((set) => ({
   shutdownRun: (agentId: string) => {
     // Flush any buffered messages so all data is applied before status changes
     flushMessageBuffer();
+
+    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+
     set((state) => {
       const run = state.runs[agentId];
       if (!run || run.status !== "running") return state;
@@ -276,6 +297,25 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
       };
     });
+
+    // Persist shutdown status with whatever partial data we have
+    if (runBeforeUpdate) {
+      const workflow = useWorkflowStore.getState();
+      persistAgentRun({
+        agentId,
+        skillName: workflow.skillName ?? "unknown",
+        stepId: workflow.currentStep,
+        model: runBeforeUpdate.model,
+        status: "shutdown",
+        inputTokens: runBeforeUpdate.tokenUsage?.input ?? 0,
+        outputTokens: runBeforeUpdate.tokenUsage?.output ?? 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        totalCost: runBeforeUpdate.totalCost ?? 0,
+        durationMs: Date.now() - runBeforeUpdate.startTime,
+        workflowSessionId: workflow.workflowSessionId ?? undefined,
+      }).catch((err) => console.warn("Failed to persist agent shutdown:", err));
+    }
   },
 
   setActiveAgent: (agentId) => set({ activeAgentId: agentId }),
