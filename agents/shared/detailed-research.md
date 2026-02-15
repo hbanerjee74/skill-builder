@@ -58,7 +58,7 @@ Each sub-agent's task:
 
 ## Phase 3: Consolidate
 
-After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`). Pass it:
+After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - All sub-agent output files as source files
 - The target file specified by the coordinator (e.g., `clarifications-detailed.md`)
 
