@@ -175,6 +175,10 @@ fn delete_skill_inner(
     conn: Option<&rusqlite::Connection>,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
+    log::info!(
+        "[delete_skill] skill={} workspace={} skills_path={:?}",
+        name, workspace_path, skills_path
+    );
     let base = Path::new(workspace_path).join(name);
 
     // Delete workspace working directory if it exists
@@ -186,6 +190,9 @@ fn delete_skill_inner(
             return Err("Invalid skill path".to_string());
         }
         fs::remove_dir_all(&base).map_err(|e| e.to_string())?;
+        log::info!("[delete_skill] deleted workspace dir {}", base.display());
+    } else {
+        log::info!("[delete_skill] workspace dir not found: {}", base.display());
     }
 
     // Delete skill output directory if skills_path is configured and directory exists
@@ -195,12 +202,18 @@ fn delete_skill_inner(
             fs::remove_dir_all(&output_dir).map_err(|e| {
                 format!("Failed to delete skill output for '{}': {}", name, e)
             })?;
+            log::info!("[delete_skill] deleted output dir {}", output_dir.display());
+        } else {
+            log::info!("[delete_skill] output dir not found: {}", output_dir.display());
         }
+    } else {
+        log::info!("[delete_skill] no skills_path configured, skipping output dir cleanup");
     }
 
     // Full DB cleanup: workflow_run + steps + agent_runs + tags
     if let Some(conn) = conn {
         crate::db::delete_workflow_run(conn, name)?;
+        log::info!("[delete_skill] DB records cleaned for {}", name);
     }
 
     Ok(())
