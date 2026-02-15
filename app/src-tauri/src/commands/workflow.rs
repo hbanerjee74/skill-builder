@@ -499,21 +499,6 @@ pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, Str
     }
 }
 
-fn read_api_key(db: &tauri::State<'_, Db>) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = crate::db::read_settings(&conn)?;
-    settings
-        .anthropic_api_key
-        .ok_or_else(|| "Anthropic API key not configured".to_string())
-}
-
-fn read_extended_context(db: &tauri::State<'_, Db>) -> bool {
-    let conn = db.0.lock().ok();
-    conn.and_then(|c| crate::db::read_settings(&c).ok())
-        .map(|s| s.extended_context)
-        .unwrap_or(false)
-}
-
 fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
     crate::db::read_settings(&conn).ok()?.skills_path
