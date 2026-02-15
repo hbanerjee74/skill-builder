@@ -9,7 +9,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
 
