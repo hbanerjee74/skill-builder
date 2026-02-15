@@ -13,10 +13,10 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, updateTriggerText, regenerateClaudeMd, generateTriggerText } from "@/lib/tauri"
+import type { AvailableSkill, GitHubRepoInfo, ImportedSkill } from "@/lib/types"
 
-type Step = "url" | "select" | "importing" | "done"
+type Step = "url" | "select" | "importing" | "review" | "done"
 
 interface GitHubImportDialogProps {
   open: boolean
@@ -37,6 +37,9 @@ export default function GitHubImportDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importedCount, setImportedCount] = useState(0)
+  const [importedSkillsList, setImportedSkillsList] = useState<ImportedSkill[]>([])
+  const [triggerTexts, setTriggerTexts] = useState<Record<string, string>>({})
+  const [generatingTriggers, setGeneratingTriggers] = useState(false)
 
   const reset = useCallback(() => {
     setStep("url")
@@ -47,6 +50,8 @@ export default function GitHubImportDialog({
     setLoading(false)
     setError(null)
     setImportedCount(0)
+    setImportedSkillsList([])
+    setTriggerTexts({})
   }, [])
 
   const handleOpenChange = useCallback(
@@ -115,28 +120,65 @@ export default function GitHubImportDialog({
         repoInfo.branch,
         Array.from(selectedPaths)
       )
+      setImportedSkillsList(imported)
       setImportedCount(imported.length)
-      setStep("done")
-      await onImported()
-      const requested = selectedPaths.size
-      if (imported.length < requested) {
-        toast.warning(
-          `Imported ${imported.length} of ${requested} skills. ${requested - imported.length} skipped (may already exist).`
-        )
-      } else {
-        toast.success(`Imported ${imported.length} skill${imported.length !== 1 ? "s" : ""} from GitHub`)
+      setStep("review")
+      setGeneratingTriggers(true)
+
+      // Generate trigger text via haiku in parallel for each skill
+      const results = await Promise.allSettled(
+        imported.map(async (skill) => {
+          const text = await generateTriggerText(skill.skill_name)
+          return { name: skill.skill_name, text }
+        })
+      )
+      const texts: Record<string, string> = {}
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          texts[result.value.name] = result.value.text
+        }
       }
+      setTriggerTexts(texts)
+      setGeneratingTriggers(false)
+
+      await onImported()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("select")
     }
   }, [repoInfo, selectedPaths, onImported])
 
+  const handleSaveTriggers = useCallback(async () => {
+    setLoading(true)
+    try {
+      for (const [skillName, text] of Object.entries(triggerTexts)) {
+        if (text.trim()) {
+          await updateTriggerText(skillName, text.trim())
+        }
+      }
+      await regenerateClaudeMd()
+      await onImported()
+      setStep("done")
+      const requested = selectedPaths.size
+      if (importedCount < requested) {
+        toast.warning(
+          `Imported ${importedCount} of ${requested} skills. ${requested - importedCount} skipped (may already exist).`
+        )
+      } else {
+        toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""} and activated triggers`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [triggerTexts, importedCount, selectedPaths.size])
+
   const allSelected = selectedPaths.size === skills.length && skills.length > 0
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className={step === "review" ? "sm:max-w-xl" : "sm:max-w-lg"}>
         {step === "url" && (
           <>
             <DialogHeader>
@@ -256,6 +298,72 @@ export default function GitHubImportDialog({
               Importing {selectedPaths.size} skill{selectedPaths.size !== 1 ? "s" : ""}...
             </p>
           </div>
+        )}
+
+        {step === "review" && (
+          <>
+            <DialogHeader>
+              <DialogTitle>Review Skill Triggers</DialogTitle>
+              <DialogDescription>
+                Review and edit the trigger text for each imported skill. This tells Claude when to use each skill.
+              </DialogDescription>
+            </DialogHeader>
+            {error && (
+              <p className="flex items-center gap-1.5 text-sm text-destructive">
+                <AlertCircle className="size-4 shrink-0" />
+                {error}
+              </p>
+            )}
+            <ScrollArea className="max-h-80">
+              <div className="flex flex-col gap-4">
+                {importedSkillsList.map((skill) => (
+                  <div key={skill.skill_name} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{skill.skill_name}</span>
+                      {skill.domain && (
+                        <Badge variant="secondary" className="text-xs">
+                          {skill.domain}
+                        </Badge>
+                      )}
+                    </div>
+                    {generatingTriggers && !triggerTexts[skill.skill_name] ? (
+                      <div className="flex items-center gap-2 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Generating trigger text...
+                      </div>
+                    ) : (
+                      <textarea
+                        className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={triggerTexts[skill.skill_name] || ""}
+                        onChange={(e) =>
+                          setTriggerTexts((prev) => ({
+                            ...prev,
+                            [skill.skill_name]: e.target.value,
+                          }))
+                        }
+                        placeholder="Describe when Claude should use this skill..."
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStep("done")
+                  toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
+                }}
+              >
+                Skip
+              </Button>
+              <Button onClick={handleSaveTriggers} disabled={loading || generatingTriggers}>
+                {loading && <Loader2 className="size-4 animate-spin" />}
+                Save Triggers
+              </Button>
+            </div>
+          </>
         )}
 
         {step === "done" && (

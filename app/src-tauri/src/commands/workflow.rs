@@ -243,6 +243,68 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
     Ok(())
 }
 
+/// Append (or replace) the "## Imported Skills" section in the workspace's
+/// `.claude/CLAUDE.md` file. Reads the existing file, strips any previous
+/// imported-skills section, queries the DB for active skills with trigger text,
+/// and appends the new section if any exist. Safe to call multiple times.
+pub fn append_imported_skills_section(
+    workspace_path: &str,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+
+    let content = if claude_md_path.is_file() {
+        std::fs::read_to_string(&claude_md_path)
+            .map_err(|e| format!("Failed to read .claude/CLAUDE.md: {}", e))?
+    } else {
+        String::new()
+    };
+
+    // Strip any existing "## Imported Skills" section (to end of file or next ## heading)
+    let base_content = if let Some(pos) = content.find("\n## Imported Skills\n") {
+        // Check if there's another ## heading after it
+        let after_section = &content[pos + "\n## Imported Skills\n".len()..];
+        if let Some(next_heading) = after_section.find("\n## ") {
+            // Keep everything before the section (including the newline at pos)
+            // and everything from the next heading onward
+            let mut result = content[..pos].to_string();
+            result.push('\n');
+            result.push_str(&after_section[next_heading..]);
+            result
+        } else {
+            // Section goes to end of file — just keep everything before it
+            content[..pos].to_string()
+        }
+    } else {
+        content
+    };
+
+    // Query active imported skills with trigger text
+    let skills = crate::db::list_active_skills_with_triggers(conn)?;
+
+    let mut final_content = base_content;
+
+    if !skills.is_empty() {
+        final_content.push_str("\n\n## Imported Skills\n");
+        for skill in &skills {
+            let trigger = skill.trigger_text.as_deref().unwrap_or("");
+            final_content.push_str(&format!(
+                "\n### /{}\n{}\n",
+                skill.skill_name, trigger
+            ));
+        }
+    }
+
+    // Ensure .claude directory exists
+    let claude_dir = Path::new(workspace_path).join(".claude");
+    std::fs::create_dir_all(&claude_dir)
+        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
+
+    std::fs::write(&claude_md_path, final_content)
+        .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
+    Ok(())
+}
+
 /// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
 /// For skill type directories: agents/{type}/{file}.md → .claude/agents/{type}-{file}.md
 /// For shared directory: agents/shared/{file}.md → .claude/agents/shared-{file}.md

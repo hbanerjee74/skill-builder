@@ -305,3 +305,14 @@ export const listGitHubSkills = (owner: string, repo: string, branch: string, su
 export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
   invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
 
+// --- Imported Skill Triggers ---
+
+export const updateTriggerText = (skillName: string, triggerText: string) =>
+  invoke<void>("update_trigger_text", { skillName, triggerText });
+
+export const regenerateClaudeMd = () =>
+  invoke<void>("regenerate_claude_md");
+
+export const generateTriggerText = (skillName: string) =>
+  invoke<string>("generate_trigger_text", { skillName });
+

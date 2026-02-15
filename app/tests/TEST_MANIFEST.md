@@ -40,7 +40,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
 | `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (39) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
-| `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
+| `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (10) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
 | `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (14) | -- |
 
@@ -62,10 +62,13 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
 | `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
-| `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (12) | -- |
+| `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (14) | -- |
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |
+| `src/components/github-import-dialog.tsx` | -- | -- | -- |
+| `src/components/trigger-text-editor.tsx` | -- | -- | -- |
+| `src/components/skill-preview-dialog.tsx` | -- | -- | -- |
 | `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (7) | `@settings` |
 | `src/components/layout/app-layout.tsx` | -- | `components/app-layout.test.tsx` (8) | `@navigation` |
 
@@ -73,12 +76,12 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (64) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (85) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (57) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (47) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
-| `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (25) | -- |
+| `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (29) | -- |
 | `src-tauri/src/commands/files.rs` | `cargo test commands::files` (19) | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `cargo test commands::settings` (7) | `@settings` |
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |
