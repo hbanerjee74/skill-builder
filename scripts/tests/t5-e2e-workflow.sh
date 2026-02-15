@@ -24,7 +24,7 @@ This is an automated test. For ALL human review gates (Steps 2, 4, 5, 6, 7):
 Work in this directory: $workspace
 The plugin root is: $PLUGIN_DIR
 
-Complete all steps (Steps 0-8). If you hit a budget limit, that's OK — go as far as you can.
+Complete all steps (Steps 0-7). If you hit a budget limit, that's OK — go as far as you can.
 
 When you finish (or are forced to stop), write the number of the last completed step to: \
 $workspace/test-status.txt (just the number, e.g., '7')"
@@ -44,44 +44,44 @@ $workspace/test-status.txt (just the number, e.g., '7')"
     record_result "$tier" "init_context_dir" "FAIL"
   fi
 
-  # Step 1: Research concepts output
+  # Step 0: Research (orchestrator, produces clarifications.md)
   if [[ -f "$workspace/context/clarifications-concepts.md" ]]; then
-    record_result "$tier" "step1_concepts_research" "PASS"
+    record_result "$tier" "step0_concepts_research" "PASS"
   else
-    record_result "$tier" "step1_concepts_research" "SKIP" "may not have reached step 1"
+    record_result "$tier" "step0_concepts_research" "SKIP" "may not have reached step 0"
   fi
 
-  # Step 3: Research patterns & merge
-  if [[ -f "$workspace/context/clarifications-patterns.md" ]]; then
-    record_result "$tier" "step3_patterns_research" "PASS"
+  # Step 2: Detailed Research (produces clarifications-detailed.md)
+  if [[ -f "$workspace/context/clarifications-practices.md" ]]; then
+    record_result "$tier" "step2_practices_research" "PASS"
   else
-    record_result "$tier" "step3_patterns_research" "SKIP" "may not have reached step 3"
+    record_result "$tier" "step2_practices_research" "SKIP" "may not have reached step 2"
   fi
 
-  if [[ -f "$workspace/context/clarifications-data.md" ]]; then
-    record_result "$tier" "step3_data_research" "PASS"
+  if [[ -f "$workspace/context/clarifications-implementation.md" ]]; then
+    record_result "$tier" "step2_implementation_research" "PASS"
   else
-    record_result "$tier" "step3_data_research" "SKIP" "may not have reached step 3"
+    record_result "$tier" "step2_implementation_research" "SKIP" "may not have reached step 2"
   fi
 
-  if [[ -f "$workspace/context/clarifications.md" ]]; then
-    record_result "$tier" "step3_merged_clarifications" "PASS"
+  if [[ -f "$workspace/context/clarifications-detailed.md" ]]; then
+    record_result "$tier" "step2_detailed_clarifications" "PASS"
   else
-    record_result "$tier" "step3_merged_clarifications" "SKIP" "may not have reached step 3"
+    record_result "$tier" "step2_detailed_clarifications" "SKIP" "may not have reached step 2"
   fi
 
-  # Step 5: Reasoning decisions
+  # Step 4: Confirm Decisions (produces decisions.md)
   if [[ -f "$workspace/context/decisions.md" ]]; then
-    record_result "$tier" "step5_decisions" "PASS"
+    record_result "$tier" "step4_decisions" "PASS"
   else
-    record_result "$tier" "step5_decisions" "SKIP" "may not have reached step 5"
+    record_result "$tier" "step4_decisions" "SKIP" "may not have reached step 4"
   fi
 
-  # Step 6: Build skill
+  # Step 5: Generate Skill (produces SKILL.md + references/)
   if [[ -f "$workspace/$skill_name/SKILL.md" ]]; then
-    record_result "$tier" "step6_skill_built" "PASS"
+    record_result "$tier" "step5_skill_built" "PASS"
   else
-    record_result "$tier" "step6_skill_built" "SKIP" "may not have reached step 6"
+    record_result "$tier" "step5_skill_built" "SKIP" "may not have reached step 5"
   fi
 
   local ref_count=0
@@ -89,29 +89,29 @@ $workspace/test-status.txt (just the number, e.g., '7')"
     ref_count=$(ls "$workspace/$skill_name/references/"*.md 2>/dev/null | wc -l | tr -d ' ')
   fi
   if [[ "$ref_count" -gt 0 ]]; then
-    record_result "$tier" "step6_references_created" "PASS" "$ref_count files"
+    record_result "$tier" "step5_references_created" "PASS" "$ref_count files"
   else
-    record_result "$tier" "step6_references_created" "SKIP" "may not have reached step 6"
+    record_result "$tier" "step5_references_created" "SKIP" "may not have reached step 5"
   fi
 
-  # Step 7: Validate & Test
+  # Step 6: Validate Skill (produces validation logs)
   if [[ -f "$workspace/context/agent-validation-log.md" ]]; then
-    record_result "$tier" "step7_validation_log" "PASS"
+    record_result "$tier" "step6_validation_log" "PASS"
   else
-    record_result "$tier" "step7_validation_log" "SKIP" "may not have reached step 7"
+    record_result "$tier" "step6_validation_log" "SKIP" "may not have reached step 6"
   fi
 
   if [[ -f "$workspace/context/test-skill.md" ]]; then
-    record_result "$tier" "step7_test_report" "PASS"
+    record_result "$tier" "step6_test_report" "PASS"
   else
-    record_result "$tier" "step7_test_report" "SKIP" "may not have reached step 7"
+    record_result "$tier" "step6_test_report" "SKIP" "may not have reached step 6"
   fi
 
-  # Step 8: Package
+  # Step 7: Refine (chat)
   if [[ -f "$workspace/${skill_name}.skill" ]]; then
-    record_result "$tier" "step8_skill_packaged" "PASS"
+    record_result "$tier" "step7_skill_packaged" "PASS"
   else
-    record_result "$tier" "step8_skill_packaged" "SKIP" "may not have reached step 8"
+    record_result "$tier" "step7_skill_packaged" "SKIP" "may not have reached step 7"
   fi
 
   # Report how far we got
