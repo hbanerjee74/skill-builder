@@ -49,12 +49,7 @@ Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
 ## Phase 2: Merge Results
 
-After both sub-agents return, spawn a fresh **merger** sub-agent (`name: "merger"`).
-
-- Read `research-entities.md` and `research-metrics.md` from the context directory
-- Merge into a single file at the output file path provided by coordinator
-- Organize by topic section, deduplicate overlapping questions, number sequentially
-- Keep intermediate research files for reference
+After both sub-agents return, spawn a fresh **merger** sub-agent (`name: "merger"`). Pass it the shared context file path, context directory path, and the output file path. The merge agent's own prompt covers deduplication, organization, and formatting.
 
 ## Error Handling
 
