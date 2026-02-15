@@ -57,10 +57,6 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 - **Missing/malformed `decisions.md`:** Report to the coordinator — do not build without confirmed decisions.
 - **Sub-agent failure:** Complete the file yourself rather than re-spawning.
 
-## Output Files
-- `SKILL.md` in the skill output directory
-- Reference files in `references/` within the skill output directory
-
 ### Output Example
 
 {{OUTPUT_EXAMPLE}}

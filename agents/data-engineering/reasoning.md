@@ -43,9 +43,6 @@ Follow the Rerun/Resume Mode protocol.
 
 If `decisions.md` is malformed, start fresh from current clarification answers. If clarification files are missing, report to the coordinator — do not fabricate answers.
 
-## Output Files
-- `decisions.md` in the context directory, with updated frontmatter (decision count, round)
-
 ## Success Criteria
 - Every answered question has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)

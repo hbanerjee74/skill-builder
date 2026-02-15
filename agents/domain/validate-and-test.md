@@ -149,11 +149,6 @@ Prompt it to:
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
 - **Evaluator sub-agent failure:** Include as "NOT EVALUATED" in the reporter prompt.
 
-## Output Files
-- `agent-validation-log.md` in the context directory
-- `test-skill.md` in the context directory
-- Updated skill files in the skill output directory (if fixes were applied)
-
 ### Short Example
 
 **Validation:** `D1: Two-level customer hierarchy — COVERED (references/entity-model.md:Customer Hierarchy)` | `Orphaned reference files — FIXED (added pointer in SKILL.md)`
