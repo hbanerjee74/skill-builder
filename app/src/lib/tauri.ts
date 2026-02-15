@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
 
 // --- Settings ---
 
@@ -248,6 +248,7 @@ export const persistAgentRun = (params: {
   totalCost: number;
   durationMs: number;
   sessionId?: string;
+  workflowSessionId?: string;
 }) => invoke<void>("persist_agent_run", {
   agentId: params.agentId,
   skillName: params.skillName,
@@ -261,6 +262,7 @@ export const persistAgentRun = (params: {
   totalCost: params.totalCost,
   durationMs: params.durationMs,
   sessionId: params.sessionId ?? null,
+  workflowSessionId: params.workflowSessionId ?? null,
 });
 
 export const getUsageSummary = () =>
@@ -268,6 +270,12 @@ export const getUsageSummary = () =>
 
 export const getRecentRuns = (limit: number = 50) =>
   invoke<AgentRunRecord[]>("get_recent_runs", { limit });
+
+export const getRecentWorkflowSessions = (limit: number = 50) =>
+  invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit });
+
+export const getSessionAgentRuns = (sessionId: string) =>
+  invoke<AgentRunRecord[]>("get_session_agent_runs", { sessionId });
 
 export const getUsageByStep = () =>
   invoke<UsageByStep[]>("get_usage_by_step");

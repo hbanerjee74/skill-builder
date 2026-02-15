@@ -254,6 +254,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         totalCost: runBeforeUpdate.totalCost,
         durationMs: Date.now() - runBeforeUpdate.startTime,
         sessionId: runBeforeUpdate.sessionId,
+        workflowSessionId: workflow.workflowSessionId ?? undefined,
       }).catch((err) => console.warn("Failed to persist agent run:", err));
     }
   },

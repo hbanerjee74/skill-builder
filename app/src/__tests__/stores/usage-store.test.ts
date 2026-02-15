@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mockInvoke } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
-import type { UsageSummary, AgentRunRecord, UsageByStep, UsageByModel } from "@/lib/types";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
 
 const mockSummary: UsageSummary = {
   total_cost: 1.25,
@@ -9,22 +9,22 @@ const mockSummary: UsageSummary = {
   avg_cost_per_run: 0.125,
 };
 
-const mockRuns: AgentRunRecord[] = [
+const mockSessions: WorkflowSessionRecord[] = [
   {
-    agent_id: "agent-1",
+    session_id: "ws-1",
     skill_name: "my-skill",
-    step_id: 0,
-    model: "sonnet",
-    status: "completed",
-    input_tokens: 5000,
-    output_tokens: 1000,
-    cache_read_tokens: 3000,
-    cache_write_tokens: 500,
-    total_cost: 0.05,
-    duration_ms: 12000,
-    session_id: "sess-1",
+    min_step: 0,
+    max_step: 2,
+    steps_csv: "0,1,2",
+    agent_count: 3,
+    total_cost: 0.15,
+    total_input_tokens: 15000,
+    total_output_tokens: 3000,
+    total_cache_read: 8000,
+    total_cache_write: 1500,
+    total_duration_ms: 36000,
     started_at: "2026-02-15T10:00:00Z",
-    completed_at: "2026-02-15T10:00:12Z",
+    completed_at: "2026-02-15T10:00:36Z",
   },
 ];
 
@@ -43,8 +43,8 @@ function setupInvokeMock() {
     switch (cmd) {
       case "get_usage_summary":
         return Promise.resolve(mockSummary);
-      case "get_recent_runs":
-        return Promise.resolve(mockRuns);
+      case "get_recent_workflow_sessions":
+        return Promise.resolve(mockSessions);
       case "get_usage_by_step":
         return Promise.resolve(mockByStep);
       case "get_usage_by_model":
@@ -61,7 +61,7 @@ describe("useUsageStore", () => {
   beforeEach(() => {
     useUsageStore.setState({
       summary: null,
-      recentRuns: [],
+      recentSessions: [],
       byStep: [],
       byModel: [],
       loading: false,
@@ -73,7 +73,7 @@ describe("useUsageStore", () => {
   it("has correct initial state", () => {
     const state = useUsageStore.getState();
     expect(state.summary).toBeNull();
-    expect(state.recentRuns).toEqual([]);
+    expect(state.recentSessions).toEqual([]);
     expect(state.byStep).toEqual([]);
     expect(state.byModel).toEqual([]);
     expect(state.loading).toBe(false);
@@ -96,7 +96,7 @@ describe("useUsageStore", () => {
       expect(state.loading).toBe(false);
       expect(state.error).toBeNull();
       expect(state.summary).toEqual(mockSummary);
-      expect(state.recentRuns).toEqual(mockRuns);
+      expect(state.recentSessions).toEqual(mockSessions);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
     });
@@ -108,19 +108,19 @@ describe("useUsageStore", () => {
 
       const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
       expect(calledCommands).toContain("get_usage_summary");
-      expect(calledCommands).toContain("get_recent_runs");
+      expect(calledCommands).toContain("get_recent_workflow_sessions");
       expect(calledCommands).toContain("get_usage_by_step");
       expect(calledCommands).toContain("get_usage_by_model");
     });
 
-    it("passes limit to get_recent_runs", async () => {
+    it("passes limit to get_recent_workflow_sessions", async () => {
       setupInvokeMock();
 
       await useUsageStore.getState().fetchUsage();
 
-      const recentRunsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_recent_runs");
-      expect(recentRunsCall).toBeDefined();
-      expect(recentRunsCall![1]).toEqual({ limit: 50 });
+      const sessionsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_recent_workflow_sessions");
+      expect(sessionsCall).toBeDefined();
+      expect(sessionsCall![1]).toEqual({ limit: 50 });
     });
 
     it("sets error state on failure", async () => {
@@ -144,13 +144,13 @@ describe("useUsageStore", () => {
       const calledCommands = mockInvoke.mock.calls.map((c) => c[0]);
       expect(calledCommands).toContain("reset_usage");
       expect(calledCommands).toContain("get_usage_summary");
-      expect(calledCommands).toContain("get_recent_runs");
+      expect(calledCommands).toContain("get_recent_workflow_sessions");
       expect(calledCommands).toContain("get_usage_by_step");
       expect(calledCommands).toContain("get_usage_by_model");
 
       const state = useUsageStore.getState();
       expect(state.summary).toEqual(mockSummary);
-      expect(state.recentRuns).toEqual(mockRuns);
+      expect(state.recentSessions).toEqual(mockSessions);
       expect(state.byStep).toEqual(mockByStep);
       expect(state.byModel).toEqual(mockByModel);
     });

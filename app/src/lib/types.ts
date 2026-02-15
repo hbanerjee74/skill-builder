@@ -127,6 +127,23 @@ export interface AgentRunRecord {
   completed_at: string | null
 }
 
+export interface WorkflowSessionRecord {
+  session_id: string
+  skill_name: string
+  min_step: number
+  max_step: number
+  steps_csv: string
+  agent_count: number
+  total_cost: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cache_read: number
+  total_cache_write: number
+  total_duration_ms: number
+  started_at: string
+  completed_at: string | null
+}
+
 export interface UsageSummary {
   total_cost: number
   total_runs: number

@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import type { UsageSummary, AgentRunRecord, UsageByStep, UsageByModel } from "@/lib/types";
-import { getUsageSummary, getRecentRuns, getUsageByStep, getUsageByModel, resetUsage } from "@/lib/tauri";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
+import { getUsageSummary, getRecentWorkflowSessions, getUsageByStep, getUsageByModel, resetUsage } from "@/lib/tauri";
 
 interface UsageState {
   summary: UsageSummary | null;
-  recentRuns: AgentRunRecord[];
+  recentSessions: WorkflowSessionRecord[];
   byStep: UsageByStep[];
   byModel: UsageByModel[];
   loading: boolean;
@@ -16,7 +16,7 @@ interface UsageState {
 
 export const useUsageStore = create<UsageState>((set) => ({
   summary: null,
-  recentRuns: [],
+  recentSessions: [],
   byStep: [],
   byModel: [],
   loading: false,
@@ -25,13 +25,13 @@ export const useUsageStore = create<UsageState>((set) => ({
   fetchUsage: async () => {
     set({ loading: true, error: null });
     try {
-      const [summary, recentRuns, byStep, byModel] = await Promise.all([
+      const [summary, recentSessions, byStep, byModel] = await Promise.all([
         getUsageSummary(),
-        getRecentRuns(50),
+        getRecentWorkflowSessions(50),
         getUsageByStep(),
         getUsageByModel(),
       ]);
-      set({ summary, recentRuns, byStep, byModel, loading: false });
+      set({ summary, recentSessions, byStep, byModel, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
     }
@@ -41,13 +41,13 @@ export const useUsageStore = create<UsageState>((set) => ({
     set({ loading: true, error: null });
     try {
       await resetUsage();
-      const [summary, recentRuns, byStep, byModel] = await Promise.all([
+      const [summary, recentSessions, byStep, byModel] = await Promise.all([
         getUsageSummary(),
-        getRecentRuns(50),
+        getRecentWorkflowSessions(50),
         getUsageByStep(),
         getUsageByModel(),
       ]);
-      set({ summary, recentRuns, byStep, byModel, loading: false });
+      set({ summary, recentSessions, byStep, byModel, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
     }

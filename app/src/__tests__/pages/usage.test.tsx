@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resetTauriMocks } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
-import type { UsageSummary, AgentRunRecord, UsageByStep, UsageByModel } from "@/lib/types";
+import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
 
 // Mock sonner toast
 vi.mock("sonner", () => ({
@@ -15,10 +15,11 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-// Mock the tauri functions used by usage-store
+// Mock the tauri functions used by usage-store and usage page
 vi.mock("@/lib/tauri", () => ({
   getUsageSummary: vi.fn(() => Promise.resolve({ total_cost: 0, total_runs: 0, avg_cost_per_run: 0 })),
-  getRecentRuns: vi.fn(() => Promise.resolve([])),
+  getRecentWorkflowSessions: vi.fn(() => Promise.resolve([])),
+  getSessionAgentRuns: vi.fn(() => Promise.resolve([])),
   getUsageByStep: vi.fn(() => Promise.resolve([])),
   getUsageByModel: vi.fn(() => Promise.resolve([])),
   resetUsage: vi.fn(() => Promise.resolve()),
@@ -43,36 +44,36 @@ const mockByModel: UsageByModel[] = [
   { model: "claude-opus-4-20250514", total_cost: 7.0, run_count: 12 },
 ];
 
-const mockRecentRuns: AgentRunRecord[] = [
+const mockRecentSessions: WorkflowSessionRecord[] = [
   {
-    agent_id: "agent-1",
+    session_id: "ws-1",
     skill_name: "my-skill",
-    step_id: 1,
-    model: "claude-sonnet-4-520250514",
-    status: "completed",
-    input_tokens: 12450,
-    output_tokens: 3200,
-    cache_read_tokens: 5000,
-    cache_write_tokens: 1500,
-    total_cost: 0.0523,
-    duration_ms: 45000,
-    session_id: null,
+    min_step: 0,
+    max_step: 2,
+    steps_csv: "0,1,2",
+    agent_count: 3,
+    total_cost: 0.15,
+    total_input_tokens: 15000,
+    total_output_tokens: 3000,
+    total_cache_read: 8000,
+    total_cache_write: 1500,
+    total_duration_ms: 36000,
     started_at: new Date(Date.now() - 120000).toISOString(), // 2 min ago
-    completed_at: new Date(Date.now() - 75000).toISOString(),
+    completed_at: new Date(Date.now() - 84000).toISOString(),
   },
   {
-    agent_id: "agent-2",
+    session_id: "ws-2",
     skill_name: "another-skill",
-    step_id: 5,
-    model: "claude-opus-4-20250514",
-    status: "completed",
-    input_tokens: 50000,
-    output_tokens: 8000,
-    cache_read_tokens: 20000,
-    cache_write_tokens: 3000,
+    min_step: 5,
+    max_step: 5,
+    steps_csv: "5",
+    agent_count: 1,
     total_cost: 1.2345,
-    duration_ms: 180000,
-    session_id: null,
+    total_input_tokens: 50000,
+    total_output_tokens: 8000,
+    total_cache_read: 20000,
+    total_cache_write: 3000,
+    total_duration_ms: 180000,
     started_at: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
     completed_at: new Date(Date.now() - 3420000).toISOString(),
   },
@@ -80,7 +81,7 @@ const mockRecentRuns: AgentRunRecord[] = [
 
 function setStoreData(overrides?: {
   summary?: UsageSummary | null;
-  recentRuns?: AgentRunRecord[];
+  recentSessions?: WorkflowSessionRecord[];
   byStep?: UsageByStep[];
   byModel?: UsageByModel[];
   loading?: boolean;
@@ -88,7 +89,7 @@ function setStoreData(overrides?: {
 }) {
   useUsageStore.setState({
     summary: overrides?.summary !== undefined ? overrides.summary : mockSummary,
-    recentRuns: overrides?.recentRuns ?? mockRecentRuns,
+    recentSessions: overrides?.recentSessions ?? mockRecentSessions,
     byStep: overrides?.byStep ?? mockByStep,
     byModel: overrides?.byModel ?? mockByModel,
     loading: overrides?.loading ?? false,
@@ -118,60 +119,58 @@ describe("UsagePage", () => {
     render(<UsagePage />);
 
     expect(screen.getByText("Cost by Step")).toBeInTheDocument();
-    // Step names may appear multiple times (in breakdown and in recent runs badges),
+    // Step names may appear multiple times (in breakdown and in session badges),
     // so use getAllByText to verify they exist
     expect(screen.getAllByText("Research Concepts").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Reasoning").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Build").length).toBeGreaterThanOrEqual(1);
     // Check cost text is rendered (unique to the breakdown section)
-    expect(screen.getByText(/\$3\.5000 \(10 runs\)/)).toBeInTheDocument();
-    expect(screen.getByText(/\$6\.0000 \(8 runs\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$3\.5000 \(10 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$6\.0000 \(8 agents\)/)).toBeInTheDocument();
   });
 
   it("renders cost-by-model breakdown", () => {
     render(<UsagePage />);
 
     expect(screen.getByText("Cost by Model")).toBeInTheDocument();
-    // Model names may appear multiple times (in breakdown and in recent runs badges)
+    // Model names may appear multiple times (in breakdown and in session badges)
     expect(screen.getAllByText("claude-sonnet-4-520250514").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("claude-opus-4-20250514").length).toBeGreaterThanOrEqual(1);
     // Cost text is unique to the breakdown section
-    expect(screen.getByText(/\$5\.5000 \(20 runs\)/)).toBeInTheDocument();
-    expect(screen.getByText(/\$7\.0000 \(12 runs\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$5\.5000 \(20 agents\)/)).toBeInTheDocument();
+    expect(screen.getByText(/\$7\.0000 \(12 agents\)/)).toBeInTheDocument();
   });
 
-  it("renders recent runs list", () => {
+  it("renders recent workflow sessions list", () => {
     render(<UsagePage />);
 
-    expect(screen.getByText("Recent Runs")).toBeInTheDocument();
+    expect(screen.getByText("Recent Workflow Runs")).toBeInTheDocument();
     expect(screen.getByText("my-skill")).toBeInTheDocument();
     expect(screen.getByText("another-skill")).toBeInTheDocument();
-    // Step badges
-    const conceptsBadges = screen.getAllByText("Research Concepts");
-    expect(conceptsBadges.length).toBeGreaterThanOrEqual(1);
-    const reasoningBadges = screen.getAllByText("Reasoning");
-    expect(reasoningBadges.length).toBeGreaterThanOrEqual(1);
+    // Agent count badges
+    expect(screen.getByText("3 agents")).toBeInTheDocument();
+    expect(screen.getByText("1 agent")).toBeInTheDocument();
   });
 
-  it("expanding a run shows token details", async () => {
+  it("expanding a session shows token summary", async () => {
     const user = userEvent.setup();
     render(<UsagePage />);
 
-    // Find expand button for first run
-    const expandButton = screen.getByLabelText(/Toggle details for my-skill Research Concepts run/);
+    // Find expand button for first session
+    const expandButton = screen.getByLabelText(/Toggle details for my-skill workflow run/);
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
 
     await user.click(expandButton);
 
     expect(expandButton).toHaveAttribute("aria-expanded", "true");
 
-    const details = screen.getByTestId("run-details-0");
-    expect(details).toBeInTheDocument();
-    expect(details).toHaveTextContent("12,450");
-    expect(details).toHaveTextContent("3,200");
-    expect(details).toHaveTextContent("5,000");
-    expect(details).toHaveTextContent("1,500");
-    expect(details).toHaveTextContent("45s");
+    // Session summary details should be visible
+    await waitFor(() => {
+      expect(screen.getByText("18,000")).toBeInTheDocument(); // total tokens (15000 + 3000)
+      expect(screen.getByText("15,000")).toBeInTheDocument(); // input tokens
+      expect(screen.getByText("3,000")).toBeInTheDocument(); // output tokens
+      expect(screen.getByText("36s")).toBeInTheDocument(); // duration
+    });
   });
 
   it("reset button shows confirmation dialog", async () => {
@@ -213,7 +212,7 @@ describe("UsagePage", () => {
   it("empty state shows when no data", () => {
     setStoreData({
       summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
-      recentRuns: [],
+      recentSessions: [],
       byStep: [],
       byModel: [],
     });
@@ -249,30 +248,34 @@ describe("UsagePage", () => {
     expect(mockFetchUsage).toHaveBeenCalled();
   });
 
-  it("collapsing an expanded run hides token details", async () => {
+  it("collapsing an expanded session hides details", async () => {
     const user = userEvent.setup();
     render(<UsagePage />);
 
-    const expandButton = screen.getByLabelText(/Toggle details for my-skill Research Concepts run/);
+    const expandButton = screen.getByLabelText(/Toggle details for my-skill workflow run/);
 
     // Expand
     await user.click(expandButton);
-    expect(screen.getByTestId("run-details-0")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("18,000")).toBeInTheDocument();
+    });
 
     // Collapse
     await user.click(expandButton);
-    expect(screen.queryByTestId("run-details-0")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText("18,000")).not.toBeInTheDocument();
+    });
     expect(expandButton).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows null summary as zero values", () => {
     setStoreData({
       summary: null,
-      recentRuns: [],
+      recentSessions: [],
     });
     render(<UsagePage />);
 
-    // null summary with no runs triggers empty state
+    // null summary with no sessions triggers empty state
     expect(screen.getByText("No usage data yet.")).toBeInTheDocument();
   });
 });

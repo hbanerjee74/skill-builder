@@ -21,6 +21,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { useUsageStore } from "@/stores/usage-store"
+import { getSessionAgentRuns } from "@/lib/tauri"
+import type { AgentRunRecord } from "@/lib/types"
 
 const STEP_NAMES: Record<number, string> = {
   0: "Init",
@@ -104,10 +106,25 @@ function formatRelativeTime(dateStr: string): string {
   return `${days}d ago`
 }
 
+function formatStepsRange(stepsCsv: string): string {
+  const steps = stepsCsv.split(",").map(Number).sort((a, b) => a - b)
+  if (steps.length === 0) return "No steps"
+  if (steps.length === 1) return getStepName(steps[0])
+
+  // Check if contiguous
+  const isContiguous = steps.every((s, i) => i === 0 || s === steps[i - 1] + 1)
+  if (isContiguous) {
+    return `${getStepName(steps[0])} → ${getStepName(steps[steps.length - 1])}`
+  }
+  return steps.map(getStepName).join(", ")
+}
+
 export default function UsagePage() {
-  const { summary, recentRuns, byStep, byModel, loading, error, fetchUsage, resetCounter } = useUsageStore()
+  const { summary, recentSessions, byStep, byModel, loading, error, fetchUsage, resetCounter } = useUsageStore()
   const [resetting, setResetting] = useState(false)
-  const [expandedRuns, setExpandedRuns] = useState<Set<number>>(new Set())
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
+  const [sessionAgents, setSessionAgents] = useState<Record<string, AgentRunRecord[]>>({})
+  const [loadingSessions, setLoadingSessions] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchUsage()
@@ -117,6 +134,8 @@ export default function UsagePage() {
     setResetting(true)
     try {
       await resetCounter()
+      setExpandedSessions(new Set())
+      setSessionAgents({})
       toast.success("Usage data reset")
     } catch (err) {
       toast.error(`Failed to reset usage: ${err instanceof Error ? err.message : String(err)}`)
@@ -125,16 +144,33 @@ export default function UsagePage() {
     }
   }
 
-  const toggleExpanded = (index: number) => {
-    setExpandedRuns((prev) => {
+  const toggleSession = async (sessionId: string) => {
+    setExpandedSessions((prev) => {
       const next = new Set(prev)
-      if (next.has(index)) {
-        next.delete(index)
+      if (next.has(sessionId)) {
+        next.delete(sessionId)
       } else {
-        next.add(index)
+        next.add(sessionId)
       }
       return next
     })
+
+    // Lazy-load agent runs if not already loaded
+    if (!sessionAgents[sessionId] && !loadingSessions.has(sessionId)) {
+      setLoadingSessions((prev) => new Set(prev).add(sessionId))
+      try {
+        const agents = await getSessionAgentRuns(sessionId)
+        setSessionAgents((prev) => ({ ...prev, [sessionId]: agents }))
+      } catch (err) {
+        console.warn("Failed to load session agents:", err)
+      } finally {
+        setLoadingSessions((prev) => {
+          const next = new Set(prev)
+          next.delete(sessionId)
+          return next
+        })
+      }
+    }
   }
 
   if (loading) {
@@ -154,7 +190,7 @@ export default function UsagePage() {
     )
   }
 
-  const isEmpty = !summary || (summary.total_runs === 0 && recentRuns.length === 0)
+  const isEmpty = !summary || (summary.total_runs === 0 && recentSessions.length === 0)
 
   if (isEmpty) {
     return (
@@ -265,7 +301,7 @@ export default function UsagePage() {
                   <div className="flex items-center justify-between text-sm">
                     <span>{step.step_name || getStepName(step.step_id)}</span>
                     <span className="text-muted-foreground">
-                      {formatCost(step.total_cost)} ({step.run_count} runs)
+                      {formatCost(step.total_cost)} ({step.run_count} agents)
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -294,7 +330,7 @@ export default function UsagePage() {
                   <div className="flex items-center justify-between text-sm">
                     <span>{m.model}</span>
                     <span className="text-muted-foreground">
-                      {formatCost(m.total_cost)} ({m.run_count} runs)
+                      {formatCost(m.total_cost)} ({m.run_count} agents)
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -310,51 +346,87 @@ export default function UsagePage() {
         </Card>
       </div>
 
-      {/* Recent Runs */}
+      {/* Recent Workflow Sessions */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Runs</CardTitle>
+          <CardTitle>Recent Workflow Runs</CardTitle>
         </CardHeader>
         <CardContent>
-          {recentRuns.length === 0 ? (
+          {recentSessions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No recent runs.</p>
           ) : (
             <div className="flex flex-col divide-y">
-              {recentRuns.map((run, index) => {
-                const isExpanded = expandedRuns.has(index)
+              {recentSessions.map((session) => {
+                const isExpanded = expandedSessions.has(session.session_id)
+                const agents = sessionAgents[session.session_id]
+                const isLoading = loadingSessions.has(session.session_id)
                 return (
-                  <div key={`${run.agent_id}-${run.started_at}`} className="py-2">
+                  <div key={session.session_id} className="py-2">
                     <button
-                      onClick={() => toggleExpanded(index)}
+                      onClick={() => toggleSession(session.session_id)}
                       className="flex w-full items-center gap-3 text-sm hover:bg-muted/50 rounded-md px-2 py-1 transition-colors"
                       aria-expanded={isExpanded}
-                      aria-label={`Toggle details for ${run.skill_name} ${getStepName(run.step_id)} run`}
+                      aria-label={`Toggle details for ${session.skill_name} workflow run`}
                     >
                       {isExpanded ? (
                         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                       ) : (
                         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                       )}
-                      <span className="font-medium truncate">{run.skill_name}</span>
+                      <span className="font-medium truncate">{session.skill_name}</span>
                       <Badge variant="secondary" className="text-xs shrink-0">
-                        {getStepName(run.step_id)}
+                        {formatStepsRange(session.steps_csv)}
                       </Badge>
                       <Badge variant="outline" className="text-xs shrink-0">
-                        {run.model}
+                        {session.agent_count} {session.agent_count === 1 ? "agent" : "agents"}
                       </Badge>
-                      <span className="ml-auto shrink-0 font-mono">{formatCost(run.total_cost)}</span>
-                      <span className="text-muted-foreground shrink-0 w-16 text-right">
-                        {formatRelativeTime(run.started_at)}
+                      <span className="ml-auto shrink-0 font-mono">{formatCost(session.total_cost)}</span>
+                      <span className="text-muted-foreground shrink-0 text-right text-xs" title="UTC">
+                        {formatRelativeTime(session.started_at)} (UTC)
                       </span>
                     </button>
+
                     {isExpanded && (
-                      <div className="ml-9 mt-2 grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-muted-foreground pb-2" data-testid={`run-details-${index}`}>
-                        <div>Input tokens: <span className="text-foreground font-mono">{formatTokens(run.input_tokens)}</span></div>
-                        <div>Output tokens: <span className="text-foreground font-mono">{formatTokens(run.output_tokens)}</span></div>
-                        <div>Cache read: <span className="text-foreground font-mono">{formatTokens(run.cache_read_tokens)}</span></div>
-                        <div>Cache write: <span className="text-foreground font-mono">{formatTokens(run.cache_write_tokens)}</span></div>
-                        <div>Duration: <span className="text-foreground font-mono">{formatDuration(run.duration_ms)}</span></div>
-                        <div>Status: <span className="text-foreground">{run.status}</span></div>
+                      <div className="ml-9 mt-2 pb-2">
+                        {/* Session summary */}
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-muted-foreground mb-3">
+                          <div>Total tokens: <span className="text-foreground font-mono">{formatTokens(session.total_input_tokens + session.total_output_tokens)}</span></div>
+                          <div>Duration: <span className="text-foreground font-mono">{formatDuration(session.total_duration_ms)}</span></div>
+                          <div>Input: <span className="text-foreground font-mono">{formatTokens(session.total_input_tokens)}</span></div>
+                          <div>Output: <span className="text-foreground font-mono">{formatTokens(session.total_output_tokens)}</span></div>
+                          <div>Cache read: <span className="text-foreground font-mono">{formatTokens(session.total_cache_read)}</span></div>
+                          <div>Cache write: <span className="text-foreground font-mono">{formatTokens(session.total_cache_write)}</span></div>
+                        </div>
+
+                        {/* Individual agent runs */}
+                        {isLoading ? (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="size-3 animate-spin" />
+                            Loading agent details...
+                          </div>
+                        ) : agents && agents.length > 0 ? (
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">Agent Runs</p>
+                            {agents.map((agent) => (
+                              <div
+                                key={agent.agent_id}
+                                className="flex items-center gap-2 text-xs px-2 py-1 rounded bg-muted/30"
+                              >
+                                <Badge variant="secondary" className="text-xs shrink-0">
+                                  {getStepName(agent.step_id)}
+                                </Badge>
+                                <Badge variant="outline" className="text-xs shrink-0">
+                                  {agent.model}
+                                </Badge>
+                                <span className="text-muted-foreground">
+                                  {formatTokens(agent.input_tokens)}&rarr;{formatTokens(agent.output_tokens)} tokens
+                                </span>
+                                <span className="ml-auto font-mono">{formatCost(agent.total_cost)}</span>
+                                <span className="text-muted-foreground">{formatDuration(agent.duration_ms)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </div>
