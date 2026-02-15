@@ -9,6 +9,7 @@ import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import PromptsPage from "./pages/prompts";
 import SkillsPage from "./pages/skills";
+import UsagePage from "./pages/usage";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -43,11 +44,18 @@ const skillsRoute = createRoute({
   component: SkillsPage,
 });
 
+const usageRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/usage",
+  component: UsagePage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
   promptsRoute,
   skillsRoute,
+  usageRoute,
   workflowRoute,
 ]);
 

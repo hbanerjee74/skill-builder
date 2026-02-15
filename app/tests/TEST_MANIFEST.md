@@ -14,6 +14,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
 | `src/stores/imported-skills-store.ts` | `stores/imported-skills-store.test.ts` (13) | `components/imported-skill-card.test.tsx`, `pages/skills.test.tsx` | -- |
 | `src/stores/auth-store.ts` | -- | `components/feedback-dialog.test.tsx`, `components/github-login-dialog.test.tsx`, `pages/settings.test.tsx` | `@settings` |
+| `src/stores/usage-store.ts` | -- | `pages/usage.test.tsx` | -- |
 
 ### Hooks
 
@@ -41,6 +42,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
+| `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (13) | -- |
 
 ### Components
 

@@ -100,6 +100,11 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/prompts" });
       }
+      // Cmd+4 -> Usage
+      if ((e.metaKey || e.ctrlKey) && e.key === "4") {
+        e.preventDefault();
+        navigate({ to: "/usage" });
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
