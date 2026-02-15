@@ -80,6 +80,16 @@ function formatTokens(count: number): string {
   return count.toLocaleString()
 }
 
+function formatSessionTime(iso: string): string {
+  try {
+    const date = new Date(iso)
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      + " " + date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  } catch {
+    return ""
+  }
+}
+
 interface StepSummary {
   stepId: number
   name: string
@@ -374,6 +384,7 @@ export default function UsagePage() {
                         <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                       )}
                       <span className="font-medium truncate">{session.skill_name}</span>
+                      <span className="text-muted-foreground text-xs shrink-0">{formatSessionTime(session.started_at)}</span>
                       <span className="ml-auto shrink-0 font-mono">{formatCost(session.total_cost)}</span>
                       <span className="shrink-0 text-muted-foreground font-mono text-xs">
                         {formatTokens(session.total_input_tokens + session.total_output_tokens)} tokens
