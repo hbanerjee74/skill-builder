@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { Upload, Package } from "lucide-react"
+import { Upload, Package, Github } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -15,6 +15,7 @@ import ImportedSkillCard from "@/components/imported-skill-card"
 import SkillPreviewDialog from "@/components/skill-preview-dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
+import GitHubImportDialog from "@/components/github-import-dialog"
 
 export default function SkillsPage() {
   const {
@@ -27,6 +28,7 @@ export default function SkillsPage() {
   } = useImportedSkillsStore()
 
   const [previewSkill, setPreviewSkill] = useState<ImportedSkill | null>(null)
+  const [showGitHubImport, setShowGitHubImport] = useState(false)
 
   useEffect(() => {
     fetchSkills()
@@ -93,10 +95,16 @@ export default function SkillsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Skills Library</h1>
-        <Button onClick={handleUpload}>
-          <Upload className="size-4" />
-          Upload Skill
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
+            <Github className="size-4" />
+            Import from GitHub
+          </Button>
+          <Button onClick={handleUpload}>
+            <Upload className="size-4" />
+            Upload Skill
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -122,14 +130,20 @@ export default function SkillsPage() {
             </div>
             <CardTitle>No imported skills</CardTitle>
             <CardDescription>
-              Upload a .skill package to add it to your library.
+              Upload a .skill package or import from GitHub to add skills to your library.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button onClick={handleUpload}>
-              <Upload className="size-4" />
-              Upload Skill
-            </Button>
+            <div className="flex flex-col items-center gap-2">
+              <Button onClick={handleUpload}>
+                <Upload className="size-4" />
+                Upload Skill
+              </Button>
+              <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
+                <Github className="size-4" />
+                Import from GitHub
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -152,6 +166,12 @@ export default function SkillsPage() {
         onOpenChange={(open) => {
           if (!open) setPreviewSkill(null)
         }}
+      />
+
+      <GitHubImportDialog
+        open={showGitHubImport}
+        onOpenChange={setShowGitHubImport}
+        onImported={fetchSkills}
       />
     </div>
   )
