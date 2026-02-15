@@ -6,7 +6,7 @@ use std::path::Path;
 
 /// Validate that a skill name is safe for use in file paths.
 /// Rejects names containing path traversal characters or empty strings.
-fn validate_skill_name(name: &str) -> Result<(), String> {
+pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Skill name cannot be empty".to_string());
     }
@@ -21,7 +21,7 @@ fn validate_skill_name(name: &str) -> Result<(), String> {
 
 /// Parse YAML frontmatter from SKILL.md content.
 /// Extracts `name`, `description`, and `domain` fields from YAML between `---` markers.
-fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<String>) {
+pub(crate) fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>, Option<String>) {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
         return (None, None, None);
@@ -206,7 +206,7 @@ fn upload_skill_inner(
 }
 
 /// Helper to generate a simple unique ID from inputs
-fn generate_skill_id(skill_name: &str) -> String {
+pub(crate) fn generate_skill_id(skill_name: &str) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
