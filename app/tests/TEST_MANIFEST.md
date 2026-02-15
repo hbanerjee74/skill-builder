@@ -38,11 +38,11 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
-| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (36) | `@workflow`, `@workflow-agent` |
+| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (39) | `@workflow`, `@workflow-agent` |
 | `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (9) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
-| `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (13) | -- |
+| `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (14) | -- |
 
 ### Components
 
@@ -73,7 +73,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (60) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (64) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
 | `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (57) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (47) | `@dashboard` |
