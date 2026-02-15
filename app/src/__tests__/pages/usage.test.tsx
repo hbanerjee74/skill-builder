@@ -152,6 +152,25 @@ describe("UsagePage", () => {
     expect(screen.getByText("58,000 tokens")).toBeInTheDocument(); // 50000 + 8000
   });
 
+  it("renders session start time in accordion header", () => {
+    // Use a fixed started_at so the formatted output is deterministic
+    const fixedDate = "2025-02-15T07:30:00.000Z";
+    const formatted = new Date(fixedDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      + " " + new Date(fixedDate).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+
+    setStoreData({
+      recentSessions: [
+        {
+          ...mockRecentSessions[0],
+          started_at: fixedDate,
+        },
+      ],
+    });
+    render(<UsagePage />);
+
+    expect(screen.getByText(formatted)).toBeInTheDocument();
+  });
+
   it("expanding a session shows step table", async () => {
     const { getSessionAgentRuns } = await import("@/lib/tauri");
     vi.mocked(getSessionAgentRuns).mockResolvedValueOnce([
