@@ -1,6 +1,6 @@
 use crate::types::{
-    AppSettings, ImportedSkill, WorkflowRunRow,
-    WorkflowStepRow,
+    AgentRunRecord, AppSettings, ImportedSkill, UsageByModel, UsageByStep, UsageSummary,
+    WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
 };
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -22,6 +22,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_add_skill_type_migration(&conn)?;
     run_lock_table_migration(&conn)?;
     run_author_migration(&conn)?;
+    run_usage_tracking_migration(&conn)?;
+    run_workflow_session_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -37,8 +39,8 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             domain TEXT NOT NULL,
             current_step INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'pending',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS workflow_steps (
@@ -60,7 +62,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             output_tokens INTEGER,
             total_cost REAL,
             session_id TEXT,
-            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             completed_at TEXT
         );
 
@@ -68,8 +70,8 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             id TEXT PRIMARY KEY,
             skill_name TEXT NOT NULL,
             mode TEXT NOT NULL DEFAULT 'conversational',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -77,7 +79,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             session_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS workflow_artifacts (
@@ -86,15 +88,15 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             relative_path TEXT NOT NULL,
             content TEXT NOT NULL,
             size_bytes INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             PRIMARY KEY (skill_name, step_id, relative_path)
         );
 
         CREATE TABLE IF NOT EXISTS skill_tags (
             skill_name TEXT NOT NULL,
             tag TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             PRIMARY KEY (skill_name, tag)
         );
 
@@ -105,7 +107,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             description TEXT,
             is_active INTEGER DEFAULT 1,
             disk_path TEXT NOT NULL,
-            imported_at TEXT DEFAULT (datetime('now'))
+            imported_at TEXT DEFAULT (datetime('now') || 'Z')
         );",
     )
 }
@@ -137,7 +139,7 @@ fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
             skill_name TEXT PRIMARY KEY,
             instance_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
-            acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );",
     )
 }
@@ -156,6 +158,361 @@ fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
              ALTER TABLE workflow_runs ADD COLUMN author_avatar TEXT;",
         )?;
     }
+    Ok(())
+}
+
+fn run_usage_tracking_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(agent_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "cache_read_tokens") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN cache_read_tokens INTEGER DEFAULT 0;",
+        )?;
+    }
+    if !columns.iter().any(|name| name == "cache_write_tokens") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN cache_write_tokens INTEGER DEFAULT 0;",
+        )?;
+    }
+    if !columns.iter().any(|name| name == "duration_ms") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN duration_ms INTEGER;")?;
+    }
+    if !columns.iter().any(|name| name == "reset_marker") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN reset_marker TEXT;")?;
+    }
+    Ok(())
+}
+
+fn run_workflow_session_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(agent_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "workflow_session_id") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN workflow_session_id TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
+// --- Usage Tracking ---
+
+fn step_name(step_id: i32) -> String {
+    match step_id {
+        0 => "Init".to_string(),
+        1 => "Research Concepts".to_string(),
+        2 => "Concepts Review".to_string(),
+        3 => "Research Patterns".to_string(),
+        4 => "Human Review".to_string(),
+        5 => "Reasoning".to_string(),
+        6 => "Build".to_string(),
+        7 => "Validate".to_string(),
+        8 => "Package/Refine".to_string(),
+        -1 => "Chat".to_string(),
+        _ => format!("Step {}", step_id),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn persist_agent_run(
+    conn: &Connection,
+    agent_id: &str,
+    skill_name: &str,
+    step_id: i32,
+    model: &str,
+    status: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+    cache_read_tokens: i32,
+    cache_write_tokens: i32,
+    total_cost: f64,
+    duration_ms: i64,
+    session_id: Option<&str>,
+    workflow_session_id: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO agent_runs
+         (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
+          cache_read_tokens, cache_write_tokens, total_cost, duration_ms, session_id,
+          workflow_session_id, started_at, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1), datetime('now') || 'Z'),
+                 datetime('now') || 'Z')",
+        rusqlite::params![
+            agent_id,
+            skill_name,
+            step_id,
+            model,
+            status,
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_write_tokens,
+            total_cost,
+            duration_ms,
+            session_id,
+            workflow_session_id,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
+    if hide_cancelled {
+        // Aggregate at session level first, filtering zero-cost sessions
+        let mut stmt = conn
+            .prepare(
+                "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                        COUNT(*),
+                        COALESCE(AVG(sub.session_cost), 0.0)
+                 FROM (
+                   SELECT workflow_session_id, SUM(total_cost) as session_cost
+                   FROM agent_runs
+                   WHERE reset_marker IS NULL
+                     AND workflow_session_id IS NOT NULL
+                   GROUP BY workflow_session_id
+                   HAVING SUM(total_cost) > 0
+                 ) sub",
+            )
+            .map_err(|e| e.to_string())?;
+
+        stmt.query_row([], |row| {
+            Ok(UsageSummary {
+                total_cost: row.get(0)?,
+                total_runs: row.get(1)?,
+                avg_cost_per_run: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT COALESCE(SUM(total_cost), 0.0),
+                        COUNT(DISTINCT workflow_session_id),
+                        COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
+                 FROM agent_runs
+                 WHERE reset_marker IS NULL
+                   AND workflow_session_id IS NOT NULL",
+            )
+            .map_err(|e| e.to_string())?;
+
+        stmt.query_row([], |row| {
+            Ok(UsageSummary {
+                total_cost: row.get(0)?,
+                total_runs: row.get(1)?,
+                avg_cost_per_run: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())
+    }
+}
+
+pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT agent_id, skill_name, step_id, model, status,
+                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    session_id, started_at, completed_at
+             FROM agent_runs
+             WHERE reset_marker IS NULL
+             ORDER BY completed_at DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![limit as i64], |row| {
+            Ok(AgentRunRecord {
+                agent_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                step_id: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                total_cost: row.get(9)?,
+                duration_ms: row.get(10)?,
+                session_id: row.get(11)?,
+                started_at: row.get(12)?,
+                completed_at: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
+    let having = if hide_cancelled { "HAVING SUM(total_cost) > 0" } else { "" };
+    let sql = format!(
+        "SELECT workflow_session_id,
+                skill_name, MIN(step_id), MAX(step_id),
+                GROUP_CONCAT(DISTINCT step_id), COUNT(*),
+                COALESCE(SUM(total_cost), 0.0),
+                COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
+                COALESCE(SUM(duration_ms), 0),
+                MIN(started_at), MAX(completed_at)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY workflow_session_id, skill_name
+         {}
+         ORDER BY MAX(completed_at) DESC
+         LIMIT ?1",
+        having
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![limit as i64], |row| {
+            Ok(WorkflowSessionRecord {
+                session_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                min_step: row.get(2)?,
+                max_step: row.get(3)?,
+                steps_csv: row.get(4)?,
+                agent_count: row.get(5)?,
+                total_cost: row.get(6)?,
+                total_input_tokens: row.get(7)?,
+                total_output_tokens: row.get(8)?,
+                total_cache_read: row.get(9)?,
+                total_cache_write: row.get(10)?,
+                total_duration_ms: row.get(11)?,
+                started_at: row.get(12)?,
+                completed_at: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec<AgentRunRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT agent_id, skill_name, step_id, model, status,
+                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    session_id, started_at, completed_at
+             FROM agent_runs
+             WHERE workflow_session_id = ?1
+             ORDER BY started_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![session_id], |row| {
+            Ok(AgentRunRecord {
+                agent_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                step_id: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                total_cost: row.get(9)?,
+                duration_ms: row.get(10)?,
+                session_id: row.get(11)?,
+                started_at: row.get(12)?,
+                completed_at: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
+    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let sql = format!(
+        "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL{}
+         GROUP BY step_id
+         ORDER BY SUM(total_cost) DESC",
+        extra
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            let sid: i32 = row.get(0)?;
+            Ok(UsageByStep {
+                step_id: sid,
+                step_name: step_name(sid),
+                total_cost: row.get(1)?,
+                run_count: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
+    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let sql = format!(
+        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL{}
+         GROUP BY model
+         ORDER BY SUM(total_cost) DESC",
+        extra
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(UsageByModel {
+                model: row.get(0)?,
+                total_cost: row.get(1)?,
+                run_count: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn reset_usage(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "UPDATE agent_runs SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -195,9 +552,9 @@ pub fn save_workflow_run(
 ) -> Result<(), String> {
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now')",
+             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now') || 'Z'",
         rusqlite::params![skill_name, domain, current_step, status, skill_type],
     )
     .map_err(|e| e.to_string())?;
@@ -788,6 +1145,8 @@ mod tests {
         run_add_skill_type_migration(&conn).unwrap();
         run_lock_table_migration(&conn).unwrap();
         run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
         conn
     }
 
@@ -1305,5 +1664,246 @@ mod tests {
     fn test_check_pid_alive_dead_process() {
         // PID 99999999 almost certainly doesn't exist
         assert!(!check_pid_alive(99999999));
+    }
+
+    // --- Usage Tracking tests ---
+
+    #[test]
+    fn test_usage_tracking_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        // Running again should not error
+        run_usage_tracking_migration(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_persist_agent_run_inserts_correctly() {
+        let conn = create_test_db();
+        persist_agent_run(
+            &conn,
+            "agent-1",
+            "my-skill",
+            3,
+            "sonnet",
+            "completed",
+            1000,
+            500,
+            200,
+            100,
+            0.05,
+            12345,
+            Some("session-abc"),
+            Some("wf-test-session"),
+        )
+        .unwrap();
+
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.agent_id, "agent-1");
+        assert_eq!(run.skill_name, "my-skill");
+        assert_eq!(run.step_id, 3);
+        assert_eq!(run.model, "sonnet");
+        assert_eq!(run.status, "completed");
+        assert_eq!(run.input_tokens, 1000);
+        assert_eq!(run.output_tokens, 500);
+        assert_eq!(run.cache_read_tokens, 200);
+        assert_eq!(run.cache_write_tokens, 100);
+        assert!((run.total_cost - 0.05).abs() < f64::EPSILON);
+        assert_eq!(run.duration_ms, 12345);
+        assert_eq!(run.session_id.as_deref(), Some("session-abc"));
+        assert!(run.started_at.len() > 0);
+        assert!(run.completed_at.is_some());
+    }
+
+    #[test]
+    fn test_persist_agent_run_without_session_id() {
+        let conn = create_test_db();
+        persist_agent_run(
+            &conn, "agent-2", "my-skill", 1, "haiku", "completed",
+            500, 200, 0, 0, 0.01, 5000, None, None,
+        )
+        .unwrap();
+
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].session_id.is_none());
+    }
+
+    #[test]
+    fn test_get_usage_summary_correct_aggregates() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-1");
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-a", 3, "opus", "completed",
+            2000, 1000, 0, 0, 0.30, 10000, None, ws,
+        )
+        .unwrap();
+        // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
+        persist_agent_run(
+            &conn, "agent-3", "skill-a", 5, "sonnet", "running",
+            100, 50, 0, 0, 0.01, 0, None, ws,
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, false).unwrap();
+        // All three agents share one workflow session → 1 run, total 0.41
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.41).abs() < 1e-10);
+        assert!((summary.avg_cost_per_run - 0.41).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_usage_summary_empty() {
+        let conn = create_test_db();
+        let summary = get_usage_summary(&conn, false).unwrap();
+        assert_eq!(summary.total_runs, 0);
+        assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
+        assert!((summary.avg_cost_per_run - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_reset_usage_marks_runs() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-r");
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-a", 3, "opus", "completed",
+            2000, 1000, 0, 0, 0.30, 10000, None, ws,
+        )
+        .unwrap();
+
+        reset_usage(&conn).unwrap();
+
+        // After reset, summary should show zero
+        let summary = get_usage_summary(&conn, false).unwrap();
+        assert_eq!(summary.total_runs, 0);
+        assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
+
+        // Recent runs should also be empty (filtered by reset_marker IS NULL)
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert!(runs.is_empty());
+
+        // New runs after reset should still be visible
+        persist_agent_run(
+            &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
+            500, 200, 0, 0, 0.05, 3000, None, Some("wf-session-r2"),
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, false).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.05).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_usage_by_step_groups_correctly() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-s");
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
+            800, 400, 0, 0, 0.08, 4000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-3", "skill-a", 6, "sonnet", "completed",
+            2000, 1000, 0, 0, 0.25, 8000, None, ws,
+        )
+        .unwrap();
+
+        let by_step = get_usage_by_step(&conn, false).unwrap();
+        assert_eq!(by_step.len(), 2);
+
+        // Ordered by total_cost DESC: step 6 ($0.25) then step 1 ($0.18)
+        assert_eq!(by_step[0].step_id, 6);
+        assert_eq!(by_step[0].step_name, "Build");
+        assert_eq!(by_step[0].run_count, 1);
+        assert!((by_step[0].total_cost - 0.25).abs() < 1e-10);
+
+        assert_eq!(by_step[1].step_id, 1);
+        assert_eq!(by_step[1].step_name, "Research Concepts");
+        assert_eq!(by_step[1].run_count, 2);
+        assert!((by_step[1].total_cost - 0.18).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_usage_by_model_groups_correctly() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-m");
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-a", 5, "opus", "completed",
+            2000, 1000, 0, 0, 0.50, 10000, None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-3", "skill-a", 3, "sonnet", "completed",
+            500, 200, 0, 0, 0.05, 3000, None, ws,
+        )
+        .unwrap();
+
+        let by_model = get_usage_by_model(&conn, false).unwrap();
+        assert_eq!(by_model.len(), 2);
+
+        // Ordered by total_cost DESC: opus ($0.50) then sonnet ($0.15)
+        assert_eq!(by_model[0].model, "opus");
+        assert_eq!(by_model[0].run_count, 1);
+        assert!((by_model[0].total_cost - 0.50).abs() < 1e-10);
+
+        assert_eq!(by_model[1].model, "sonnet");
+        assert_eq!(by_model[1].run_count, 2);
+        assert!((by_model[1].total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_reset_usage_excludes_from_by_step_and_by_model() {
+        let conn = create_test_db();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, None,
+        )
+        .unwrap();
+
+        reset_usage(&conn).unwrap();
+
+        let by_step = get_usage_by_step(&conn, false).unwrap();
+        assert!(by_step.is_empty());
+
+        let by_model = get_usage_by_model(&conn, false).unwrap();
+        assert!(by_model.is_empty());
+    }
+
+    #[test]
+    fn test_step_name_mapping() {
+        assert_eq!(step_name(0), "Init");
+        assert_eq!(step_name(1), "Research Concepts");
+        assert_eq!(step_name(2), "Concepts Review");
+        assert_eq!(step_name(3), "Research Patterns");
+        assert_eq!(step_name(4), "Human Review");
+        assert_eq!(step_name(5), "Reasoning");
+        assert_eq!(step_name(6), "Build");
+        assert_eq!(step_name(7), "Validate");
+        assert_eq!(step_name(8), "Package/Refine");
+        assert_eq!(step_name(-1), "Chat");
+        assert_eq!(step_name(99), "Step 99");
     }
 }

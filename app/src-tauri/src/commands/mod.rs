@@ -11,5 +11,6 @@ pub mod sidecar_lifecycle;
 pub mod skill;
 #[cfg(test)]
 pub mod test_utils;
+pub mod usage;
 pub mod workflow;
 pub mod workspace;

@@ -15,6 +15,7 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  workflowSessionId: string | null;
   isInitializing: boolean;
   initStartTime: number | null;
   /** Granular progress message shown during initialization (e.g. "Loading SDK modules..."). */
@@ -100,6 +101,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  workflowSessionId: null,
   isInitializing: false,
   initStartTime: null,
   initProgressMessage: null,
@@ -114,6 +116,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      workflowSessionId: null,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,
@@ -132,7 +135,15 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       ),
     })),
 
-  setRunning: (running) => set({ isRunning: running }),
+  setRunning: (running) => set((state) => ({
+    isRunning: running,
+    // Generate a session ID only once per workflow execution.
+    // initWorkflow() and reset() clear it, so the next "Continue" from the
+    // dashboard creates a fresh one.
+    workflowSessionId: running
+      ? (state.workflowSessionId ?? crypto.randomUUID())
+      : state.workflowSessionId,
+  })),
 
   setInitializing: () =>
     set({
@@ -197,6 +208,7 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      workflowSessionId: null,
       isInitializing: false,
       initStartTime: null,
       initProgressMessage: null,

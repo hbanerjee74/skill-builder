@@ -147,6 +147,8 @@ export default function WorkflowPage() {
     }
 
     useWorkflowStore.getState().setRunning(false);
+    // Clear session ID so the next "Continue" starts a fresh session
+    useWorkflowStore.setState({ workflowSessionId: null });
     useAgentStore.getState().clearRuns();
 
     // Fire-and-forget: shut down persistent sidecar for this skill
@@ -174,6 +176,8 @@ export default function WorkflowPage() {
         useWorkflowStore.getState().setRunning(false);
         useAgentStore.getState().clearRuns();
       }
+      // Clear session ID so the next "Continue" starts a fresh session
+      useWorkflowStore.setState({ workflowSessionId: null });
 
       // Fire-and-forget: shut down persistent sidecar for this skill
       cleanupSkillSidecar(skillName).catch(() => {});

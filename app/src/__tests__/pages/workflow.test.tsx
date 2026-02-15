@@ -41,6 +41,7 @@ vi.mock("@/lib/tauri", () => ({
   cleanupSkillSidecar: vi.fn(() => Promise.resolve()),
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
+  persistAgentRun: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle

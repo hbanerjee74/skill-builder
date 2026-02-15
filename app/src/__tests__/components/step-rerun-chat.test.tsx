@@ -31,6 +31,7 @@ vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
   startAgent: mockStartAgent,
   readFile: mockReadFile,
+  persistAgentRun: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/chat-storage", () => ({

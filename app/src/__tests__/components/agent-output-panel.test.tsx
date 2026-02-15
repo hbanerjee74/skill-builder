@@ -17,6 +17,11 @@ vi.mock("remark-gfm", () => ({
   default: () => {},
 }));
 
+// Mock tauri commands used by agent-store
+vi.mock("@/lib/tauri", () => ({
+  persistAgentRun: vi.fn().mockResolvedValue(undefined),
+}));
+
 import {
   AgentOutputPanel,
   classifyMessage,

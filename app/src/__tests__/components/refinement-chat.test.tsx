@@ -23,6 +23,7 @@ const {
 
 vi.mock("@/lib/tauri", () => ({
   startAgent: mockStartAgent,
+  persistAgentRun: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@/lib/chat-storage", () => ({
