@@ -135,8 +135,8 @@ run_t1() {
     record_result "$tier" "coordinator_has_frontmatter" "FAIL" "first line: $coord_first"
   fi
 
-  # ---- T1.8: Shared context exists ----
-  assert_file_exists "$tier" "shared_context_exists" "$PLUGIN_DIR/references/shared-context.md"
+  # ---- T1.8: Workspace CLAUDE.md exists (contains shared context + protocols) ----
+  assert_file_exists "$tier" "workspace_claude_md_exists" "$PLUGIN_DIR/workspace/CLAUDE.md"
 
   # ---- T1.9: plugin.json required fields ----
   local pj="$PLUGIN_DIR/.claude-plugin/plugin.json"

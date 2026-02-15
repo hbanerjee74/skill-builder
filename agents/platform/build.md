@@ -24,11 +24,11 @@ Target platform integration guides. Content should help engineers understand too
 
 ## Rerun / Resume Mode
 
-See CLAUDE.md and `references/agent-protocols.md`.
+Follow the Rerun/Resume Mode protocol.
 
 ## Before You Start
 
-See CLAUDE.md and `references/agent-protocols.md`.
+Follow the Before You Start protocol.
 
 ## Phase 1: Plan the Skill Structure
 

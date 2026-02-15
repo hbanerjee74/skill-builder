@@ -105,8 +105,8 @@ pub fn prune_transcript_files(workspace_path: &str) {
     let mut pruned: u32 = 0;
     let mut skills_affected: u32 = 0;
 
-    // Infrastructure directories to skip (same list as workspace reconciliation)
-    const SKIP_DIRS: &[&str] = &["agents", "references", ".claude"];
+    // Infrastructure directories to skip (all live under .claude/)
+    const SKIP_DIRS: &[&str] = &[".claude"];
 
     let entries = match std::fs::read_dir(workspace) {
         Ok(e) => e,
@@ -293,15 +293,15 @@ mod tests {
         let tmp = tempdir().unwrap();
         let workspace = tmp.path();
 
-        // Create a logs/ dir inside an infrastructure directory (should be skipped)
-        let agents_logs = workspace.join("agents").join("logs");
-        fs::create_dir_all(&agents_logs).unwrap();
-        fs::write(agents_logs.join("old.jsonl"), "{}").unwrap();
+        // Create a logs/ dir inside .claude/ infrastructure directory (should be skipped)
+        let claude_logs = workspace.join(".claude").join("logs");
+        fs::create_dir_all(&claude_logs).unwrap();
+        fs::write(claude_logs.join("old.jsonl"), "{}").unwrap();
 
         prune_transcript_files(workspace.to_str().unwrap());
 
         assert!(
-            agents_logs.join("old.jsonl").exists(),
+            claude_logs.join("old.jsonl").exists(),
             "Files in infrastructure dirs should not be touched"
         );
     }

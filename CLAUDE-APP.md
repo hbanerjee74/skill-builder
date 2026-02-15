@@ -43,7 +43,7 @@ Debug with: `tail -f ~/.vibedata/my-skill/logs/step0-research-concepts-*.jsonl`
 
 ```json
 {
-  "prompt": "Read references/shared-context.md and agents/{type}/research-concepts.md...",
+  "prompt": "The domain is: X. The skill name is: Y. ...",
   "model": "sonnet",
   "apiKey": "sk-ant-...",
   "cwd": "/path/to/workspace",
@@ -69,7 +69,9 @@ The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/a
 ## Directory Layout
 
 **Workspace** (`~/.vibedata/` by default, configurable in Settings):
-- `agents/`, `references/` — bundled from repo at startup
+- `.claude/CLAUDE.md` — agent system prompt (auto-loaded by SDK)
+- `.claude/agents/` — flattened agents for SDK discovery (bundled from repo at startup)
+- `.claude/skills/` — skill triggers
 - `<skill-name>/context/` — intermediate working files (clarifications, decisions, validation logs)
 - `<skill-name>/logs/` — agent execution logs (JSONL)
 

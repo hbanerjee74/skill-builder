@@ -145,9 +145,7 @@ Both frontends use the same files -- no conversion needed:
 - `agents/templates/` -- 5 phase templates (source of truth for agent content)
 - `agents/types/` -- 4 type configs with output examples (focus lines, entity examples)
 - `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
-- `references/shared-context.md` -- domain definitions, file formats, content principles
-- `references/agent-protocols.md` -- rerun/resume, before-you-start, sub-agent communication protocols
-- `references/validate-best-practices.md` -- embedded skill best practices for validate agents
+- `workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); deployed to `.claude/CLAUDE.md` in workspace
 
 **Adding a new skill type:** Create `agents/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
 
