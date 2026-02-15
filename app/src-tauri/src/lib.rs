@@ -180,6 +180,8 @@ pub fn run() {
             commands::usage::get_usage_by_step,
             commands::usage::get_usage_by_model,
             commands::usage::reset_usage,
+            commands::usage::get_recent_workflow_sessions,
+            commands::usage::get_session_agent_runs,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

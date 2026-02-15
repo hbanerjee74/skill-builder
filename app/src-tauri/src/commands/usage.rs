@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary};
+use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
 
 #[tauri::command]
 pub fn persist_agent_run(
@@ -16,22 +16,13 @@ pub fn persist_agent_run(
     total_cost: f64,
     duration_ms: i64,
     session_id: Option<String>,
+    workflow_session_id: Option<String>,
 ) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::persist_agent_run(
-        &conn,
-        &agent_id,
-        &skill_name,
-        step_id,
-        &model,
-        &status,
-        input_tokens,
-        output_tokens,
-        cache_read_tokens,
-        cache_write_tokens,
-        total_cost,
-        duration_ms,
-        session_id.as_deref(),
+        &conn, &agent_id, &skill_name, step_id, &model, &status,
+        input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+        total_cost, duration_ms, session_id.as_deref(), workflow_session_id.as_deref(),
     )
 }
 
@@ -66,4 +57,22 @@ pub fn get_usage_by_model(db: tauri::State<'_, Db>) -> Result<Vec<UsageByModel>,
 pub fn reset_usage(db: tauri::State<'_, Db>) -> Result<(), String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     crate::db::reset_usage(&conn)
+}
+
+#[tauri::command]
+pub fn get_recent_workflow_sessions(
+    db: tauri::State<'_, Db>,
+    limit: usize,
+) -> Result<Vec<WorkflowSessionRecord>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_recent_workflow_sessions(&conn, limit)
+}
+
+#[tauri::command]
+pub fn get_session_agent_runs(
+    db: tauri::State<'_, Db>,
+    session_id: String,
+) -> Result<Vec<AgentRunRecord>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::get_session_agent_runs(&conn, &session_id)
 }

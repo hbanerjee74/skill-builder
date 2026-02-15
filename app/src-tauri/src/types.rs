@@ -245,6 +245,24 @@ pub struct AgentRunRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowSessionRecord {
+    pub session_id: String,
+    pub skill_name: String,
+    pub min_step: i32,
+    pub max_step: i32,
+    pub steps_csv: String,
+    pub agent_count: i32,
+    pub total_cost: f64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_cache_read: i64,
+    pub total_cache_write: i64,
+    pub total_duration_ms: i64,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageSummary {
     pub total_cost: f64,
     pub total_runs: i32,

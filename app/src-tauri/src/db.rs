@@ -1,6 +1,6 @@
 use crate::types::{
     AgentRunRecord, AppSettings, ImportedSkill, UsageByModel, UsageByStep, UsageSummary,
-    WorkflowRunRow, WorkflowStepRow,
+    WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
 };
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -23,6 +23,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_lock_table_migration(&conn)?;
     run_author_migration(&conn)?;
     run_usage_tracking_migration(&conn)?;
+    run_workflow_session_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -38,8 +39,8 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             domain TEXT NOT NULL,
             current_step INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'pending',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS workflow_steps (
@@ -61,7 +62,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             output_tokens INTEGER,
             total_cost REAL,
             session_id TEXT,
-            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             completed_at TEXT
         );
 
@@ -69,8 +70,8 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             id TEXT PRIMARY KEY,
             skill_name TEXT NOT NULL,
             mode TEXT NOT NULL DEFAULT 'conversational',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS chat_messages (
@@ -78,7 +79,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             session_id TEXT NOT NULL,
             role TEXT NOT NULL,
             content TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );
 
         CREATE TABLE IF NOT EXISTS workflow_artifacts (
@@ -87,15 +88,15 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             relative_path TEXT NOT NULL,
             content TEXT NOT NULL,
             size_bytes INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             PRIMARY KEY (skill_name, step_id, relative_path)
         );
 
         CREATE TABLE IF NOT EXISTS skill_tags (
             skill_name TEXT NOT NULL,
             tag TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             PRIMARY KEY (skill_name, tag)
         );
 
@@ -106,7 +107,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             description TEXT,
             is_active INTEGER DEFAULT 1,
             disk_path TEXT NOT NULL,
-            imported_at TEXT DEFAULT (datetime('now'))
+            imported_at TEXT DEFAULT (datetime('now') || 'Z')
         );",
     )
 }
@@ -138,7 +139,7 @@ fn run_lock_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
             skill_name TEXT PRIMARY KEY,
             instance_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
-            acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
         );",
     )
 }
@@ -188,6 +189,23 @@ fn run_usage_tracking_migration(conn: &Connection) -> Result<(), rusqlite::Error
     Ok(())
 }
 
+fn run_workflow_session_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(agent_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "workflow_session_id") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN workflow_session_id TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
 // --- Usage Tracking ---
 
 fn step_name(step_id: i32) -> String {
@@ -220,15 +238,16 @@ pub fn persist_agent_run(
     total_cost: f64,
     duration_ms: i64,
     session_id: Option<&str>,
+    workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
           cache_read_tokens, cache_write_tokens, total_cost, duration_ms, session_id,
-          started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1), datetime('now')),
-                 datetime('now'))",
+          workflow_session_id, started_at, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1), datetime('now') || 'Z'),
+                 datetime('now') || 'Z')",
         rusqlite::params![
             agent_id,
             skill_name,
@@ -242,6 +261,7 @@ pub fn persist_agent_run(
             total_cost,
             duration_ms,
             session_id,
+            workflow_session_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -251,7 +271,9 @@ pub fn persist_agent_run(
 pub fn get_usage_summary(conn: &Connection) -> Result<UsageSummary, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT COALESCE(SUM(total_cost), 0.0), COUNT(*), COALESCE(AVG(total_cost), 0.0)
+            "SELECT COALESCE(SUM(total_cost), 0.0),
+                    COUNT(DISTINCT COALESCE(workflow_session_id, agent_id)),
+                    COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT COALESCE(workflow_session_id, agent_id)), 0), 0.0)
              FROM agent_runs
              WHERE reset_marker IS NULL AND status != 'running'",
         )
@@ -284,6 +306,89 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 
     let rows = stmt
         .query_map(rusqlite::params![limit as i64], |row| {
+            Ok(AgentRunRecord {
+                agent_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                step_id: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                total_cost: row.get(9)?,
+                duration_ms: row.get(10)?,
+                session_id: row.get(11)?,
+                started_at: row.get(12)?,
+                completed_at: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize) -> Result<Vec<WorkflowSessionRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT COALESCE(workflow_session_id, agent_id),
+                    skill_name, MIN(step_id), MAX(step_id),
+                    GROUP_CONCAT(DISTINCT step_id), COUNT(*),
+                    COALESCE(SUM(total_cost), 0.0),
+                    COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
+                    COALESCE(SUM(duration_ms), 0),
+                    MIN(started_at), MAX(completed_at)
+             FROM agent_runs
+             WHERE reset_marker IS NULL AND completed_at IS NOT NULL
+             GROUP BY COALESCE(workflow_session_id, agent_id), skill_name
+             ORDER BY MAX(completed_at) DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![limit as i64], |row| {
+            Ok(WorkflowSessionRecord {
+                session_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                min_step: row.get(2)?,
+                max_step: row.get(3)?,
+                steps_csv: row.get(4)?,
+                agent_count: row.get(5)?,
+                total_cost: row.get(6)?,
+                total_input_tokens: row.get(7)?,
+                total_output_tokens: row.get(8)?,
+                total_cache_read: row.get(9)?,
+                total_cache_write: row.get(10)?,
+                total_duration_ms: row.get(11)?,
+                started_at: row.get(12)?,
+                completed_at: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec<AgentRunRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT agent_id, skill_name, step_id, model, status,
+                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    session_id, started_at, completed_at
+             FROM agent_runs
+             WHERE COALESCE(workflow_session_id, agent_id) = ?1
+             ORDER BY started_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![session_id], |row| {
             Ok(AgentRunRecord {
                 agent_id: row.get(0)?,
                 skill_name: row.get(1)?,
@@ -361,7 +466,7 @@ pub fn get_usage_by_model(conn: &Connection) -> Result<Vec<UsageByModel>, String
 
 pub fn reset_usage(conn: &Connection) -> Result<(), String> {
     conn.execute(
-        "UPDATE agent_runs SET reset_marker = datetime('now') WHERE reset_marker IS NULL",
+        "UPDATE agent_runs SET reset_marker = datetime('now') || 'Z' WHERE reset_marker IS NULL",
         [],
     )
     .map_err(|e| e.to_string())?;
@@ -404,9 +509,9 @@ pub fn save_workflow_run(
 ) -> Result<(), String> {
     conn.execute(
         "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now')",
+             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now') || 'Z'",
         rusqlite::params![skill_name, domain, current_step, status, skill_type],
     )
     .map_err(|e| e.to_string())?;
@@ -998,6 +1103,7 @@ mod tests {
         run_lock_table_migration(&conn).unwrap();
         run_author_migration(&conn).unwrap();
         run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
         conn
     }
 
@@ -1545,6 +1651,7 @@ mod tests {
             0.05,
             12345,
             Some("session-abc"),
+            Some("wf-test-session"),
         )
         .unwrap();
 
@@ -1572,7 +1679,7 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-2", "my-skill", 1, "haiku", "completed",
-            500, 200, 0, 0, 0.01, 5000, None,
+            500, 200, 0, 0, 0.01, 5000, None, None,
         )
         .unwrap();
 
@@ -1586,18 +1693,18 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None,
+            1000, 500, 0, 0, 0.10, 5000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None,
+            2000, 1000, 0, 0, 0.30, 10000, None, None,
         )
         .unwrap();
         // Running agents should be excluded
         persist_agent_run(
             &conn, "agent-3", "skill-a", 5, "sonnet", "running",
-            100, 50, 0, 0, 0.01, 0, None,
+            100, 50, 0, 0, 0.01, 0, None, None,
         )
         .unwrap();
 
@@ -1621,12 +1728,12 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None,
+            1000, 500, 0, 0, 0.10, 5000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None,
+            2000, 1000, 0, 0, 0.30, 10000, None, None,
         )
         .unwrap();
 
@@ -1644,7 +1751,7 @@ mod tests {
         // New runs after reset should still be visible
         persist_agent_run(
             &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None,
+            500, 200, 0, 0, 0.05, 3000, None, None,
         )
         .unwrap();
 
@@ -1658,17 +1765,17 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None,
+            1000, 500, 0, 0, 0.10, 5000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000, None,
+            800, 400, 0, 0, 0.08, 4000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 6, "sonnet", "completed",
-            2000, 1000, 0, 0, 0.25, 8000, None,
+            2000, 1000, 0, 0, 0.25, 8000, None, None,
         )
         .unwrap();
 
@@ -1692,17 +1799,17 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None,
+            1000, 500, 0, 0, 0.10, 5000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 5, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000, None,
+            2000, 1000, 0, 0, 0.50, 10000, None, None,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 3, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None,
+            500, 200, 0, 0, 0.05, 3000, None, None,
         )
         .unwrap();
 
@@ -1724,7 +1831,7 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None,
+            1000, 500, 0, 0, 0.10, 5000, None, None,
         )
         .unwrap();
 
