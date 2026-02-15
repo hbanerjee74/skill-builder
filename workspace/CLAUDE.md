@@ -74,7 +74,9 @@ Used by validate agents to check skill quality.
 
 **Core:** Concise (only add context Claude doesn't have). Match specificity to fragility. Test with all target models.
 
-**Structure:** Gerund names (`processing-pdfs`, lowercase+hyphens, max 64 chars). Third-person descriptions (what + when, max 1024 chars). SKILL.md body under 500 lines — concise enough to answer simple questions without loading reference files, with clear pointers for when to go deeper. Reference files one level deep from SKILL.md. TOC for files over 100 lines.
+**Structure:** Gerund names (`processing-pdfs`, lowercase+hyphens, max 64 chars). Third-person descriptions (what + when, max 1024 chars). SKILL.md body under 500 lines — concise enough to answer simple questions without loading reference files, with clear pointers for when to go deeper. If a section grows past a few paragraphs, it belongs in a reference file. Reference files one level deep from SKILL.md. TOC for files over 100 lines.
+
+**SKILL.md required sections:** Metadata block (name, description, optionally author/created/modified) | Overview (scope, audience, key concepts) | When to use (trigger conditions, user intent patterns) | Quick reference (most important guidance for simple questions) | Pointers to references (description of each file and when to read it).
 
 **Content:** No time-sensitive info. Consistent terminology. Use templates for output format, examples for quality-dependent output. Feedback loops: validate, fix, repeat.
 
