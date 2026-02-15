@@ -2,6 +2,7 @@ use crate::db::Db;
 use crate::types::{AgentRunRecord, UsageByModel, UsageByStep, UsageSummary, WorkflowSessionRecord};
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn persist_agent_run(
     db: tauri::State<'_, Db>,
     agent_id: String,

@@ -224,6 +224,7 @@ fn step_name(step_id: i32) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn persist_agent_run(
     conn: &Connection,
     agent_id: &str,

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { mockInvoke } from "@/test/mocks/tauri";
 import { useUsageStore } from "@/stores/usage-store";
 import type { UsageSummary, WorkflowSessionRecord, UsageByStep, UsageByModel } from "@/lib/types";
