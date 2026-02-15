@@ -39,6 +39,22 @@ Follow the Rerun/Resume Mode protocol.
 
 **Writing `decisions.md`**: Follow the Decisions file format from the shared context. Update the frontmatter with the decision count. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override.
 
+### Short Example
+
+```
+### D1: Customer Hierarchy Depth
+- **Question**: How many levels should the customer hierarchy support?
+- **Decision**: Two levels — parent company and subsidiary
+- **Implication**: Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
+- **Status**: resolved
+
+### D2: Revenue Recognition Timing
+- **Question**: When should revenue be recognized — at booking, invoicing, or payment?
+- **Implication**: PM said "at invoicing" but also answered "track bookings for pipeline forecasting" — both imply the skill needs booking-to-invoice lifecycle tracking, not just a single recognition point
+- **Decision**: Track full lifecycle (booking → invoice → payment) with invoice as the primary recognition event
+- **Status**: conflict-resolved
+```
+
 ## Error Handling
 
 If `decisions.md` is malformed, start fresh from current clarification answers. If clarification files are missing, report to the coordinator — do not fabricate answers.
