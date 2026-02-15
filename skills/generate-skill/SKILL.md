@@ -1,11 +1,11 @@
 ---
-name: start
-description: Creates domain-specific Claude skills through multi-agent orchestration. Use when building new skills for data/analytics engineers or improving existing ones. Triggers on /skill-builder:start.
+name: generate-skill
+description: Generate domain-specific Claude skills through a guided multi-agent workflow. Use when user asks to create, build, or generate a new skill for data/analytics engineers. Orchestrates research, clarification review, decision-making, skill generation, and validation phases with human review gates. Also use when the user mentions "new skill", "skill builder", or "create a domain skill".
 ---
 
 # Skill Builder — Coordinator
 
-You are the coordinator for the Skill Builder workflow. You orchestrate an 8-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
+You are the coordinator for the Skill Builder workflow. You orchestrate a 7-step process to create skills for data/analytics engineers. Skills can be platform, domain, source, or data-engineering focused.
 
 ## Contents
 - [Path Resolution]
@@ -14,14 +14,13 @@ You are the coordinator for the Skill Builder workflow. You orchestrate an 8-ste
 - [Workflow]
   - [Step 0: Initialization]
   - [Agent Type Prefix]
-  - [Step 1: Research Concepts]
-  - [Step 2: Human Gate — Concepts Review]
-  - [Step 3: Research Patterns & Merge]
-  - [Step 4: Human Gate — Merged Questions]
-  - [Step 5: Reasoning & Decision Engine]
-  - [Step 6: Build Skill]
-  - [Step 7: Validate & Test]
-  - [Step 8: Package]
+  - [Step 1: Research]
+  - [Step 2: Human Gate — Review]
+  - [Step 3: Detailed Research]
+  - [Step 4: Human Gate — Detailed Review]
+  - [Step 5: Confirm Decisions]
+  - [Step 6: Generate Skill]
+  - [Step 7: Validate Skill]
 - [Error Recovery]
 - [Progress Display]
 
@@ -31,10 +30,8 @@ Set the plugin root at the start of the session:
 
 PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
 
-The shared context file is at: ${PLUGIN_ROOT}/references/shared-context.md
-
 Output layout in the user's CWD:
-- `./context/` — working files (clarifications, decisions, logs)
+- `./<skillname>/context/` — working files (clarifications, decisions, logs)
 - `./<skillname>/` — the deployable skill (SKILL.md + references/)
 
 ## Context Conservation Rules
@@ -75,13 +72,13 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
    | Step | Output File | Meaning |
    |------|------------|---------|
-   | 1 | `./context/clarifications-concepts.md` | Research Concepts complete |
-   | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review — Concepts complete |
-   | 3 | `./context/clarifications.md` | Research Patterns & Merge complete |
-   | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Patterns complete |
-   | 5 | `./context/decisions.md` | Reasoning complete |
-   | 6 | `./<skillname>/SKILL.md` | Build complete |
-   | 7 | `./context/agent-validation-log.md` AND `./context/test-skill.md` | Validate & Test complete |
+   | 1 | `./<skillname>/context/clarifications.md` | Research complete |
+   | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
+   | 3 | `./<skillname>/context/clarifications-detailed.md` | Detailed Research complete |
+   | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
+   | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
+   | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
+   | 7 | `./<skillname>/context/agent-validation-log.md` AND `./<skillname>/context/test-skill.md` | Validate Skill complete |
 
    **Mode A — Resume** (any output files from the table above exist):
    The user is continuing a previous session.
@@ -90,21 +87,21 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    - If the `skill_type` is not known from the conversation, ask the user for the skill type using the prompt in item 1 above.
    - Ask: "Continue from step N+1, or start fresh (this deletes all progress)?"
    - If continue: skip to the next step after the highest completed step.
-   - If start fresh: delete `./context/` and `./<skillname>/` then fall through to Mode C.
+   - If start fresh: delete `./<skillname>/` then fall through to Mode C.
 
    **Mode B — Modify existing skill** (`./<skillname>/SKILL.md` exists but NO context/ output files exist):
    The user has a finished skill and wants to improve it.
-   - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the reasoning step so you can refine it."
+   - Tell the user: "Found an existing skill at `./<skillname>/`. I'll start from the confirm decisions step so you can refine it."
    - Determine `skill_type`: inspect the existing `./<skillname>/SKILL.md` for a skill type indicator. If none is found, ask the user for the skill type using the prompt in item 1 above.
-   - Create `./context/` if it doesn't exist.
-   - Skip to Step 5 (Reasoning). The reasoning agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the build agent will revise the skill.
+   - Create `./<skillname>/context/` if it doesn't exist.
+   - Skip to Step 5 (Confirm Decisions). The confirm-decisions agent will read the existing skill files + any context/ files to identify gaps and produce updated decisions, then the generate-skill agent will revise the skill.
 
    **Mode C — Scratch** (no `./<skillname>/` directory and no output files):
    Fresh start — full workflow.
    - Create the directory structure:
      ```
-     ./context/
      ./<skillname>/
+     ├── context/
      └── references/
      ```
 
@@ -122,87 +119,82 @@ Derive the prefix once after initialization (or resume) and use it for all subse
 - If `skill_type` is `data-engineering`, set `type_prefix` to `de`
 - Otherwise, set `type_prefix` to the `skill_type` value as-is (e.g., `platform`, `domain`, `source`)
 
-All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents (`merge`, `research-patterns`, `research-data`) remain unprefixed.
+Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents are referenced as `skill-builder:<agent>` (no type prefix).
 
-### Step 1: Research Concepts
+### Step 1: Research
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research concepts for <domain>", description: "Research key entities, metrics, KPIs. Write to ./context/clarifications-concepts.md")
+   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research-concepts agent as a teammate:
+2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation) and writes `clarifications.md` to the context directory:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-research-concepts",
+     subagent_type: "skill-builder:{type_prefix}-research",
      team_name: "skill-builder-<skillname>",
-     name: "research-concepts",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research concepts' task.
+     name: "research",
+     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research' task.
 
      Skill type: <skill_type>
      Domain: <domain>
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Write your output to: ./context/clarifications-concepts.md
+     Context directory: ./<skillname>/context/
 
      Return a 5-10 bullet summary of the key questions you generated."
    )
    ```
 3. Relay the agent's summary to the user.
 
-### Step 2: Human Gate — Concepts Review
+### Step 2: Human Gate — Review
 
 1. Tell the user:
-   "Please review and answer the questions in `./context/clarifications-concepts.md`.
+   "Please review and answer the questions in `./<skillname>/context/clarifications.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 2. Wait for the user to confirm they've answered the questions.
 
-### Step 3: Research Patterns & Merge
+### Step 3: Detailed Research
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research patterns and merge for <domain>", description: "Research patterns and data modeling, merge results. Write to ./context/clarifications.md")
+   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./<skillname>/context/clarifications-detailed.md")
    ```
-2. Spawn the research-patterns-and-merge orchestrator:
+2. Spawn the detailed-research shared agent as a teammate. It reads `clarifications.md` and writes `clarifications-detailed.md` in the context directory:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-research-patterns-and-merge",
+     subagent_type: "skill-builder:detailed-research",
      team_name: "skill-builder-<skillname>",
-     name: "research-patterns-and-merge",
-     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research patterns and merge' task.
+     name: "detailed-research",
+     prompt: "You are on the skill-builder-<skillname> team. Claim the 'Detailed research' task.
 
      Skill type: <skill_type>
      Domain: <domain>
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
-     Answered concepts file: ./context/clarifications-concepts.md
-     Context directory: ./context/
-     Write merged output to: ./context/clarifications.md
+     Context directory: ./<skillname>/context/
 
-     Return a 5-10 bullet summary of the merged questions."
+     Return a 5-10 bullet summary of the detailed questions you generated."
    )
    ```
 3. Relay the agent's summary to the user.
 
-### Step 4: Human Gate — Merged Questions
+### Step 4: Human Gate — Detailed Review
 
 1. Tell the user:
-   "Please review and answer the merged questions in `./context/clarifications.md`.
+   "Please review and answer the detailed questions in `./<skillname>/context/clarifications-detailed.md`.
 
    Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
 2. Wait for the user to confirm.
 
-### Step 5: Reasoning & Decision Engine
+### Step 5: Confirm Decisions
 
-1. Spawn the reasoning agent:
+1. Spawn the confirm-decisions shared agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-reasoning",
+     subagent_type: "skill-builder:confirm-decisions",
      team_name: "skill-builder-<skillname>",
-     name: "reasoning",
+     name: "confirm-decisions",
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>
-     Context directory: ./context/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
+     Context directory: ./<skillname>/context/
 
      Analyze all answered clarifications and produce decisions.
      Think thoroughly about contradictions, gaps, and implications across all provided answers.
@@ -211,32 +203,31 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
-     Write/update: ./context/decisions.md
+     Write/update: ./<skillname>/context/decisions.md
 
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )
    ```
 2. Relay the reasoning summary to the user.
-3. **Validate** that `./context/decisions.md` exists. If missing, re-run the reasoning agent.
+3. **Validate** that `./<skillname>/context/decisions.md` exists. If missing, re-run the confirm-decisions agent.
 4. **Human Gate**: "Do you agree with these decisions? Any corrections?"
-5. If the user has corrections, send them to the reasoning agent via SendMessage and let it re-analyze.
+5. If the user has corrections, send them to the confirm-decisions agent via SendMessage and let it re-analyze.
 6. Once confirmed, proceed.
 
-### Step 6: Build Skill
+### Step 6: Generate Skill
 
-1. Spawn the build agent:
+1. Spawn the generate-skill agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-build",
+     subagent_type: "skill-builder:{type_prefix}-generate-skill",
      team_name: "skill-builder-<skillname>",
-     name: "build",
+     name: "generate-skill",
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>
      Domain: <domain>
-     Context directory: ./context/
+     Context directory: ./<skillname>/context/
      Skill directory: ./<skillname>/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Plan the skill structure before writing. Verify all decisions are reflected in the output.
      Read decisions.md and create the skill files.
@@ -246,58 +237,53 @@ All type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`
 2. Relay the structure and summary to the user.
 3. **Human Gate**: "Does this structure look right? Any changes needed?"
 
-### Step 7: Validate & Test
+### Step 7: Validate Skill
 
-1. Spawn the validate-and-test agent:
+1. Spawn the validate-skill shared agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-validate-and-test",
+     subagent_type: "skill-builder:validate-skill",
      team_name: "skill-builder-<skillname>",
-     name: "validate-and-test",
+     name: "validate-skill",
      prompt: "You are on the skill-builder-<skillname> team.
 
      Skill type: <skill_type>
      Domain: <domain>
      Skill directory: ./<skillname>/
-     Context directory: ./context/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
+     Context directory: ./<skillname>/context/
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
      Auto-fix straightforward issues found during validation.
-     Write validation log to: ./context/agent-validation-log.md
-     Write test report to: ./context/test-skill.md
 
      Return summary: validation checks (passed/fixed/needs review) and test results (total/passed/partial/failed)."
    )
    ```
 2. Relay results to the user.
-3. **Human Gate**: "Review the validation log at `./context/agent-validation-log.md` and test results at `./context/test-skill.md`. Would you like to loop back to the build step to address gaps, or proceed to packaging?"
+3. **Human Gate**: "Review the validation log at `./<skillname>/context/agent-validation-log.md` and test results at `./<skillname>/context/test-skill.md`. Would you like to loop back to the generate step to address gaps, or finalize?"
 4. If rebuild: go back to Step 6.
-
-### Step 8: Package
-
-1. Package the skill:
-   ```bash
-   cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
-   ```
-2. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
-   ```
-   SendMessage(type: "shutdown_request", recipient: "research-concepts", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "research-patterns-and-merge", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "reasoning", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "build", content: "Workflow complete, shutting down.")
-   SendMessage(type: "shutdown_request", recipient: "validate-and-test", content: "Workflow complete, shutting down.")
-   ```
-   Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
-3. Clean up the team:
-   ```
-   TeamDelete()
-   ```
-4. Tell the user:
-   "Skill built successfully!
-   - Skill files: `./<skillname>/`
-   - Archive: `./<skillname>.skill`
-   - Working files: `./context/`"
+5. If finalize:
+   a. Package the skill:
+      ```bash
+      cd ./<skillname> && zip -r ../<skillname>.skill . && cd -
+      ```
+   b. Shut down all teammates before deleting the team. Send a `shutdown_request` to each agent that was spawned during the workflow:
+      ```
+      SendMessage(type: "shutdown_request", recipient: "research", content: "Workflow complete, shutting down.")
+      SendMessage(type: "shutdown_request", recipient: "detailed-research", content: "Workflow complete, shutting down.")
+      SendMessage(type: "shutdown_request", recipient: "confirm-decisions", content: "Workflow complete, shutting down.")
+      SendMessage(type: "shutdown_request", recipient: "generate-skill", content: "Workflow complete, shutting down.")
+      SendMessage(type: "shutdown_request", recipient: "validate-skill", content: "Workflow complete, shutting down.")
+      ```
+      Wait for each agent to acknowledge the shutdown before proceeding. If an agent is already shut down, the request is a no-op.
+   c. Clean up the team:
+      ```
+      TeamDelete()
+      ```
+   d. Tell the user:
+      "Skill built successfully!
+      - Skill files: `./<skillname>/`
+      - Archive: `./<skillname>.skill`
+      - Working files: `./<skillname>/context/`"
 
 ## Error Recovery
 
@@ -307,5 +293,5 @@ If an agent fails, retry once with the error context. If it fails again, report 
 
 At the start of each step, display progress to the user:
 ```
-[Step N/8] <Step name>
+[Step N/7] <Step name>
 ```

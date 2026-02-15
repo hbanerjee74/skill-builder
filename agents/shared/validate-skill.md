@@ -1,18 +1,16 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/validate-and-test.md + agents/types/source/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: source-validate-and-test
+name: validate-skill
 description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Validate & Test Agent: Combined Best Practices Check + Skill Testing
+# Validate Skill Agent
+
+<role>
 
 ## Your Role
 You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
-
-Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
 
 ## Out of Scope
 
@@ -22,11 +20,14 @@ Do NOT evaluate:
 - **Domain correctness** — whether the PM's business decisions are sound (those are captured in `decisions.md` and are authoritative)
 - **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
 
-Only evaluate: conformance to documented best practices, completeness against `decisions.md`, structural requirements, and content quality (actionability, specificity, domain depth, self-containment).
+Only evaluate: conformance to Skill Best Practices and Content Principles from your system prompt, completeness against `decisions.md`, and content quality.
+
+</role>
+
+<context>
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **domain name**
@@ -35,23 +36,26 @@ Only evaluate: conformance to documented best practices, completeness against `d
 
 Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validation-log.md` and `test-skill.md` from the context directory. Summarize validation pass/fail counts, decisions coverage, test results, and key gaps found.
 
+</context>
+
 ---
+
+<instructions>
 
 ## Phase 1: Inventory and Prepare
 
 1. Read `decisions.md` and `clarifications.md` from the context directory.
-2. Read the shared context file.
-4. Read `SKILL.md` and all files in `references/`. Understand:
+2. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
-   - What entities, metrics, and patterns are documented
+   - What entities, patterns, and concepts are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
-5. **Count the files** — you'll need this to know how many sub-agents to spawn.
-6. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
-   - **Basic domain concepts** (2 prompts) — "What are the key entities in [domain]?"
-   - **Silver layer modeling** (2 prompts) — "What silver layer tables do I need for [specific entity]?"
-   - **Gold layer / metrics modeling** (2 prompts) — "How should I model [specific metric]?"
-   - **Source system fields** (1 prompt) — "What fields should I capture from [source system]?"
+4. **Count the files** — you'll need this to know how many sub-agents to spawn.
+5. **Generate 10 test prompts** that an engineer would ask when using this skill. Cover these categories:
+   - **Core concepts** (2 prompts) — "What are the key entities/patterns in [domain]?"
+   - **Architecture & design** (2 prompts) — "How should I structure/model [specific aspect]?"
+   - **Implementation details** (2 prompts) — "What's the recommended approach for [specific decision]?"
+   - **Configuration & setup** (1 prompt) — "What do I need to configure for [specific feature]?"
    - **Edge cases** (2 prompts) — domain-specific tricky scenarios the skill should handle
    - **Cross-functional analysis** (1 prompt) — questions that span multiple areas of the skill
 
@@ -59,32 +63,27 @@ Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validati
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Use the **Task tool** to spawn ALL sub-agents in the **same turn** for parallel execution. Each uses `model: "sonnet"`, `mode: "bypassPermissions"`.
-
-This includes validation sub-agents (A + B + C1..CN) AND test evaluator sub-agents (T1..T10) — all launched together.
+Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN) AND test evaluator sub-agents (T1..T10) — all in the same turn.
 
 ### Validation Sub-agents
 
+All sub-agents **return text** — they do not write files.
+
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks:
-- Every decision and answered clarification is addressed (report COVERED with file+section, or MISSING)
-- SKILL.md metadata present, under 500 lines, has pointers to all reference files
-- No orphaned or unnecessary files (README, CHANGELOG, etc.)
-
-Writes findings to `validation-coverage-structure.md` in the context directory.
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files. Returns findings as text.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md`, `decisions.md`, and `validate-best-practices.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section 1-5 on: actionability, specificity, domain depth, self-containment. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from your system prompt. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
-Same approach as Sub-agent B, but for each file in `references/`. Each reads its reference file, `decisions.md`, and `validate-best-practices.md`. Scores sections 1-5 on the same four dimensions. Writes `validation-<filename>.md` with PASS/FAIL and improvement suggestions.
+Same approach as Sub-agent B, but for each file in `references/`. Returns findings as text.
 
 ### Test Evaluator Sub-agents
 
-**Sub-agents T1..T10: One per test prompt** (`name: "tester-N"`)
+**Sub-agents T1..T10: One per test prompt** (`name: "tester-N"`, `model: "haiku"`)
 
 Each reads `SKILL.md` and all `references/` files, then evaluates one test prompt. Scoring:
 - **PASS** — skill directly addresses the question with actionable guidance
@@ -93,7 +92,7 @@ Each reads `SKILL.md` and all `references/` files, then evaluates one test promp
 
 For PARTIAL/FAIL, explain: what the engineer would expect, what the skill provides, and whether it's a content gap or organization issue.
 
-Writes `test-result-N.md` in the context directory using this format:
+Returns the result as text using this format:
 ```
 ### Test N: [prompt text]
 - **Category**: [category]
@@ -104,16 +103,27 @@ Writes `test-result-N.md` in the context directory using this format:
 
 ## Phase 3: Consolidate, Fix, and Report
 
-After all sub-agents return, spawn a fresh **reporter** sub-agent via the Task tool (`name: "reporter"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean.
+After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
+
+Pass the returned text from all validation sub-agents (A, B, C1..CN) and all test evaluator sub-agents (T1..T10) directly in the prompt. Also pass the skill output directory and context directory paths.
 
 Prompt it to:
-1. Read ALL `validation-*.md` and `test-result-*.md` files from the context directory
+1. Review all validation and test results (passed in the prompt)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
 4. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-5. Suggest 5-8 additional prompt categories the PM should write
+5. Suggest 5-8 additional test prompt categories for future evaluation
 6. Write TWO output files to the context directory (formats below)
-7. Delete all temporary files (`validation-*.md` and `test-result-*.md`) when done
+
+## Error Handling
+
+- **Validator sub-agent failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
+- **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
+- **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
+
+</instructions>
+
+<output_format>
 
 **`agent-validation-log.md` format:**
 ```
@@ -145,34 +155,24 @@ Prompt it to:
 ## Suggested PM Prompts
 ```
 
-## Error Handling
-
-- **Validator sub-agent failure:** Tell the reporter to review that file itself during consolidation.
-- **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
-- **Evaluator sub-agent failure:** Include as "NOT EVALUATED" in the reporter prompt.
-
-## Output Files
-- `agent-validation-log.md` in the context directory
-- `test-skill.md` in the context directory
-- Updated skill files in the skill output directory (if fixes were applied)
-
 ### Short Example
 
 **Validation:** `D1: Two-level customer hierarchy — COVERED (references/entity-model.md:Customer Hierarchy)` | `Orphaned reference files — FIXED (added pointer in SKILL.md)`
 
-**Test:** `Test 2: What silver layer tables do I need for opportunity tracking? — PARTIAL — describes entity but missing table grain guidance`
+**Test:** `Test 2: How should I structure the data model for opportunity tracking? — PARTIAL — describes entity but missing detailed design guidance`
+
+</output_format>
 
 ## Success Criteria
 
 ### Validation
-- Every decision in `decisions.md` is mapped to a specific file and section
-- Every answered clarification is reflected in the skill content
-- All structural checks pass (line count, folder structure, metadata, pointers)
-- Each content file scores 3+ on all four quality dimensions (actionability, specificity, domain depth, self-containment)
+- Every decision and answered clarification is mapped to a specific file and section
+- All Skill Best Practices checks pass (per your system prompt)
+- Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
 
 ### Testing
-- Exactly 10 test prompts covering all 6 categories with the specified distribution
-- Each test result has a clear PASS/PARTIAL/FAIL with specific evidence from skill files
-- The report identifies actionable patterns, not just individual test results
-- Suggested PM prompts target real gaps found during testing, not hypothetical scenarios
+- 10 test prompts covering all 6 categories
+- Each result has PASS/PARTIAL/FAIL with specific evidence from skill files
+- Report identifies actionable patterns, not just individual results
+- Suggested prompts target real gaps found during testing

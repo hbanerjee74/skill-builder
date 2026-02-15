@@ -166,18 +166,18 @@ assert_row_contains "shared agents → tier t4"         "agents/shared/*.md"    
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ Plugin: Coordinator Change ━━━${RESET}"
-assert_row_contains "SKILL.md → plugin tag"           "skills/start/SKILL.md"   "@coordinator"
-assert_row_contains "SKILL.md → tier t1"              "skills/start/SKILL.md"   "t1"
-assert_row_contains "SKILL.md → tier t2"              "skills/start/SKILL.md"   "t2"
-assert_row_contains "SKILL.md → tier t3"              "skills/start/SKILL.md"   "t3"
+assert_row_contains "SKILL.md → plugin tag"           "skills/generate-skill/SKILL.md"   "@coordinator"
+assert_row_contains "SKILL.md → tier t1"              "skills/generate-skill/SKILL.md"   "t1"
+assert_row_contains "SKILL.md → tier t2"              "skills/generate-skill/SKILL.md"   "t2"
+assert_row_contains "SKILL.md → tier t3"              "skills/generate-skill/SKILL.md"   "t3"
 
-# ===== Cross-cutting: Shared Reference =====
+# ===== Cross-cutting: Agent Instructions =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Shared Reference ━━━${RESET}"
-assert_row_contains "shared-context → plugin tag"     "references/shared-context.md" "@agents"
-assert_row_contains "shared-context → tier t1"        "references/shared-context.md" "t1"
-assert_row_contains "shared-context → tier t4"        "references/shared-context.md" "t4"
+echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Agent Instructions ━━━${RESET}"
+assert_row_contains "workspace/CLAUDE.md → plugin tag"     "workspace/CLAUDE.md" "@agents"
+assert_row_contains "workspace/CLAUDE.md → tier t1"        "workspace/CLAUDE.md" "t1"
+assert_row_contains "workspace/CLAUDE.md → tier t4"        "workspace/CLAUDE.md" "t4"
 
 # ===== Cross-cutting: Plugin Manifest =====
 

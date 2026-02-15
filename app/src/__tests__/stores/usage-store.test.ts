@@ -29,8 +29,8 @@ const mockSessions: WorkflowSessionRecord[] = [
 ];
 
 const mockByStep: UsageByStep[] = [
-  { step_id: 0, step_name: "Research Concepts", total_cost: 0.50, run_count: 3 },
-  { step_id: 2, step_name: "Perform Research", total_cost: 0.75, run_count: 5 },
+  { step_id: 0, step_name: "Research", total_cost: 0.50, run_count: 3 },
+  { step_id: 2, step_name: "Detailed Research", total_cost: 0.75, run_count: 5 },
 ];
 
 const mockByModel: UsageByModel[] = [

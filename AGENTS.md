@@ -10,28 +10,27 @@ Multi-agent workflow for creating domain-specific skills. Two frontends share th
 
 Shared assets:
 - `agents/{type}/` and `agents/shared/`
-- `references/shared-context.md`
+- `workspace/CLAUDE.md` (auto-loaded agent instructions)
 
-## Workflow (9 steps)
+## Workflow (7 steps)
 
-0. Research Concepts -> `clarifications-concepts.md`
-1. Concepts Review (human)
-2. Research Patterns + Data + Merge
-3. Human Review (merged questions)
-4. Reasoning -> `decisions.md`
-5. Build -> `SKILL.md` + references
-6. Validate
-7. Test
-8. Refine Skill
+0. Init — skill type, name, resume detection
+1. Research — concepts + practices + implementation → consolidate → `clarifications.md`
+2. Review (human) — user answers `clarifications.md`
+3. Detailed Research — `clarifications-detailed.md`
+4. Review (human) — user answers `clarifications-detailed.md`
+5. Confirm Decisions — `decisions.md`
+6. Generate Skill — `SKILL.md` + references
+7. Validate Skill — checks + test prompts
 
 ## Model Tiers (source of truth in prompts/config)
 
 | Role | Model |
 |---|---|
-| Research (steps 0, 2) | sonnet |
-| Merge (step 2) | haiku |
-| Reasoning (step 4) | opus |
-| Build/Validate/Test (steps 5-7) | sonnet |
+| Research (steps 1, 3) | sonnet |
+| Consolidate Research (step 1) | opus |
+| Confirm Decisions (step 5) | opus |
+| Generate / Validate (steps 6-7) | sonnet |
 
 Desktop app can override with a global model preference in Settings.
 
@@ -72,10 +71,10 @@ claude --plugin-dir .
 
 ## Plugin Notes
 
-- Entry point is `skills/start/SKILL.md` via `/skill-builder:start`.
+- Entry point is `skills/generate-skill/SKILL.md` via `/skill-builder:generate-skill`.
 - Plugin metadata/layout lives in `.claude-plugin/` and `.claude/`.
 - Agent prompts are in `agents/`; coordinator orchestrates them via `Task(...)`.
-- `references/shared-context.md` is read by all agents and is high-impact.
+- `workspace/CLAUDE.md` is auto-loaded into every agent's system prompt and is high-impact.
 - Plugin install caching means file references must stay within plugin dir or user CWD.
 - Automated structural checks run via `.claude/settings.json` hook and `./scripts/validate.sh`.
 

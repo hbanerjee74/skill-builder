@@ -36,7 +36,7 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This provi
 
 ## Workflow (9 Steps)
 
-0. **Research Concepts** — research agent writes `clarifications-concepts.md`
+0. **Research Concepts** — research agent writes `research-entities.md`
 1. **Concepts Review** — user answers questions via form UI
 2. **Research Patterns + Data + Merge** — single orchestrator (spawns sub-agents internally)
 3. **Human Review** — user answers merged questions via form UI
@@ -55,7 +55,7 @@ Agents run via the **Claude Agent SDK** in a Node.js sidecar process. This provi
     references/                    # Deep-dive reference files
     <skill-name>.skill             # Packaged zip
     context/                       # Intermediate working files
-      clarifications-concepts.md
+      research-entities.md
       clarifications-patterns.md
       clarifications-data.md
       clarifications.md

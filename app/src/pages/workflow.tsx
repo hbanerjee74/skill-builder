@@ -63,9 +63,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications-concepts.md"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-entities.md", "context/clarifications-practices.md", "context/clarifications-implementation.md", "context/clarifications.md"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications-patterns.md", "context/clarifications-data.md", "context/clarifications.md"], model: "sonnet" },
+  2: { type: "agent", outputFiles: ["context/clarifications-detailed.md"], model: "sonnet" },
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -75,8 +75,8 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
-  1: { relativePath: "context/clarifications-concepts.md" },
-  3: { relativePath: "context/clarifications.md" },
+  1: { relativePath: "context/clarifications.md" },
+  3: { relativePath: "context/clarifications-detailed.md" },
 };
 
 // Agent step IDs eligible for rerun chat (not reasoning or refinement — those have their own chat)
@@ -84,10 +84,10 @@ const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6]);
 
 // Map step IDs to human-readable labels for the rerun chat header
 const STEP_LABELS: Record<number, string> = {
-  0: "research-concepts",
-  2: "perform-research",
-  5: "build",
-  6: "validate-and-test",
+  0: "research",
+  2: "detailed-research",
+  5: "generate-skill",
+  6: "validate-skill",
 };
 
 export default function WorkflowPage() {

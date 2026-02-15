@@ -6,37 +6,39 @@ run_t4() {
   local skill_name="pet-store-analytics"
   source "$TESTS_DIR/fixtures.sh"
 
-  # ---- T4.1: Merge agent ----
-  local merge_dir
-  merge_dir=$(make_temp_dir "t4-merge")
-  create_fixture_t4_merge "$merge_dir"
-  log_verbose "Merge workspace: $merge_dir"
+  # ---- T4.1: Consolidate-research agent ----
+  local consolidate_dir
+  consolidate_dir=$(make_temp_dir "t4-consolidate")
+  create_fixture_t4_consolidate "$consolidate_dir"
+  log_verbose "Consolidate workspace: $consolidate_dir"
 
-  local merge_prompt="You are the merge agent for the skill-builder plugin. Your job is to \
-merge and deduplicate clarification questions from research agents.
+  local consolidate_prompt="You are the consolidate-research agent for the skill-builder plugin. Your job is to \
+consolidate clarification questions from multiple research agents into a cohesive questionnaire.
 
-Read the shared context file for expected formats: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/workspace/CLAUDE.md
 
-Read these two input files:
-- $merge_dir/context/clarifications-patterns.md
-- $merge_dir/context/clarifications-data.md
+Read these input files:
+- $consolidate_dir/context/research-entities.md
+- $consolidate_dir/context/research-metrics.md
+- $consolidate_dir/context/clarifications-practices.md
+- $consolidate_dir/context/clarifications-implementation.md
 
-Merge them into a single deduplicated file. Remove duplicate questions (like 'seasonal patterns' \
-which appears in both files). Preserve the clarifications-*.md format from the shared context.
+Consolidate them into a single cohesive file. Eliminate duplicates (like 'seasonal patterns' \
+which appears in multiple files), rephrase for clarity, and organize into logical sections.
 
-Write merged output to: $merge_dir/context/clarifications.md
+Write consolidated output to: $consolidate_dir/context/clarifications.md
 
 Return a summary: total input questions, duplicates removed, final question count."
 
-  log_verbose "Running merge agent smoke test..."
-  local merge_output
-  merge_output=$(run_claude_unsafe "$merge_prompt" "$MAX_BUDGET_T4" 90 "$merge_dir")
+  log_verbose "Running consolidate-research agent smoke test..."
+  local consolidate_output
+  consolidate_output=$(run_claude_unsafe "$consolidate_prompt" "$MAX_BUDGET_T4" 90 "$consolidate_dir")
 
-  assert_file_exists "$tier" "merge_creates_output" "$merge_dir/context/clarifications.md" || true
-  if [[ -s "$merge_dir/context/clarifications.md" ]]; then
-    record_result "$tier" "merge_output_not_empty" "PASS"
+  assert_file_exists "$tier" "consolidate_creates_output" "$consolidate_dir/context/clarifications.md" || true
+  if [[ -s "$consolidate_dir/context/clarifications.md" ]]; then
+    record_result "$tier" "consolidate_output_not_empty" "PASS"
   else
-    record_result "$tier" "merge_output_not_empty" "FAIL" "output file empty or missing"
+    record_result "$tier" "consolidate_output_not_empty" "FAIL" "output file empty or missing"
   fi
 
   # ---- T4.2: Reasoning agent ----
@@ -48,10 +50,10 @@ Return a summary: total input questions, duplicates removed, final question coun
   local reasoning_prompt="You are the reasoning agent for the skill-builder plugin. Your job is to \
 analyze answered clarification questions and produce decisions.
 
-Read the shared context file for expected formats: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/workspace/CLAUDE.md
 
 Read these answered clarification files:
-- $reason_dir/context/clarifications-concepts.md
+- $reason_dir/context/research-entities.md
 - $reason_dir/context/clarifications.md
 
 Analyze the answers. Look for:
@@ -95,7 +97,7 @@ Return a summary of key conclusions, assumptions, and any conflicts found."
     local build_prompt="You are the build agent for the skill-builder plugin. Your job is to \
 create the skill files based on decisions.
 
-Read the shared context file: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats: $PLUGIN_DIR/workspace/CLAUDE.md
 Read the decisions file: $build_dir/context/decisions.md
 
 Domain: pet store analytics

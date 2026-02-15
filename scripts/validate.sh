@@ -42,11 +42,11 @@ fi
 echo "=== Agents ==="
 
 # Shared agents (no type prefix)
-SHARED_AGENTS="shared/research-patterns:research-patterns:sonnet shared/research-data:research-data:sonnet shared/merge:merge:haiku"
+SHARED_AGENTS="shared/consolidate-research:consolidate-research:opus shared/confirm-decisions:confirm-decisions:opus shared/validate-skill:validate-skill:sonnet shared/detailed-research:detailed-research:sonnet"
 
 # Type-specific agents: each type dir has 5 agents
 TYPE_DIRS="domain platform source data-engineering"
-TYPE_AGENTS="research-concepts:sonnet reasoning:opus build:sonnet validate-and-test:sonnet research-patterns-and-merge:sonnet"
+TYPE_AGENTS="research-concepts:sonnet research-practices:sonnet research-implementation:sonnet research:sonnet generate-skill:sonnet"
 
 # Build full list: path:expected_name:expected_model
 ALL_AGENTS="$SHARED_AGENTS"
@@ -131,14 +131,14 @@ fi
 
 # ---------- T1.4: Skill file ----------
 echo "=== Coordinator Skill ==="
-if [ -f "skills/start/SKILL.md" ]; then
-  if head -1 "skills/start/SKILL.md" | grep -q "^---"; then
-    pass "skills/start/SKILL.md exists with frontmatter"
+if [ -f "skills/generate-skill/SKILL.md" ]; then
+  if head -1 "skills/generate-skill/SKILL.md" | grep -q "^---"; then
+    pass "skills/generate-skill/SKILL.md exists with frontmatter"
   else
-    fail "skills/start/SKILL.md has no YAML frontmatter"
+    fail "skills/generate-skill/SKILL.md has no YAML frontmatter"
   fi
 else
-  fail "skills/start/SKILL.md not found"
+  fail "skills/generate-skill/SKILL.md not found"
 fi
 
 # ---------- T1.5: Workspace CLAUDE.md ----------
@@ -186,9 +186,9 @@ fi
 
 # ---------- T3.4: Coordinator content checks ----------
 echo "=== Coordinator Content ==="
-if [ -f "skills/start/SKILL.md" ]; then
-  content=$(cat "skills/start/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "clarifications-concepts.md" "skill-builder:"; do
+if [ -f "skills/generate-skill/SKILL.md" ]; then
+  content=$(cat "skills/generate-skill/SKILL.md")
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "skill-builder:"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
     else
@@ -205,27 +205,31 @@ if [ -f "skills/start/SKILL.md" ]; then
   done
 fi
 
-# ---------- Build agent: progressive disclosure (check all type variants) ----------
-echo "=== Build Agent ==="
+# ---------- Generate-skill agent: best practices in workspace/CLAUDE.md + references/ in generate-skill agents ----------
+echo "=== Generate-Skill Agent ==="
+# Progressive disclosure and output structure are in workspace/CLAUDE.md (auto-loaded into all agents)
+if [ -f "workspace/CLAUDE.md" ]; then
+  ws_content=$(cat "workspace/CLAUDE.md")
+  if echo "$ws_content" | grep -q "progressive disclosure"; then
+    pass "workspace/CLAUDE.md contains progressive disclosure guidance"
+  else
+    fail "workspace/CLAUDE.md missing progressive disclosure guidance"
+  fi
+fi
 build_checked=0
 for dir in $TYPE_DIRS; do
-  if [ -f "agents/${dir}/build.md" ]; then
-    build_content=$(cat "agents/${dir}/build.md")
-    if echo "$build_content" | grep -q "progressive disclosure"; then
-      pass "${dir}/build agent references progressive disclosure"
-    else
-      fail "${dir}/build agent missing progressive disclosure guidance"
-    fi
+  if [ -f "agents/${dir}/generate-skill.md" ]; then
+    build_content=$(cat "agents/${dir}/generate-skill.md")
     if echo "$build_content" | grep -q "references/"; then
-      pass "${dir}/build agent references references/ subfolder"
+      pass "${dir}/generate-skill agent references references/ subfolder"
     else
-      fail "${dir}/build agent missing references/ subfolder structure"
+      fail "${dir}/generate-skill agent missing references/ subfolder structure"
     fi
     build_checked=$((build_checked + 1))
   fi
 done
 if [ $build_checked -eq 0 ]; then
-  fail "no build agent files found in any type directory"
+  fail "no generate-skill agent files found in any type directory"
 fi
 
 # ---------- Summary ----------

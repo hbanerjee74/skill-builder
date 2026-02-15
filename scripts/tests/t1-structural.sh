@@ -29,16 +29,16 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (23 = 5 per type × 4 types + 3 shared) ----
+  # ---- T1.3: Agent file count (24 = 5 per type × 4 types + 4 shared) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f \
     -not -path "*/templates/*" -not -path "*/types/*" 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_23" "23" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_24" "24" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in correct subdirectory ----
   local type_dirs="domain platform source data-engineering"
-  local type_agents="research-concepts research-patterns-and-merge reasoning build validate-and-test"
-  local shared_agents="merge research-patterns research-data"
+  local type_agents="research-concepts research-practices research-implementation research generate-skill"
+  local shared_agents="consolidate-research confirm-decisions validate-skill detailed-research"
 
   for dir in $type_dirs; do
     for agent in $type_agents; do
@@ -83,10 +83,10 @@ run_t1() {
   local model_errors=0
   expected_model_for() {
     case "$1" in
-      research-concepts|research-patterns|research-data|research-patterns-and-merge) echo "sonnet" ;;
-      build|validate-and-test) echo "sonnet" ;;
-      merge) echo "haiku" ;;
-      reasoning) echo "opus" ;;
+      research-concepts|research-practices|research-implementation|research|generate-skill) echo "sonnet" ;;
+      validate-skill|detailed-research) echo "sonnet" ;;
+      consolidate-research) echo "opus" ;;
+      confirm-decisions) echo "opus" ;;
       *) echo "unknown" ;;
     esac
   }
@@ -128,14 +128,14 @@ run_t1() {
 
   # ---- T1.7: Coordinator frontmatter ----
   local coord_first
-  coord_first=$(head -1 "$PLUGIN_DIR/skills/start/SKILL.md")
+  coord_first=$(head -1 "$PLUGIN_DIR/skills/generate-skill/SKILL.md")
   if [[ "$coord_first" == "---" ]]; then
     record_result "$tier" "coordinator_has_frontmatter" "PASS"
   else
     record_result "$tier" "coordinator_has_frontmatter" "FAIL" "first line: $coord_first"
   fi
 
-  # ---- T1.8: Workspace CLAUDE.md exists (contains shared context + protocols) ----
+  # ---- T1.8: Workspace CLAUDE.md exists (auto-loaded agent instructions + protocols) ----
   assert_file_exists "$tier" "workspace_claude_md_exists" "$PLUGIN_DIR/workspace/CLAUDE.md"
 
   # ---- T1.9: plugin.json required fields ----
@@ -154,8 +154,8 @@ run_t1() {
 
   # ---- T1.10: Coordinator references key concepts ----
   local coord_content
-  coord_content=$(cat "$PLUGIN_DIR/skills/start/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "clarifications-concepts.md" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
+  coord_content=$(cat "$PLUGIN_DIR/skills/generate-skill/SKILL.md")
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "research-entities.md" "skill-builder:" "Mode A" "Mode B" "Mode C"; do
     local safe_name
     safe_name=$(echo "$keyword" | tr ' :' '__' | tr -cd '[:alnum:]_')
     if echo "$coord_content" | grep -q "$keyword"; then
