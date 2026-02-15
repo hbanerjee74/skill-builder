@@ -143,6 +143,16 @@ fn mark_workspace_copied(workspace_path: &str) {
     cache.get_or_insert_with(HashSet::new).insert(workspace_path.to_string());
 }
 
+/// Remove a workspace from the session cache so the next
+/// `ensure_workspace_prompts*` call will re-deploy agents and CLAUDE.md.
+/// Used by `clear_workspace` after deleting `.claude/`.
+pub fn invalidate_workspace_cache(workspace_path: &str) {
+    let mut cache = COPIED_WORKSPACES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(set) = cache.as_mut() {
+        set.remove(workspace_path);
+    }
+}
+
 /// Copy bundled agent .md files and workspace CLAUDE.md into workspace.
 /// Creates the directories if they don't exist. Overwrites existing files
 /// to keep them in sync with the app version.
@@ -188,13 +198,15 @@ pub async fn ensure_workspace_prompts(
 /// Synchronous inner copy logic shared by async and sync entry points.
 fn copy_prompts_sync(agents_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
     if agents_dir.is_dir() {
-        copy_directory_to(agents_dir, workspace_path, "agents")?;
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
     }
     if claude_md.is_file() {
-        let dest = Path::new(workspace_path).join("CLAUDE.md");
+        let claude_dir = Path::new(workspace_path).join(".claude");
+        std::fs::create_dir_all(&claude_dir)
+            .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
+        let dest = claude_dir.join("CLAUDE.md");
         std::fs::copy(claude_md, &dest)
-            .map_err(|e| format!("Failed to copy CLAUDE.md to workspace: {}", e))?;
+            .map_err(|e| format!("Failed to copy CLAUDE.md to .claude/: {}", e))?;
     }
     Ok(())
 }
@@ -270,36 +282,8 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
     Ok(())
 }
 
-/// Copy .md files from `src_dir` into `<workspace_path>/<dest_name>/`,
-/// recursing into subdirectories to preserve the directory structure.
-fn copy_directory_to(src_dir: &Path, workspace_path: &str, dest_name: &str) -> Result<(), String> {
-    let dest_dir = Path::new(workspace_path).join(dest_name);
-    copy_md_files_recursive(src_dir, &dest_dir, dest_name)
-}
-
-fn copy_md_files_recursive(src_dir: &Path, dest_dir: &Path, label: &str) -> Result<(), String> {
-    std::fs::create_dir_all(dest_dir)
-        .map_err(|e| format!("Failed to create {} directory: {}", label, e))?;
-
-    let entries = std::fs::read_dir(src_dir)
-        .map_err(|e| format!("Failed to read {} source dir: {}", label, e))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
-        let path = entry.path();
-        if path.is_dir() {
-            let sub_dest = dest_dir.join(entry.file_name());
-            copy_md_files_recursive(&path, &sub_dest, label)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            let dest = dest_dir.join(entry.file_name());
-            std::fs::copy(&path, &dest).map_err(|e| {
-                format!("Failed to copy {}: {}", path.display(), e)
-            })?;
-        }
-    }
-
-    Ok(())
-}
+// copy_directory_to and copy_md_files_recursive removed — no longer deploying
+// agents tree to workspace root (only .claude/agents/ is used).
 
 /// Read the `name:` field from an agent file's YAML frontmatter.
 /// Agent files live at `{workspace}/.claude/agents/{skill_type}-{phase}.md`.
@@ -1522,50 +1506,8 @@ mod tests {
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_copy_directory_to_copies_md_files() {
-        let src = tempfile::tempdir().unwrap();
-        let dest = tempfile::tempdir().unwrap();
-
-        // Create source .md files at root and in subdirectory
-        std::fs::write(src.path().join("shared-context.md"), "# Shared").unwrap();
-        std::fs::create_dir_all(src.path().join("domain")).unwrap();
-        std::fs::write(src.path().join("domain").join("research-concepts.md"), "# Research").unwrap();
-        // Non-.md file should be ignored
-        std::fs::write(src.path().join("README.txt"), "ignore me").unwrap();
-
-        let workspace = dest.path().to_str().unwrap();
-        copy_directory_to(src.path(), workspace, "agents").unwrap();
-
-        let agents_dir = dest.path().join("agents");
-        assert!(agents_dir.is_dir());
-        assert!(agents_dir.join("shared-context.md").exists());
-        assert!(agents_dir.join("domain").join("research-concepts.md").exists());
-        assert!(!agents_dir.join("README.txt").exists());
-
-        // Verify content
-        let content = std::fs::read_to_string(agents_dir.join("shared-context.md")).unwrap();
-        assert_eq!(content, "# Shared");
-    }
-
-    #[test]
-    fn test_copy_directory_to_is_idempotent() {
-        let src = tempfile::tempdir().unwrap();
-        let dest = tempfile::tempdir().unwrap();
-
-        std::fs::write(src.path().join("test.md"), "v1").unwrap();
-
-        let workspace = dest.path().to_str().unwrap();
-        copy_directory_to(src.path(), workspace, "agents").unwrap();
-
-        // Update source and copy again — should overwrite
-        std::fs::write(src.path().join("test.md"), "v2").unwrap();
-        copy_directory_to(src.path(), workspace, "agents").unwrap();
-
-        let content =
-            std::fs::read_to_string(dest.path().join("agents").join("test.md")).unwrap();
-        assert_eq!(content, "v2");
-    }
+    // Tests for copy_directory_to removed — function no longer exists
+    // (agents tree is no longer deployed to workspace root)
 
     #[test]
     fn test_resolve_prompts_dir_dev_mode() {
@@ -2327,6 +2269,15 @@ mod tests {
         super::mark_workspace_copied(&path_a);
         assert!(super::workspace_already_copied(&path_a));
         assert!(!super::workspace_already_copied(&path_b));
+    }
+
+    #[test]
+    fn test_invalidate_workspace_cache() {
+        let path = format!("/tmp/test-ws-invalidate-{}", std::process::id());
+        super::mark_workspace_copied(&path);
+        assert!(super::workspace_already_copied(&path));
+        super::invalidate_workspace_cache(&path);
+        assert!(!super::workspace_already_copied(&path));
     }
 
     #[test]

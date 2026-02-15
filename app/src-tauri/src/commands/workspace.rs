@@ -172,8 +172,8 @@ pub fn reconcile_on_startup(
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
-                // Skip infrastructure directories
-                if name == "agents" || name == "references" || name == ".claude" {
+                // Skip dotfiles/infrastructure directories
+                if name.starts_with('.') {
                     continue;
                 }
                 // Any non-infrastructure subdirectory of the workspace is
@@ -419,9 +419,34 @@ fn resolve_workspace_path() -> Result<String, String> {
         .ok_or_else(|| "Home directory path contains invalid UTF-8".to_string())
 }
 
+/// Migrate from the old workspace layout (agents/, references/, CLAUDE.md at root)
+/// to the new layout where everything lives under `.claude/`.
+/// Safe to call on every startup — only removes files that exist.
+fn migrate_workspace_layout(workspace_path: &str) {
+    let base = Path::new(workspace_path);
+    // Remove stale root-level infrastructure from pre-reorganization layout
+    for name in &["agents", "references"] {
+        let path = base.join(name);
+        if path.is_dir() {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
+    // Remove dead database artifact
+    let db_file = base.join("vibedata.db");
+    if db_file.is_file() {
+        let _ = std::fs::remove_file(&db_file);
+    }
+    // Remove root CLAUDE.md only if .claude/CLAUDE.md exists (migration complete)
+    let old_claude_md = base.join("CLAUDE.md");
+    let new_claude_md = base.join(".claude").join("CLAUDE.md");
+    if old_claude_md.is_file() && new_claude_md.is_file() {
+        let _ = std::fs::remove_file(&old_claude_md);
+    }
+}
+
 /// Initialize the workspace directory on app startup.
 /// Creates `~/.vibedata` if it doesn't exist, updates settings,
-/// and deploys bundled agents and references (always, so updates ship with the app).
+/// and deploys bundled agents to `.claude/`.
 pub fn init_workspace(
     app: &tauri::AppHandle,
     db: &tauri::State<'_, Db>,
@@ -441,8 +466,11 @@ pub fn init_workspace(
     }
     drop(conn);
 
-    // Always sync bundled agents and references so app updates deploy new files
+    // Deploy bundled agents and CLAUDE.md to .claude/
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
+
+    // Clean up stale root-level files from pre-reorganization layout
+    migrate_workspace_layout(&workspace_path);
 
     Ok(workspace_path)
 }
@@ -456,60 +484,6 @@ pub fn get_workspace_path(db: tauri::State<'_, Db>) -> Result<String, String> {
         .ok_or_else(|| "Workspace path not initialized".to_string())
 }
 
-/// Core logic for clearing workspace skill directories.
-/// Deletes all skill working directories from `workspace_path`, while preserving:
-/// - `agents/`, `references/`, `.claude/` (infrastructure dirs)
-/// - Any directory that is or is inside `skills_path` (skill output is protected)
-///
-/// Also cleans up DB records for each deleted skill.
-fn clear_workspace_inner(
-    conn: &rusqlite::Connection,
-    workspace_path: &str,
-    skills_path: Option<&str>,
-) -> Result<(), String> {
-    let base = std::path::Path::new(workspace_path);
-    if !base.exists() {
-        return Ok(());
-    }
-
-    // Resolve the canonical skills_path so we can protect it during workspace clear.
-    // If skills_path is inside the workspace, we must not delete it.
-    let canonical_skills_path = skills_path
-        .and_then(|sp| std::fs::canonicalize(sp).ok());
-
-    // List all subdirectories, skip agents/, references/, and .claude/
-    let entries = std::fs::read_dir(base).map_err(|e| e.to_string())?;
-    for entry in entries {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        if !path.is_dir() { continue; }
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name == "agents" || name == "references" || name == ".claude" { continue; }
-
-        // Skip if this directory IS the skills_path or is inside it
-        if let Some(ref csp) = canonical_skills_path {
-            if let Ok(canonical_entry) = std::fs::canonicalize(&path) {
-                if canonical_entry == *csp || canonical_entry.starts_with(csp) {
-                    continue;
-                }
-            }
-        }
-
-        // Delete filesystem
-        std::fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
-
-        // Delete DB records
-        crate::db::delete_workflow_run(conn, &name)?;
-        // Delete chat sessions for this skill
-        conn.execute("DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE skill_name = ?1)", [&name])
-            .map_err(|e| e.to_string())?;
-        conn.execute("DELETE FROM chat_sessions WHERE skill_name = ?1", [&name])
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 pub fn clear_workspace(
     app: tauri::AppHandle,
@@ -519,13 +493,23 @@ pub fn clear_workspace(
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings.workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
-    let skills_path = settings.skills_path.clone();
-
-    clear_workspace_inner(&conn, &workspace_path, skills_path.as_deref())?;
     drop(conn);
 
-    // Re-initialize workspace with bundled agents/references
+    // Delete .claude/ directory so it can be re-deployed fresh.
+    // Skill directories are preserved — only the agent/prompt infrastructure is reset.
+    let claude_dir = std::path::Path::new(&workspace_path).join(".claude");
+    if claude_dir.is_dir() {
+        std::fs::remove_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    }
+
+    // Invalidate the session cache so ensure_workspace_prompts_sync re-deploys
+    super::workflow::invalidate_workspace_cache(&workspace_path);
+
+    // Re-deploy bundled agents and CLAUDE.md into .claude/
     super::workflow::ensure_workspace_prompts_sync(&app, &workspace_path)?;
+
+    // Clean up stale root-level files from pre-reorganization layout
+    migrate_workspace_layout(&workspace_path);
 
     Ok(())
 }
@@ -1039,10 +1023,9 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // Create infrastructure directories that should be skipped
-        std::fs::create_dir_all(tmp.path().join("agents")).unwrap();
-        std::fs::create_dir_all(tmp.path().join("references")).unwrap();
+        // Create dotfile/infrastructure directories that should be skipped
         std::fs::create_dir_all(tmp.path().join(".claude")).unwrap();
+        std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
@@ -1453,135 +1436,4 @@ mod tests {
         ));
     }
 
-    // --- clear_workspace_inner tests ---
-
-    #[test]
-    fn test_clear_workspace_deletes_skill_dirs() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path();
-        let conn = create_test_db();
-
-        // Create skill directories
-        create_skill_dir(workspace, "skill-a", "domain-a");
-        create_skill_dir(workspace, "skill-b", "domain-b");
-
-        // Create DB records
-        crate::db::save_workflow_run(&conn, "skill-a", "domain-a", 2, "pending", "domain").unwrap();
-        crate::db::save_workflow_run(&conn, "skill-b", "domain-b", 0, "pending", "domain").unwrap();
-
-        clear_workspace_inner(&conn, workspace.to_str().unwrap(), None).unwrap();
-
-        // Skill directories should be deleted
-        assert!(!workspace.join("skill-a").exists());
-        assert!(!workspace.join("skill-b").exists());
-
-        // DB records should be deleted
-        assert!(crate::db::get_workflow_run(&conn, "skill-a").unwrap().is_none());
-        assert!(crate::db::get_workflow_run(&conn, "skill-b").unwrap().is_none());
-    }
-
-    #[test]
-    fn test_clear_workspace_preserves_infrastructure_dirs() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path();
-        let conn = create_test_db();
-
-        // Create infrastructure directories that should be preserved
-        std::fs::create_dir_all(workspace.join("agents")).unwrap();
-        std::fs::write(workspace.join("agents").join("test.md"), "agent").unwrap();
-        std::fs::create_dir_all(workspace.join("references")).unwrap();
-        std::fs::write(workspace.join("references").join("ref.md"), "ref").unwrap();
-        std::fs::create_dir_all(workspace.join(".claude")).unwrap();
-
-        // Create a skill directory to be deleted
-        create_skill_dir(workspace, "my-skill", "test");
-
-        clear_workspace_inner(&conn, workspace.to_str().unwrap(), None).unwrap();
-
-        // Infrastructure dirs should survive
-        assert!(workspace.join("agents").exists());
-        assert!(workspace.join("references").exists());
-        assert!(workspace.join(".claude").exists());
-
-        // Skill dir should be deleted
-        assert!(!workspace.join("my-skill").exists());
-    }
-
-    #[test]
-    fn test_clear_workspace_preserves_skills_path_inside_workspace() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path();
-        let conn = create_test_db();
-
-        // skills_path is a subdirectory INSIDE the workspace
-        let skills_dir = workspace.join("skill-output");
-        std::fs::create_dir_all(skills_dir.join("my-skill")).unwrap();
-        std::fs::write(
-            skills_dir.join("my-skill").join("SKILL.md"),
-            "# My Skill",
-        )
-        .unwrap();
-        std::fs::create_dir_all(skills_dir.join("my-skill").join("context")).unwrap();
-        std::fs::write(
-            skills_dir.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions",
-        )
-        .unwrap();
-
-        // Create a regular skill working dir to be deleted
-        create_skill_dir(workspace, "working-skill", "test");
-
-        clear_workspace_inner(
-            &conn,
-            workspace.to_str().unwrap(),
-            Some(skills_dir.to_str().unwrap()),
-        )
-        .unwrap();
-
-        // Skill output dir inside workspace should be preserved
-        assert!(skills_dir.join("my-skill").join("SKILL.md").exists());
-        assert!(skills_dir.join("my-skill").join("context").join("decisions.md").exists());
-
-        // Working skill dir should be deleted
-        assert!(!workspace.join("working-skill").exists());
-    }
-
-    #[test]
-    fn test_clear_workspace_with_separate_skills_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        let conn = create_test_db();
-
-        // Set up workspace with a skill dir
-        create_skill_dir(&workspace, "my-skill", "test");
-
-        // Set up skills output dir (separate from workspace)
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
-        std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions",
-        )
-        .unwrap();
-
-        clear_workspace_inner(
-            &conn,
-            workspace.to_str().unwrap(),
-            Some(skills.to_str().unwrap()),
-        )
-        .unwrap();
-
-        // Workspace skill dir should be deleted
-        assert!(!workspace.join("my-skill").exists());
-
-        // Skills output dir should be preserved (it's separate from workspace)
-        assert!(skills.join("my-skill").join("context").join("decisions.md").exists());
-    }
-
-    #[test]
-    fn test_clear_workspace_nonexistent_workspace() {
-        let conn = create_test_db();
-        // Should not error on nonexistent workspace
-        clear_workspace_inner(&conn, "/nonexistent/workspace/path", None).unwrap();
-    }
 }

@@ -23,15 +23,14 @@ Validate that domain-specific business rules are accurately captured and that cr
 
 ## Rerun / Resume Mode
 
-See CLAUDE.md and `references/agent-protocols.md`. For this agent, read both `agent-validation-log.md` and `test-skill.md` from the context directory. Summarize validation pass/fail counts, decisions coverage, test results, and key gaps found.
+Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validation-log.md` and `test-skill.md` from the context directory. Summarize validation pass/fail counts, decisions coverage, test results, and key gaps found.
 
 ---
 
 ## Phase 1: Inventory and Prepare
 
-1. Read `validate-best-practices.md` from the references directory (alongside the shared context file).
-2. Read `decisions.md` and `clarifications.md` from the context directory.
-3. Read the shared context file.
+1. Read `decisions.md` and `clarifications.md` from the context directory.
+2. Read the shared context file.
 4. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)

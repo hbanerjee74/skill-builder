@@ -187,7 +187,7 @@ export default function SettingsPage() {
   }
 
   const handleClearWorkspace = async () => {
-    if (!window.confirm("This will delete all working files and skill data from the workspace. Finished skills in your Skills Folder will not be affected.\n\nAre you sure?")) {
+    if (!window.confirm("This will reset the agent configuration (.claude/ folder) in your workspace. Your skill folders and workflow data will not be affected.\n\nAre you sure?")) {
       return
     }
     setClearing(true)
