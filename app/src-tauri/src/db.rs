@@ -272,10 +272,11 @@ pub fn get_usage_summary(conn: &Connection) -> Result<UsageSummary, String> {
     let mut stmt = conn
         .prepare(
             "SELECT COALESCE(SUM(total_cost), 0.0),
-                    COUNT(DISTINCT COALESCE(workflow_session_id, agent_id)),
-                    COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT COALESCE(workflow_session_id, agent_id)), 0), 0.0)
+                    COUNT(DISTINCT workflow_session_id),
+                    COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
              FROM agent_runs
-             WHERE reset_marker IS NULL AND status != 'running'",
+             WHERE reset_marker IS NULL AND status != 'running'
+               AND workflow_session_id IS NOT NULL",
         )
         .map_err(|e| e.to_string())?;
 
@@ -332,7 +333,7 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize) -> Result<Vec<WorkflowSessionRecord>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT COALESCE(workflow_session_id, agent_id),
+            "SELECT workflow_session_id,
                     skill_name, MIN(step_id), MAX(step_id),
                     GROUP_CONCAT(DISTINCT step_id), COUNT(*),
                     COALESCE(SUM(total_cost), 0.0),
@@ -342,7 +343,8 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize) -> Result<V
                     MIN(started_at), MAX(completed_at)
              FROM agent_runs
              WHERE reset_marker IS NULL AND completed_at IS NOT NULL
-             GROUP BY COALESCE(workflow_session_id, agent_id), skill_name
+               AND workflow_session_id IS NOT NULL
+             GROUP BY workflow_session_id, skill_name
              ORDER BY MAX(completed_at) DESC
              LIMIT ?1",
         )
@@ -382,7 +384,7 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
-             WHERE COALESCE(workflow_session_id, agent_id) = ?1
+             WHERE workflow_session_id = ?1
              ORDER BY started_at ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -418,6 +420,7 @@ pub fn get_usage_by_step(conn: &Connection) -> Result<Vec<UsageByStep>, String> 
             "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
              FROM agent_runs
              WHERE reset_marker IS NULL AND status != 'running'
+               AND workflow_session_id IS NOT NULL
              GROUP BY step_id
              ORDER BY SUM(total_cost) DESC",
         )
@@ -445,6 +448,7 @@ pub fn get_usage_by_model(conn: &Connection) -> Result<Vec<UsageByModel>, String
             "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
              FROM agent_runs
              WHERE reset_marker IS NULL AND status != 'running'
+               AND workflow_session_id IS NOT NULL
              GROUP BY model
              ORDER BY SUM(total_cost) DESC",
         )
@@ -1691,27 +1695,29 @@ mod tests {
     #[test]
     fn test_get_usage_summary_correct_aggregates() {
         let conn = create_test_db();
+        let ws = Some("wf-session-1");
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, None,
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None, None,
+            2000, 1000, 0, 0, 0.30, 10000, None, ws,
         )
         .unwrap();
         // Running agents should be excluded
         persist_agent_run(
             &conn, "agent-3", "skill-a", 5, "sonnet", "running",
-            100, 50, 0, 0, 0.01, 0, None, None,
+            100, 50, 0, 0, 0.01, 0, None, ws,
         )
         .unwrap();
 
         let summary = get_usage_summary(&conn).unwrap();
-        assert_eq!(summary.total_runs, 2);
+        // Both completed agents share one workflow session → 1 run
+        assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.40).abs() < 1e-10);
-        assert!((summary.avg_cost_per_run - 0.20).abs() < 1e-10);
+        assert!((summary.avg_cost_per_run - 0.40).abs() < 1e-10);
     }
 
     #[test]
@@ -1726,14 +1732,15 @@ mod tests {
     #[test]
     fn test_reset_usage_marks_runs() {
         let conn = create_test_db();
+        let ws = Some("wf-session-r");
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, None,
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None, None,
+            2000, 1000, 0, 0, 0.30, 10000, None, ws,
         )
         .unwrap();
 
@@ -1751,7 +1758,7 @@ mod tests {
         // New runs after reset should still be visible
         persist_agent_run(
             &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None, None,
+            500, 200, 0, 0, 0.05, 3000, None, Some("wf-session-r2"),
         )
         .unwrap();
 
@@ -1763,19 +1770,20 @@ mod tests {
     #[test]
     fn test_get_usage_by_step_groups_correctly() {
         let conn = create_test_db();
+        let ws = Some("wf-session-s");
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, None,
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000, None, None,
+            800, 400, 0, 0, 0.08, 4000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 6, "sonnet", "completed",
-            2000, 1000, 0, 0, 0.25, 8000, None, None,
+            2000, 1000, 0, 0, 0.25, 8000, None, ws,
         )
         .unwrap();
 
@@ -1797,19 +1805,20 @@ mod tests {
     #[test]
     fn test_get_usage_by_model_groups_correctly() {
         let conn = create_test_db();
+        let ws = Some("wf-session-m");
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, None,
+            1000, 500, 0, 0, 0.10, 5000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 5, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000, None, None,
+            2000, 1000, 0, 0, 0.50, 10000, None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 3, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None, None,
+            500, 200, 0, 0, 0.05, 3000, None, ws,
         )
         .unwrap();
 
