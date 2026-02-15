@@ -80,13 +80,17 @@ export default function ImportedSkillCard({
       </CardHeader>
 
       <CardContent className="flex-1">
-        {skill.description ? (
+        {skill.trigger_text ? (
           <p className="text-sm text-muted-foreground line-clamp-2">
-            {skill.description}
+            {skill.trigger_text}
+          </p>
+        ) : skill.description ? (
+          <p className="text-sm text-muted-foreground italic line-clamp-2">
+            {skill.description} — no trigger set
           </p>
         ) : (
           <p className="text-sm text-muted-foreground italic">
-            No description
+            No trigger set
           </p>
         )}
       </CardContent>

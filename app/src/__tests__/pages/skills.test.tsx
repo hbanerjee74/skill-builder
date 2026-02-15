@@ -110,23 +110,38 @@ describe("SkillsPage", () => {
     expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
-  it("shows description on skill card", async () => {
+  it("shows trigger text on skill card when set", async () => {
+    const skillsWithTrigger = [
+      { ...sampleSkills[0], trigger_text: "Use for sales analytics" },
+      sampleSkills[1],
+    ];
+    mockInvokeCommands({ list_imported_skills: skillsWithTrigger });
+    render(<SkillsPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Use for sales analytics")
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows description fallback when no trigger text", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
     render(<SkillsPage />);
 
     await waitFor(() => {
       expect(
-        screen.getByText("Analytics skill for sales pipelines")
+        screen.getByText(/Analytics skill for sales pipelines/)
       ).toBeInTheDocument();
     });
   });
 
-  it("shows 'No description' for skills without description", async () => {
+  it("shows 'No trigger set' for skills without trigger or description", async () => {
     mockInvokeCommands({ list_imported_skills: sampleSkills });
     render(<SkillsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("No description")).toBeInTheDocument();
+      expect(screen.getByText("No trigger set")).toBeInTheDocument();
     });
   });
 

@@ -53,7 +53,7 @@ describe("ImportedSkillCard", () => {
     expect(screen.queryByText("sales")).not.toBeInTheDocument();
   });
 
-  it("renders description when present", () => {
+  it("renders description fallback when no trigger text", () => {
     render(
       <ImportedSkillCard
         skill={baseSkill}
@@ -63,11 +63,39 @@ describe("ImportedSkillCard", () => {
       />
     );
     expect(
-      screen.getByText("Analytics skill for sales data pipelines")
+      screen.getByText(/Analytics skill for sales data pipelines/)
     ).toBeInTheDocument();
   });
 
-  it("renders 'No description' when description is null", () => {
+  it("renders trigger text when set", () => {
+    const skill = { ...baseSkill, trigger_text: "Use when analyzing sales data" };
+    render(
+      <ImportedSkillCard
+        skill={skill}
+        onToggleActive={vi.fn()}
+        onDelete={vi.fn()}
+        onPreview={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Use when analyzing sales data")).toBeInTheDocument();
+  });
+
+  it("renders description with 'no trigger set' when trigger_text is null", () => {
+    render(
+      <ImportedSkillCard
+        skill={baseSkill}
+        onToggleActive={vi.fn()}
+        onDelete={vi.fn()}
+        onPreview={vi.fn()}
+      />
+    );
+    expect(
+      screen.getByText(/Analytics skill for sales data pipelines/)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/no trigger set/)).toBeInTheDocument();
+  });
+
+  it("renders 'No trigger set' when both trigger_text and description are null", () => {
     const skill = { ...baseSkill, description: null };
     render(
       <ImportedSkillCard
@@ -77,7 +105,7 @@ describe("ImportedSkillCard", () => {
         onPreview={vi.fn()}
       />
     );
-    expect(screen.getByText("No description")).toBeInTheDocument();
+    expect(screen.getByText("No trigger set")).toBeInTheDocument();
   });
 
   it("renders Preview button", () => {
