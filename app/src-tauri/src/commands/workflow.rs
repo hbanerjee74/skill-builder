@@ -265,8 +265,10 @@ pub fn append_imported_skills_section(
         // Check if there's another ## heading after it
         let after_section = &content[pos + "\n## Imported Skills\n".len()..];
         if let Some(next_heading) = after_section.find("\n## ") {
-            // Keep everything before the section and everything from the next heading
+            // Keep everything before the section (including the newline at pos)
+            // and everything from the next heading onward
             let mut result = content[..pos].to_string();
+            result.push('\n');
             result.push_str(&after_section[next_heading..]);
             result
         } else {

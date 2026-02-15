@@ -1077,4 +1077,49 @@ name: only-name
         assert!(!content.contains("### /old-skill"));
         assert!(!content.contains("Old trigger text."));
     }
+
+    #[test]
+    fn test_append_imported_skills_section_preserves_trailing_sections() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // CLAUDE.md with imported skills in the middle and another section after
+        let claude_dir = workspace.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(
+            claude_dir.join("CLAUDE.md"),
+            "# Base Content\n\nSome text.\n\n## Imported Skills\n\n### /old-skill\nOld trigger.\n\n## Trailing Section\n\nTrailing content.\n",
+        ).unwrap();
+
+        // Insert a new active skill with trigger text
+        let skill = ImportedSkill {
+            skill_id: "imp-new".to_string(),
+            skill_name: "new-skill".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/new".to_string(),
+            trigger_text: Some("New trigger.".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+
+        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        // Base content preserved
+        assert!(content.contains("# Base Content"));
+        assert!(content.contains("Some text."));
+        // Trailing section preserved
+        assert!(content.contains("## Trailing Section"));
+        assert!(content.contains("Trailing content."));
+        // New imported skills section present
+        assert!(content.contains("### /new-skill"));
+        assert!(content.contains("New trigger."));
+        // Old skill removed
+        assert!(!content.contains("### /old-skill"));
+        // No formatting corruption — trailing section should start on its own line
+        assert!(!content.contains("Base Content\n## Trailing"));
+    }
 }
