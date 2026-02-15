@@ -1365,3 +1365,92 @@ describe("CollapsibleToolCall", () => {
     expect(button.getAttribute("aria-label")).toContain("expand");
   });
 });
+
+describe("MessageItem — result error subtypes", () => {
+  it("renders error styling for error_max_turns result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_max_turns", is_error: true, errors: ["Max turns reached"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent reached the maximum number of turns allowed.")).toBeInTheDocument();
+  });
+
+  it("renders error styling for error_max_budget_usd result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_max_budget_usd", is_error: true },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent exceeded the maximum cost budget.")).toBeInTheDocument();
+  });
+
+  it("renders error styling for error_during_execution result", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { subtype: "error_during_execution", is_error: true, errors: ["Connection failed"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("An error occurred during agent execution.")).toBeInTheDocument();
+  });
+
+  it("renders refusal message for stop_reason refusal", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Refused",
+          raw: { subtype: "success", stop_reason: "refusal" },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText(/Agent declined this request/)).toBeInTheDocument();
+  });
+
+  it("renders green checkmark for clean success result", () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: "Agent finished successfully",
+          raw: { subtype: "success", stop_reason: "end_turn" },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Agent finished successfully")).toBeInTheDocument();
+    // Should use green text for success
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.className).toContain("text-green");
+  });
+
+  it("treats is_error=true without error_ subtype as error", () => {
+    render(
+      <MessageItem
+        message={{
+          type: "result",
+          content: undefined as unknown as string,
+          raw: { is_error: true, errors: ["Unexpected failure"] },
+          timestamp: Date.now(),
+        }}
+      />,
+    );
+    expect(screen.getByText("Unexpected failure")).toBeInTheDocument();
+  });
+});
