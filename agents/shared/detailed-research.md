@@ -48,7 +48,7 @@ Follow the Rerun/Resume Mode protocol.
 3. Identify any areas where the first round was too broad and needs specificity
 
 **Constraints**:
-- Follow the `clarifications-*.md` format from the shared context file; always include "Other (please specify)"
+- Follow the Clarifications file format from the shared context — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice.
 - Write only to the output file specified by the coordinator
 - Every question must present choices where different answers change the skill's design
 - Do NOT re-ask first-round questions — build on the answers already given
