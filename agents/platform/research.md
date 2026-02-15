@@ -22,7 +22,7 @@ Orchestrate parallel research by spawning three sub-agents via the Task tool —
 - The coordinator tells you:
   - The **domain** name
   - The **skill name**
-  - The **context directory** path
+  - The **output file path** for the final `clarifications.md`
 
 ## Rerun / Resume Mode
 
@@ -40,34 +40,34 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
-Follow the Sub-agent Spawning protocol. Spawn three sub-agents in a single turn:
+Follow the Sub-agent Spawning protocol. All sub-agents **return text** — they do not write files.
 
 **Sub-agent 1: Concepts & Metrics** (`name: "platform-research-concepts"`)
 
-- Output: `research-entities.md` and `research-metrics.md` in the context directory
-- This sub-agent orchestrates its own entity and metrics research internally
+- Spawns its own entity and metrics sub-agents internally
+- Returns: combined entity + metrics research text
+
+**Execution order**: Spawn Sub-agent 1 first and wait for it to return. Then spawn Sub-agents 2 and 3 in parallel, passing the returned concept text to each.
 
 **Sub-agent 2: Practices & Edge Cases** (`name: "platform-research-practices"`)
 
-- Input: `research-entities.md` and `research-metrics.md` from the context directory (once Sub-agent 1 completes)
-- Output: `clarifications-practices.md` in the context directory
+- Input: concept research text (passed in the prompt)
+- Returns: clarification text about practices and edge cases
 
 **Sub-agent 3: Technical Implementation** (`name: "platform-research-implementation"`)
 
-- Input: `research-entities.md` and `research-metrics.md` from the context directory (once Sub-agent 1 completes)
-- Output: `clarifications-implementation.md` in the context directory
+- Input: concept research text (passed in the prompt)
+- Returns: clarification text about technical implementation
 
-**Execution order**: Spawn Sub-agent 1 first and wait for it to complete (it produces the concept files that Sub-agents 2 and 3 need as input). Then spawn Sub-agents 2 and 3 in parallel.
-
-Pass the domain, context directory path, and output file path to each sub-agent. Each agent's own prompt defines what to research.
+Pass the domain to all sub-agents. Pass the concept research text to Sub-agents 2 and 3.
 
 ## Phase 2: Consolidate
 
-After all three sub-agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
-- The four source files: `research-entities.md`, `research-metrics.md`, `clarifications-practices.md`, `clarifications-implementation.md`
-- The target file: `clarifications.md` in the context directory
+After all three sub-agents return their text, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
+- The returned text from all three sub-agents (concepts, practices, implementation)
+- The output file path for `clarifications.md`
 
-The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow.
+The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow — then writes the single output file.
 
 ## Error Handling
 
@@ -76,7 +76,7 @@ If a sub-agent fails, re-spawn once. If it fails again, proceed with available o
 </instructions>
 
 ## Success Criteria
-- Concepts sub-agent produces entity and metrics research files with 5+ questions each
-- Practices and implementation sub-agents each produce 5+ questions
+- Concepts sub-agent returns entity and metrics research text with 5+ questions each
+- Practices and implementation sub-agents each return 5+ questions as text
 - Consolidation agent produces a cohesive `clarifications.md` with logical section flow
 - Cross-cutting questions that span multiple research areas are identified and grouped

@@ -18,9 +18,9 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 
 ## Context
 - The coordinator will tell you:
-  - The **context directory** path where all working files live
+  - The **clarifications.md file path** (PM's first-round answers)
   - **Which domain** to research
-  - **Where to write** your output file
+  - The **output file path** for the final `clarifications-detailed.md`
 
 ## Rerun / Resume Mode
 
@@ -34,35 +34,35 @@ Follow the Rerun/Resume Mode protocol.
 
 ## Phase 1: Analyze First-Round Answers
 
-Read `clarifications.md` from the context directory. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:
+Read `clarifications.md` at the path provided by the coordinator. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:
 - Which questions the PM answered and what they chose
 - Where the PM's answer opens new sub-decisions
 - Gaps that need specificity
 
 ## Phase 2: Spawn Parallel Sub-Agents
 
-Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section (`name: "detailed-<section-slug>"`). Each sub-agent receives:
+Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section (`name: "detailed-<section-slug>"`). All sub-agents **return text** — they do not write files. Each sub-agent receives:
 
-- The PM's answered `clarifications.md` path
+- The PM's answered `clarifications.md` content (pass the text in the prompt)
 - Which section to drill into
-- Output file path: `detailed-<section-slug>.md` in the context directory
 
 Each sub-agent's task:
-- Read `clarifications.md` and focus on the assigned section's answered questions
+- Review the `clarifications.md` content and focus on the assigned section's answered questions
 - For each answered question, identify 0-2 follow-up questions that dig deeper into the PM's chosen direction
 - Look for cross-cutting implications with other sections
 - Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice.
 - Every question must present choices where different answers change the skill's design
 - Do NOT re-ask first-round questions — build on the answers already given
 - Target 2-5 questions per section
+- Return the clarification text (do not write files)
 
 ## Phase 3: Consolidate
 
-After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
-- All sub-agent output files as source files
-- The target file specified by the coordinator (e.g., `clarifications-detailed.md`)
+After all sub-agents return their text, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
+- The returned text from all sub-agents directly in the prompt
+- The output file path for `clarifications-detailed.md`
 
-The consolidation agent produces a cohesive questionnaire from the section-specific follow-ups.
+The consolidation agent produces a cohesive questionnaire from the section-specific follow-ups and writes the single output file.
 
 ## Error Handling
 

@@ -67,23 +67,23 @@ Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1
 
 ### Validation Sub-agents
 
+All sub-agents **return text** — they do not write files.
+
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files.
-
-Writes findings to `validation-coverage-structure.md` in the context directory.
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files. Returns findings as text.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from your system prompt. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from your system prompt. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
-Same approach as Sub-agent B, but for each file in `references/`. Writes `validation-<filename>.md`.
+Same approach as Sub-agent B, but for each file in `references/`. Returns findings as text.
 
 ### Test Evaluator Sub-agents
 
-**Sub-agents T1..T10: One per test prompt** (`name: "tester-N"`)
+**Sub-agents T1..T10: One per test prompt** (`name: "tester-N"`, `model: "haiku"`)
 
 Each reads `SKILL.md` and all `references/` files, then evaluates one test prompt. Scoring:
 - **PASS** — skill directly addresses the question with actionable guidance
@@ -92,7 +92,7 @@ Each reads `SKILL.md` and all `references/` files, then evaluates one test promp
 
 For PARTIAL/FAIL, explain: what the engineer would expect, what the skill provides, and whether it's a content gap or organization issue.
 
-Writes `test-result-N.md` in the context directory using this format:
+Returns the result as text using this format:
 ```
 ### Test N: [prompt text]
 - **Category**: [category]
@@ -103,22 +103,23 @@ Writes `test-result-N.md` in the context directory using this format:
 
 ## Phase 3: Consolidate, Fix, and Report
 
-After all sub-agents return, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
+After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
+
+Pass the returned text from all validation sub-agents (A, B, C1..CN) and all test evaluator sub-agents (T1..T10) directly in the prompt. Also pass the skill output directory and context directory paths.
 
 Prompt it to:
-1. Read ALL `validation-*.md` and `test-result-*.md` files from the context directory
+1. Review all validation and test results (passed in the prompt)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
 4. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
 5. Suggest 5-8 additional test prompt categories for future evaluation
 6. Write TWO output files to the context directory (formats below)
-7. Delete all temporary files (`validation-*.md` and `test-result-*.md`) when done
 
 ## Error Handling
 
-- **Validator sub-agent failure:** Tell the reporter to review that file itself during consolidation.
+- **Validator sub-agent failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
-- **Evaluator sub-agent failure:** Include as "NOT EVALUATED" in the reporter prompt.
+- **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
 
 </instructions>
 
