@@ -139,7 +139,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 - `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
 - `--compare <skill-a> <skill-b>` — two skill versions head-to-head (is v2 better?)
 
-**Rubric** (each 1-5): pattern coverage, specificity, correctness, actionability.
+**Rubric** (each 1-5, same dimensions as validate agents): actionability, specificity, domain depth, self-containment.
 
 **Test prompts** live in `scripts/eval-prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
 

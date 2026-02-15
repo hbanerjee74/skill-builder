@@ -280,19 +280,19 @@ ${response_b}
 
 ## Evaluation Rubric
 
-Score each variant on these dimensions (1-5 scale):
+Score each variant on these dimensions (1-5 scale). These are the same quality dimensions used by the Skill Builder's validate agents:
 
-- **Pattern Coverage** (1-5): Does the response cover the key patterns, techniques, and architectural considerations for this domain? 1=misses most patterns, 5=comprehensive coverage.
-- **Specificity** (1-5): Are the instructions concrete and actionable with specific implementation details, or generic boilerplate? 1=vague/generic, 5=highly specific with code/SQL examples.
-- **Correctness** (1-5): Are the technical details accurate? No misleading advice or anti-patterns? 1=significant errors, 5=fully correct.
-- **Actionability** (1-5): Could an engineer follow this response to implement the pattern in a real system? 1=too abstract to act on, 5=ready to implement.
+- **Actionability** (1-5): Could an engineer follow this response to implement the pattern in a real system? 1=too abstract to act on, 5=ready to implement with clear steps and decisions.
+- **Specificity** (1-5): Are the instructions concrete with specific implementation details (SQL/code examples, exact patterns, named strategies), or generic boilerplate? 1=vague/generic, 5=highly specific.
+- **Domain Depth** (1-5): Does the response demonstrate deep domain knowledge — hard-to-find rules, edge cases, non-obvious entity relationships, industry-specific pitfalls? Or does it only cover what an LLM would already know without the skill? 1=surface-level/common knowledge, 5=expert-level domain insight.
+- **Self-Containment** (1-5): Does the response provide enough context to be useful standalone — WHAT and WHY (entities, metrics, business rules, trade-offs), not just HOW (tool syntax, standard SQL)? 1=requires significant external context, 5=fully self-contained guidance.
 
 ## Required Output Format
 
 Return ONLY a JSON object with this exact structure (no markdown fences, no commentary outside the JSON):
 {
-  "variant_a": {"pattern_coverage": <int>, "specificity": <int>, "correctness": <int>, "actionability": <int>},
-  "variant_b": {"pattern_coverage": <int>, "specificity": <int>, "correctness": <int>, "actionability": <int>},
+  "variant_a": {"actionability": <int>, "specificity": <int>, "domain_depth": <int>, "self_containment": <int>},
+  "variant_b": {"actionability": <int>, "specificity": <int>, "domain_depth": <int>, "self_containment": <int>},
   "explanation": "<2-3 sentence explanation of the key differences>"
 }
 JUDGE
@@ -332,8 +332,8 @@ except:
 
 # ---------- Run evaluation ----------
 # Accumulators for averages
-TOTAL_A_PATTERN=0; TOTAL_A_SPECIFIC=0; TOTAL_A_CORRECT=0; TOTAL_A_ACTION=0
-TOTAL_B_PATTERN=0; TOTAL_B_SPECIFIC=0; TOTAL_B_CORRECT=0; TOTAL_B_ACTION=0
+TOTAL_A_ACTION=0; TOTAL_A_SPECIFIC=0; TOTAL_A_DEPTH=0; TOTAL_A_SELF=0
+TOTAL_B_ACTION=0; TOTAL_B_SPECIFIC=0; TOTAL_B_DEPTH=0; TOTAL_B_SELF=0
 EVALUATED=0
 FAILED=0
 
@@ -441,40 +441,40 @@ sys.exit(1)
   fi
 
   # Extract scores
-  a_pattern=$(extract_score "$judge_json" "variant_a.pattern_coverage")
-  a_specific=$(extract_score "$judge_json" "variant_a.specificity")
-  a_correct=$(extract_score "$judge_json" "variant_a.correctness")
   a_action=$(extract_score "$judge_json" "variant_a.actionability")
+  a_specific=$(extract_score "$judge_json" "variant_a.specificity")
+  a_depth=$(extract_score "$judge_json" "variant_a.domain_depth")
+  a_self=$(extract_score "$judge_json" "variant_a.self_containment")
 
-  b_pattern=$(extract_score "$judge_json" "variant_b.pattern_coverage")
-  b_specific=$(extract_score "$judge_json" "variant_b.specificity")
-  b_correct=$(extract_score "$judge_json" "variant_b.correctness")
   b_action=$(extract_score "$judge_json" "variant_b.actionability")
+  b_specific=$(extract_score "$judge_json" "variant_b.specificity")
+  b_depth=$(extract_score "$judge_json" "variant_b.domain_depth")
+  b_self=$(extract_score "$judge_json" "variant_b.self_containment")
 
   explanation=$(extract_explanation "$judge_json")
 
   # Accumulate
-  TOTAL_A_PATTERN=$((TOTAL_A_PATTERN + a_pattern))
-  TOTAL_A_SPECIFIC=$((TOTAL_A_SPECIFIC + a_specific))
-  TOTAL_A_CORRECT=$((TOTAL_A_CORRECT + a_correct))
   TOTAL_A_ACTION=$((TOTAL_A_ACTION + a_action))
+  TOTAL_A_SPECIFIC=$((TOTAL_A_SPECIFIC + a_specific))
+  TOTAL_A_DEPTH=$((TOTAL_A_DEPTH + a_depth))
+  TOTAL_A_SELF=$((TOTAL_A_SELF + a_self))
 
-  TOTAL_B_PATTERN=$((TOTAL_B_PATTERN + b_pattern))
-  TOTAL_B_SPECIFIC=$((TOTAL_B_SPECIFIC + b_specific))
-  TOTAL_B_CORRECT=$((TOTAL_B_CORRECT + b_correct))
   TOTAL_B_ACTION=$((TOTAL_B_ACTION + b_action))
+  TOTAL_B_SPECIFIC=$((TOTAL_B_SPECIFIC + b_specific))
+  TOTAL_B_DEPTH=$((TOTAL_B_DEPTH + b_depth))
+  TOTAL_B_SELF=$((TOTAL_B_SELF + b_self))
 
   EVALUATED=$((EVALUATED + 1))
 
   # Store for report
   PROMPT_LABELS[$i]="$prompt_short"
-  PROMPT_SCORES_A[$i]="${a_pattern}|${a_specific}|${a_correct}|${a_action}"
-  PROMPT_SCORES_B[$i]="${b_pattern}|${b_specific}|${b_correct}|${b_action}"
+  PROMPT_SCORES_A[$i]="${a_action}|${a_specific}|${a_depth}|${a_self}"
+  PROMPT_SCORES_B[$i]="${b_action}|${b_specific}|${b_depth}|${b_self}"
   PROMPT_EXPLANATIONS[$i]="$explanation"
 
   # Print inline result
-  a_total=$((a_pattern + a_specific + a_correct + a_action))
-  b_total=$((b_pattern + b_specific + b_correct + b_action))
+  a_total=$((a_action + a_specific + a_depth + a_self))
+  b_total=$((b_action + b_specific + b_depth + b_self))
   if [ "$a_total" -gt "$b_total" ]; then
     winner="${GREEN}${LABEL_A} wins${RESET}"
   elif [ "$b_total" -gt "$a_total" ]; then
@@ -482,8 +482,8 @@ sys.exit(1)
   else
     winner="${YELLOW}Tie${RESET}"
   fi
-  echo "  ${LABEL_A}: ${a_pattern}/${a_specific}/${a_correct}/${a_action} = ${a_total}/20"
-  echo "  ${LABEL_B}: ${b_pattern}/${b_specific}/${b_correct}/${b_action} = ${b_total}/20"
+  echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20"
+  echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20"
   echo "  Result: ${winner}"
   echo ""
 done
@@ -497,21 +497,21 @@ fi
 # Compute averages using python for floating point
 compute_avg() { python3 -c "print(f'{$1 / $2:.1f}')"; }
 
-avg_a_pattern=$(compute_avg $TOTAL_A_PATTERN $EVALUATED)
-avg_a_specific=$(compute_avg $TOTAL_A_SPECIFIC $EVALUATED)
-avg_a_correct=$(compute_avg $TOTAL_A_CORRECT $EVALUATED)
 avg_a_action=$(compute_avg $TOTAL_A_ACTION $EVALUATED)
+avg_a_specific=$(compute_avg $TOTAL_A_SPECIFIC $EVALUATED)
+avg_a_depth=$(compute_avg $TOTAL_A_DEPTH $EVALUATED)
+avg_a_self=$(compute_avg $TOTAL_A_SELF $EVALUATED)
 
-avg_b_pattern=$(compute_avg $TOTAL_B_PATTERN $EVALUATED)
-avg_b_specific=$(compute_avg $TOTAL_B_SPECIFIC $EVALUATED)
-avg_b_correct=$(compute_avg $TOTAL_B_CORRECT $EVALUATED)
 avg_b_action=$(compute_avg $TOTAL_B_ACTION $EVALUATED)
+avg_b_specific=$(compute_avg $TOTAL_B_SPECIFIC $EVALUATED)
+avg_b_depth=$(compute_avg $TOTAL_B_DEPTH $EVALUATED)
+avg_b_self=$(compute_avg $TOTAL_B_SELF $EVALUATED)
 
-total_a=$(python3 -c "print(f'{($TOTAL_A_PATTERN + $TOTAL_A_SPECIFIC + $TOTAL_A_CORRECT + $TOTAL_A_ACTION) / $EVALUATED:.1f}')")
-total_b=$(python3 -c "print(f'{($TOTAL_B_PATTERN + $TOTAL_B_SPECIFIC + $TOTAL_B_CORRECT + $TOTAL_B_ACTION) / $EVALUATED:.1f}')")
+total_a=$(python3 -c "print(f'{($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED:.1f}')")
+total_b=$(python3 -c "print(f'{($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED:.1f}')")
 delta=$(python3 -c "
-a = ($TOTAL_A_PATTERN + $TOTAL_A_SPECIFIC + $TOTAL_A_CORRECT + $TOTAL_A_ACTION) / $EVALUATED
-b = ($TOTAL_B_PATTERN + $TOTAL_B_SPECIFIC + $TOTAL_B_CORRECT + $TOTAL_B_ACTION) / $EVALUATED
+a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
+b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
 print(f'{a - b:+.1f}')
 ")
 
@@ -549,16 +549,16 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   echo "| Dimension | ${LABEL_A} | ${LABEL_B} |"
   echo "|---|---|---|"
 
-  IFS='|' read -r ap as ac aa <<< "${PROMPT_SCORES_A[$i]}"
-  IFS='|' read -r bp bs bc ba <<< "${PROMPT_SCORES_B[$i]}"
+  IFS='|' read -r aa as ad asc <<< "${PROMPT_SCORES_A[$i]}"
+  IFS='|' read -r ba bs bd bsc <<< "${PROMPT_SCORES_B[$i]}"
 
-  echo "| Pattern Coverage | $ap | $bp |"
-  echo "| Specificity | $as | $bs |"
-  echo "| Correctness | $ac | $bc |"
   echo "| Actionability | $aa | $ba |"
+  echo "| Specificity | $as | $bs |"
+  echo "| Domain Depth | $ad | $bd |"
+  echo "| Self-Containment | $asc | $bsc |"
 
-  a_sum=$((ap + as + ac + aa))
-  b_sum=$((bp + bs + bc + ba))
+  a_sum=$((aa + as + ad + asc))
+  b_sum=$((ba + bs + bd + bsc))
   echo "| **Total** | **$a_sum/20** | **$b_sum/20** |"
   echo ""
   echo "> ${PROMPT_EXPLANATIONS[$i]}"
@@ -570,12 +570,12 @@ echo ""
 echo "| Dimension | ${LABEL_A} | ${LABEL_B} | Delta |"
 echo "|---|---|---|---|"
 
-for dim in pattern_coverage specificity correctness actionability; do
+for dim in actionability specificity domain_depth self_containment; do
   case "$dim" in
-    pattern_coverage) a_val=$avg_a_pattern; b_val=$avg_b_pattern; label="Pattern Coverage" ;;
-    specificity)      a_val=$avg_a_specific; b_val=$avg_b_specific; label="Specificity" ;;
-    correctness)      a_val=$avg_a_correct;  b_val=$avg_b_correct;  label="Correctness" ;;
-    actionability)    a_val=$avg_a_action;   b_val=$avg_b_action;   label="Actionability" ;;
+    actionability)     a_val=$avg_a_action;   b_val=$avg_b_action;   label="Actionability" ;;
+    specificity)       a_val=$avg_a_specific; b_val=$avg_b_specific; label="Specificity" ;;
+    domain_depth)      a_val=$avg_a_depth;    b_val=$avg_b_depth;    label="Domain Depth" ;;
+    self_containment)  a_val=$avg_a_self;     b_val=$avg_b_self;     label="Self-Containment" ;;
   esac
   dim_delta=$(python3 -c "print(f'{$a_val - $b_val:+.1f}')")
   echo "| $label | $a_val | $b_val | $dim_delta |"
@@ -589,8 +589,8 @@ echo ""
 
 # Determine winner
 winner_result=$(python3 -c "
-a = ($TOTAL_A_PATTERN + $TOTAL_A_SPECIFIC + $TOTAL_A_CORRECT + $TOTAL_A_ACTION) / $EVALUATED
-b = ($TOTAL_B_PATTERN + $TOTAL_B_SPECIFIC + $TOTAL_B_CORRECT + $TOTAL_B_ACTION) / $EVALUATED
+a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
+b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
 diff = a - b
 if abs(diff) < 0.5:
     print('TIE')
