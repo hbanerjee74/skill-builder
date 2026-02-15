@@ -32,23 +32,9 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Plan the Skill Structure
 
-**Goal**: Design a folder structure that achieves progressive disclosure — SKILL.md provides overview and pointers, reference files provide depth on demand.
+**Goal**: Design the skill's file layout following the Skill Best Practices in the shared context (structure, naming, line limits).
 
-Read `decisions.md` and `clarifications.md`, then propose the structure:
-
-```
-<skill-output-directory>/
-├── SKILL.md                  # Entry point — overview, when to use, pointers to references (<500 lines)
-└── references/               # Deep-dive content loaded on demand
-    ├── <topic-a>.md
-    ├── <topic-b>.md
-    └── ...
-```
-
-**Constraints:**
-- Reference files named by topic in kebab-case (e.g., `pipeline-metrics.md`, `stage-modeling.md`)
-- Each reference file must be self-contained for its topic
-- Number of reference files driven by the decisions — propose file names with one-line descriptions
+Read `decisions.md` and `clarifications.md`, then propose the structure. Number of reference files driven by the decisions — propose file names with one-line descriptions.
 
 ## Phase 2: Write SKILL.md
 
@@ -57,13 +43,13 @@ Read `decisions.md` and `clarifications.md`, then propose the structure:
 If SKILL.md already exists, read it first and update only sections affected by changed decisions. If it doesn't exist, write it from scratch.
 
 **Required sections:**
-- **Metadata block**: skill name, one-line description (~100 words max), optionally `author`, `created`, `modified` (use values from coordinator if provided)
+- **Metadata block**: skill name, description, optionally `author`, `created`, `modified` (use values from coordinator if provided). Follow Skill Best Practices for naming and description format.
 - **Overview**: domain scope, target audience, key concepts at a glance
 - **When to use this skill**: trigger conditions / user intent patterns
 - **Quick reference**: the most important guidance — enough for simple questions
 - **Pointers to references**: brief description of each reference file and when to read it
 
-**Constraints:** Under 500 lines. If a section grows past a few paragraphs, it belongs in a reference file. Do NOT delegate SKILL.md to a sub-agent.
+If a section grows past a few paragraphs, it belongs in a reference file. Do NOT delegate SKILL.md to a sub-agent.
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
@@ -75,7 +61,7 @@ Each sub-agent prompt must include:
 - Paths to `decisions.md` and `SKILL.md` for context
 - The full output path (`references/<topic>.md`) — update if it exists, create if not
 - The topic description: what this file should cover, based on the decisions
-- Instruction to start with a one-line summary and be self-contained
+- Instruction to follow Content Principles and Skill Best Practices from the shared context
 
 ## Phase 4: Review and Fix Gaps
 
@@ -131,7 +117,8 @@ This skill covers SCD Type 2 implementation patterns for engineers building hist
 ```
 
 ## Success Criteria
-- SKILL.md is under 500 lines with metadata, overview, trigger conditions, quick reference, and pointers
-- 3-8 reference files, each self-contained and under 200 lines
+- All Skill Best Practices from the shared context are followed (structure, naming, line limits, content rules, anti-patterns)
+- SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
+- 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file
 - SKILL.md pointers accurately describe each reference file's content and when to read it

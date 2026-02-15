@@ -205,17 +205,21 @@ if [ -f "skills/start/SKILL.md" ]; then
   done
 fi
 
-# ---------- Build agent: progressive disclosure (check all type variants) ----------
+# ---------- Build agent: best practices in shared context + references/ in build agents ----------
 echo "=== Build Agent ==="
+# Progressive disclosure and output structure are in workspace/CLAUDE.md (auto-loaded into all agents)
+if [ -f "workspace/CLAUDE.md" ]; then
+  ws_content=$(cat "workspace/CLAUDE.md")
+  if echo "$ws_content" | grep -q "progressive disclosure"; then
+    pass "workspace/CLAUDE.md contains progressive disclosure guidance"
+  else
+    fail "workspace/CLAUDE.md missing progressive disclosure guidance"
+  fi
+fi
 build_checked=0
 for dir in $TYPE_DIRS; do
   if [ -f "agents/${dir}/build.md" ]; then
     build_content=$(cat "agents/${dir}/build.md")
-    if echo "$build_content" | grep -q "progressive disclosure"; then
-      pass "${dir}/build agent references progressive disclosure"
-    else
-      fail "${dir}/build agent missing progressive disclosure guidance"
-    fi
     if echo "$build_content" | grep -q "references/"; then
       pass "${dir}/build agent references references/ subfolder"
     else
