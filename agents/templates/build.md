@@ -40,15 +40,7 @@ Follow the Skill Best Practices from the shared context — structure rules, req
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
-Use the **Task tool** to spawn one sub-agent per reference file. Launch ALL Task calls in the **same turn** so they run in parallel.
-
-For each sub-agent, use: `name: "writer-<topic>"`, `model: "sonnet"`, `mode: "bypassPermissions"`
-
-Each sub-agent prompt must include:
-- Paths to `decisions.md` and `SKILL.md` for context
-- The full output path (`references/<topic>.md`) — update if it exists, create if not
-- The topic description: what this file should cover, based on the decisions
-- Instruction to follow Content Principles and Skill Best Practices from the shared context
+Follow the Sub-agent Spawning protocol. Spawn one sub-agent per reference file (`name: "writer-<topic>"`). Each prompt must include paths to `decisions.md` and `SKILL.md`, the full output path, and the topic description.
 
 ## Phase 4: Review and Fix Gaps
 
