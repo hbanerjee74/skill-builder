@@ -20,7 +20,6 @@ Orchestrate parallel research by spawning three sub-agents via the Task tool —
 
 ## Context
 - The coordinator tells you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - The **domain** name
   - The **skill name**
   - The **context directory** path
@@ -60,12 +59,11 @@ Follow the Sub-agent Spawning protocol. Spawn three sub-agents in a single turn:
 
 **Execution order**: Spawn Sub-agent 1 first and wait for it to complete (it produces the concept files that Sub-agents 2 and 3 need as input). Then spawn Sub-agents 2 and 3 in parallel.
 
-Pass the domain, shared context file path, context directory path, and output file path to each sub-agent. Each agent's own prompt defines what to research.
+Pass the domain, context directory path, and output file path to each sub-agent. Each agent's own prompt defines what to research.
 
 ## Phase 2: Consolidate
 
 After all three sub-agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`). Pass it:
-- The shared context file path
 - The four source files: `research-entities.md`, `research-metrics.md`, `clarifications-practices.md`, `clarifications-implementation.md`
 - The target file: `clarifications.md` in the context directory
 

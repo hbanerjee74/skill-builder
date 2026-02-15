@@ -205,7 +205,7 @@ if [ -f "skills/generate-skill/SKILL.md" ]; then
   done
 fi
 
-# ---------- Generate-skill agent: best practices in shared context + references/ in generate-skill agents ----------
+# ---------- Generate-skill agent: best practices in workspace/CLAUDE.md + references/ in generate-skill agents ----------
 echo "=== Generate-Skill Agent ==="
 # Progressive disclosure and output structure are in workspace/CLAUDE.md (auto-loaded into all agents)
 if [ -f "workspace/CLAUDE.md" ]; then

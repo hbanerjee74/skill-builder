@@ -18,7 +18,6 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for full context on the skill builder's purpose
   - The **context directory** path where all working files live
 
 ## Rerun / Resume Mode
@@ -43,7 +42,7 @@ Follow the Rerun/Resume Mode protocol.
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
-**Writing `decisions.md`**: Follow the Decisions file format from the shared context. Update the frontmatter with the decision count. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override.
+**Writing `decisions.md`**: Follow the Decisions file format from your system prompt. Update the frontmatter with the decision count. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override.
 
 ## Error Handling
 
@@ -74,4 +73,4 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ## Success Criteria
 - Every answered question has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)
-- `decisions.md` follows the Decisions file format from the shared context
+- `decisions.md` follows the Decisions file format from your system prompt

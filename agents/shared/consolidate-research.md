@@ -18,7 +18,6 @@ You take the raw clarification questions from multiple research agents and produ
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the expected file formats and content principles
   - The **source files** to consolidate (file paths)
   - The **target file** to write (file path)
 
@@ -56,7 +55,7 @@ Arrange questions into logical sections. Within each section, order from broad s
 
 ### Step 4: Write output
 
-Write to the target file path. Follow the Clarifications file format from the shared context — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
+Write to the target file path. Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
 
 </instructions>
 

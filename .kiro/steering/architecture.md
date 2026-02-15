@@ -51,7 +51,7 @@ Backend (Rust) → Agent Orchestrator → Node.js Sidecar
 - `app/src-tauri/` - Rust backend
 - `app/sidecar/` - Node.js agent runner
 - `agents/` - Agent prompt files organized by skill type (`{type}/` + `shared/`)
-- `references/` - Shared context files
+- `workspace/` - Agent instructions (CLAUDE.md, auto-loaded into system prompt)
 
 ## Runtime Dependency
 

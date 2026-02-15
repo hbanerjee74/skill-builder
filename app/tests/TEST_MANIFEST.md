@@ -124,7 +124,7 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 | `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
 | `scripts/build-agents.sh` | `@agents` | t1 | Run to regenerate agents |
 | `skills/generate-skill/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
-| `references/shared-context.md` | `@agents` | t1, t4 | -- |
+| `workspace/CLAUDE.md` (agent instructions) | `@agents` | t1, t4 | -- |
 | `.claude-plugin/plugin.json` | `@structure` | t1 | -- |
 
 **Commands:**
