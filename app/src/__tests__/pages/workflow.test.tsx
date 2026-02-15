@@ -42,6 +42,9 @@ vi.mock("@/lib/tauri", () => ({
   acquireLock: vi.fn(() => Promise.resolve()),
   releaseLock: vi.fn(() => Promise.resolve()),
   persistAgentRun: vi.fn(() => Promise.resolve()),
+  createWorkflowSession: vi.fn(() => Promise.resolve()),
+  endWorkflowSession: vi.fn(() => Promise.resolve()),
+  verifyStepOutput: vi.fn(() => Promise.resolve(true)),
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle
@@ -70,7 +73,7 @@ vi.mock("@/components/step-rerun-chat", () => ({
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
-import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar } from "@/lib/tauri";
+import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession } from "@/lib/tauri";
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -340,6 +343,24 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // cleanupSkillSidecar should be called with the skill name
     expect(vi.mocked(cleanupSkillSidecar)).toHaveBeenCalledWith("test-skill");
+  });
+
+  it("calls endWorkflowSession on unmount when session is active", async () => {
+    vi.mocked(endWorkflowSession).mockClear();
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setRunning(true);
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    const { unmount } = render(<WorkflowPage />);
+
+    act(() => {
+      unmount();
+    });
+
+    expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
   });
 
   it("calls cleanupSkillSidecar on unmount even when not running", async () => {
