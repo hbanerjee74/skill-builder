@@ -405,7 +405,7 @@ export default function UsagePage() {
                               className="flex items-center justify-between py-1 px-2 hover:bg-muted/40 rounded text-xs"
                             >
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className="truncate font-medium">{step.name}</span>
+                                <span className="w-36 truncate font-medium">{step.name}</span>
                                 <Badge variant="outline" className="shrink-0 text-xs">
                                   {step.model}
                                 </Badge>
