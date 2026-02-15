@@ -1,20 +1,18 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/build.md + agents/types/source/config.conf
+# AUTO-GENERATED — do not edit. Source: agents/templates/generate-skill.md + agents/types/platform/config.conf
 # Regenerate with: scripts/build-agents.sh
-name: source-build
+name: platform-generate-skill
 description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Build Agent: Skill Creation
+# Generate Skill Agent
 
 <role>
 
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
-
-Think like an application engineer. Target extraction pipeline patterns. Content should help engineers understand source WHAT and WHY — API endpoint behaviors, data schemas, quality gotchas.
 
 </role>
 
@@ -52,6 +50,8 @@ Read `decisions.md` and `clarifications.md`, then propose the structure. Number 
 
 Follow the Skill Best Practices from the shared context — structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
+The SKILL.md frontmatter description must follow the trigger pattern from the shared context: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill — make triggers specific and comprehensive.
+
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
 Follow the Sub-agent Spawning protocol. Spawn one sub-agent per reference file (`name: "writer-<topic>"`). Each prompt must include paths to `decisions.md` and `SKILL.md`, the full output path, and the topic description.
@@ -77,37 +77,6 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 
 ### Output Example
 
-Example SKILL.md metadata block and pointer section:
-
-```markdown
----
-name: Stripe Data Extraction
-description: Source system knowledge for extracting and modeling data from the Stripe API, covering API endpoints, webhooks, event schemas, and data quality patterns.
-author: octocat
-created: 2025-06-15
-modified: 2025-06-15
----
-
-# Stripe Data Extraction
-
-## Overview
-This skill covers Stripe data extraction patterns for engineers building data pipelines from the Stripe API. Key concepts: API endpoints, webhook events, charge lifecycle, and subscription modeling.
-
-## When to Use This Skill
-- Engineer asks about extracting data from Stripe's API
-- Questions about webhook event handling or event schema structures
-- Building incremental extraction pipelines for charges, subscriptions, or invoices
-- Handling Stripe-specific data quality issues (currency formatting, timezone handling)
-
-## Quick Reference
-- Use the Events API for incremental extraction rather than polling individual resources...
-- Webhook signatures must be verified before processing to prevent replay attacks...
-
-## Reference Files
-- **references/api-endpoints.md** — Core API endpoints, pagination strategies, and rate limit handling. Read when designing extraction pipelines.
-- **references/webhook-events.md** — Webhook event types, delivery guarantees, and idempotency patterns. Read when building event-driven ingestion.
-- **references/event-schemas.md** — Key object schemas (charges, subscriptions, invoices) and their relationships. Read when modeling source data.
-```
 
 </output_format>
 

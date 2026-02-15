@@ -1,20 +1,16 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/validate-and-test.md + agents/types/data-engineering/config.conf
-# Regenerate with: scripts/build-agents.sh
-name: de-validate-and-test
+name: validate-skill
 description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Validate & Test Agent: Combined Best Practices Check + Skill Testing
+# Validate Skill Agent
 
 <role>
 
 ## Your Role
 You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
-
-Validate that historization strategies, load patterns, and data quality contracts are internally consistent and that cross-pipeline dependencies are documented. Test prompts should reflect real engineering questions: choosing SCD strategies, designing incremental loads, handling late-arriving data, and setting up quality gates.
 
 ## Out of Scope
 
@@ -54,14 +50,14 @@ Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validati
 3. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
-   - What entities, metrics, and patterns are documented
+   - What entities, patterns, and concepts are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
-5. **Generate 10 test prompts** that a data/analytics engineer would ask when using this skill. Cover these categories:
-   - **Basic domain concepts** (2 prompts) — "What are the key entities in [domain]?"
-   - **Silver layer modeling** (2 prompts) — "What silver layer tables do I need for [specific entity]?"
-   - **Gold layer / metrics modeling** (2 prompts) — "How should I model [specific metric]?"
-   - **Source system fields** (1 prompt) — "What fields should I capture from [source system]?"
+5. **Generate 10 test prompts** that an engineer would ask when using this skill. Cover these categories:
+   - **Core concepts** (2 prompts) — "What are the key entities/patterns in [domain]?"
+   - **Architecture & design** (2 prompts) — "How should I structure/model [specific aspect]?"
+   - **Implementation details** (2 prompts) — "What's the recommended approach for [specific decision]?"
+   - **Configuration & setup** (1 prompt) — "What do I need to configure for [specific feature]?"
    - **Edge cases** (2 prompts) — domain-specific tricky scenarios the skill should handle
    - **Cross-functional analysis** (1 prompt) — questions that span multiple areas of the skill
 
@@ -164,7 +160,7 @@ Prompt it to:
 
 **Validation:** `D1: Two-level customer hierarchy — COVERED (references/entity-model.md:Customer Hierarchy)` | `Orphaned reference files — FIXED (added pointer in SKILL.md)`
 
-**Test:** `Test 2: What silver layer tables do I need for opportunity tracking? — PARTIAL — describes entity but missing table grain guidance`
+**Test:** `Test 2: How should I structure the data model for opportunity tracking? — PARTIAL — describes entity but missing detailed design guidance`
 
 </output_format>
 

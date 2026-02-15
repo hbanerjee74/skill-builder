@@ -1,20 +1,18 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/build.md + agents/types/data-engineering/config.conf
+# AUTO-GENERATED — do not edit. Source: agents/templates/generate-skill.md + agents/types/data-engineering/config.conf
 # Regenerate with: scripts/build-agents.sh
-name: de-build
+name: de-generate-skill
 description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
 
-# Build Agent: Skill Creation
+# Generate Skill Agent
 
 <role>
 
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
-
-Think like a data engineer. Target data transformation and pipeline architecture patterns. Content should help engineers understand pipeline WHAT and WHY — historization strategies, load and merge logic, data quality contracts.
 
 </role>
 
@@ -52,6 +50,8 @@ Read `decisions.md` and `clarifications.md`, then propose the structure. Number 
 
 Follow the Skill Best Practices from the shared context — structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
+The SKILL.md frontmatter description must follow the trigger pattern from the shared context: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill — make triggers specific and comprehensive.
+
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
 Follow the Sub-agent Spawning protocol. Spawn one sub-agent per reference file (`name: "writer-<topic>"`). Each prompt must include paths to `decisions.md` and `SKILL.md`, the full output path, and the topic description.
@@ -77,37 +77,6 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 
 ### Output Example
 
-Example SKILL.md metadata block and pointer section:
-
-```markdown
----
-name: SCD Type 2 Implementation Patterns
-description: Data engineering knowledge for implementing slowly changing dimension Type 2 patterns, covering surrogate key design, effective date management, merge strategies, and downstream join patterns.
-author: octocat
-created: 2025-06-15
-modified: 2025-06-15
----
-
-# SCD Type 2 Implementation Patterns
-
-## Overview
-This skill covers SCD Type 2 implementation patterns for engineers building historized dimensions in data warehouses and lakehouses. Key concepts: surrogate key generation, effective date ranges, merge/upsert logic, and impact on downstream fact table joins.
-
-## When to Use This Skill
-- Engineer asks about tracking historical changes in dimension tables
-- Questions about surrogate key strategies or natural key vs. surrogate key trade-offs
-- Designing merge logic for incremental dimension updates
-- Handling late-arriving dimension changes or retroactive corrections
-
-## Quick Reference
-- Surrogate keys should be deterministic (hash-based) rather than sequential for idempotent loads...
-- Effective date ranges use closed-open intervals [effective_from, effective_to) with a sentinel value for current records...
-
-## Reference Files
-- **references/surrogate-key-design.md** — Surrogate key generation strategies (hash vs. sequence), deterministic key benefits, and collision handling. Read when designing dimension key architecture.
-- **references/merge-strategies.md** — MERGE/UPSERT patterns for detecting changes, closing old records, and inserting new versions. Read when implementing the load process.
-- **references/downstream-joins.md** — How SCD Type 2 dimensions affect fact table joins, point-in-time lookups, and query performance. Read when designing or debugging downstream models.
-```
 
 </output_format>
 
