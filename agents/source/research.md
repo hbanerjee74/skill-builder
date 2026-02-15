@@ -63,7 +63,7 @@ Pass the domain, context directory path, and output file path to each sub-agent.
 
 ## Phase 2: Consolidate
 
-After all three sub-agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`). Pass it:
+After all three sub-agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The four source files: `research-entities.md`, `research-metrics.md`, `clarifications-practices.md`, `clarifications-implementation.md`
 - The target file: `clarifications.md` in the context directory
 
