@@ -52,7 +52,7 @@ Pass the domain, shared context file path, context directory path, and agent pro
 
 ## Phase 2: Merge
 
-After both sub-agents return, spawn a fresh **merge** sub-agent (use haiku model).
+After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`, use haiku model).
 
 - Read the shared context file and the merge agent prompt file, then follow the instructions
 - Merge `clarifications-patterns.md` and `clarifications-data.md` into `clarifications.md` in the context directory
