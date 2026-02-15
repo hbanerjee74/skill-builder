@@ -26,14 +26,14 @@ import { getSessionAgentRuns } from "@/lib/tauri"
 
 const STEP_NAMES: Record<number, string> = {
   0: "Init",
-  1: "Research Concepts",
-  2: "Concepts Review",
-  3: "Research Patterns",
-  4: "Human Review",
-  5: "Reasoning",
-  6: "Build",
-  7: "Validate",
-  8: "Package/Refine",
+  1: "Research",
+  2: "Review",
+  3: "Detailed Research",
+  4: "Review",
+  5: "Confirm Decisions",
+  6: "Generate Skill",
+  7: "Validate Skill",
+  8: "Refine",
   [-1]: "Chat",
 }
 

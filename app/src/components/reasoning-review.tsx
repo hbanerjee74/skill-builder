@@ -190,7 +190,7 @@ export function ReasoningReview({
       if (!decisionsFound) {
         toast.error(
           "Decisions file was not created. The reasoning agent did not produce decisions.md. " +
-          "Navigate back to Human Review in the sidebar to revise your answers, then re-run this step.",
+          "Navigate back to Review in the sidebar to revise your answers, then re-run this step.",
           { duration: Infinity },
         );
         return;

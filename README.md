@@ -17,7 +17,7 @@ Available as a **Claude Code plugin** (CLI) and a **Tauri desktop app** (GUI). B
 claude --plugin-dir /path/to/skill-builder
 
 # Run the workflow
-/skill-builder:start
+/skill-builder:generate-skill
 ```
 
 ### Desktop App
@@ -59,7 +59,7 @@ skill-builder/
 │   ├── types/               # 4 type configs (focus, examples)
 │   └── shared/              # 3 shared sub-agents
 ├── references/              # Shared context for agents
-├── skills/start/SKILL.md    # Plugin coordinator (entry point)
+├── skills/generate-skill/SKILL.md    # Plugin coordinator (entry point)
 ├── app/                     # Desktop application
 │   ├── src/                 # React 19 + Tailwind 4 + shadcn/ui
 │   ├── src-tauri/           # Rust backend (Tauri 2 + SQLite)

@@ -34,9 +34,9 @@ const mockSummary: UsageSummary = {
 };
 
 const mockByStep: UsageByStep[] = [
-  { step_id: 1, step_name: "Research Concepts", total_cost: 3.5, run_count: 10 },
-  { step_id: 5, step_name: "Reasoning", total_cost: 6.0, run_count: 8 },
-  { step_id: 6, step_name: "Build", total_cost: 2.0, run_count: 5 },
+  { step_id: 1, step_name: "Research", total_cost: 3.5, run_count: 10 },
+  { step_id: 5, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
+  { step_id: 6, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
 ];
 
 const mockByModel: UsageByModel[] = [
@@ -121,9 +121,9 @@ describe("UsagePage", () => {
     expect(screen.getByText("Cost by Step")).toBeInTheDocument();
     // Step names may appear multiple times (in breakdown and in session badges),
     // so use getAllByText to verify they exist
-    expect(screen.getAllByText("Research Concepts").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Reasoning").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Build").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Research").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Confirm Decisions").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Generate Skill").length).toBeGreaterThanOrEqual(1);
     // Check cost text is rendered (unique to the breakdown section)
     expect(screen.getByText(/\$3\.50 \(10 agents\)/)).toBeInTheDocument();
     expect(screen.getByText(/\$6\.00 \(8 agents\)/)).toBeInTheDocument();
@@ -223,8 +223,8 @@ describe("UsagePage", () => {
       const table = screen.getByTestId("step-table");
       expect(table).toBeInTheDocument();
       // Step names appear in both the breakdown chart and step table
-      expect(screen.getAllByText("Research Concepts").length).toBeGreaterThanOrEqual(2);
-      expect(screen.getAllByText("Reasoning").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("Research").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getAllByText("Confirm Decisions").length).toBeGreaterThanOrEqual(2);
       // Model names appear only in the step table
       expect(table.textContent).toContain("sonnet");
       expect(table.textContent).toContain("opus");

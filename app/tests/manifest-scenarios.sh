@@ -166,10 +166,10 @@ assert_row_contains "shared agents → tier t4"         "agents/shared/*.md"    
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ Plugin: Coordinator Change ━━━${RESET}"
-assert_row_contains "SKILL.md → plugin tag"           "skills/start/SKILL.md"   "@coordinator"
-assert_row_contains "SKILL.md → tier t1"              "skills/start/SKILL.md"   "t1"
-assert_row_contains "SKILL.md → tier t2"              "skills/start/SKILL.md"   "t2"
-assert_row_contains "SKILL.md → tier t3"              "skills/start/SKILL.md"   "t3"
+assert_row_contains "SKILL.md → plugin tag"           "skills/generate-skill/SKILL.md"   "@coordinator"
+assert_row_contains "SKILL.md → tier t1"              "skills/generate-skill/SKILL.md"   "t1"
+assert_row_contains "SKILL.md → tier t2"              "skills/generate-skill/SKILL.md"   "t2"
+assert_row_contains "SKILL.md → tier t3"              "skills/generate-skill/SKILL.md"   "t3"
 
 # ===== Cross-cutting: Shared Reference =====
 
