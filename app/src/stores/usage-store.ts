@@ -9,27 +9,31 @@ interface UsageState {
   byModel: UsageByModel[];
   loading: boolean;
   error: string | null;
+  hideCancelled: boolean;
 
   fetchUsage: () => Promise<void>;
   resetCounter: () => Promise<void>;
+  toggleHideCancelled: () => void;
 }
 
-export const useUsageStore = create<UsageState>((set) => ({
+export const useUsageStore = create<UsageState>((set, get) => ({
   summary: null,
   recentSessions: [],
   byStep: [],
   byModel: [],
   loading: false,
   error: null,
+  hideCancelled: false,
 
   fetchUsage: async () => {
+    const { hideCancelled } = get();
     set({ loading: true, error: null });
     try {
       const [summary, recentSessions, byStep, byModel] = await Promise.all([
-        getUsageSummary(),
-        getRecentWorkflowSessions(50),
-        getUsageByStep(),
-        getUsageByModel(),
+        getUsageSummary(hideCancelled),
+        getRecentWorkflowSessions(50, hideCancelled),
+        getUsageByStep(hideCancelled),
+        getUsageByModel(hideCancelled),
       ]);
       set({ summary, recentSessions, byStep, byModel, loading: false });
     } catch (err) {
@@ -38,18 +42,26 @@ export const useUsageStore = create<UsageState>((set) => ({
   },
 
   resetCounter: async () => {
+    const { hideCancelled } = get();
     set({ loading: true, error: null });
     try {
       await resetUsage();
       const [summary, recentSessions, byStep, byModel] = await Promise.all([
-        getUsageSummary(),
-        getRecentWorkflowSessions(50),
-        getUsageByStep(),
-        getUsageByModel(),
+        getUsageSummary(hideCancelled),
+        getRecentWorkflowSessions(50, hideCancelled),
+        getUsageByStep(hideCancelled),
+        getUsageByModel(hideCancelled),
       ]);
       set({ summary, recentSessions, byStep, byModel, loading: false });
     } catch (err) {
       set({ error: String(err), loading: false });
     }
+  },
+
+  toggleHideCancelled: () => {
+    const next = !get().hideCancelled;
+    set({ hideCancelled: next });
+    // Re-fetch with the new filter
+    get().fetchUsage();
   },
 }));

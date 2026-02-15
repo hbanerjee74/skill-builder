@@ -120,7 +120,7 @@ describe("useUsageStore", () => {
 
       const sessionsCall = mockInvoke.mock.calls.find((c) => c[0] === "get_recent_workflow_sessions");
       expect(sessionsCall).toBeDefined();
-      expect(sessionsCall![1]).toEqual({ limit: 50 });
+      expect(sessionsCall![1]).toEqual({ limit: 50, hideCancelled: false });
     });
 
     it("sets error state on failure", async () => {

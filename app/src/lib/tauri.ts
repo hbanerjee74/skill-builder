@@ -265,23 +265,23 @@ export const persistAgentRun = (params: {
   workflowSessionId: params.workflowSessionId ?? null,
 });
 
-export const getUsageSummary = () =>
-  invoke<UsageSummary>("get_usage_summary");
+export const getUsageSummary = (hideCancelled: boolean = false) =>
+  invoke<UsageSummary>("get_usage_summary", { hideCancelled });
 
 export const getRecentRuns = (limit: number = 50) =>
   invoke<AgentRunRecord[]>("get_recent_runs", { limit });
 
-export const getRecentWorkflowSessions = (limit: number = 50) =>
-  invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit });
+export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boolean = false) =>
+  invoke<WorkflowSessionRecord[]>("get_recent_workflow_sessions", { limit, hideCancelled });
 
 export const getSessionAgentRuns = (sessionId: string) =>
   invoke<AgentRunRecord[]>("get_session_agent_runs", { sessionId });
 
-export const getUsageByStep = () =>
-  invoke<UsageByStep[]>("get_usage_by_step");
+export const getUsageByStep = (hideCancelled: boolean = false) =>
+  invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled });
 
-export const getUsageByModel = () =>
-  invoke<UsageByModel[]>("get_usage_by_model");
+export const getUsageByModel = (hideCancelled: boolean = false) =>
+  invoke<UsageByModel[]>("get_usage_by_model", { hideCancelled });
 
 export const resetUsage = () =>
   invoke<void>("reset_usage");

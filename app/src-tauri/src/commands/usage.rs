@@ -27,9 +27,9 @@ pub fn persist_agent_run(
 }
 
 #[tauri::command]
-pub fn get_usage_summary(db: tauri::State<'_, Db>) -> Result<UsageSummary, String> {
+pub fn get_usage_summary(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<UsageSummary, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_usage_summary(&conn)
+    crate::db::get_usage_summary(&conn, hide_cancelled)
 }
 
 #[tauri::command]
@@ -42,15 +42,15 @@ pub fn get_recent_runs(
 }
 
 #[tauri::command]
-pub fn get_usage_by_step(db: tauri::State<'_, Db>) -> Result<Vec<UsageByStep>, String> {
+pub fn get_usage_by_step(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_usage_by_step(&conn)
+    crate::db::get_usage_by_step(&conn, hide_cancelled)
 }
 
 #[tauri::command]
-pub fn get_usage_by_model(db: tauri::State<'_, Db>) -> Result<Vec<UsageByModel>, String> {
+pub fn get_usage_by_model(db: tauri::State<'_, Db>, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_usage_by_model(&conn)
+    crate::db::get_usage_by_model(&conn, hide_cancelled)
 }
 
 #[tauri::command]
@@ -63,9 +63,10 @@ pub fn reset_usage(db: tauri::State<'_, Db>) -> Result<(), String> {
 pub fn get_recent_workflow_sessions(
     db: tauri::State<'_, Db>,
     limit: usize,
+    hide_cancelled: bool,
 ) -> Result<Vec<WorkflowSessionRecord>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    crate::db::get_recent_workflow_sessions(&conn, limit)
+    crate::db::get_recent_workflow_sessions(&conn, limit, hide_cancelled)
 }
 
 #[tauri::command]

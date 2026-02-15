@@ -268,26 +268,54 @@ pub fn persist_agent_run(
     Ok(())
 }
 
-pub fn get_usage_summary(conn: &Connection) -> Result<UsageSummary, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT COALESCE(SUM(total_cost), 0.0),
-                    COUNT(DISTINCT workflow_session_id),
-                    COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
-             FROM agent_runs
-             WHERE reset_marker IS NULL AND status != 'running'
-               AND workflow_session_id IS NOT NULL",
-        )
-        .map_err(|e| e.to_string())?;
+pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
+    if hide_cancelled {
+        // Aggregate at session level first, filtering zero-cost sessions
+        let mut stmt = conn
+            .prepare(
+                "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                        COUNT(*),
+                        COALESCE(AVG(sub.session_cost), 0.0)
+                 FROM (
+                   SELECT workflow_session_id, SUM(total_cost) as session_cost
+                   FROM agent_runs
+                   WHERE reset_marker IS NULL AND status != 'running'
+                     AND workflow_session_id IS NOT NULL
+                   GROUP BY workflow_session_id
+                   HAVING SUM(total_cost) > 0
+                 ) sub",
+            )
+            .map_err(|e| e.to_string())?;
 
-    stmt.query_row([], |row| {
-        Ok(UsageSummary {
-            total_cost: row.get(0)?,
-            total_runs: row.get(1)?,
-            avg_cost_per_run: row.get(2)?,
+        stmt.query_row([], |row| {
+            Ok(UsageSummary {
+                total_cost: row.get(0)?,
+                total_runs: row.get(1)?,
+                avg_cost_per_run: row.get(2)?,
+            })
         })
-    })
-    .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())
+    } else {
+        let mut stmt = conn
+            .prepare(
+                "SELECT COALESCE(SUM(total_cost), 0.0),
+                        COUNT(DISTINCT workflow_session_id),
+                        COALESCE(SUM(total_cost) / NULLIF(COUNT(DISTINCT workflow_session_id), 0), 0.0)
+                 FROM agent_runs
+                 WHERE reset_marker IS NULL AND status != 'running'
+                   AND workflow_session_id IS NOT NULL",
+            )
+            .map_err(|e| e.to_string())?;
+
+        stmt.query_row([], |row| {
+            Ok(UsageSummary {
+                total_cost: row.get(0)?,
+                total_runs: row.get(1)?,
+                avg_cost_per_run: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())
+    }
 }
 
 pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRecord>, String> {
@@ -330,24 +358,28 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
         .map_err(|e| e.to_string())
 }
 
-pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize) -> Result<Vec<WorkflowSessionRecord>, String> {
+pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
+    let having = if hide_cancelled { "HAVING SUM(total_cost) > 0" } else { "" };
+    let sql = format!(
+        "SELECT workflow_session_id,
+                skill_name, MIN(step_id), MAX(step_id),
+                GROUP_CONCAT(DISTINCT step_id), COUNT(*),
+                COALESCE(SUM(total_cost), 0.0),
+                COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+                COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
+                COALESCE(SUM(duration_ms), 0),
+                MIN(started_at), MAX(completed_at)
+         FROM agent_runs
+         WHERE reset_marker IS NULL AND completed_at IS NOT NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY workflow_session_id, skill_name
+         {}
+         ORDER BY MAX(completed_at) DESC
+         LIMIT ?1",
+        having
+    );
     let mut stmt = conn
-        .prepare(
-            "SELECT workflow_session_id,
-                    skill_name, MIN(step_id), MAX(step_id),
-                    GROUP_CONCAT(DISTINCT step_id), COUNT(*),
-                    COALESCE(SUM(total_cost), 0.0),
-                    COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
-                    COALESCE(SUM(cache_read_tokens), 0), COALESCE(SUM(cache_write_tokens), 0),
-                    COALESCE(SUM(duration_ms), 0),
-                    MIN(started_at), MAX(completed_at)
-             FROM agent_runs
-             WHERE reset_marker IS NULL AND completed_at IS NOT NULL
-               AND workflow_session_id IS NOT NULL
-             GROUP BY workflow_session_id, skill_name
-             ORDER BY MAX(completed_at) DESC
-             LIMIT ?1",
-        )
+        .prepare(&sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -414,16 +446,19 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
         .map_err(|e| e.to_string())
 }
 
-pub fn get_usage_by_step(conn: &Connection) -> Result<Vec<UsageByStep>, String> {
+pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
+    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let sql = format!(
+        "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL AND status != 'running'
+           AND workflow_session_id IS NOT NULL{}
+         GROUP BY step_id
+         ORDER BY SUM(total_cost) DESC",
+        extra
+    );
     let mut stmt = conn
-        .prepare(
-            "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
-             FROM agent_runs
-             WHERE reset_marker IS NULL AND status != 'running'
-               AND workflow_session_id IS NOT NULL
-             GROUP BY step_id
-             ORDER BY SUM(total_cost) DESC",
-        )
+        .prepare(&sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -442,16 +477,19 @@ pub fn get_usage_by_step(conn: &Connection) -> Result<Vec<UsageByStep>, String> 
         .map_err(|e| e.to_string())
 }
 
-pub fn get_usage_by_model(conn: &Connection) -> Result<Vec<UsageByModel>, String> {
+pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
+    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
+    let sql = format!(
+        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL AND status != 'running'
+           AND workflow_session_id IS NOT NULL{}
+         GROUP BY model
+         ORDER BY SUM(total_cost) DESC",
+        extra
+    );
     let mut stmt = conn
-        .prepare(
-            "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
-             FROM agent_runs
-             WHERE reset_marker IS NULL AND status != 'running'
-               AND workflow_session_id IS NOT NULL
-             GROUP BY model
-             ORDER BY SUM(total_cost) DESC",
-        )
+        .prepare(&sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -1713,7 +1751,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn).unwrap();
+        let summary = get_usage_summary(&conn, false).unwrap();
         // Both completed agents share one workflow session → 1 run
         assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.40).abs() < 1e-10);
@@ -1723,7 +1761,7 @@ mod tests {
     #[test]
     fn test_get_usage_summary_empty() {
         let conn = create_test_db();
-        let summary = get_usage_summary(&conn).unwrap();
+        let summary = get_usage_summary(&conn, false).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
         assert!((summary.avg_cost_per_run - 0.0).abs() < f64::EPSILON);
@@ -1747,7 +1785,7 @@ mod tests {
         reset_usage(&conn).unwrap();
 
         // After reset, summary should show zero
-        let summary = get_usage_summary(&conn).unwrap();
+        let summary = get_usage_summary(&conn, false).unwrap();
         assert_eq!(summary.total_runs, 0);
         assert!((summary.total_cost - 0.0).abs() < f64::EPSILON);
 
@@ -1762,7 +1800,7 @@ mod tests {
         )
         .unwrap();
 
-        let summary = get_usage_summary(&conn).unwrap();
+        let summary = get_usage_summary(&conn, false).unwrap();
         assert_eq!(summary.total_runs, 1);
         assert!((summary.total_cost - 0.05).abs() < 1e-10);
     }
@@ -1787,7 +1825,7 @@ mod tests {
         )
         .unwrap();
 
-        let by_step = get_usage_by_step(&conn).unwrap();
+        let by_step = get_usage_by_step(&conn, false).unwrap();
         assert_eq!(by_step.len(), 2);
 
         // Ordered by total_cost DESC: step 6 ($0.25) then step 1 ($0.18)
@@ -1822,7 +1860,7 @@ mod tests {
         )
         .unwrap();
 
-        let by_model = get_usage_by_model(&conn).unwrap();
+        let by_model = get_usage_by_model(&conn, false).unwrap();
         assert_eq!(by_model.len(), 2);
 
         // Ordered by total_cost DESC: opus ($0.50) then sonnet ($0.15)
@@ -1846,10 +1884,10 @@ mod tests {
 
         reset_usage(&conn).unwrap();
 
-        let by_step = get_usage_by_step(&conn).unwrap();
+        let by_step = get_usage_by_step(&conn, false).unwrap();
         assert!(by_step.is_empty());
 
-        let by_model = get_usage_by_model(&conn).unwrap();
+        let by_model = get_usage_by_model(&conn, false).unwrap();
         assert!(by_model.is_empty());
     }
 

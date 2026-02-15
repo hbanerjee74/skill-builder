@@ -120,7 +120,7 @@ function formatStepsRange(stepsCsv: string): string {
 }
 
 export default function UsagePage() {
-  const { summary, recentSessions, byStep, byModel, loading, error, fetchUsage, resetCounter } = useUsageStore()
+  const { summary, recentSessions, byStep, byModel, loading, error, fetchUsage, resetCounter, hideCancelled, toggleHideCancelled } = useUsageStore()
   const [resetting, setResetting] = useState(false)
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
   const [sessionAgents, setSessionAgents] = useState<Record<string, AgentRunRecord[]>>({})
@@ -215,6 +215,16 @@ export default function UsagePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Usage</h1>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideCancelled}
+              onChange={toggleHideCancelled}
+              className="rounded border-muted-foreground/40"
+            />
+            Hide cancelled runs
+          </label>
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
@@ -238,6 +248,7 @@ export default function UsagePage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
