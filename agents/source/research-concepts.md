@@ -57,9 +57,6 @@ After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`
 
 If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If both fail, report the error to the coordinator.
 
-## Output
-The merged clarification file at the output file path provided by the coordinator.
-
 ### Output Example
 
 ```markdown
