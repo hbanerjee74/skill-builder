@@ -37,17 +37,16 @@ Spawn two sub-agents in the **same turn** so they run in parallel:
 
 **Sub-agent 1: Entity & Relationship Research**
 
-- Research key entities and their relationships for the domain (e.g., for batch pipelines: stages, checkpoints, transformations; for streaming: sources, sinks, windows)
-- Identify 5-10 core entities, their cardinality relationships, and 3+ analysis patterns per entity
-- Research common analysis patterns and cross-functional dependencies between entities
-- Write clarification questions in the `clarifications-*.md` format
+- **Goal**: Surface the entities, relationships, and analysis patterns that the reasoning agent will need to make sound modeling decisions. The PM will answer these questions to narrow scope, so focus on questions where different answers lead to different skill designs.
+- **Scope**: Core entities for the domain (e.g., for batch pipelines: stages, checkpoints, transformations; for streaming: sources, sinks, windows), their cardinality relationships, analysis patterns, and cross-functional dependencies
+- **Constraints**: 5-10 core entities, 3+ analysis patterns per entity. Write questions in the `clarifications-*.md` format.
 - Output: `research-entities.md` in the context directory
 
 **Sub-agent 2: Metrics & KPI Research**
 
-- Research core metrics, KPIs, and how they are calculated with applicable business rules
-- Research metrics that vary by industry vertical or company size, and common calculation pitfalls
-- Write clarification questions in the `clarifications-*.md` format
+- **Goal**: Surface the metrics, KPIs, and calculation nuances that differentiate a naive implementation from a correct one. Focus on business rules that engineers without domain expertise commonly get wrong.
+- **Scope**: Core metrics and KPIs, industry-specific variations, calculation pitfalls
+- **Constraints**: Write questions in the `clarifications-*.md` format. Each question should present choices where different answers change the skill's content.
 - Output: `research-metrics.md` in the context directory
 
 Pass the shared context file path and context directory path to both sub-agents.
