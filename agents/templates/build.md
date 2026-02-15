@@ -36,9 +36,7 @@ Read `decisions.md` and `clarifications.md`, then propose the structure. Number 
 
 ## Phase 2: Write SKILL.md
 
-**Goal**: Create the skill's entry point — concise enough to answer simple questions without loading reference files, with clear pointers for when to go deeper.
-
-If SKILL.md already exists, read it first and update only sections affected by changed decisions. If it doesn't exist, write it from scratch.
+Follow the Skill Best Practices structure rules from the shared context. Do NOT delegate SKILL.md to a sub-agent.
 
 **Required sections:**
 - **Metadata block**: skill name, description, optionally `author`, `created`, `modified` (use values from coordinator if provided). Follow Skill Best Practices for naming and description format.
@@ -47,7 +45,7 @@ If SKILL.md already exists, read it first and update only sections affected by c
 - **Quick reference**: the most important guidance — enough for simple questions
 - **Pointers to references**: brief description of each reference file and when to read it
 
-If a section grows past a few paragraphs, it belongs in a reference file. Do NOT delegate SKILL.md to a sub-agent.
+If a section grows past a few paragraphs, it belongs in a reference file.
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
