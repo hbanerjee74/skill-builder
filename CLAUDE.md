@@ -61,6 +61,13 @@ cd src-tauri && cargo test               # Rust tests
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
+
+# Skill evaluation (LLM-as-judge)
+./scripts/eval-skill-quality.sh --help                        # Usage info
+./scripts/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
+  --prompts scripts/eval-prompts/data-engineering.txt
+./scripts/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
+  --prompts scripts/eval-prompts/data-engineering.txt
 ```
 
 ## Testing
