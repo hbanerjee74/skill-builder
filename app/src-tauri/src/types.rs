@@ -226,6 +226,46 @@ pub struct StepResetPreview {
     pub files: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRunRecord {
+    pub agent_id: String,
+    pub skill_name: String,
+    pub step_id: i32,
+    pub model: String,
+    pub status: String,
+    pub input_tokens: i32,
+    pub output_tokens: i32,
+    pub cache_read_tokens: i32,
+    pub cache_write_tokens: i32,
+    pub total_cost: f64,
+    pub duration_ms: i64,
+    pub session_id: Option<String>,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageSummary {
+    pub total_cost: f64,
+    pub total_runs: i32,
+    pub avg_cost_per_run: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageByStep {
+    pub step_id: i32,
+    pub step_name: String,
+    pub total_cost: f64,
+    pub run_count: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsageByModel {
+    pub model: String,
+    pub total_cost: f64,
+    pub run_count: i32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

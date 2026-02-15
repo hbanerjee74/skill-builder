@@ -174,6 +174,12 @@ pub fn run() {
             commands::github_auth::github_poll_for_token,
             commands::github_auth::github_get_user,
             commands::github_auth::github_logout,
+            commands::usage::persist_agent_run,
+            commands::usage::get_usage_summary,
+            commands::usage::get_recent_runs,
+            commands::usage::get_usage_by_step,
+            commands::usage::get_usage_by_model,
+            commands::usage::reset_usage,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;
