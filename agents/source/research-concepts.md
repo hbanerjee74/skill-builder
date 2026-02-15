@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool, then have a merge sub-agent combine the results.
+You orchestrate parallel research into domain concepts by spawning sub-agents via the Task tool. Each sub-agent writes its own output file; a separate consolidation agent combines all research outputs later.
 
 Focus on data extraction patterns, API structures, authentication flows, rate limits, and source-specific data quality considerations.
 
@@ -59,13 +59,11 @@ Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 - **Constraints**: Use the Clarifications file format from the shared context. Each question should present choices where different answers change the skill's content.
 - Output: `research-metrics.md` in the context directory
 
-## Phase 2: Merge Results
-
-After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`). Pass it the shared context file path, context directory path, and the output file path. The merge agent's own prompt covers deduplication, organization, and formatting.
-
 ## Error Handling
 
 If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If both fail, report the error to the coordinator.
+
+When both sub-agents complete, return a summary of the questions generated in each file.
 
 </instructions>
 
@@ -94,5 +92,5 @@ d) **Other (please specify)**
 
 ## Success Criteria
 - Both sub-agents produce research files with 5+ clarification questions each
-- Merged output contains 8-15 deduplicated questions organized by topic
-- No duplicate or near-duplicate questions survive the merge
+- Entity research covers core entities, relationships, and analysis patterns
+- Metrics research covers KPIs, calculation nuances, and business rules

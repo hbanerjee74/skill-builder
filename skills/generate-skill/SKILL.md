@@ -127,9 +127,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write merged output to ./context/clarifications.md")
+   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, merge). It writes intermediate files like `clarifications-concepts.md` in the context directory before producing the final merged output:
+2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation). It writes intermediate files like `research-entities.md` in the context directory before producing the final consolidated output:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-research",
@@ -141,7 +141,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Domain: <domain>
      Shared context: <PLUGIN_ROOT>/references/shared-context.md
      Context directory: ./context/
-     Write merged output to: ./context/clarifications.md
+     Write consolidated output to: ./context/clarifications.md
 
      Return a 5-10 bullet summary of the key questions you generated."
    )

@@ -7,7 +7,7 @@ create_fixture_mode_a() {
   mkdir -p "$dir/context"
   mkdir -p "$dir/$skill_name/references"
 
-  cat > "$dir/context/clarifications-concepts.md" << 'EOF'
+  cat > "$dir/context/research-entities.md" << 'EOF'
 ## Core Entities
 
 ### Q1: Primary entities
@@ -70,7 +70,7 @@ create_fixture_t4_workspace() {
   mkdir -p "$dir/$skill_name/references"
 
   # Answered concepts (Step 2 complete)
-  cat > "$dir/context/clarifications-concepts.md" << 'EOF'
+  cat > "$dir/context/research-entities.md" << 'EOF'
 ## Core Entities
 
 ### Q1: Primary entities
@@ -165,13 +165,13 @@ EOF
 EOF
 }
 
-# T4 fixture: Separate pattern and data files for merge agent testing
-create_fixture_t4_merge() {
+# T4 fixture: Four research files for consolidate-research agent testing
+create_fixture_t4_consolidate() {
   local dir="$1"
   mkdir -p "$dir/context"
 
-  cat > "$dir/context/clarifications-patterns.md" << 'EOF'
-## Business Patterns
+  cat > "$dir/context/research-entities.md" << 'EOF'
+## Entity Research
 
 ### Q1: Seasonal patterns
 **Question**: Does the business have strong seasonal patterns?
@@ -190,8 +190,12 @@ create_fixture_t4_merge() {
   c) Custom policy
 **Recommendation**: b
 **Answer**:
+EOF
 
-### Q3: Loyalty program
+  cat > "$dir/context/research-metrics.md" << 'EOF'
+## Metrics Research
+
+### Q1: Loyalty program
 **Question**: What does the loyalty program look like?
 **Choices**:
   a) Points-based
@@ -202,8 +206,8 @@ create_fixture_t4_merge() {
 **Answer**:
 EOF
 
-  cat > "$dir/context/clarifications-data.md" << 'EOF'
-## Data Modeling
+  cat > "$dir/context/clarifications-practices.md" << 'EOF'
+## Practice Research
 
 ### Q1: Source systems
 **Question**: What are the primary source systems?
@@ -222,8 +226,12 @@ EOF
   c) Both
 **Recommendation**: c
 **Answer**:
+EOF
 
-### Q3: Historical data
+  cat > "$dir/context/clarifications-implementation.md" << 'EOF'
+## Implementation Research
+
+### Q1: Historical data
 **Question**: How far back does data go?
 **Choices**:
   a) Less than 1 year

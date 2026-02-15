@@ -42,7 +42,7 @@ fi
 echo "=== Agents ==="
 
 # Shared agents (no type prefix)
-SHARED_AGENTS="shared/merge:merge:sonnet shared/confirm-decisions:confirm-decisions:opus shared/validate-skill:validate-skill:sonnet shared/detailed-research:detailed-research:sonnet"
+SHARED_AGENTS="shared/consolidate-research:consolidate-research:opus shared/confirm-decisions:confirm-decisions:opus shared/validate-skill:validate-skill:sonnet shared/detailed-research:detailed-research:sonnet"
 
 # Type-specific agents: each type dir has 5 agents
 TYPE_DIRS="domain platform source data-engineering"
@@ -188,7 +188,7 @@ fi
 echo "=== Coordinator Content ==="
 if [ -f "skills/generate-skill/SKILL.md" ]; then
   content=$(cat "skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "clarifications-concepts.md" "skill-builder:"; do
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "research-entities.md" "skill-builder:"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
     else

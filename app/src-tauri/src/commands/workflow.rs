@@ -479,7 +479,7 @@ const VALID_PHASES: &[&str] = &[
     "generate-skill",
     "validate-skill",
     "detailed-research",
-    "merge",
+    "consolidate-research",
 ];
 
 #[tauri::command]
@@ -1032,7 +1032,7 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
-            "context/clarifications-concepts.md",
+            "context/research-entities.md",
             "context/clarifications-practices.md",
             "context/clarifications-implementation.md",
             "context/clarifications.md",
@@ -1360,7 +1360,7 @@ mod tests {
         // When skills_path is None, skill_output_dir falls back to workspace_path/skill_name
         let prompt = build_prompt(
             "research-concepts.md",
-            "context/clarifications-concepts.md",
+            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1374,7 +1374,7 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("/home/user/.vibedata/my-skill/context/clarifications-concepts.md"));
+        assert!(prompt.contains("/home/user/.vibedata/my-skill/context/research-entities.md"));
         assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
         // Without skills_path, skill output dir is workspace_path/skill_name (no /skill/ subdir)
@@ -1437,7 +1437,7 @@ mod tests {
         // Simplified prompt no longer references agents path
         let prompt = build_prompt(
             "research-concepts.md",
-            "context/clarifications-concepts.md",
+            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1613,7 +1613,7 @@ mod tests {
 
         // Create output files for steps 0, 2, 4, 5
         std::fs::write(
-            skill_dir.join("context/clarifications-concepts.md"),
+            skill_dir.join("context/research-entities.md"),
             "step0",
         )
         .unwrap();
@@ -1636,7 +1636,7 @@ mod tests {
         delete_step_output_files(workspace, "my-skill", 4, None);
 
         // Steps 0, 2 outputs should still exist
-        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(skill_dir.join("context/research-entities.md").exists());
         assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
@@ -1839,8 +1839,8 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            src.path().join("shared").join("merge.md"),
-            "# Shared Merge",
+            src.path().join("shared").join("consolidate-research.md"),
+            "# Shared Consolidate Research",
         )
         .unwrap();
 
@@ -1860,7 +1860,7 @@ mod tests {
         // Verify flattened names
         assert!(claude_agents_dir.join("domain-research-concepts.md").exists());
         assert!(claude_agents_dir.join("platform-build.md").exists());
-        assert!(claude_agents_dir.join("shared-merge.md").exists());
+        assert!(claude_agents_dir.join("shared-consolidate-research.md").exists());
 
         // Non-.md file should NOT be copied
         assert!(!claude_agents_dir.join("domain-README.txt").exists());
@@ -1879,7 +1879,7 @@ mod tests {
     fn test_build_prompt_contains_skill_output_context_path() {
         let prompt = build_prompt(
             "research-concepts.md",
-            "context/clarifications-concepts.md",
+            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1928,7 +1928,7 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("clarifications-concepts.md"),
+            source_dir.join("context").join("research-entities.md"),
             "# Concepts",
         ).unwrap();
         std::fs::write(
@@ -2135,7 +2135,7 @@ mod tests {
         // When rerun is true, the prompt should be prepended with [RERUN MODE]
         let base_prompt = build_prompt(
             "research-concepts.md",
-            "context/clarifications-concepts.md",
+            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -2184,7 +2184,7 @@ mod tests {
 
         // Write a context file that should survive rerun
         std::fs::write(
-            skill_dir.join("context/clarifications-concepts.md"),
+            skill_dir.join("context/research-entities.md"),
             "# Existing concepts from previous run",
         ).unwrap();
 
@@ -2200,9 +2200,9 @@ mod tests {
         }
 
         // Context file should still exist
-        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(skill_dir.join("context/research-entities.md").exists());
         let content = std::fs::read_to_string(
-            skill_dir.join("context/clarifications-concepts.md"),
+            skill_dir.join("context/research-entities.md"),
         ).unwrap();
         assert_eq!(content, "# Existing concepts from previous run");
     }
@@ -2216,7 +2216,7 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(
-            skill_dir.join("context/clarifications-concepts.md"),
+            skill_dir.join("context/research-entities.md"),
             "# Will be wiped",
         ).unwrap();
 
@@ -2231,7 +2231,7 @@ mod tests {
         }
 
         // Context directory should have been wiped
-        assert!(!skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(!skill_dir.join("context/research-entities.md").exists());
     }
 
     #[test]
@@ -2366,7 +2366,7 @@ mod tests {
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = [
-            "clarifications-concepts.md",
+            "research-entities.md",
             "clarifications-practices.md",
             "clarifications-implementation.md",
             "clarifications.md",

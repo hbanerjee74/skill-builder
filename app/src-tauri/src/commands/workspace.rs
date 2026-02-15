@@ -1230,14 +1230,14 @@ mod tests {
         let skill_dir = tmp.path().join("partial");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         // Write only 2 of 4 step 0 files
-        std::fs::write(skill_dir.join("context/clarifications-concepts.md"), "# partial").unwrap();
+        std::fs::write(skill_dir.join("context/research-entities.md"), "# partial").unwrap();
         std::fs::write(skill_dir.join("context/clarifications-practices.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(workspace, "partial", None);
         assert_eq!(step, None, "partial step 0 should not be detected");
 
         // Partial files should have been cleaned up
-        assert!(!skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(!skill_dir.join("context/research-entities.md").exists());
         assert!(!skill_dir.join("context/clarifications-practices.md").exists());
     }
 
@@ -1252,7 +1252,7 @@ mod tests {
         let target = skills.join("my-skill");
         std::fs::create_dir_all(target.join("context")).unwrap();
         // Write only 2 of 4 step 0 files in skills_path
-        std::fs::write(target.join("context/clarifications-concepts.md"), "# partial").unwrap();
+        std::fs::write(target.join("context/research-entities.md"), "# partial").unwrap();
         std::fs::write(target.join("context/clarifications-practices.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(
@@ -1263,7 +1263,7 @@ mod tests {
         assert_eq!(step, None, "partial step 0 in skills_path should not be detected");
 
         // Partial files should have been cleaned up from skills_path
-        assert!(!target.join("context/clarifications-concepts.md").exists());
+        assert!(!target.join("context/research-entities.md").exists());
         assert!(!target.join("context/clarifications-practices.md").exists());
     }
 
@@ -1284,7 +1284,7 @@ mod tests {
 
         // Step 0 and 2 files should remain
         let skill_dir = tmp.path().join("my-skill");
-        assert!(skill_dir.join("context/clarifications-concepts.md").exists());
+        assert!(skill_dir.join("context/research-entities.md").exists());
         assert!(skill_dir.join("context/clarifications.md").exists());
 
         // Step 4 files should be gone

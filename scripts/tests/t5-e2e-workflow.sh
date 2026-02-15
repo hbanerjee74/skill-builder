@@ -45,7 +45,7 @@ $workspace/test-status.txt (just the number, e.g., '7')"
   fi
 
   # Step 0: Research (orchestrator, produces clarifications.md)
-  if [[ -f "$workspace/context/clarifications-concepts.md" ]]; then
+  if [[ -f "$workspace/context/research-entities.md" ]]; then
     record_result "$tier" "step0_concepts_research" "PASS"
   else
     record_result "$tier" "step0_concepts_research" "SKIP" "may not have reached step 0"
