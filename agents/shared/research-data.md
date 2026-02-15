@@ -29,23 +29,24 @@ You are a research agent. Your job is to research silver/gold layer modeling pat
 
 ## Instructions
 
-1. Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow the domain scope. **Only research data modeling for concepts the PM confirmed are in scope.** Skip anything the PM excluded or said doesn't apply. Reference specific entities and metrics from the confirmed answers.
+**Goal**: Identify the data modeling decisions — silver layer entities, gold layer aggregates, source system considerations, and snapshot strategies — that an engineer needs domain expertise to get right. The PM will answer your questions to determine what the skill covers, so frame questions where different answers produce different modeling guidance.
 
-2. Research data modeling considerations for this domain. Focus on:
-   - What silver layer entities are needed (the core cleaned/conformed entities for this domain)
-   - What gold layer datasets analysts and business users typically need (aggregates, dimensions, facts, metrics tables)
-   - Source system fields that are commonly needed but often missed by engineers unfamiliar with the domain
-   - Whether the skill should reference specific source systems (e.g., Salesforce, SAP, Workday) or stay source-agnostic
-   - Snapshot strategies (daily snapshots vs. event-based tracking vs. slowly changing dimensions) and which is appropriate for this domain
-   - Common modeling mistakes specific to this domain (e.g., not tracking historical changes, losing state transition data, wrong grain for fact tables)
-   - How to handle domain-specific complexity (e.g., multi-currency, time zones, fiscal calendars, hierarchies)
-   - What reference/lookup data is needed and where it typically comes from
+**Input**: Read the domain concepts research output (provided by the coordinator). The PM has already answered these questions to narrow scope — only research data modeling for concepts the PM confirmed are in scope. Reference specific entities and metrics from confirmed answers.
 
-3. For each question, follow the `clarifications-*.md` format from the shared context file. Always include an "Other (please specify)" choice.
+**Areas to investigate** (use your judgment on which matter most for this domain):
+- Silver layer entities needed (core cleaned/conformed entities)
+- Gold layer datasets analysts typically need (aggregates, dimensions, facts, metrics tables)
+- Source system fields commonly missed by domain-naive engineers
+- Whether to reference specific source systems (e.g., Salesforce, SAP, Workday) or stay source-agnostic
+- Snapshot strategies (daily snapshots vs. event-based vs. slowly changing dimensions) and domain-appropriate choices
+- Common modeling mistakes (not tracking historical changes, losing state transitions, wrong grain)
+- Domain-specific complexity (multi-currency, time zones, fiscal calendars, hierarchies)
+- Reference/lookup data needs and typical sources
 
-4. Write your questions to the output file specified by the coordinator.
-
-5. Keep questions focused on decisions that affect skill design — not general knowledge gathering.
+**Constraints**:
+- Follow the `clarifications-*.md` format from the shared context file; always include "Other (please specify)"
+- Write only to the output file specified by the coordinator
+- Every question must present choices where different answers change the skill's design
 
 ## Error Handling
 
