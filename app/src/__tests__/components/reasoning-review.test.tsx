@@ -23,6 +23,7 @@ const {
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
   readFile: mockReadFile,
+  persistAgentRun: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock react-markdown to avoid ESM issues
