@@ -127,7 +127,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
    ```
    TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation). It writes intermediate files like `research-entities.md` in the context directory before producing the final consolidated output:
+2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation) and writes `clarifications.md` to the context directory:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-research",
@@ -138,7 +138,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Skill type: <skill_type>
      Domain: <domain>
      Context directory: ./<skillname>/context/
-     Write consolidated output to: ./<skillname>/context/clarifications.md
 
      Return a 5-10 bullet summary of the key questions you generated."
    )
@@ -159,7 +158,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
    ```
    TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./<skillname>/context/clarifications-detailed.md")
    ```
-2. Spawn the detailed-research shared agent as a teammate:
+2. Spawn the detailed-research shared agent as a teammate. It reads `clarifications.md` and writes `clarifications-detailed.md` in the context directory:
    ```
    Task(
      subagent_type: "skill-builder:detailed-research",
@@ -169,9 +168,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Answered clarifications: ./<skillname>/context/clarifications.md
      Context directory: ./<skillname>/context/
-     Write your output to: ./<skillname>/context/clarifications-detailed.md
 
      Return a 5-10 bullet summary of the detailed questions you generated."
    )
@@ -257,8 +254,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
      Auto-fix straightforward issues found during validation.
-     Write validation log to: ./<skillname>/context/agent-validation-log.md
-     Write test report to: ./<skillname>/context/test-skill.md
 
      Return summary: validation checks (passed/fixed/needs review) and test results (total/passed/partial/failed)."
    )

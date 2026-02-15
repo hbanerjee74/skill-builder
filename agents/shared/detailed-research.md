@@ -18,9 +18,8 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 
 ## Context
 - The coordinator will tell you:
-  - The **clarifications.md file path** (PM's first-round answers)
+  - The **context directory** path (contains `clarifications.md` with PM's first-round answers; write `clarifications-detailed.md` here)
   - **Which domain** to research
-  - The **output file path** for the final `clarifications-detailed.md`
 
 ## Rerun / Resume Mode
 
@@ -34,7 +33,7 @@ Follow the Rerun/Resume Mode protocol.
 
 ## Phase 1: Analyze First-Round Answers
 
-Read `clarifications.md` at the path provided by the coordinator. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:
+Read `clarifications.md` from the context directory. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:
 - Which questions the PM answered and what they chose
 - Where the PM's answer opens new sub-decisions
 - Gaps that need specificity
@@ -60,9 +59,9 @@ Each sub-agent's task:
 
 After all sub-agents return their text, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned text from all sub-agents directly in the prompt
-- The output file path for `clarifications-detailed.md`
+- The context directory path and target filename `clarifications-detailed.md`
 
-The consolidation agent produces a cohesive questionnaire from the section-specific follow-ups and writes the single output file.
+The consolidation agent produces a cohesive questionnaire from the section-specific follow-ups and writes the output file to the context directory.
 
 ## Error Handling
 

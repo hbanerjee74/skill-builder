@@ -401,10 +401,7 @@ fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &s
     format!("{}-{}", skill_type, phase)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_prompt(
-    _prompt_file: &str,
-    output_file: &str,
     skill_name: &str,
     domain: &str,
     workspace_path: &str,
@@ -425,33 +422,16 @@ fn build_prompt(
     } else {
         skill_dir.clone() // fallback: workspace_path/skill_name
     };
-    let skill_output_context_dir = skill_output_dir.join("context");
-    // For build step (output_file starts with "skill/"), use skill_output_dir
-    let output_path = if output_file.starts_with("skill/") {
-        skill_output_dir.join(output_file.trim_start_matches("skill/"))
-    } else {
-        // For context files, resolve relative to context_dir's parent (the skill target dir)
-        if output_file.starts_with("context/") {
-            context_dir.join(output_file.trim_start_matches("context/"))
-        } else {
-            skill_dir.join(output_file)
-        }
-    };
-
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
          The skill directory is: {}. \
-         The context directory (for reading and writing intermediate files) is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}. \
-         The skill output context directory (persisted clarifications and decisions) is: {}. \
-         Write output to {}.",
+         The context directory is: {}. \
+         The skill output directory (SKILL.md and references/) is: {}.",
         domain,
         skill_name,
         skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
-        skill_output_context_dir.display(),
-        output_path.display(),
     );
 
     if let Some(author) = author_login {
@@ -698,8 +678,6 @@ async fn run_workflow_step_inner(
         None
     };
     let mut prompt = build_prompt(
-        &step.prompt_template,
-        &step.output_file,
         skill_name,
         domain,
         workspace_path,
@@ -1297,8 +1275,6 @@ mod tests {
     fn test_build_prompt_without_skills_path() {
         // When skills_path is None, skill_output_dir falls back to workspace_path/skill_name
         let prompt = build_prompt(
-            "research-concepts.md",
-            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1312,8 +1288,7 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("/home/user/.vibedata/my-skill/context/research-entities.md"));
-        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/.vibedata/my-skill/context"));
+        assert!(prompt.contains("The context directory is: /home/user/.vibedata/my-skill/context"));
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
         // Without skills_path, skill output dir is workspace_path/skill_name (no /skill/ subdir)
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill"));
@@ -1323,8 +1298,6 @@ mod tests {
     fn test_build_prompt_with_skills_path() {
         // When skills_path is set, skill_output_dir uses skills_path/skill_name
         let prompt = build_prompt(
-            "generate-skill.md",
-            "skill/SKILL.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1338,21 +1311,16 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         // skill output directory should use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-        // output path for build step (skill/SKILL.md) should resolve to skills_path/skill_name/SKILL.md
-        assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/SKILL.md"));
         // context dir should now point to skills_path when configured
-        assert!(prompt.contains("The context directory (for reading and writing intermediate files) is: /home/user/my-skills/my-skill/context"));
+        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
         // skill directory should still be workspace-based
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
     }
 
     #[test]
     fn test_build_prompt_with_skills_path_non_build_step() {
-        // For non-build steps, output_file doesn't start with "skill/" so output_path
-        // should still be in workspace even when skills_path is set
+        // When skills_path is set, context dir and skill output dir both use skills_path
         let prompt = build_prompt(
-            "confirm-decisions.md",
-            "context/decisions.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1364,8 +1332,6 @@ mod tests {
         // Should NOT contain "Read X and Y and follow the instructions"
         assert!(!prompt.contains("Read"));
         assert!(!prompt.contains("follow the instructions"));
-        // output path should be in skills_path for context files when skills_path is set
-        assert!(prompt.contains("Write output to /home/user/my-skills/my-skill/context/decisions.md"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
@@ -1374,8 +1340,6 @@ mod tests {
     fn test_build_prompt_with_skill_type() {
         // Simplified prompt no longer references agents path
         let prompt = build_prompt(
-            "research-concepts.md",
-            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1394,8 +1358,6 @@ mod tests {
     #[test]
     fn test_build_prompt_with_author_info() {
         let prompt = build_prompt(
-            "generate-skill.md",
-            "skill/SKILL.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1412,8 +1374,6 @@ mod tests {
     #[test]
     fn test_build_prompt_without_author_info() {
         let prompt = build_prompt(
-            "generate-skill.md",
-            "skill/SKILL.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -1811,45 +1771,6 @@ mod tests {
         assert_eq!(content, "# Domain Research");
     }
 
-    // --- build_prompt skill output context path tests ---
-
-    #[test]
-    fn test_build_prompt_contains_skill_output_context_path() {
-        let prompt = build_prompt(
-            "research-concepts.md",
-            "context/research-entities.md",
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
-            "domain",
-            None,
-            None,
-        );
-        assert!(prompt.contains(
-            "The skill output context directory (persisted clarifications and decisions) is: /home/user/my-skills/my-skill/context"
-        ));
-    }
-
-    #[test]
-    fn test_build_prompt_context_path_without_skills_path() {
-        // When skills_path is None, skill output context dir falls back to workspace-based path
-        let prompt = build_prompt(
-            "confirm-decisions.md",
-            "context/decisions.md",
-            "my-skill",
-            "analytics",
-            "/workspace",
-            None,
-            "domain",
-            None,
-            None,
-        );
-        assert!(prompt.contains(
-            "The skill output context directory (persisted clarifications and decisions) is: /workspace/my-skill/context"
-        ));
-    }
-
     // --- Task 5: create_skill_zip excludes context/ ---
 
     #[test]
@@ -2072,8 +1993,6 @@ mod tests {
     fn test_rerun_prompt_prepending() {
         // When rerun is true, the prompt should be prepended with [RERUN MODE]
         let base_prompt = build_prompt(
-            "research-concepts.md",
-            "context/research-entities.md",
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
@@ -2097,8 +2016,6 @@ mod tests {
     fn test_rerun_prompt_not_prepended_when_false() {
         // When rerun is false, the prompt should NOT have [RERUN MODE]
         let prompt = build_prompt(
-            "generate-skill.md",
-            "skill/SKILL.md",
             "my-skill",
             "analytics",
             "/workspace",
@@ -2175,18 +2092,16 @@ mod tests {
     #[test]
     fn test_rerun_prompt_for_all_agent_steps() {
         // Verify rerun prompt works correctly for every agent step
-        let agent_steps: Vec<(u32, &str, &str)> = vec![
-            (0, "research.md", "context/clarifications.md"),
-            (2, "detailed-research.md", "context/clarifications-detailed.md"),
-            (4, "confirm-decisions.md", "context/decisions.md"),
-            (5, "generate-skill.md", "skill/SKILL.md"),
-            (6, "validate-skill.md", "context/agent-validation-log.md"),
+        let agent_steps: Vec<(u32, &str)> = vec![
+            (0, "research.md"),
+            (2, "detailed-research.md"),
+            (4, "confirm-decisions.md"),
+            (5, "generate-skill.md"),
+            (6, "validate-skill.md"),
         ];
 
-        for (step_id, prompt_template, output_file) in agent_steps {
+        for (step_id, _prompt_template) in agent_steps {
             let base_prompt = build_prompt(
-                prompt_template,
-                output_file,
                 "test-skill",
                 "test-domain",
                 "/workspace",

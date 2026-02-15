@@ -188,7 +188,7 @@ fi
 echo "=== Coordinator Content ==="
 if [ -f "skills/generate-skill/SKILL.md" ]; then
   content=$(cat "skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "research-entities.md" "skill-builder:"; do
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "skill-builder:"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
     else

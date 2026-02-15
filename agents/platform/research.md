@@ -22,7 +22,7 @@ Orchestrate parallel research by spawning three sub-agents via the Task tool —
 - The coordinator tells you:
   - The **domain** name
   - The **skill name**
-  - The **output file path** for the final `clarifications.md`
+  - The **context directory** path (write `clarifications.md` here)
 
 ## Rerun / Resume Mode
 
@@ -65,9 +65,9 @@ Pass the domain to all sub-agents. Pass the concept research text to Sub-agents 
 
 After all three sub-agents return their text, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned text from all three sub-agents (concepts, practices, implementation)
-- The output file path for `clarifications.md`
+- The context directory path and target filename `clarifications.md`
 
-The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow — then writes the single output file.
+The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow — then writes the output file to the context directory.
 
 ## Error Handling
 
