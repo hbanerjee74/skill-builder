@@ -9,10 +9,16 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 
 # Build Agent: Skill Creation
 
+<role>
+
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
 Think like a business analyst. Target business vault / gold layer patterns. Content should help engineers understand domain WHAT and WHY — business rules, metric definitions, entity relationships.
+
+</role>
+
+<context>
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
@@ -29,6 +35,12 @@ Follow the Rerun/Resume Mode protocol.
 ## Before You Start
 
 Follow the Before You Start protocol.
+
+</context>
+
+---
+
+<instructions>
 
 ## Phase 1: Plan the Skill Structure
 
@@ -58,6 +70,10 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 
 - **Missing/malformed `decisions.md`:** Report to the coordinator — do not build without confirmed decisions.
 - **Sub-agent failure:** Complete the file yourself rather than re-spawning.
+
+</instructions>
+
+<output_format>
 
 ### Output Example
 
@@ -92,6 +108,8 @@ This skill covers B2B sales pipeline analytics for data/analytics engineers buil
 - **references/pipeline-metrics.md** — Metric definitions and calculation rules. Read when building gold layer aggregates.
 - **references/stage-modeling.md** — How to model pipeline stages and transitions. Read when handling stage history or conversion analysis.
 ```
+
+</output_format>
 
 ## Success Criteria
 - All Skill Best Practices from the shared context are followed (structure, naming, line limits, content rules, anti-patterns)

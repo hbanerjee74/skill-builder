@@ -7,10 +7,16 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 
 # Orchestrator: Research Domain Patterns, Data Modeling & Merge
 
+<role>
+
 ## Your Role
 Orchestrate parallel research into business patterns and data modeling by spawning sub-agents via the Task tool, then have a merge sub-agent combine the results.
 
 {{FOCUS_LINE}}
+
+</role>
+
+<context>
 
 ## Context
 - The coordinator tells you:
@@ -24,7 +30,11 @@ Orchestrate parallel research into business patterns and data modeling by spawni
 
 Follow the Rerun/Resume Mode protocol.
 
+</context>
+
 ---
+
+<instructions>
 
 ## Before You Start
 
@@ -55,6 +65,8 @@ After both sub-agents return, spawn a fresh **merge** sub-agent (`name: "merge"`
 ## Error Handling
 
 If a sub-agent fails, re-spawn once. If it fails again, proceed with available output. If the merge agent fails, perform the merge yourself directly.
+
+</instructions>
 
 ## Success Criteria
 - Both research sub-agents produce output files with 5+ questions each
