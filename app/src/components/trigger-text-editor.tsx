@@ -15,7 +15,7 @@ export default function TriggerTextEditor({ skill, onSaved }: TriggerTextEditorP
   const [text, setText] = useState(skill.trigger_text ?? "")
   const [saving, setSaving] = useState(false)
 
-  const defaultText = `When the user asks about ${skill.description || "this skill"}, read and follow the skill at \`.claude/skills/${skill.skill_name}/SKILL.md\`.`
+  const defaultText = `This skill should be used when the user wants to "${skill.description || "use this skill"}", read and follow the skill at \`.claude/skills/${skill.skill_name}/SKILL.md\`.`
 
   const handleSave = async () => {
     setSaving(true)

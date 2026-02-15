@@ -127,7 +127,7 @@ export default function GitHubImportDialog({
       for (const skill of imported) {
         const name = skill.skill_name
         const desc = skill.description || "this skill"
-        texts[name] = `When the user asks about ${desc}, read and follow the skill at \`.claude/skills/${name}/SKILL.md\`.`
+        texts[name] = `This skill should be used when the user wants to "${desc}", read and follow the skill at \`.claude/skills/${name}/SKILL.md\`.`
       }
       setTriggerTexts(texts)
       setStep("review")
