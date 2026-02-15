@@ -33,27 +33,25 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
-Spawn two sub-agents in the **same turn** so they run in parallel:
+Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
-**Sub-agent 1: Entity & Relationship Research**
+**Sub-agent 1: Entity & Relationship Research** (`name: "entity-research"`)
 
 - **Goal**: Surface the entities, relationships, and analysis patterns that the reasoning agent will need to make sound modeling decisions. The PM will answer these questions to narrow scope, so focus on questions where different answers lead to different skill designs.
 - **Scope**: Core entities for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory), their cardinality relationships, analysis patterns, and cross-functional dependencies
-- **Constraints**: 5-10 core entities, 3+ analysis patterns per entity. Write questions in the `clarifications-*.md` format.
+- **Constraints**: 5-10 core entities, 3+ analysis patterns per entity. Use the Clarifications file format from the shared context.
 - Output: `research-entities.md` in the context directory
 
-**Sub-agent 2: Metrics & KPI Research**
+**Sub-agent 2: Metrics & KPI Research** (`name: "metrics-research"`)
 
 - **Goal**: Surface the metrics, KPIs, and calculation nuances that differentiate a naive implementation from a correct one. Focus on business rules that engineers without domain expertise commonly get wrong.
 - **Scope**: Core metrics and KPIs, industry-specific variations, calculation pitfalls
-- **Constraints**: Write questions in the `clarifications-*.md` format. Each question should present choices where different answers change the skill's content.
+- **Constraints**: Use the Clarifications file format from the shared context. Each question should present choices where different answers change the skill's content.
 - Output: `research-metrics.md` in the context directory
-
-Pass the shared context file path and context directory path to both sub-agents.
 
 ## Phase 2: Merge Results
 
-After both sub-agents return, spawn a fresh **merger** sub-agent.
+After both sub-agents return, spawn a fresh **merger** sub-agent (`name: "merger"`).
 
 - Read `research-entities.md` and `research-metrics.md` from the context directory
 - Merge into a single file at the output file path provided by coordinator

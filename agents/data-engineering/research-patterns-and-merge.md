@@ -34,7 +34,7 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Parallel Research
 
-Spawn two sub-agents in the **same turn** so they run in parallel:
+Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
 **Sub-agent 1: Business Patterns & Edge Cases**
 
