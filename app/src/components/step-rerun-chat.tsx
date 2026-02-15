@@ -53,11 +53,10 @@ interface ChatMessage {
 
 /** Map step IDs to agent phase names for prompt resolution. */
 const STEP_PHASE_MAP: Record<number, string> = {
-  0: "research-concepts",
-  2: "research-patterns-and-merge",
-  5: "build",
-  6: "validate",
-  7: "test",
+  0: "research",
+  2: "detailed-research",
+  5: "generate-skill",
+  6: "validate-skill",
 };
 
 /** Map step IDs to model shorthands. */

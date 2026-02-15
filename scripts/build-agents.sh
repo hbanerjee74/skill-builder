@@ -35,8 +35,8 @@ for type_dir in "$TYPES_DIR"/*/; do
         # Split on first = sign
         key="${line%%=*}"
         value="${line#*=}"
-        # Declare variable dynamically
-        declare "$key=$value"
+        # Declare variable dynamically (quote value to prevent word splitting/glob expansion)
+        declare "${key}=${value}"
     done < "$type_dir/config.conf"
 
     for template in "$TEMPLATES_DIR"/*.md; do

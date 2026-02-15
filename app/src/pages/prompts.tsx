@@ -6,12 +6,11 @@ import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types";
 import { getAgentPrompt } from "@/lib/tauri";
 
 const PHASES = [
-  { label: "Research Concepts", value: "research-concepts" },
-  { label: "Research Patterns", value: "research-patterns-and-merge" },
-  { label: "Reasoning", value: "reasoning" },
-  { label: "Build", value: "build" },
-  { label: "Validate", value: "validate" },
-  { label: "Test", value: "test" },
+  { label: "Research", value: "research" },
+  { label: "Detailed Research", value: "detailed-research" },
+  { label: "Confirm Decisions", value: "confirm-decisions" },
+  { label: "Generate Skill", value: "generate-skill" },
+  { label: "Validate Skill", value: "validate-skill" },
 ];
 
 export default function PromptsPage() {

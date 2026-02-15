@@ -138,7 +138,7 @@ I've revised the clarification questions based on your feedback:
 2. Removed 2 duplicate questions
 3. Restructured for better flow
 
-The updated file has been written to context/clarifications-concepts.md.`;
+The updated file has been written to context/research-entities.md.`;
 
 // --- Tests ---
 

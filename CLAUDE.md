@@ -5,37 +5,36 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 @import CLAUDE-APP.md
 @import CLAUDE-PLUGIN.md
 
-## Workflow (9 steps)
+## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
-1. **Research Concepts** -- research agent writes `clarifications-concepts.md`
-2. **Concepts Review** -- user answers questions
-3. **Research Patterns + Data + Merge** -- orchestrator spawns sub-agents
-4. **Human Review** -- user answers merged questions
-5. **Reasoning** -- multi-turn conversation, produces `decisions.md`
-6. **Build** -- creates SKILL.md + reference files
-7. **Validate** -- checks against best practices, generates and evaluates test prompts
-8. **Package / Refine** -- zip for distribution (plugin) or iterative chat (app)
+1. **Research** -- research orchestrator spawns concepts + practices + implementation sub-agents, consolidation agent produces `clarifications.md`
+2. **Review** -- user answers `clarifications.md`
+3. **Detailed Research** -- detailed-research agent writes `clarifications-detailed.md`
+4. **Review** -- user answers `clarifications-detailed.md`
+5. **Confirm Decisions** -- confirm-decisions agent produces `decisions.md`
+6. **Generate Skill** -- creates SKILL.md + reference files
+7. **Validate Skill** -- checks against best practices, generates and evaluates test prompts
 
 ## Model Tiers
 
 | Role | Model |
 |---|---|
 | Research agents (Steps 1, 3) | sonnet |
-| Merge (Step 3) | haiku |
-| Reasoning (Step 5) | opus |
-| Build / Validate (Steps 6-7) | sonnet |
+| Consolidate Research (Step 1) | opus |
+| Confirm Decisions (Step 5) | opus |
+| Generate / Validate (Steps 6-7) | sonnet |
 
 The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
 
 ## Extended Thinking
 
 Agent prompts are optimized for thinking mode using goal-oriented patterns (not step-by-step prescriptions). When Claude Code adds `thinking` or `effort` as frontmatter fields, update:
-- reasoning agents: `effort: max`
-- build agents: `effort: high`
+- confirm-decisions agent: `effort: max`
+- generate-skill agents: `effort: high`
 - research orchestrators: `effort: high`
-- validate/test agents: `effort: medium`
-- merge agent: thinking disabled (haiku)
+- validate-skill agents: `effort: medium`
+- consolidate-research agent: `effort: high`
 
 ## Dev Commands
 
@@ -61,6 +60,13 @@ cd src-tauri && cargo test               # Rust tests
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
+
+# Skill evaluation (LLM-as-judge)
+./scripts/eval-skill-quality.sh --help                        # Usage info
+./scripts/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
+  --prompts scripts/eval-prompts/data-engineering.txt
+./scripts/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
+  --prompts scripts/eval-prompts/data-engineering.txt
 ```
 
 ## Testing
@@ -100,8 +106,8 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 **Plugin quick rules:**
 - Changed a template (`agents/templates/`) or type config (`agents/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
 - Changed a shared agent (`agents/shared/`)? → `./scripts/test-plugin.sh t1`
-- Changed the coordinator (`skills/start/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
-- Changed `references/shared-context.md`? → `./scripts/test-plugin.sh t1`
+- Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
+- Changed `workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
 
@@ -112,17 +118,37 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (23), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (24), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
-| **T4** | Agent Smoke Tests | Merge deduplicates, reasoning produces decisions, build creates SKILL.md | ~$0.50 |
-| **T5** | Full E2E Workflow | End-to-end `/skill-builder:start` with auto-answered gates | ~$5.00 |
+| **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
+| **T5** | Full E2E Workflow | End-to-end `/skill-builder:generate-skill` with auto-answered gates | ~$5.00 |
 
 Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
 
 **E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
 
 **Plugin tags:** `@structure`, `@agents`, `@coordinator`, `@workflow`, `@all`
+
+### Skill evaluation harness (LLM-as-judge)
+
+`scripts/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
+
+**Modes:**
+- `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
+- `--compare <skill-a> <skill-b>` — two skill versions head-to-head (is v2 better?)
+
+**Rubric** (each 1-5, same dimensions as validate agents): actionability, specificity, domain depth, self-containment.
+
+**Test prompts** live in `scripts/eval-prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
+
+**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`.
+
+**Cost:** ~$0.50-1.00 per prompt (2 response generations + 1 judge call). A full 5-prompt DE evaluation run costs ~$3-5.
+
+**When to use:**
+- After changing focus lines, entity examples, or output examples in `agents/types/` — run baseline mode to verify the skill type still beats no-skill
+- When iterating on prompt content — run compare mode with before/after versions to measure improvement
 
 ### Updating the test manifest
 
@@ -136,15 +162,15 @@ When you add, remove, or rename tests (including adding tests to existing files)
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Parallel worktrees**: `npm run dev` auto-assigns a free port.
-- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agents/templates/` or `agents/types/` instead, then run `./scripts/build-agents.sh`.
+- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agents/templates/` or `agents/types/` instead, then run `./scripts/build-agents.sh`. Shared agents in `agents/shared/` are edited directly.
 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
 - `agents/{type}/` -- 5 agents per type (4 types = 20 files), **generated** by `scripts/build-agents.sh`
-- `agents/templates/` -- 5 phase templates (source of truth for agent content)
+- `agents/templates/` -- 5 phase templates (research-concepts, research-practices, research-implementation, research, generate-skill)
 - `agents/types/` -- 4 type configs with output examples (focus lines, entity examples)
-- `agents/shared/` -- 3 shared sub-agents (merge, research-patterns, research-data)
+- `agents/shared/` -- 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
 - `workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); deployed to `.claude/CLAUDE.md` in workspace
 
 **Adding a new skill type:** Create `agents/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.

@@ -424,7 +424,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("shows Resume when partial output exists on disk", async () => {
     // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("clarifications-concepts.md")) {
+      if (path.includes("research-entities.md")) {
         return Promise.resolve("# Partial research output");
       }
       return Promise.reject("not found");
@@ -624,10 +624,10 @@ describe("WorkflowPage — human review file loading priority", () => {
   it("loads review content from skillsPath context directory first", async () => {
     // skillsPath has the file — should use it even though workspace also has content
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/skills/test-skill/context/research-entities.md") {
         return Promise.resolve("# From skills context dir");
       }
-      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/workspace/test-skill/context/research-entities.md") {
         return Promise.resolve("# From workspace");
       }
       return Promise.reject("not found");
@@ -649,7 +649,7 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     // readFile should have been called with the skillsPath location first
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications-concepts.md"
+      "/test/skills/test-skill/context/research-entities.md"
     );
   });
 
@@ -659,7 +659,7 @@ describe("WorkflowPage — human review file loading priority", () => {
       if (path.startsWith("/test/skills/")) {
         return Promise.reject("not found");
       }
-      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/workspace/test-skill/context/research-entities.md") {
         return Promise.resolve("# From workspace");
       }
       return Promise.reject("not found");
@@ -687,7 +687,7 @@ describe("WorkflowPage — human review file loading priority", () => {
     });
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/workspace/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/workspace/test-skill/context/research-entities.md") {
         return Promise.resolve("# From workspace (no skillsPath)");
       }
       return Promise.reject("not found");
@@ -783,7 +783,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/skills/test-skill/context/research-entities.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -815,7 +815,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const writePath = vi.mocked(writeFile).mock.calls[0][0];
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
-    expect(writePath).toBe("/test/workspace/test-skill/context/clarifications-concepts.md");
+    expect(writePath).toBe("/test/workspace/test-skill/context/research-entities.md");
     expect(savedContent).toBe(reviewContent);
 
     // Verify no auto-fill happened
@@ -945,7 +945,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-concepts.md") {
+      if (path === "/test/skills/test-skill/context/research-entities.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -1228,7 +1228,7 @@ describe("WorkflowPage — rerun integration", () => {
     // Step 0 has partial output on disk — clicking "Resume" should enter rerun chat
     // mode instead of calling handleStartStep with resume=true.
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("clarifications-concepts.md")) {
+      if (path.includes("research-entities.md")) {
         return Promise.resolve("# Partial research output");
       }
       return Promise.reject("not found");
@@ -1406,7 +1406,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     // readFile returns content for the step's output file → errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("clarifications-concepts.md")) {
+      if (path.includes("research-entities.md")) {
         return Promise.resolve("partial content");
       }
       return Promise.reject("not found");
