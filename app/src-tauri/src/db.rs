@@ -271,6 +271,21 @@ pub fn persist_agent_run(
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
+    // Don't overwrite a completed/error run with shutdown status — the completed
+    // data is more valuable than the partial shutdown snapshot.
+    if status == "shutdown" {
+        let existing_status: Option<String> = conn
+            .query_row(
+                "SELECT status FROM agent_runs WHERE agent_id = ?1",
+                rusqlite::params![agent_id],
+                |row| row.get(0),
+            )
+            .ok();
+        if matches!(existing_status.as_deref(), Some("completed") | Some("error")) {
+            return Ok(());
+        }
+    }
+
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
@@ -373,12 +388,7 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
 }
 
 pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancelled: bool) -> Result<Vec<WorkflowSessionRecord>, String> {
-    let having = if hide_cancelled {
-        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0"
-    } else {
-        ""
-    };
-    let sql = format!(
+    let sql = if hide_cancelled {
         "SELECT ws.session_id,
                 ws.skill_name,
                 COALESCE(MIN(ar.step_id), 0),
@@ -398,13 +408,34 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
                                 AND ar.reset_marker IS NULL
          WHERE ws.reset_marker IS NULL
          GROUP BY ws.session_id
-         {}
+         HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0
          ORDER BY ws.started_at DESC
-         LIMIT ?1",
-        having
-    );
+         LIMIT ?1"
+    } else {
+        "SELECT ws.session_id,
+                ws.skill_name,
+                COALESCE(MIN(ar.step_id), 0),
+                COALESCE(MAX(ar.step_id), 0),
+                COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
+                COUNT(ar.agent_id),
+                COALESCE(SUM(ar.total_cost), 0.0),
+                COALESCE(SUM(ar.input_tokens), 0),
+                COALESCE(SUM(ar.output_tokens), 0),
+                COALESCE(SUM(ar.cache_read_tokens), 0),
+                COALESCE(SUM(ar.cache_write_tokens), 0),
+                COALESCE(SUM(ar.duration_ms), 0),
+                ws.started_at,
+                ws.ended_at
+         FROM workflow_sessions ws
+         LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                AND ar.reset_marker IS NULL
+         WHERE ws.reset_marker IS NULL
+         GROUP BY ws.session_id
+         ORDER BY ws.started_at DESC
+         LIMIT ?1"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -472,18 +503,24 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
 }
 
 pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByStep>, String> {
-    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
-    let sql = format!(
+    let sql = if hide_cancelled {
         "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{}
+           AND workflow_session_id IS NOT NULL
+           AND total_cost > 0
          GROUP BY step_id
-         ORDER BY SUM(total_cost) DESC",
-        extra
-    );
+         ORDER BY SUM(total_cost) DESC"
+    } else {
+        "SELECT step_id, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY step_id
+         ORDER BY SUM(total_cost) DESC"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -503,18 +540,24 @@ pub fn get_usage_by_step(conn: &Connection, hide_cancelled: bool) -> Result<Vec<
 }
 
 pub fn get_usage_by_model(conn: &Connection, hide_cancelled: bool) -> Result<Vec<UsageByModel>, String> {
-    let extra = if hide_cancelled { " AND total_cost > 0" } else { "" };
-    let sql = format!(
+    let sql = if hide_cancelled {
         "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
          FROM agent_runs
          WHERE reset_marker IS NULL
-           AND workflow_session_id IS NOT NULL{}
+           AND workflow_session_id IS NOT NULL
+           AND total_cost > 0
          GROUP BY model
-         ORDER BY SUM(total_cost) DESC",
-        extra
-    );
+         ORDER BY SUM(total_cost) DESC"
+    } else {
+        "SELECT model, COALESCE(SUM(total_cost), 0.0), COUNT(*)
+         FROM agent_runs
+         WHERE reset_marker IS NULL
+           AND workflow_session_id IS NOT NULL
+         GROUP BY model
+         ORDER BY SUM(total_cost) DESC"
+    };
     let mut stmt = conn
-        .prepare(&sql)
+        .prepare(sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -1861,6 +1904,58 @@ mod tests {
         let runs = get_recent_runs(&conn, 10).unwrap();
         assert_eq!(runs.len(), 1);
         assert!(runs[0].session_id.is_none());
+    }
+
+    #[test]
+    fn test_persist_agent_run_shutdown_does_not_overwrite_completed() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-1");
+
+        // First persist as completed with real data
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "completed",
+            1000, 500, 200, 100, 0.15, 8000, None, ws,
+        )
+        .unwrap();
+
+        // Then attempt to overwrite with shutdown (partial/zero data)
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, ws,
+        )
+        .unwrap();
+
+        // Completed data should be preserved
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "completed");
+        assert_eq!(runs[0].input_tokens, 1000);
+        assert!((runs[0].total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_persist_agent_run_shutdown_overwrites_running() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-1");
+
+        // First persist as running (agent start)
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "running",
+            0, 0, 0, 0, 0.0, 0, None, ws,
+        )
+        .unwrap();
+
+        // Then shutdown with partial data — should succeed
+        persist_agent_run(
+            &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
+            500, 200, 0, 0, 0.05, 3000, None, ws,
+        )
+        .unwrap();
+
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "shutdown");
+        assert_eq!(runs[0].input_tokens, 500);
     }
 
     #[test]
