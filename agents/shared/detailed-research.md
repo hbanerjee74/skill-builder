@@ -18,7 +18,6 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats)
   - The **context directory** path where all working files live
   - **Which domain** to research
   - **Where to write** your output file
@@ -44,7 +43,6 @@ Read `clarifications.md` from the context directory. Identify the topic sections
 
 Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section (`name: "detailed-<section-slug>"`). Each sub-agent receives:
 
-- The shared context file path
 - The PM's answered `clarifications.md` path
 - Which section to drill into
 - Output file path: `detailed-<section-slug>.md` in the context directory
@@ -53,7 +51,7 @@ Each sub-agent's task:
 - Read `clarifications.md` and focus on the assigned section's answered questions
 - For each answered question, identify 0-2 follow-up questions that dig deeper into the PM's chosen direction
 - Look for cross-cutting implications with other sections
-- Follow the Clarifications file format from the shared context — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice.
+- Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count` and `sections`. Always include "Other (please specify)" as a choice.
 - Every question must present choices where different answers change the skill's design
 - Do NOT re-ask first-round questions — build on the answers already given
 - Target 2-5 questions per section
@@ -61,7 +59,6 @@ Each sub-agent's task:
 ## Phase 3: Consolidate
 
 After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`). Pass it:
-- The shared context file path
 - All sub-agent output files as source files
 - The target file specified by the coordinator (e.g., `clarifications-detailed.md`)
 

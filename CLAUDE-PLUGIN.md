@@ -20,8 +20,8 @@ skill-builder/
 │   └── generate-skill/
 │       └── SKILL.md                 # Coordinator skill (entry point)
 ├── agents/                          # Agent prompts (see CLAUDE.md for layout)
-└── references/
-    └── shared-context.md            # Shared context read by all agents
+└── workspace/
+    └── CLAUDE.md                    # Agent instructions (auto-loaded into system prompt)
 ```
 
 ## Architecture
@@ -32,7 +32,7 @@ Three layers:
 
 2. **Subagents** (`agents/{type}/*.md` and `agents/shared/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Type-specific agents are spawned via `Task(subagent_type: "skill-builder:{type_prefix}-{agent}")`, shared agents via `Task(subagent_type: "skill-builder:{agent}")`.
 
-3. **Shared reference** (`references/shared-context.md`) -- domain definitions, file formats, content principles. Read by agents at the path the coordinator passes in the Task prompt.
+3. **Agent instructions** (`workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. Auto-loaded into every agent's system prompt — agents do not need to read it manually.
 
 ## Development Guide
 
@@ -63,5 +63,5 @@ For test commands, tiers, and quick rules, see the Testing section in CLAUDE.md.
 
 ### Key constraints
 
-- **`references/shared-context.md`**: Read by every agent. Changes here affect all agents.
+- **`workspace/CLAUDE.md`**: Auto-loaded into every agent's system prompt. Changes here affect all agents.
 - **Plugin caching**: Plugins are copied to a cache dir on install. All file references must be within the plugin directory or in the user's CWD.

@@ -15,7 +15,7 @@ run_t4() {
   local consolidate_prompt="You are the consolidate-research agent for the skill-builder plugin. Your job is to \
 consolidate clarification questions from multiple research agents into a cohesive questionnaire.
 
-Read the shared context file for expected formats: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/workspace/CLAUDE.md
 
 Read these input files:
 - $consolidate_dir/context/research-entities.md
@@ -50,7 +50,7 @@ Return a summary: total input questions, duplicates removed, final question coun
   local reasoning_prompt="You are the reasoning agent for the skill-builder plugin. Your job is to \
 analyze answered clarification questions and produce decisions.
 
-Read the shared context file for expected formats: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/workspace/CLAUDE.md
 
 Read these answered clarification files:
 - $reason_dir/context/research-entities.md
@@ -97,7 +97,7 @@ Return a summary of key conclusions, assumptions, and any conflicts found."
     local build_prompt="You are the build agent for the skill-builder plugin. Your job is to \
 create the skill files based on decisions.
 
-Read the shared context file: $PLUGIN_DIR/workspace/CLAUDE.md
+Read these agent instructions for expected file formats: $PLUGIN_DIR/workspace/CLAUDE.md
 Read the decisions file: $build_dir/context/decisions.md
 
 Domain: pet store analytics

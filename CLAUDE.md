@@ -107,7 +107,7 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 - Changed a template (`agents/templates/`) or type config (`agents/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
 - Changed a shared agent (`agents/shared/`)? → `./scripts/test-plugin.sh t1`
 - Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
-- Changed `references/shared-context.md`? → `./scripts/test-plugin.sh t1`
+- Changed `workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
 

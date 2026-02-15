@@ -58,7 +58,7 @@ skill-builder/
 │   ├── templates/           # 5 phase templates (source of truth)
 │   ├── types/               # 4 type configs (focus, examples)
 │   └── shared/              # 3 shared sub-agents
-├── references/              # Shared context for agents
+├── workspace/               # Agent instructions (auto-loaded CLAUDE.md)
 ├── skills/generate-skill/SKILL.md    # Plugin coordinator (entry point)
 ├── app/                     # Desktop application
 │   ├── src/                 # React 19 + Tailwind 4 + shadcn/ui

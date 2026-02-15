@@ -20,11 +20,10 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 
 ## Context
 - The coordinator will provide these paths at runtime — use them exactly as given:
-  - The **shared context** file path (domain definitions and content principles)
   - The **context directory** path (for reading `decisions.md` and `clarifications.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **domain name**
-- Read the shared context file, `decisions.md` (primary input), and `clarifications.md`
+- Read `decisions.md` (primary input) and `clarifications.md`
 
 ## Rerun / Resume Mode
 
@@ -42,15 +41,15 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Plan the Skill Structure
 
-**Goal**: Design the skill's file layout following the Skill Best Practices in the shared context (structure, naming, line limits).
+**Goal**: Design the skill's file layout following the Skill Best Practices from your system prompt (structure, naming, line limits).
 
 Read `decisions.md` and `clarifications.md`, then propose the structure. Number of reference files driven by the decisions — propose file names with one-line descriptions.
 
 ## Phase 2: Write SKILL.md
 
-Follow the Skill Best Practices from the shared context — structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
+Follow the Skill Best Practices from your system prompt — structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
-The SKILL.md frontmatter description must follow the trigger pattern from the shared context: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill — make triggers specific and comprehensive.
+The SKILL.md frontmatter description must follow the trigger pattern from your system prompt: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill — make triggers specific and comprehensive.
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
@@ -81,7 +80,7 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 </output_format>
 
 ## Success Criteria
-- All Skill Best Practices from the shared context are followed (structure, naming, line limits, content rules, anti-patterns)
+- All Skill Best Practices from your system prompt are followed (structure, naming, line limits, content rules, anti-patterns)
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
 - 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file

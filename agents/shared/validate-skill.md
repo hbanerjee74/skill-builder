@@ -20,7 +20,7 @@ Do NOT evaluate:
 - **Domain correctness** — whether the PM's business decisions are sound (those are captured in `decisions.md` and are authoritative)
 - **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
 
-Only evaluate: conformance to Skill Best Practices and Content Principles from the shared context, completeness against `decisions.md`, and content quality.
+Only evaluate: conformance to Skill Best Practices and Content Principles from your system prompt, completeness against `decisions.md`, and content quality.
 
 </role>
 
@@ -28,7 +28,6 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from t
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **domain name**
@@ -46,8 +45,7 @@ Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validati
 ## Phase 1: Inventory and Prepare
 
 1. Read `decisions.md` and `clarifications.md` from the context directory.
-2. Read the shared context file.
-3. Read `SKILL.md` and all files in `references/`. Understand:
+2. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, patterns, and concepts are documented
@@ -71,13 +69,13 @@ Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1
 
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from the shared context. Flags orphaned or unnecessary files.
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files.
 
 Writes findings to `validation-coverage-structure.md` in the context directory.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from the shared context. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns from your system prompt. Writes `validation-skill-md.md` with PASS/FAIL per section and improvement suggestions for any FAIL.
 
 **Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
 
@@ -168,7 +166,7 @@ Prompt it to:
 
 ### Validation
 - Every decision and answered clarification is mapped to a specific file and section
-- All Skill Best Practices checks pass (per the shared context)
+- All Skill Best Practices checks pass (per your system prompt)
 - Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
 

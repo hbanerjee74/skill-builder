@@ -10,7 +10,7 @@ Multi-agent workflow for creating domain-specific skills. Two frontends share th
 
 Shared assets:
 - `agents/{type}/` and `agents/shared/`
-- `references/shared-context.md`
+- `workspace/CLAUDE.md` (auto-loaded agent instructions)
 
 ## Workflow (7 steps)
 
@@ -74,7 +74,7 @@ claude --plugin-dir .
 - Entry point is `skills/generate-skill/SKILL.md` via `/skill-builder:generate-skill`.
 - Plugin metadata/layout lives in `.claude-plugin/` and `.claude/`.
 - Agent prompts are in `agents/`; coordinator orchestrates them via `Task(...)`.
-- `references/shared-context.md` is read by all agents and is high-impact.
+- `workspace/CLAUDE.md` is auto-loaded into every agent's system prompt and is high-impact.
 - Plugin install caching means file references must stay within plugin dir or user CWD.
 - Automated structural checks run via `.claude/settings.json` hook and `./scripts/validate.sh`.
 

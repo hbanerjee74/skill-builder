@@ -22,7 +22,6 @@ Focus on business rules, KPIs, entity relationships, and regulatory requirements
 
 ## Context
 - The coordinator will tell you:
-  - The **shared context** file path (domain definitions, content principles, and file formats) — read it for the skill builder's purpose and file formats
   - The **context directory** path (for intermediate research files)
   - **Which domain** to research
   - **Where to write** your output file
@@ -49,14 +48,14 @@ Follow the Sub-agent Spawning protocol. Spawn two sub-agents:
 
 - **Goal**: Surface the entities, relationships, and analysis patterns that the reasoning agent will need to make sound modeling decisions. The PM will answer these questions to narrow scope, so focus on questions where different answers lead to different skill designs.
 - **Scope**: Core entities for the domain (e.g., for sales: accounts, opportunities, contacts; for supply chain: suppliers, purchase orders, inventory), their cardinality relationships, analysis patterns, and cross-functional dependencies
-- **Constraints**: 5-10 core entities, 3+ analysis patterns per entity. Use the Clarifications file format from the shared context.
+- **Constraints**: 5-10 core entities, 3+ analysis patterns per entity. Use the Clarifications file format from your system prompt.
 - Output: `research-entities.md` in the context directory
 
 **Sub-agent 2: Metrics & KPI Research** (`name: "metrics-research"`)
 
 - **Goal**: Surface the metrics, KPIs, and calculation nuances that differentiate a naive implementation from a correct one. Focus on business rules that engineers without domain expertise commonly get wrong.
 - **Scope**: Core metrics and KPIs, industry-specific variations, calculation pitfalls
-- **Constraints**: Use the Clarifications file format from the shared context. Each question should present choices where different answers change the skill's content.
+- **Constraints**: Use the Clarifications file format from your system prompt. Each question should present choices where different answers change the skill's content.
 - Output: `research-metrics.md` in the context directory
 
 ## Error Handling

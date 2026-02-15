@@ -30,8 +30,6 @@ Set the plugin root at the start of the session:
 
 PLUGIN_ROOT=$(echo $CLAUDE_PLUGIN_ROOT)
 
-The shared context file is at: ${PLUGIN_ROOT}/references/shared-context.md
-
 Output layout in the user's CWD:
 - `./context/` — working files (clarifications, decisions, logs)
 - `./<skillname>/` — the deployable skill (SKILL.md + references/)
@@ -139,7 +137,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
      Context directory: ./context/
      Write consolidated output to: ./context/clarifications.md
 
@@ -172,7 +169,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Domain: <domain>
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
      Answered clarifications: ./context/clarifications.md
      Context directory: ./context/
      Write your output to: ./context/clarifications-detailed.md
@@ -202,7 +198,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
      Skill type: <skill_type>
      Context directory: ./context/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Analyze all answered clarifications and produce decisions.
      Think thoroughly about contradictions, gaps, and implications across all provided answers.
@@ -236,7 +231,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Domain: <domain>
      Context directory: ./context/
      Skill directory: ./<skillname>/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Plan the skill structure before writing. Verify all decisions are reflected in the output.
      Read decisions.md and create the skill files.
@@ -260,7 +254,6 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Domain: <domain>
      Skill directory: ./<skillname>/
      Context directory: ./context/
-     Shared context: <PLUGIN_ROOT>/references/shared-context.md
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
      Auto-fix straightforward issues found during validation.

@@ -135,7 +135,7 @@ run_t1() {
     record_result "$tier" "coordinator_has_frontmatter" "FAIL" "first line: $coord_first"
   fi
 
-  # ---- T1.8: Workspace CLAUDE.md exists (contains shared context + protocols) ----
+  # ---- T1.8: Workspace CLAUDE.md exists (auto-loaded agent instructions + protocols) ----
   assert_file_exists "$tier" "workspace_claude_md_exists" "$PLUGIN_DIR/workspace/CLAUDE.md"
 
   # ---- T1.9: plugin.json required fields ----
