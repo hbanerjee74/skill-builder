@@ -32,7 +32,9 @@ Follow the Before You Start protocol.
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md` and `clarifications.md`. Then plan the folder structure:
+**Goal**: Design a folder structure that achieves progressive disclosure — SKILL.md provides overview and pointers, reference files provide depth on demand.
+
+Read `decisions.md` and `clarifications.md`, then propose the structure:
 
 ```
 <skill-output-directory>/
@@ -43,25 +45,25 @@ Read `decisions.md` and `clarifications.md`. Then plan the folder structure:
     └── ...
 ```
 
-**Rules:**
-- Use progressive disclosure: SKILL.md provides overview and pointers, reference files provide depth on demand.
-- Name reference files by topic using kebab-case (e.g., `pipeline-metrics.md`, `stage-modeling.md`).
-- Each reference file should be self-contained for its topic.
-
-Decide how many reference files are needed based on the decisions. Write out the proposed structure (file names + one-line descriptions).
+**Constraints:**
+- Reference files named by topic in kebab-case (e.g., `pipeline-metrics.md`, `stage-modeling.md`)
+- Each reference file must be self-contained for its topic
+- Number of reference files driven by the decisions — propose file names with one-line descriptions
 
 ## Phase 2: Write SKILL.md
 
-If SKILL.md already exists, read it first and update only the sections affected by changed decisions — don't rewrite from scratch unless the content is substantially wrong. Do NOT delegate SKILL.md to a sub-agent.
+**Goal**: Create the skill's entry point — concise enough to answer simple questions without loading reference files, with clear pointers for when to go deeper.
 
-If SKILL.md doesn't exist, write it from scratch. It should contain:
-- **Metadata block** at the top: skill name, one-line description (~100 words max), and optionally `author`, `created` (YYYY-MM-DD), and `modified` (YYYY-MM-DD) fields. If the coordinator provides an author name, include it. Use the created/modified dates from the coordinator if provided, otherwise omit them.
-- **Overview**: what domain this covers, who it's for, key concepts at a glance
+If SKILL.md already exists, read it first and update only sections affected by changed decisions. If it doesn't exist, write it from scratch.
+
+**Required sections:**
+- **Metadata block**: skill name, one-line description (~100 words max), optionally `author`, `created`, `modified` (use values from coordinator if provided)
+- **Overview**: domain scope, target audience, key concepts at a glance
 - **When to use this skill**: trigger conditions / user intent patterns
-- **Quick reference**: the most important guidance — enough to answer simple questions without loading reference files
-- **Pointers to references**: for each reference file, a brief description of what it covers and when to read it
+- **Quick reference**: the most important guidance — enough for simple questions
+- **Pointers to references**: brief description of each reference file and when to read it
 
-Keep SKILL.md under 500 lines. If a section grows past a few paragraphs, it belongs in a reference file.
+**Constraints:** Under 500 lines. If a section grows past a few paragraphs, it belongs in a reference file. Do NOT delegate SKILL.md to a sub-agent.
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
@@ -77,12 +79,13 @@ Each sub-agent prompt must include:
 
 ## Phase 4: Review and Fix Gaps
 
-After all sub-agents return, spawn a fresh **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`). This keeps the context clean — the leader's context is bloated from orchestration.
+**Goal**: Ensure every decision is addressed and all pointers are accurate. Spawn a fresh reviewer sub-agent to keep the context clean.
 
-Prompt it to:
-1. Read `decisions.md`, `SKILL.md`, and every file in `references/`
-2. Cross-check against `decisions.md` — fix gaps, inconsistencies, or missing content directly
-3. Ensure SKILL.md pointers accurately describe each reference file
+After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`).
+
+**Reviewer's mandate:**
+- Cross-check `decisions.md` against `SKILL.md` and all `references/` files — fix gaps, inconsistencies, or missing content directly
+- Verify SKILL.md pointers accurately describe each reference file
 
 ## Error Handling
 

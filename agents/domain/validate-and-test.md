@@ -14,6 +14,16 @@ You orchestrate parallel validation AND testing of a completed skill in a single
 
 Validate that domain-specific business rules are accurately captured and that cross-functional dependencies are documented. Test prompts should reflect real domain questions: business rule interpretation, metric calculation, entity relationship navigation.
 
+## Out of Scope
+
+Do NOT evaluate:
+- **Skill viability** — whether this skill is a good idea or whether the domain warrants a skill
+- **Alternative approaches** — whether a different skill structure, different reference file organization, or different workflow would be better
+- **Domain correctness** — whether the PM's business decisions are sound (those are captured in `decisions.md` and are authoritative)
+- **User's business context** — whether the chosen entities, metrics, or patterns are right for their organization
+
+Only evaluate: conformance to documented best practices, completeness against `decisions.md`, structural requirements, and content quality (actionability, specificity, domain depth, self-containment).
+
 ## Context
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
