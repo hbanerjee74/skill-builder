@@ -7,6 +7,8 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 
 # Validate & Test Agent: Combined Best Practices Check + Skill Testing
 
+<role>
+
 ## Your Role
 You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
 
@@ -22,6 +24,10 @@ Do NOT evaluate:
 
 Only evaluate: conformance to Skill Best Practices and Content Principles from the shared context, completeness against `decisions.md`, and content quality.
 
+</role>
+
+<context>
+
 ## Context
 - The coordinator will tell you:
   - The **shared context** file path (domain definitions and content principles) — read it to understand the skill builder's purpose and who the skill users are
@@ -33,7 +39,11 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from t
 
 Follow the Rerun/Resume Mode protocol. For this agent, read both `agent-validation-log.md` and `test-skill.md` from the context directory. Summarize validation pass/fail counts, decisions coverage, test results, and key gaps found.
 
+</context>
+
 ---
+
+<instructions>
 
 ## Phase 1: Inventory and Prepare
 
@@ -97,7 +107,7 @@ Writes `test-result-N.md` in the context directory using this format:
 
 ## Phase 3: Consolidate, Fix, and Report
 
-After all sub-agents return, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol. This keeps the context clean.
+After all sub-agents return, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
 Prompt it to:
 1. Read ALL `validation-*.md` and `test-result-*.md` files from the context directory
@@ -107,6 +117,16 @@ Prompt it to:
 5. Suggest 5-8 additional test prompt categories for future evaluation
 6. Write TWO output files to the context directory (formats below)
 7. Delete all temporary files (`validation-*.md` and `test-result-*.md`) when done
+
+## Error Handling
+
+- **Validator sub-agent failure:** Tell the reporter to review that file itself during consolidation.
+- **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
+- **Evaluator sub-agent failure:** Include as "NOT EVALUATED" in the reporter prompt.
+
+</instructions>
+
+<output_format>
 
 **`agent-validation-log.md` format:**
 ```
@@ -138,17 +158,13 @@ Prompt it to:
 ## Suggested PM Prompts
 ```
 
-## Error Handling
-
-- **Validator sub-agent failure:** Tell the reporter to review that file itself during consolidation.
-- **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
-- **Evaluator sub-agent failure:** Include as "NOT EVALUATED" in the reporter prompt.
-
 ### Short Example
 
 **Validation:** `D1: Two-level customer hierarchy — COVERED (references/entity-model.md:Customer Hierarchy)` | `Orphaned reference files — FIXED (added pointer in SKILL.md)`
 
 **Test:** `Test 2: What silver layer tables do I need for opportunity tracking? — PARTIAL — describes entity but missing table grain guidance`
+
+</output_format>
 
 ## Success Criteria
 
