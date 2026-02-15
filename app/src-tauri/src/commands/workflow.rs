@@ -233,6 +233,16 @@ pub fn ensure_workspace_prompts_sync(
     Ok(())
 }
 
+/// Re-deploy only the bundled agents to `.claude/agents/`, preserving
+/// other contents of the `.claude/` directory (skills, CLAUDE.md, etc.).
+pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> Result<(), String> {
+    let (agents_dir, _) = resolve_prompt_source_dirs(app_handle);
+    if agents_dir.is_dir() {
+        copy_agents_to_claude_dir(&agents_dir, workspace_path)?;
+    }
+    Ok(())
+}
+
 /// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
 /// For skill type directories: agents/{type}/{file}.md → .claude/agents/{type}-{file}.md
 /// For shared directory: agents/shared/{file}.md → .claude/agents/shared-{file}.md

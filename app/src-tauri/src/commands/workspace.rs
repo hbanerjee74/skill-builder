@@ -495,18 +495,17 @@ pub fn clear_workspace(
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     drop(conn);
 
-    // Delete .claude/ directory so it can be re-deployed fresh.
-    // Skill directories are preserved — only the agent/prompt infrastructure is reset.
-    let claude_dir = std::path::Path::new(&workspace_path).join(".claude");
-    if claude_dir.is_dir() {
-        std::fs::remove_dir_all(&claude_dir).map_err(|e| e.to_string())?;
+    // Delete only .claude/agents/ — preserve skills/ and CLAUDE.md
+    let agents_dir = std::path::Path::new(&workspace_path).join(".claude").join("agents");
+    if agents_dir.is_dir() {
+        std::fs::remove_dir_all(&agents_dir).map_err(|e| e.to_string())?;
     }
 
-    // Invalidate the session cache so ensure_workspace_prompts_sync re-deploys
+    // Invalidate the session cache so next workflow start re-checks
     super::workflow::invalidate_workspace_cache(&workspace_path);
 
-    // Re-deploy bundled agents and CLAUDE.md into .claude/
-    super::workflow::ensure_workspace_prompts_sync(&app, &workspace_path)?;
+    // Re-deploy only bundled agents (not CLAUDE.md or skills)
+    super::workflow::redeploy_agents(&app, &workspace_path)?;
 
     // Clean up stale root-level files from pre-reorganization layout
     migrate_workspace_layout(&workspace_path);
