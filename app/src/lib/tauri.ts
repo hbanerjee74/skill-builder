@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
 
 // --- Settings ---
 
@@ -232,4 +232,49 @@ export const checkLock = (skillName: string) =>
 
 export const getAgentPrompt = (skillType: string, phase: string) =>
   invoke<string>("get_agent_prompt", { skillType, phase });
+
+// --- Usage Tracking ---
+
+export const persistAgentRun = (params: {
+  agentId: string;
+  skillName: string;
+  stepId: number;
+  model: string;
+  status: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  totalCost: number;
+  durationMs: number;
+  sessionId?: string;
+}) => invoke<void>("persist_agent_run", {
+  agentId: params.agentId,
+  skillName: params.skillName,
+  stepId: params.stepId,
+  model: params.model,
+  status: params.status,
+  inputTokens: params.inputTokens,
+  outputTokens: params.outputTokens,
+  cacheReadTokens: params.cacheReadTokens,
+  cacheWriteTokens: params.cacheWriteTokens,
+  totalCost: params.totalCost,
+  durationMs: params.durationMs,
+  sessionId: params.sessionId ?? null,
+});
+
+export const getUsageSummary = () =>
+  invoke<UsageSummary>("get_usage_summary");
+
+export const getRecentRuns = (limit: number = 50) =>
+  invoke<AgentRunRecord[]>("get_recent_runs", { limit });
+
+export const getUsageByStep = () =>
+  invoke<UsageByStep[]>("get_usage_by_step");
+
+export const getUsageByModel = () =>
+  invoke<UsageByModel[]>("get_usage_by_model");
+
+export const resetUsage = () =>
+  invoke<void>("reset_usage");
 

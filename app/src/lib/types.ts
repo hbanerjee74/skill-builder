@@ -110,3 +110,39 @@ export interface ReconciliationResult {
   auto_cleaned: number
 }
 
+export interface AgentRunRecord {
+  agent_id: string
+  skill_name: string
+  step_id: number
+  model: string
+  status: string
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  total_cost: number
+  duration_ms: number
+  session_id: string | null
+  started_at: string
+  completed_at: string | null
+}
+
+export interface UsageSummary {
+  total_cost: number
+  total_runs: number
+  avg_cost_per_run: number
+}
+
+export interface UsageByStep {
+  step_id: number
+  step_name: string
+  total_cost: number
+  run_count: number
+}
+
+export interface UsageByModel {
+  model: string
+  total_cost: number
+  run_count: number
+}
+

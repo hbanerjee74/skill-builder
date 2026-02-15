@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import { useSettingsStore } from "./settings-store";
+import { useWorkflowStore } from "./workflow-store";
+import { persistAgentRun } from "@/lib/tauri";
 
 // --- RAF-batched message buffer ---
 // Instead of calling set() per message (which copies the full state tree each
@@ -203,6 +205,10 @@ export const useAgentStore = create<AgentState>((set) => ({
   completeRun: (agentId, success) => {
     // Flush any buffered messages so all data is applied before status changes
     flushMessageBuffer();
+
+    // Capture run data before status update for persistence
+    const runBeforeUpdate = useAgentStore.getState().runs[agentId];
+
     set((state) => {
       const run = state.runs[agentId];
       if (!run || run.status !== "running") return state;
@@ -217,6 +223,39 @@ export const useAgentStore = create<AgentState>((set) => ({
         },
       };
     });
+
+    // Persist agent run to SQLite (fire-and-forget)
+    if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
+      const workflow = useWorkflowStore.getState();
+
+      // Extract cache tokens from the last assistant message's raw usage
+      let cacheRead = 0;
+      let cacheWrite = 0;
+      const assistantMessages = runBeforeUpdate.messages.filter((m) => m.type === "assistant");
+      if (assistantMessages.length > 0) {
+        const lastMsg = assistantMessages[assistantMessages.length - 1];
+        const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
+          | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+          | undefined;
+        cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
+        cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
+      }
+
+      persistAgentRun({
+        agentId,
+        skillName: workflow.skillName ?? "unknown",
+        stepId: workflow.currentStep,
+        model: runBeforeUpdate.model,
+        status: success ? "completed" : "error",
+        inputTokens: runBeforeUpdate.tokenUsage.input,
+        outputTokens: runBeforeUpdate.tokenUsage.output,
+        cacheReadTokens: cacheRead,
+        cacheWriteTokens: cacheWrite,
+        totalCost: runBeforeUpdate.totalCost,
+        durationMs: Date.now() - runBeforeUpdate.startTime,
+        sessionId: runBeforeUpdate.sessionId,
+      }).catch((err) => console.warn("Failed to persist agent run:", err));
+    }
   },
 
   shutdownRun: (agentId: string) => {
