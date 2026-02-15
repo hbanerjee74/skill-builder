@@ -42,6 +42,43 @@ Compare every question across both files. Two questions are duplicates or near-d
 - Would produce the same design implication regardless of which version is answered
 - Differ only in scope (e.g., one asks about metric tracking, another asks about the same concept from a modeling angle — same underlying decision)
 
+<deduplication_example>
+
+**Before — two questions from different sub-agents asking about the same underlying decision:**
+
+From `clarifications-patterns.md`:
+> ### Q3: How should revenue metrics handle refunds and chargebacks?
+> **Choices:**
+> a) **Net revenue only** — Always subtract refunds/chargebacks before reporting.
+> b) **Gross and net** — Track both, let analysts choose.
+> c) **Other (please specify)**
+> **Recommendation:** Option (b) — analysts need both for different use cases.
+
+From `clarifications-data.md`:
+> ### Q5: Should the revenue fact table store gross or net amounts?
+> **Choices:**
+> a) **Net only** — Single amount column, refunds pre-applied.
+> b) **Separate columns** — `gross_amount`, `refund_amount`, `net_amount` as distinct fields.
+> c) **Separate fact rows** — Revenue and refunds as distinct fact records with a type indicator.
+> d) **Other (please specify)**
+> **Recommendation:** Option (b) — preserves full detail without inflating row counts.
+
+**After — merged into a single question:**
+
+> ### Q3: How should revenue amounts handle refunds and chargebacks?
+> Revenue metrics and fact tables both need a refund strategy. This decision affects both reporting logic and table design.
+>
+> **Choices:**
+> a) **Net only** — Subtract refunds before storing/reporting. Simplest but loses detail.
+> b) **Gross and net as separate columns** — Store `gross_amount`, `refund_amount`, `net_amount`. Preserves full detail for both modeling and reporting.
+> c) **Separate fact rows** — Revenue and refunds as distinct records with a type indicator. Most flexible but inflates row counts.
+> d) **Other (please specify)**
+>
+> **Recommendation:** Option (b) — preserves full detail without inflating row counts, and lets analysts choose gross vs. net at query time.
+> _Consolidated from: Business Patterns Q3, Data Modeling Q5_
+
+</deduplication_example>
+
 ### Step 3: Merge
 
 For each group of duplicates:
