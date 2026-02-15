@@ -375,6 +375,12 @@ pub async fn import_github_skills(
         log::warn!("Skill import error: {}", err);
     }
 
+    // Regenerate CLAUDE.md with imported skills section
+    if !imported.is_empty() {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    }
+
     Ok(imported)
 }
 
@@ -570,6 +576,7 @@ async fn import_single_skill(
         description: fm_description,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
+        trigger_text: None,
         imported_at,
     })
 }

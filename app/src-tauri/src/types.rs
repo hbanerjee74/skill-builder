@@ -167,6 +167,7 @@ pub struct ImportedSkill {
     pub description: Option<String>,
     pub is_active: bool,
     pub disk_path: String,
+    pub trigger_text: Option<String>,
     pub imported_at: String,
 }
 

@@ -25,6 +25,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_usage_tracking_migration(&conn)?;
     run_workflow_session_migration(&conn)?;
     run_sessions_table_migration(&conn)?;
+    run_trigger_text_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -169,6 +170,23 @@ fn run_sessions_table_migration(conn: &Connection) -> Result<(), rusqlite::Error
     if !columns.iter().any(|name| name == "reset_marker") {
         conn.execute_batch(
             "ALTER TABLE workflow_sessions ADD COLUMN reset_marker TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
+fn run_trigger_text_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_trigger_text = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "trigger_text"))
+        })
+        .unwrap_or(false);
+
+    if !has_trigger_text {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN trigger_text TEXT;",
         )?;
     }
     Ok(())
@@ -936,8 +954,8 @@ pub fn insert_imported_skill(
     skill: &ImportedSkill,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, imported_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -945,6 +963,7 @@ pub fn insert_imported_skill(
             skill.description,
             skill.is_active as i32,
             skill.disk_path,
+            skill.trigger_text,
             skill.imported_at,
         ],
     )
@@ -961,7 +980,7 @@ pub fn insert_imported_skill(
 pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, imported_at
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
              FROM imported_skills ORDER BY imported_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -975,7 +994,8 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 description: row.get(3)?,
                 is_active: row.get::<_, i32>(4)? != 0,
                 disk_path: row.get(5)?,
-                imported_at: row.get(6)?,
+                trigger_text: row.get(6)?,
+                imported_at: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1018,7 +1038,7 @@ pub fn get_imported_skill(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, imported_at
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
              FROM imported_skills WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1031,7 +1051,8 @@ pub fn get_imported_skill(
             description: row.get(3)?,
             is_active: row.get::<_, i32>(4)? != 0,
             disk_path: row.get(5)?,
-            imported_at: row.get(6)?,
+            trigger_text: row.get(6)?,
+            imported_at: row.get(7)?,
         })
     });
 
@@ -1040,6 +1061,52 @@ pub fn get_imported_skill(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
+}
+
+pub fn update_trigger_text(
+    conn: &Connection,
+    skill_name: &str,
+    trigger_text: &str,
+) -> Result<(), String> {
+    let rows = conn
+        .execute(
+            "UPDATE imported_skills SET trigger_text = ?1 WHERE skill_name = ?2",
+            rusqlite::params![trigger_text, skill_name],
+        )
+        .map_err(|e| e.to_string())?;
+    if rows == 0 {
+        return Err(format!("Imported skill '{}' not found", skill_name));
+    }
+    Ok(())
+}
+
+pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+             FROM imported_skills
+             WHERE is_active = 1 AND trigger_text IS NOT NULL
+             ORDER BY skill_name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(ImportedSkill {
+                skill_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                domain: row.get(2)?,
+                description: row.get(3)?,
+                is_active: row.get::<_, i32>(4)? != 0,
+                disk_path: row.get(5)?,
+                trigger_text: row.get(6)?,
+                imported_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 // --- Skill Locks ---
@@ -1322,6 +1389,7 @@ mod tests {
         run_usage_tracking_migration(&conn).unwrap();
         run_workflow_session_migration(&conn).unwrap();
         run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
         conn
     }
 
@@ -2438,5 +2506,93 @@ mod tests {
         assert_eq!(summary.total_runs, 3);
         // Total cost: 0.10 + 0.30 + 0.05 + 0.50 + 0.08 = 1.03
         assert!((summary.total_cost - 1.03).abs() < 1e-10);
+    }
+
+    // --- Trigger Text Migration tests ---
+
+    #[test]
+    fn test_trigger_text_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        // Running again should not error
+        run_trigger_text_migration(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_update_trigger_text() {
+        let conn = create_test_db();
+        let skill = ImportedSkill {
+            skill_id: "imp-test-1".to_string(),
+            skill_name: "test-skill".to_string(),
+            domain: Some("analytics".to_string()),
+            description: Some("A test".to_string()),
+            is_active: true,
+            disk_path: "/tmp/test".to_string(),
+            trigger_text: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
+
+        update_trigger_text(&conn, "test-skill", "When the user asks about analytics").unwrap();
+        let found = get_imported_skill(&conn, "test-skill").unwrap().unwrap();
+        assert_eq!(found.trigger_text.as_deref(), Some("When the user asks about analytics"));
+    }
+
+    #[test]
+    fn test_update_trigger_text_not_found() {
+        let conn = create_test_db();
+        let result = update_trigger_text(&conn, "nonexistent", "some text");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn test_list_active_skills_with_triggers() {
+        let conn = create_test_db();
+
+        // Skill 1: active with trigger text
+        let skill1 = ImportedSkill {
+            skill_id: "imp-1".to_string(),
+            skill_name: "active-with-trigger".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/s1".to_string(),
+            trigger_text: Some("Trigger for skill 1".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        insert_imported_skill(&conn, &skill1).unwrap();
+
+        // Skill 2: active without trigger text
+        let skill2 = ImportedSkill {
+            skill_id: "imp-2".to_string(),
+            skill_name: "active-no-trigger".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/s2".to_string(),
+            trigger_text: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        insert_imported_skill(&conn, &skill2).unwrap();
+
+        // Skill 3: inactive with trigger text
+        let skill3 = ImportedSkill {
+            skill_id: "imp-3".to_string(),
+            skill_name: "inactive-with-trigger".to_string(),
+            domain: None,
+            description: None,
+            is_active: false,
+            disk_path: "/tmp/s3".to_string(),
+            trigger_text: Some("Trigger for skill 3".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        insert_imported_skill(&conn, &skill3).unwrap();
+
+        let result = list_active_skills_with_triggers(&conn).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].skill_name, "active-with-trigger");
+        assert_eq!(result[0].trigger_text.as_deref(), Some("Trigger for skill 1"));
     }
 }

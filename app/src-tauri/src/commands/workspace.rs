@@ -469,6 +469,12 @@ pub fn init_workspace(
     // Deploy bundled agents and CLAUDE.md to .claude/
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
+    // Append imported skills section to CLAUDE.md
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    }
+
     // Clean up stale root-level files from pre-reorganization layout
     migrate_workspace_layout(&workspace_path);
 
@@ -506,6 +512,12 @@ pub fn clear_workspace(
 
     // Re-deploy only bundled agents (not CLAUDE.md or skills)
     super::workflow::redeploy_agents(&app, &workspace_path)?;
+
+    // Append imported skills section to CLAUDE.md
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    }
 
     // Clean up stale root-level files from pre-reorganization layout
     migrate_workspace_layout(&workspace_path);

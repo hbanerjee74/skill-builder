@@ -138,7 +138,12 @@ pub fn upload_skill(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
-    upload_skill_inner(&file_path, &workspace_path, &conn)
+    let result = upload_skill_inner(&file_path, &workspace_path, &conn)?;
+
+    // Regenerate CLAUDE.md with imported skills section
+    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+
+    Ok(result)
 }
 
 fn upload_skill_inner(
@@ -196,6 +201,7 @@ fn upload_skill_inner(
         description: fm_description,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
+        trigger_text: None,
         imported_at,
     };
 
@@ -313,7 +319,12 @@ pub fn toggle_skill_active(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
-    toggle_skill_active_inner(&skill_name, active, &workspace_path, &conn)
+    toggle_skill_active_inner(&skill_name, active, &workspace_path, &conn)?;
+
+    // Regenerate CLAUDE.md with updated active skills
+    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+
+    Ok(())
 }
 
 fn toggle_skill_active_inner(
@@ -380,7 +391,12 @@ pub fn delete_imported_skill(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
-    delete_imported_skill_inner(&skill_name, &workspace_path, &conn)
+    delete_imported_skill_inner(&skill_name, &workspace_path, &conn)?;
+
+    // Regenerate CLAUDE.md without the deleted skill
+    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+
+    Ok(())
 }
 
 fn delete_imported_skill_inner(
@@ -428,6 +444,37 @@ fn get_skill_content_inner(skill: &ImportedSkill) -> Result<String, String> {
         .map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
 
+#[tauri::command]
+pub fn update_trigger_text(
+    skill_name: String,
+    trigger_text: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    crate::db::update_trigger_text(&conn, &skill_name, &trigger_text)?;
+
+    // Regenerate CLAUDE.md with updated trigger text
+    let settings = crate::db::read_settings(&conn)?;
+    if let Some(workspace_path) = settings.workspace_path.as_deref() {
+        let _ = super::workflow::append_imported_skills_section(workspace_path, &conn);
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn regenerate_claude_md(
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let settings = crate::db::read_settings(&conn)?;
+    let workspace_path = settings
+        .workspace_path
+        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
+    super::workflow::append_imported_skills_section(&workspace_path, &conn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,6 +490,7 @@ mod tests {
             description: Some("A test skill".to_string()),
             is_active: true,
             disk_path: "/tmp/test-skill".to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         }
     }
@@ -772,6 +820,7 @@ name: only-name
             description: None,
             is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
@@ -810,6 +859,7 @@ name: only-name
             description: None,
             is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
@@ -849,6 +899,7 @@ name: only-name
             description: None,
             is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
@@ -880,6 +931,7 @@ name: only-name
             description: None,
             is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
@@ -907,6 +959,7 @@ name: only-name
             description: None,
             is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
 
@@ -923,10 +976,105 @@ name: only-name
             description: None,
             is_active: true,
             disk_path: "/nonexistent/path".to_string(),
+            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
         };
 
         let result = get_skill_content_inner(&skill);
         assert!(result.is_err());
+    }
+
+    // --- CLAUDE.md generation tests ---
+
+    #[test]
+    fn test_append_imported_skills_section_creates_section() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Create a base CLAUDE.md
+        let claude_dir = workspace.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\nSome instructions.").unwrap();
+
+        // Insert an active skill with trigger text
+        let skill = ImportedSkill {
+            skill_id: "imp-1".to_string(),
+            skill_name: "my-analytics".to_string(),
+            domain: Some("analytics".to_string()),
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/s1".to_string(),
+            trigger_text: Some("When the user asks about analytics, use this skill.".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        // Call append
+        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+
+        // Verify content
+        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        assert!(content.contains("# Base Content"));
+        assert!(content.contains("## Imported Skills"));
+        assert!(content.contains("### /my-analytics"));
+        assert!(content.contains("When the user asks about analytics, use this skill."));
+    }
+
+    #[test]
+    fn test_append_imported_skills_section_no_active_skills() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Create a base CLAUDE.md
+        let claude_dir = workspace.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content").unwrap();
+
+        // No skills inserted — section should not be appended
+        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+
+        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        assert_eq!(content, "# Base Content");
+        assert!(!content.contains("## Imported Skills"));
+    }
+
+    #[test]
+    fn test_append_imported_skills_section_replaces_existing() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Create CLAUDE.md with an existing imported skills section
+        let claude_dir = workspace.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(
+            claude_dir.join("CLAUDE.md"),
+            "# Base\n\n## Imported Skills\n\n### /old-skill\nOld trigger text.\n",
+        ).unwrap();
+
+        // Insert a new active skill with trigger text
+        let skill = ImportedSkill {
+            skill_id: "imp-new".to_string(),
+            skill_name: "new-skill".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/new".to_string(),
+            trigger_text: Some("New trigger.".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+
+        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        assert!(content.contains("# Base"));
+        assert!(content.contains("### /new-skill"));
+        assert!(content.contains("New trigger."));
+        // Old section should be replaced
+        assert!(!content.contains("### /old-skill"));
+        assert!(!content.contains("Old trigger text."));
     }
 }
