@@ -2307,4 +2307,136 @@ mod tests {
         // Running again should not error
         run_sessions_table_migration(&conn).unwrap();
     }
+
+    #[test]
+    fn test_get_usage_summary_hide_cancelled() {
+        let conn = create_test_db();
+
+        // Session with real cost
+        create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 200, 100, 0.15, 8000, None, Some("sess-cost"),
+        )
+        .unwrap();
+
+        // Session with zero cost (cancelled)
+        create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, Some("sess-zero"),
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, true).unwrap();
+        assert_eq!(summary.total_runs, 1);
+        assert!((summary.total_cost - 0.15).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_get_recent_workflow_sessions_returns_sessions() {
+        let conn = create_test_db();
+
+        // Session 1
+        create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 200, 100, 0.10, 5000, None, Some("sess-1"),
+        )
+        .unwrap();
+
+        // Session 2
+        create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 3, "opus", "completed",
+            2000, 1000, 400, 200, 0.30, 10000, None, Some("sess-2"),
+        )
+        .unwrap();
+
+        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        assert_eq!(sessions.len(), 2);
+
+        // Find each session by ID (ordering may vary when timestamps match)
+        let s1 = sessions.iter().find(|s| s.session_id == "sess-1").unwrap();
+        assert_eq!(s1.skill_name, "skill-a");
+        assert!((s1.total_cost - 0.10).abs() < 1e-10);
+        assert_eq!(s1.total_input_tokens, 1000);
+        assert_eq!(s1.total_output_tokens, 500);
+
+        let s2 = sessions.iter().find(|s| s.session_id == "sess-2").unwrap();
+        assert_eq!(s2.skill_name, "skill-b");
+        assert!((s2.total_cost - 0.30).abs() < 1e-10);
+        assert_eq!(s2.total_input_tokens, 2000);
+        assert_eq!(s2.total_output_tokens, 1000);
+    }
+
+    #[test]
+    fn test_get_recent_workflow_sessions_hide_cancelled() {
+        let conn = create_test_db();
+
+        // Session with cost
+        create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-good"),
+        )
+        .unwrap();
+
+        // Session with zero cost
+        create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
+            0, 0, 0, 0, 0.0, 0, None, Some("sess-cancelled"),
+        )
+        .unwrap();
+
+        let sessions = get_recent_workflow_sessions(&conn, 10, true).unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].session_id, "sess-good");
+    }
+
+    #[test]
+    fn test_get_usage_summary_multiple_sessions() {
+        let conn = create_test_db();
+
+        // Session 1: two agent runs
+        create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
+        persist_agent_run(
+            &conn, "agent-1a", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-1"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-1b", "skill-a", 3, "opus", "completed",
+            2000, 1000, 0, 0, 0.30, 10000, None, Some("sess-1"),
+        )
+        .unwrap();
+
+        // Session 2: one agent run
+        create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
+        persist_agent_run(
+            &conn, "agent-2a", "skill-b", 1, "sonnet", "completed",
+            500, 200, 0, 0, 0.05, 3000, None, Some("sess-2"),
+        )
+        .unwrap();
+
+        // Session 3: two agent runs
+        create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
+        persist_agent_run(
+            &conn, "agent-3a", "skill-c", 5, "opus", "completed",
+            3000, 1500, 0, 0, 0.50, 15000, None, Some("sess-3"),
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-3b", "skill-c", 6, "sonnet", "completed",
+            800, 400, 0, 0, 0.08, 4000, None, Some("sess-3"),
+        )
+        .unwrap();
+
+        let summary = get_usage_summary(&conn, false).unwrap();
+        // 3 sessions (not 5 agent runs)
+        assert_eq!(summary.total_runs, 3);
+        // Total cost: 0.10 + 0.30 + 0.05 + 0.50 + 0.08 = 1.03
+        assert!((summary.total_cost - 1.03).abs() < 1e-10);
+    }
 }
