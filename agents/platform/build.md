@@ -38,16 +38,7 @@ Read `decisions.md` and `clarifications.md`, then propose the structure. Number 
 
 ## Phase 2: Write SKILL.md
 
-Follow the Skill Best Practices structure rules from the shared context. Do NOT delegate SKILL.md to a sub-agent.
-
-**Required sections:**
-- **Metadata block**: skill name, description, optionally `author`, `created`, `modified` (use values from coordinator if provided). Follow Skill Best Practices for naming and description format.
-- **Overview**: domain scope, target audience, key concepts at a glance
-- **When to use this skill**: trigger conditions / user intent patterns
-- **Quick reference**: the most important guidance — enough for simple questions
-- **Pointers to references**: brief description of each reference file and when to read it
-
-If a section grows past a few paragraphs, it belongs in a reference file.
+Follow the Skill Best Practices from the shared context — structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
