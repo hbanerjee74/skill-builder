@@ -20,6 +20,8 @@ fn build_github_client(token: Option<&str>) -> reqwest::Client {
     }
     reqwest::Client::builder()
         .default_headers(headers)
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }
@@ -76,8 +78,11 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
     let owner = segments[0].to_string();
     let repo = segments[1].to_string();
 
-    // Validate owner and repo don't contain suspicious characters
-    if owner.contains('.') && owner != "." || repo.contains("..") {
+    // Validate owner and repo don't contain path separators or traversal patterns
+    if owner.is_empty() || repo.is_empty() {
+        return Err(format!("Owner and repo cannot be empty in URL '{}'", url));
+    }
+    if owner.contains('\\') || repo.contains('\\') || owner.contains("..") || repo.contains("..") {
         return Err(format!("Invalid owner/repo in URL '{}'", url));
     }
 
@@ -345,8 +350,12 @@ pub async fn import_github_skills(
                     Ok(()) => imported.push(skill),
                     Err(e) => {
                         // DB insert failed (e.g. duplicate) — clean up the files we just wrote
-                        let dest_dir = skills_dir.join(&skill.skill_name);
-                        let _ = fs::remove_dir_all(&dest_dir);
+                        if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
+                            log::warn!(
+                                "Failed to clean up skill directory '{}' after DB error: {}",
+                                skill.disk_path, cleanup_err
+                            );
+                        }
                         errors.push(format!("{}: {}", skill.skill_name, e));
                     }
                 }
@@ -475,9 +484,12 @@ async fn import_single_skill(
         ));
     }
 
-    // Create destination directory
+    // Create destination directory and canonicalize for secure containment checks
     fs::create_dir_all(&dest_dir)
         .map_err(|e| format!("Failed to create skill directory: {}", e))?;
+    let canonical_dest = dest_dir
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize destination: {}", e))?;
 
     // Download all files
     for file_path in &files {
@@ -496,15 +508,24 @@ async fn import_single_skill(
 
         let out_path = dest_dir.join(&relative);
 
-        // Security: ensure output stays within dest_dir
+        // Security: lexical check first
         if !out_path.starts_with(&dest_dir) {
             continue;
         }
 
-        // Create parent directories
+        // Create parent directories and verify canonicalized path stays within dest_dir
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("Failed to create directory for '{}': {}", relative, e))?;
+            let canonical_parent = parent
+                .canonicalize()
+                .map_err(|e| format!("Failed to canonicalize parent: {}", e))?;
+            if !canonical_parent.starts_with(&canonical_dest) {
+                return Err(format!(
+                    "Path traversal detected: '{}' escapes destination",
+                    relative
+                ));
+            }
         }
 
         let raw_url = format!(
@@ -512,11 +533,23 @@ async fn import_single_skill(
             owner, repo, branch, file_path
         );
 
-        let content = client
+        let response = client
             .get(&raw_url)
             .send()
             .await
-            .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?
+            .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?;
+
+        // Reject files larger than 10 MB
+        if let Some(len) = response.content_length() {
+            if len > 10_000_000 {
+                return Err(format!(
+                    "File '{}' too large: {} bytes (max 10 MB)",
+                    file_path, len
+                ));
+            }
+        }
+
+        let content = response
             .bytes()
             .await
             .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;

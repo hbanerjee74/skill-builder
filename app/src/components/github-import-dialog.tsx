@@ -118,7 +118,14 @@ export default function GitHubImportDialog({
       setImportedCount(imported.length)
       setStep("done")
       await onImported()
-      toast.success(`Imported ${imported.length} skill${imported.length !== 1 ? "s" : ""} from GitHub`)
+      const requested = selectedPaths.size
+      if (imported.length < requested) {
+        toast.warning(
+          `Imported ${imported.length} of ${requested} skills. ${requested - imported.length} skipped (may already exist).`
+        )
+      } else {
+        toast.success(`Imported ${imported.length} skill${imported.length !== 1 ? "s" : ""} from GitHub`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("select")
