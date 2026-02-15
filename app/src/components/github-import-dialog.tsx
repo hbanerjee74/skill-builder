@@ -157,6 +157,7 @@ export default function GitHubImportDialog({
         }
       }
       await regenerateClaudeMd()
+      await onImported()
       setStep("done")
       const requested = selectedPaths.size
       if (importedCount < requested) {

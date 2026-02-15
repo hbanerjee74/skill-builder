@@ -27,7 +27,7 @@ export default function SkillsPage() {
     deleteSkill,
   } = useImportedSkillsStore()
 
-  const [previewSkill, setPreviewSkill] = useState<ImportedSkill | null>(null)
+  const [previewSkillName, setPreviewSkillName] = useState<string | null>(null)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
 
   useEffect(() => {
@@ -87,8 +87,12 @@ export default function SkillsPage() {
     [deleteSkill]
   )
 
+  const previewSkill = previewSkillName
+    ? skills.find((s) => s.skill_name === previewSkillName) ?? null
+    : null
+
   const handlePreview = useCallback((skill: ImportedSkill) => {
-    setPreviewSkill(skill)
+    setPreviewSkillName(skill.skill_name)
   }, [])
 
   return (
@@ -164,7 +168,7 @@ export default function SkillsPage() {
         skill={previewSkill}
         open={previewSkill !== null}
         onOpenChange={(open) => {
-          if (!open) setPreviewSkill(null)
+          if (!open) setPreviewSkillName(null)
         }}
       />
 
