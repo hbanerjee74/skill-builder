@@ -284,6 +284,23 @@ pub struct UsageByModel {
     pub run_count: i32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRepoInfo {
+    pub owner: String,
+    pub repo: String,
+    pub branch: String,
+    #[serde(default)]
+    pub subpath: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableSkill {
+    pub path: String,
+    pub name: String,
+    pub domain: Option<String>,
+    pub description: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

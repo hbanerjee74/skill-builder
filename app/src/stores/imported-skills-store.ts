@@ -1,15 +1,8 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import type { ImportedSkill } from "@/lib/types";
 
-export interface ImportedSkill {
-  skill_id: string;
-  skill_name: string;
-  domain: string | null;
-  description: string | null;
-  is_active: boolean;
-  disk_path: string;
-  imported_at: string;
-}
+export type { ImportedSkill };
 
 interface ImportedSkillsState {
   skills: ImportedSkill[];

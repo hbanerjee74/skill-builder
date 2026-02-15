@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
+import type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
 
 // --- Settings ---
 
@@ -285,4 +285,15 @@ export const getUsageByModel = (hideCancelled: boolean = false) =>
 
 export const resetUsage = () =>
   invoke<void>("reset_usage");
+
+// --- GitHub Import ---
+
+export const parseGitHubUrl = (url: string) =>
+  invoke<GitHubRepoInfo>("parse_github_url", { url });
+
+export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
+  invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
+
+export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
+  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
 

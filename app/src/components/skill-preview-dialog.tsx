@@ -9,7 +9,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
 
@@ -69,7 +68,7 @@ export default function SkillPreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 max-h-[60vh]">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -79,7 +78,7 @@ export default function SkillPreviewDialog({
               Failed to load skill content: {error}
             </div>
           ) : content ? (
-            <div className="markdown-body compact pr-4">
+            <div className="markdown-body compact pr-3 overflow-x-hidden break-words">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {content}
               </ReactMarkdown>
@@ -89,7 +88,7 @@ export default function SkillPreviewDialog({
               No content available.
             </div>
           )}
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   )
