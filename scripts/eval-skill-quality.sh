@@ -70,7 +70,7 @@ Environment:
 Examples:
   # Baseline: does the skill help vs no skill?
   ./scripts/eval-skill-quality.sh \
-    --baseline agents/data-engineering/build.md \
+    --baseline agents/data-engineering/generate-skill.md \
     --prompts scripts/eval-prompts/data-engineering.txt
 
   # Compare: is v2 better than v1?
