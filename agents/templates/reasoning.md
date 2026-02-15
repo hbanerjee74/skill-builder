@@ -25,29 +25,17 @@ Follow the Rerun/Resume Mode protocol.
 
 ## Instructions
 
-### Load and analyze
+**Goal**: Produce a complete, internally consistent `decisions.md` that captures every implication from the PM's answers and resolves all contradictions — in a single pass.
 
-Read `clarifications-concepts.md`, `clarifications.md`, and `decisions.md` (if it exists) from the context directory. Analyze all answered questions from both clarification files together.
+**Input**: Read `clarifications-concepts.md`, `clarifications.md`, and `decisions.md` (if it exists) from the context directory.
 
-For each answer, identify:
-- **Implications** for the skill's scope, structure, or content
-- **Gaps**: unstated assumptions or unaddressed consequences
-- **Contradictions** with other answers or existing decisions in `decisions.md`
-- **Depth checks**: answers that need further research to validate — do the research now
+**What "complete" means**: Every answered question has at least one implication captured as a decision. Gaps (unstated assumptions, unaddressed consequences) are identified and resolved. Ambiguous answers are interpreted with the ambiguity and its design implications noted. Depth checks are performed inline — if an answer needs further research to validate, do the research now.
 
-Consider multiple interpretations of ambiguous answers. Note the ambiguity and its design implications.
+**Cross-referencing**: Examine answers holistically. Look for internal consistency, conflicts with existing decisions, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model). Verify your analysis is internally consistent before writing.
 
-### Cross-reference
+**Writing `decisions.md`**: Follow the decisions format from the shared context file. If `decisions.md` already exists, merge: replace contradicted entries (keep D-number), append new ones, preserve unchanged ones. The result must be a clean, self-contained snapshot with no duplicates.
 
-Examine answers holistically for internal consistency, conflicts with existing decisions, and dependencies between answers (e.g., choosing to track recurring revenue implies needing contract data in the model). Verify your analysis is internally consistent before proceeding.
-
-### Resolve conflicts and write decisions
-
-Write `decisions.md` to the context directory following the decisions format. Merge with existing decisions: replace contradicted entries (keep D-number), append new ones, preserve unchanged ones. The result must be a clean, self-contained snapshot with no duplicates.
-
-**Handling conflicts**: Resolve contradictions yourself by picking the most reasonable option. Record your reasoning in the `**Implication**` field — e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy. The gross revenue reference in Q3 appears to be shorthand."
-
-Do NOT ask the user to resolve conflicts. Make the call, document why, and move on.
+**Conflict resolution**: Resolve contradictions yourself — pick the most reasonable option and document your reasoning in the `**Implication**` field (e.g., "Chose net revenue over gross revenue because the PM's answers elsewhere emphasize accounting accuracy"). Do NOT ask the user to resolve conflicts.
 
 ## Error Handling
 
