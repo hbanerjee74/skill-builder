@@ -29,7 +29,7 @@ Shared assets:
 | Role | Model |
 |---|---|
 | Research (steps 0, 2) | sonnet |
-| Merge (step 2) | haiku |
+| Merge (step 2) | sonnet |
 | Reasoning (step 4) | opus |
 | Build/Validate/Test (steps 5-7) | sonnet |
 

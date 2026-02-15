@@ -22,7 +22,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 | Role | Model |
 |---|---|
 | Research agents (Steps 1, 3) | sonnet |
-| Merge (Step 3) | haiku |
+| Merge (Step 3) | sonnet |
 | Reasoning (Step 5) | opus |
 | Build / Validate (Steps 6-7) | sonnet |
 
