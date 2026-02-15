@@ -131,6 +131,26 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 **Plugin tags:** `@structure`, `@agents`, `@coordinator`, `@workflow`, `@all`
 
+### Skill evaluation harness (LLM-as-judge)
+
+`scripts/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
+
+**Modes:**
+- `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
+- `--compare <skill-a> <skill-b>` — two skill versions head-to-head (is v2 better?)
+
+**Rubric** (each 1-5): pattern coverage, specificity, correctness, actionability.
+
+**Test prompts** live in `scripts/eval-prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
+
+**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`.
+
+**Cost:** ~$0.50-1.00 per prompt (2 response generations + 1 judge call). A full 5-prompt DE evaluation run costs ~$3-5.
+
+**When to use:**
+- After changing focus lines, entity examples, or output examples in `agents/types/` — run baseline mode to verify the skill type still beats no-skill
+- When iterating on prompt content — run compare mode with before/after versions to measure improvement
+
 ### Updating the test manifest
 
 When you add, remove, or rename tests (including adding tests to existing files), update `app/tests/TEST_MANIFEST.md` to keep test counts and source-to-test mappings current. The manifest has tables per source category (stores, hooks, components, pages, Rust, sidecar, plugin). Each row maps a source file to its unit tests, integration tests, and E2E tag with counts in parentheses.
