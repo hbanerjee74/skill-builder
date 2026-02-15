@@ -137,7 +137,12 @@ export const useWorkflowStore = create<WorkflowState>((set) => ({
 
   setRunning: (running) => set((state) => ({
     isRunning: running,
-    workflowSessionId: running ? crypto.randomUUID() : state.workflowSessionId,
+    // Generate a session ID only once per workflow execution.
+    // initWorkflow() and reset() clear it, so the next "Continue" from the
+    // dashboard creates a fresh one.
+    workflowSessionId: running
+      ? (state.workflowSessionId ?? crypto.randomUUID())
+      : state.workflowSessionId,
   })),
 
   setInitializing: () =>

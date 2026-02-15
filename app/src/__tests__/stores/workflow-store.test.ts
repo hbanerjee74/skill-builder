@@ -73,6 +73,42 @@ describe("useWorkflowStore", () => {
     expect(useWorkflowStore.getState().isRunning).toBe(false);
   });
 
+  it("setRunning creates workflowSessionId once and reuses across steps", () => {
+    // First step starts → generates session ID
+    useWorkflowStore.getState().setRunning(true);
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(sessionId).toBeTruthy();
+
+    // Step ends
+    useWorkflowStore.getState().setRunning(false);
+    expect(useWorkflowStore.getState().workflowSessionId).toBe(sessionId);
+
+    // Second step starts → same session ID
+    useWorkflowStore.getState().setRunning(true);
+    expect(useWorkflowStore.getState().workflowSessionId).toBe(sessionId);
+
+    // Third step starts → still same session ID
+    useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setRunning(true);
+    expect(useWorkflowStore.getState().workflowSessionId).toBe(sessionId);
+  });
+
+  it("initWorkflow resets workflowSessionId so next run creates a new one", () => {
+    useWorkflowStore.getState().setRunning(true);
+    const firstSessionId = useWorkflowStore.getState().workflowSessionId;
+    useWorkflowStore.getState().setRunning(false);
+
+    // Re-init (user navigates back to dashboard and opens a skill)
+    useWorkflowStore.getState().initWorkflow("new-skill", "new-domain");
+    expect(useWorkflowStore.getState().workflowSessionId).toBeNull();
+
+    // New workflow start → new session ID
+    useWorkflowStore.getState().setRunning(true);
+    const secondSessionId = useWorkflowStore.getState().workflowSessionId;
+    expect(secondSessionId).toBeTruthy();
+    expect(secondSessionId).not.toBe(firstSessionId);
+  });
+
   it("reset clears everything back to initial state", () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "hr analytics");
     useWorkflowStore.getState().setCurrentStep(4);
