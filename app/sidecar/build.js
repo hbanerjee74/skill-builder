@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { cpSync, mkdirSync, existsSync, writeFileSync } from "fs";
+import { cpSync, mkdirSync, existsSync, writeFileSync, rmSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -73,6 +73,7 @@ if (existsSync(sdkDir)) {
 const mockSrc = resolve(__dirname, "mock-templates");
 const mockDest = resolve(__dirname, "dist/mock-templates");
 if (existsSync(mockSrc)) {
+  if (existsSync(mockDest)) rmSync(mockDest, { recursive: true });
   cpSync(mockSrc, mockDest, { recursive: true });
   console.log("Copied mock-templates to dist/mock-templates/");
 } else {
