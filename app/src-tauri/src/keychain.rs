@@ -394,6 +394,40 @@ mod tests {
         reset_keychain_flag();
     }
 
+    #[test]
+    fn test_migrate_secrets_with_real_values() {
+        reset_keychain_flag();
+        let mut settings = AppSettings::default();
+        settings.anthropic_api_key = Some("sk-test-12345".to_string());
+        settings.github_oauth_token = Some("gho_test_67890".to_string());
+
+        let (updated, migrated) = migrate_secrets_from_db(&settings);
+
+        if migrated {
+            // Secrets should be cleared from returned settings
+            assert!(updated.anthropic_api_key.is_none());
+            assert!(updated.github_oauth_token.is_none());
+
+            // Verify they're actually retrievable from keychain
+            assert_eq!(
+                get_secret(KEY_ANTHROPIC_API_KEY).unwrap(),
+                Some("sk-test-12345".to_string())
+            );
+            assert_eq!(
+                get_secret(KEY_GITHUB_OAUTH_TOKEN).unwrap(),
+                Some("gho_test_67890".to_string())
+            );
+
+            // Cleanup
+            delete_secret(KEY_ANTHROPIC_API_KEY).ok();
+            delete_secret(KEY_GITHUB_OAUTH_TOKEN).ok();
+        } else {
+            // Keychain unavailable — secrets remain for SQLite fallback
+            assert_eq!(updated.anthropic_api_key.as_deref(), Some("sk-test-12345"));
+            assert_eq!(updated.github_oauth_token.as_deref(), Some("gho_test_67890"));
+        }
+    }
+
     // Integration tests that actually use the OS keychain.
     // These tests interact with the real keychain and may require
     // user authorization on first run (macOS Keychain Access prompt).
