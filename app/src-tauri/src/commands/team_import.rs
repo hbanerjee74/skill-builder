@@ -379,10 +379,27 @@ pub async fn import_team_repo_skill(
         _ => None,
     };
 
+    // Detect the furthest completed step from downloaded files
+    let detected_step = crate::fs_validation::detect_furthest_step(
+        &workspace_path,
+        &skill_name,
+        Some(&skills_path),
+    )
+    .unwrap_or(0) as i32;
+    let (step, status) = if detected_step >= 6 {
+        (7i32, "completed")
+    } else {
+        (detected_step, "pending")
+    };
+    info!(
+        "[import_team_repo_skill] detected step {} (status={}) for '{}'",
+        step, status, skill_name
+    );
+
     // Save DB entry
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        crate::db::save_workflow_run(&conn, &skill_name, &domain, 0, "pending", skill_type)?;
+        crate::db::save_workflow_run(&conn, &skill_name, &domain, step, status, skill_type)?;
 
         // Set author: prefer manifest creator, fall back to current user
         let creator = manifest_creator
