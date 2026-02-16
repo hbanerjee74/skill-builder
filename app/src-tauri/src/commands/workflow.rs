@@ -243,10 +243,12 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
 }
 
 /// Extract the user's customization content from an existing CLAUDE.md.
-/// Returns everything from `\n## Customization\n` onward (inclusive), or empty string.
+/// Returns everything starting from `## Customization\n` (without leading newlines),
+/// or empty string if the marker is not found.
 fn extract_customization_section(content: &str) -> String {
     if let Some(pos) = content.find("\n## Customization\n") {
-        content[pos..].to_string()
+        // Skip the leading newline — caller adds consistent spacing
+        content[pos + 1..].to_string()
     } else {
         String::new()
     }
@@ -267,7 +269,7 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
 }
 
 const DEFAULT_CUSTOMIZATION_SECTION: &str =
-    "\n\n## Customization\n\nAdd your workspace-specific instructions below. This section is preserved across app updates and skill changes.\n";
+    "## Customization\n\nAdd your workspace-specific instructions below. This section is preserved across app updates and skill changes.\n";
 
 /// Rebuild workspace CLAUDE.md with a three-section merge:
 ///   1. Base (from bundled template — always overwritten)
@@ -305,9 +307,10 @@ pub fn rebuild_claude_md(
         DEFAULT_CUSTOMIZATION_SECTION.to_string()
     };
 
-    // 4. Merge: base + skills + customization
+    // 4. Merge: base + skills + customization (consistent \n\n between sections)
     let mut final_content = base;
     final_content.push_str(&skills_section);
+    final_content.push_str("\n\n");
     final_content.push_str(&customization);
 
     // 5. Write
@@ -355,9 +358,10 @@ pub fn update_skills_section(
         customization
     };
 
-    // Merge: base + skills + customization
+    // Merge: base + skills + customization (consistent \n\n between sections)
     let mut final_content = base;
     final_content.push_str(&skills_section);
+    final_content.push_str("\n\n");
     final_content.push_str(&customization);
 
     std::fs::write(&claude_md_path, final_content)
