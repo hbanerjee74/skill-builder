@@ -16,6 +16,8 @@ interface WorkflowState {
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
+  /** When true, users can browse completed steps without triggering resets. */
+  reviewMode: boolean;
   /** Active workflow session ID for usage tracking. Created when running starts, ended on navigate-away. */
   workflowSessionId: string | null;
   isInitializing: boolean;
@@ -29,6 +31,7 @@ interface WorkflowState {
 
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
+  setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
   setRunning: (running: boolean) => void;
@@ -97,6 +100,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
+  reviewMode: true,
   workflowSessionId: null,
   isInitializing: false,
   initStartTime: null,
@@ -112,6 +116,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      reviewMode: true,
       workflowSessionId: null,
       isInitializing: false,
       initStartTime: null,
@@ -121,6 +126,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }),
 
   setSkillType: (skillType) => set({ skillType }),
+
+  setReviewMode: (mode) => set({ reviewMode: mode }),
 
   setCurrentStep: (step) => set({ currentStep: step }),
 
@@ -211,6 +218,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
+      reviewMode: true,
       workflowSessionId: null,
       isInitializing: false,
       initStartTime: null,

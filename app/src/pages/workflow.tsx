@@ -32,6 +32,7 @@ import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningReview } from "@/components/reasoning-review";
 import ResetStepDialog from "@/components/reset-step-dialog";
+import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
@@ -89,6 +90,7 @@ export default function WorkflowPage() {
     isRunning,
     isInitializing,
     hydrated,
+    reviewMode,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
@@ -574,6 +576,10 @@ export default function WorkflowPage() {
             outputFiles={stepConfig.outputFiles}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
+            reviewMode={reviewMode}
+            skillName={skillName}
+            workspacePath={workspacePath ?? undefined}
+            skillsPath={skillsPath}
           />
         );
       }
@@ -584,6 +590,10 @@ export default function WorkflowPage() {
           outputFiles={[]}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          skillName={skillName}
+          workspacePath={workspacePath ?? undefined}
+          skillsPath={skillsPath}
         />
       );
     }
@@ -616,25 +626,27 @@ export default function WorkflowPage() {
                 </ReactMarkdown>
               </div>
             </ScrollArea>
-            <div className="flex items-center justify-between border-t pt-4">
-              <p className="text-sm text-muted-foreground">
-                Edit this file directly, then continue to the next step.
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSkipHumanStep}
-                >
-                  <SkipForward className="size-3.5" />
-                  Skip
-                </Button>
-                <Button size="sm" onClick={handleReviewContinue}>
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
+            {!reviewMode && (
+              <div className="flex items-center justify-between border-t pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Edit this file directly, then continue to the next step.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSkipHumanStep}
+                  >
+                    <SkipForward className="size-3.5" />
+                    Skip
+                  </Button>
+                  <Button size="sm" onClick={handleReviewContinue}>
+                    <CheckCircle2 className="size-3.5" />
+                    Complete Step
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         );
       }
@@ -646,12 +658,14 @@ export default function WorkflowPage() {
           <p className="text-sm">
             No clarification file found. Run the previous step or continue.
           </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
-              <ArrowRight className="size-3.5" />
-              Continue
-            </Button>
-          </div>
+          {!reviewMode && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
+                <ArrowRight className="size-3.5" />
+                Continue
+              </Button>
+            </div>
+          )}
         </div>
       );
     }
@@ -691,39 +705,41 @@ export default function WorkflowPage() {
               An error occurred. You can retry this step.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                // Show confirmation if partial output exists
-                if (errorHasArtifacts) {
-                  setShowResetConfirm(true);
-                  return;
-                }
-                // End active session — reset starts a fresh workflow context
-                endActiveSession();
-                // Full reset: clear artifacts on disk, clear agent runs, then revert step
-                if (workspacePath) {
-                  try {
-                    await resetWorkflowStep(workspacePath, skillName, currentStep);
-                  } catch {
-                    // best-effort — proceed even if disk cleanup fails
+          {!reviewMode && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  // Show confirmation if partial output exists
+                  if (errorHasArtifacts) {
+                    setShowResetConfirm(true);
+                    return;
                   }
-                }
-                clearRuns();
-                resetToStep(currentStep);
-                toast.success(`Reset step ${currentStep + 1}`);
-              }}
-            >
-              <RotateCcw className="size-3.5" />
-              Reset Step
-            </Button>
-            <Button size="sm" onClick={() => handleStartStep()}>
-              <Play className="size-3.5" />
-              Retry
-            </Button>
-          </div>
+                  // End active session — reset starts a fresh workflow context
+                  endActiveSession();
+                  // Full reset: clear artifacts on disk, clear agent runs, then revert step
+                  if (workspacePath) {
+                    try {
+                      await resetWorkflowStep(workspacePath, skillName, currentStep);
+                    } catch {
+                      // best-effort — proceed even if disk cleanup fails
+                    }
+                  }
+                  clearRuns();
+                  resetToStep(currentStep);
+                  toast.success(`Reset step ${currentStep + 1}`);
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+                Reset Step
+              </Button>
+              <Button size="sm" onClick={() => handleStartStep()}>
+                <Play className="size-3.5" />
+                Retry
+              </Button>
+            </div>
+          )}
         </div>
       );
     }
@@ -873,6 +889,10 @@ export default function WorkflowPage() {
               setPendingStepSwitch(id);
               return;
             }
+            if (reviewMode) {
+              setCurrentStep(id);
+              return;
+            }
             if (id < currentStep) {
               setResetTarget(id);
               return;
@@ -896,7 +916,8 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {canStart && (
+              <ReviewModeToggle />
+              {canStart && !reviewMode && (
                 <Button onClick={() => {
                   handleStartStep(hasPartialOutput);
                 }} size="sm">

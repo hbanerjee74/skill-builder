@@ -1,5 +1,10 @@
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { readFile } from "@/lib/tauri";
 
 interface WorkflowStepCompleteProps {
   stepName: string;
@@ -8,6 +13,10 @@ interface WorkflowStepCompleteProps {
   cost?: number;
   onNextStep?: () => void;
   isLastStep?: boolean;
+  reviewMode?: boolean;
+  skillName?: string;
+  workspacePath?: string;
+  skillsPath?: string | null;
 }
 
 function formatDuration(ms: number): string {
@@ -25,7 +34,112 @@ export function WorkflowStepComplete({
   cost,
   onNextStep,
   isLastStep = false,
+  reviewMode,
+  skillName,
+  workspacePath,
+  skillsPath,
 }: WorkflowStepCompleteProps) {
+  const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
+  const [loadingFiles, setLoadingFiles] = useState(false);
+
+  useEffect(() => {
+    if (!reviewMode || !skillName || outputFiles.length === 0) {
+      setFileContents(new Map());
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingFiles(true);
+    const results = new Map<string, string>();
+
+    const loadPromises = outputFiles
+      .filter((f) => !f.endsWith("/"))
+      .map(async (relativePath) => {
+        // Try skills path first, then workspace path
+        let content: string | null = null;
+
+        if (skillsPath) {
+          try {
+            content = await readFile(`${skillsPath}/${skillName}/${relativePath}`);
+          } catch {
+            // not found in skills path
+          }
+        }
+
+        if (!content && workspacePath) {
+          try {
+            content = await readFile(`${workspacePath}/${skillName}/${relativePath}`);
+          } catch {
+            // not found in workspace path either
+          }
+        }
+
+        if (content) {
+          results.set(relativePath, content);
+        } else {
+          results.set(relativePath, "__NOT_FOUND__");
+        }
+      });
+
+    Promise.all(loadPromises).then(() => {
+      if (!cancelled) {
+        setFileContents(new Map(results));
+        setLoadingFiles(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [reviewMode, skillName, workspacePath, skillsPath, outputFiles]);
+
+  // Review mode: show file contents
+  if (reviewMode && outputFiles.length > 0) {
+    if (loadingFiles) {
+      return (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="flex flex-col gap-6 pr-4">
+            {outputFiles
+              .filter((f) => !f.endsWith("/"))
+              .map((file) => {
+                const content = fileContents.get(file);
+                const notFound = content === "__NOT_FOUND__";
+
+                return (
+                  <div key={file} className="flex flex-col gap-2">
+                    <p className="text-xs font-mono text-muted-foreground flex items-center gap-2">
+                      <FileText className="size-3.5 shrink-0" />
+                      {file}
+                    </p>
+                    {notFound ? (
+                      <p className="text-sm text-muted-foreground italic">
+                        File not found
+                      </p>
+                    ) : content ? (
+                      <div className="rounded-md border">
+                        <div className="markdown-body max-w-none p-4">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {content}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Default rendering (non-review mode)
   return (
     <div className="flex flex-1 items-center justify-center">
       <div className="flex flex-col items-center gap-4 text-center">
@@ -65,7 +179,7 @@ export function WorkflowStepComplete({
         </div>
 
         <div className="flex items-center gap-2 mt-2">
-          {onNextStep && !isLastStep && (
+          {onNextStep && !isLastStep && !reviewMode && (
             <Button size="sm" onClick={onNextStep}>
               <ArrowRight className="size-3.5" />
               Next Step
