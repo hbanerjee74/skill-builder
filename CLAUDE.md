@@ -56,7 +56,7 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
-./scripts/build-agents.sh               # Regenerate 20 agent files from templates
+./scripts/build-agents.sh               # Regenerate 20 type-specific agent files from templates
 ./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
