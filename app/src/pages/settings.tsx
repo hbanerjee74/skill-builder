@@ -31,7 +31,6 @@ export default function SettingsPage() {
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
-  const [debugMode, setDebugMode] = useState(false)
   const [logLevel, setLogLevel] = useState("info")
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
@@ -61,7 +60,6 @@ export default function SettingsPage() {
             setWorkspacePath(result.workspace_path)
             setSkillsPath(result.skills_path)
             setPreferredModel(result.preferred_model || "sonnet")
-            setDebugMode(result.debug_mode ?? false)
             setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
@@ -102,7 +100,6 @@ export default function SettingsPage() {
     apiKey: string | null;
     skillsPath: string | null;
     preferredModel: string;
-    debugMode: boolean;
     logLevel: string;
     extendedContext: boolean;
     extendedThinking: boolean;
@@ -112,7 +109,6 @@ export default function SettingsPage() {
       workspace_path: workspacePath,
       skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
       preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
-      debug_mode: overrides.debugMode !== undefined ? overrides.debugMode : debugMode,
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
@@ -131,7 +127,6 @@ export default function SettingsPage() {
         workspacePath: settings.workspace_path,
         skillsPath: settings.skills_path,
         preferredModel: settings.preferred_model,
-        debugMode: settings.debug_mode,
         logLevel: settings.log_level,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
@@ -374,26 +369,6 @@ export default function SettingsPage() {
                 {label}
               </button>
             ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Debug Mode</CardTitle>
-          <CardDescription>
-            Run the full workflow unattended using Sonnet for all agents.
-            Human review steps auto-complete, validate steps are skipped.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="debug-mode">Unattended workflow (Sonnet, skip validate)</Label>
-            <Switch
-              id="debug-mode"
-              checked={debugMode}
-              onCheckedChange={(checked) => { setDebugMode(checked); autoSave({ debugMode: checked }); }}
-            />
           </div>
         </CardContent>
       </Card>

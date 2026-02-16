@@ -11,7 +11,6 @@ import {
   ArrowRight,
   AlertCircle,
   RotateCcw,
-  Bug,
   CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -82,8 +81,6 @@ export default function WorkflowPage() {
   const navigate = useNavigate();
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const skillsPath = useSettingsStore((s) => s.skillsPath);
-  const debugMode = useSettingsStore((s) => s.debugMode);
-
   const {
     domain,
     skillType,
@@ -388,35 +385,17 @@ export default function WorkflowPage() {
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, workspacePath, skillsPath, skillName]);
 
-  // Check if a step should be auto-completed in debug mode
-  const isDebugAutoCompleteStep = useCallback((stepId: number) => {
-    const cfg = STEP_CONFIGS[stepId];
-    if (!cfg) return false;
-    // Auto-complete: human review steps
-    return cfg.type === "human";
-  }, []);
-
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
-    let nextStep = currentStep + 1;
+    const nextStep = currentStep + 1;
     setCurrentStep(nextStep);
 
-    if (debugMode) {
-      while (nextStep < steps.length && isDebugAutoCompleteStep(nextStep)) {
-        updateStepStatus(nextStep, "completed");
-        toast.success(`Step ${nextStep + 1} auto-completed (debug)`);
-        if (nextStep >= steps.length - 1) return;
-        nextStep += 1;
-        setCurrentStep(nextStep);
-      }
-    } else {
-      const nextConfig = STEP_CONFIGS[nextStep];
-      if (nextConfig?.type === "human") {
-        updateStepStatus(nextStep, "waiting_for_user");
-      }
+    const nextConfig = STEP_CONFIGS[nextStep];
+    if (nextConfig?.type === "human") {
+      updateStepStatus(nextStep, "waiting_for_user");
     }
-  }, [currentStep, steps, setCurrentStep, updateStepStatus, debugMode, isDebugAutoCompleteStep]);
+  }, [currentStep, steps, setCurrentStep, updateStepStatus]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -474,9 +453,6 @@ export default function WorkflowPage() {
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
   // (Review agent logic removed — direct completion is faster and sufficient)
-
-  // Debug auto-start ref — tracks which step we've already auto-started
-  const debugAutoStartedRef = useRef<number | null>(null);
 
   // --- Step handlers ---
 
@@ -570,36 +546,6 @@ export default function WorkflowPage() {
       })
       .finally(() => setLoadingReview(false));
   };
-
-  // Debug mode: auto-start agent steps when landing on a pending agent step.
-  // This fires after advanceToNextStep sets the current step to an agent/reasoning step.
-  useEffect(() => {
-    if (!debugMode || !hydrated || isRunning) return;
-
-    const stepStatus = steps[currentStep]?.status;
-    if (stepStatus !== "pending") return;
-
-    const cfg = STEP_CONFIGS[currentStep];
-    if (!cfg || cfg.type === "human") return;
-
-    // Prevent re-triggering for the same step (guards against re-renders)
-    if (debugAutoStartedRef.current === currentStep) return;
-    debugAutoStartedRef.current = currentStep;
-
-    // Agent step in debug mode — auto-start it after a small delay
-    // so React state updates settle before we start the agent.
-    // Reasoning step auto-start is handled inside reasoning-review.tsx.
-    if (cfg.type === "agent") {
-      const timer = setTimeout(() => {
-        const store = useWorkflowStore.getState();
-        if (store.currentStep !== currentStep || store.steps[currentStep]?.status !== "pending") return;
-        if (store.isRunning) return;
-        handleStartAgentStep();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugMode, currentStep, hydrated, isRunning, steps]);
 
   const currentStepDef = steps[currentStep];
   const canStart =
@@ -948,12 +894,6 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {debugMode && (
-                <Badge variant="outline" className="gap-1 border-amber-500 text-amber-600">
-                  <Bug className="size-3" />
-                  Debug
-                </Badge>
-              )}
               {canStart && (
                 <Button onClick={() => {
                   handleStartStep(hasPartialOutput);

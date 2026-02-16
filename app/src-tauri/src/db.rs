@@ -1445,31 +1445,6 @@ mod tests {
     }
 
     #[test]
-    fn test_write_and_read_settings_with_debug_mode() {
-        let conn = create_test_db();
-        let settings = AppSettings {
-            anthropic_api_key: None,
-            workspace_path: None,
-            skills_path: None,
-            preferred_model: None,
-            debug_mode: true,
-            log_level: "info".to_string(),
-            extended_context: false,
-            extended_thinking: false,
-            splash_shown: false,
-            github_oauth_token: None,
-            github_user_login: None,
-            github_user_avatar: None,
-            github_user_email: None,
-
-        };
-        write_settings(&conn, &settings).unwrap();
-
-        let loaded = read_settings(&conn).unwrap();
-        assert!(loaded.debug_mode);
-    }
-
-    #[test]
     fn test_overwrite_settings() {
         let conn = create_test_db();
         let v1 = AppSettings {
@@ -1495,7 +1470,7 @@ mod tests {
             workspace_path: Some("/new/path".to_string()),
             skills_path: None,
             preferred_model: Some("opus".to_string()),
-            debug_mode: true,
+            debug_mode: false,
             log_level: "info".to_string(),
             extended_context: false,
             extended_thinking: false,

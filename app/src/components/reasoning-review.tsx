@@ -60,16 +60,12 @@ export function ReasoningReview({
   const agentRegisterRun = useAgentStore((s) => s.registerRun);
   const { updateStepStatus, setRunning, currentStep } = useWorkflowStore();
   const skillsPath = useSettingsStore((s) => s.skillsPath);
-  const debugMode = useSettingsStore((s) => s.debugMode);
 
   const isAgentRunning = currentRun?.status === "running";
   const agentCompleted = currentRun?.status === "completed";
   const agentErrored = currentRun?.status === "error";
 
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  // Debug mode auto-complete ref
-  const debugAutoCompletedRef = useRef(false);
 
   // --- Auto-start agent on mount ---
 
@@ -149,59 +145,44 @@ export function ReasoningReview({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentErrored]);
 
-  // --- Debug mode: auto-complete when agent finishes ---
-
-  useEffect(() => {
-    if (!debugMode || debugAutoCompletedRef.current) return;
-    if (!agentCompleted || !decisionsContent) return;
-    debugAutoCompletedRef.current = true;
-    const timer = setTimeout(() => {
-      handleCompleteStep();
-    }, 200);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debugMode, agentCompleted, decisionsContent]);
-
   // --- Handlers ---
 
   const handleCompleteStep = useCallback(async () => {
-    // Validate decisions.md exists (skip in debug mode)
-    if (!debugMode) {
-      let decisionsFound = false;
+    // Validate decisions.md exists
+    let decisionsFound = false;
 
-      if (skillsPath) {
-        try {
-          const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
-          if (content && content.trim().length > 0) decisionsFound = true;
-        } catch {
-          // not found
-        }
+    if (skillsPath) {
+      try {
+        const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
+        if (content && content.trim().length > 0) decisionsFound = true;
+      } catch {
+        // not found
       }
+    }
 
-      if (!decisionsFound) {
-        try {
-          const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
-          if (content && content.trim().length > 0) decisionsFound = true;
-        } catch {
-          // not found
-        }
+    if (!decisionsFound) {
+      try {
+        const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
+        if (content && content.trim().length > 0) decisionsFound = true;
+      } catch {
+        // not found
       }
+    }
 
-      if (!decisionsFound) {
-        toast.error(
-          "Decisions file was not created. The reasoning agent did not produce decisions.md. " +
-          "Navigate back to Review in the sidebar to revise your answers, then re-run this step.",
-          { duration: Infinity },
-        );
-        return;
-      }
+    if (!decisionsFound) {
+      toast.error(
+        "Decisions file was not created. The reasoning agent did not produce decisions.md. " +
+        "Navigate back to Review in the sidebar to revise your answers, then re-run this step.",
+        { duration: Infinity },
+      );
+      return;
     }
 
     updateStepStatus(currentStep, "completed");
     setRunning(false);
     toast.success("Reasoning step completed");
     onStepComplete();
-  }, [skillName, workspacePath, skillsPath, debugMode, currentStep, updateStepStatus, setRunning, onStepComplete]);
+  }, [skillName, workspacePath, skillsPath, currentStep, updateStepStatus, setRunning, onStepComplete]);
 
   // --- Pre-compute message groups for streaming output ---
 
