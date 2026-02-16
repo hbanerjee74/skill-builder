@@ -1,4 +1,4 @@
-use crate::agents::sidecar_pool::SidecarPool;
+use crate::agents::sidecar_pool::{SidecarPool, DEFAULT_SHUTDOWN_TIMEOUT_SECS};
 use crate::db::Db;
 use crate::InstanceInfo;
 
@@ -14,6 +14,9 @@ pub async fn cleanup_skill_sidecar(
 
 /// Graceful shutdown: stop all sidecars, release locks, end sessions, then exit.
 /// Called by the close-guard when the user confirms closing with agents running.
+///
+/// Wraps the entire operation in a configurable timeout (default 5s). If the
+/// timeout expires, logs a warning and force-exits the process.
 #[tauri::command]
 pub async fn graceful_shutdown(
     pool: tauri::State<'_, SidecarPool>,
@@ -21,20 +24,39 @@ pub async fn graceful_shutdown(
     instance: tauri::State<'_, InstanceInfo>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::info!("[graceful_shutdown] called");
+    log::info!("[graceful_shutdown] called (timeout={}s)", DEFAULT_SHUTDOWN_TIMEOUT_SECS);
 
-    // 1. Shutdown all persistent sidecars
-    log::info!("[graceful_shutdown] shutting down all sidecars");
-    pool.shutdown_all(&app_handle).await;
-    log::info!("[graceful_shutdown] all sidecars shut down");
+    let shutdown_result = tokio::time::timeout(
+        std::time::Duration::from_secs(DEFAULT_SHUTDOWN_TIMEOUT_SECS),
+        async {
+            // 1. Shutdown all persistent sidecars
+            log::info!("[graceful_shutdown] shutting down all sidecars");
+            pool.shutdown_all(&app_handle).await;
+            log::info!("[graceful_shutdown] all sidecars shut down");
 
-    // 2. Release all skill locks and end workflow sessions for this instance
-    if let Ok(conn) = db.0.lock() {
-        let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
-        let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
-        log::info!("[graceful_shutdown] locks released, sessions ended");
+            // 2. Release all skill locks and end workflow sessions for this instance
+            if let Ok(conn) = db.0.lock() {
+                let _ = crate::db::release_all_instance_locks(&conn, &instance.id);
+                let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
+                log::info!("[graceful_shutdown] locks released, sessions ended");
+            }
+        },
+    )
+    .await;
+
+    match shutdown_result {
+        Ok(()) => {
+            log::info!("[graceful_shutdown] complete");
+            Ok(())
+        }
+        Err(_) => {
+            log::warn!(
+                "[graceful_shutdown] timed out after {}s — force-exiting process",
+                DEFAULT_SHUTDOWN_TIMEOUT_SECS,
+            );
+            // Force-exit the process. This is a last resort when sidecars hang
+            // or the DB lock is held indefinitely.
+            std::process::exit(1);
+        }
     }
-
-    log::info!("[graceful_shutdown] complete");
-    Ok(())
 }

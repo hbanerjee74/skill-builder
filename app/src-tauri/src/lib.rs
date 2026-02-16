@@ -239,6 +239,8 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 use tauri::Manager;
 
+                let timeout_secs = agents::sidecar_pool::DEFAULT_SHUTDOWN_TIMEOUT_SECS;
+
                 // Release all skill locks and close workflow sessions held by this instance
                 let instance = app_handle.state::<InstanceInfo>();
                 let db_state = app_handle.state::<crate::db::Db>();
@@ -247,13 +249,25 @@ pub fn run() {
                     let _ = crate::db::end_all_sessions_for_pid(&conn, instance.pid);
                 }
 
-                // Shutdown all persistent sidecars on app exit
+                // Shutdown all persistent sidecars on app exit with a timeout.
+                // If graceful shutdown hangs (stuck sidecar, locked DB), force-exit.
                 let pool = app_handle.state::<agents::sidecar_pool::SidecarPool>();
-                // The Tokio runtime may already be torn down during exit
-                if let Ok(rt) = tokio::runtime::Handle::try_current() {
-                    rt.block_on(pool.shutdown_all(app_handle));
+                let shutdown_fn = async {
+                    pool.shutdown_all_with_timeout(app_handle, timeout_secs).await
+                };
+
+                let result = if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                    rt.block_on(shutdown_fn)
                 } else if let Ok(rt) = tokio::runtime::Runtime::new() {
-                    rt.block_on(pool.shutdown_all(app_handle));
+                    rt.block_on(shutdown_fn)
+                } else {
+                    log::warn!("[exit] No Tokio runtime available — skipping sidecar shutdown");
+                    Ok(())
+                };
+
+                if let Err(e) = result {
+                    log::warn!("[exit] Shutdown failed: {} — force-exiting", e);
+                    std::process::exit(1);
                 }
             }
         });
