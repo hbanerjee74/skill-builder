@@ -88,6 +88,25 @@ The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/a
 
 The plugin uses the same skill output layout (`SKILL.md` + `references/`) but writes everything to the user's CWD with no separate workspace.
 
+## Logging
+
+Every new feature must include logging. The app uses `log` crate (Rust) and `console.*` (frontend, bridged to Rust via `attachConsole()`). Sidecar has its own JSONL log system — no changes needed there.
+
+### Log levels
+
+| Level | When to use | Examples |
+|---|---|---|
+| **error** | Operation failed, user impact likely | DB write failed, API call returned 5xx, file not found when expected, deserialization error |
+| **warn** | Unexpected but recoverable, or user did something questionable | Retrying after transient failure, config value missing (using default), skill already exists on import |
+| **info** | Key lifecycle events and operations a developer would want in production logs | Command invoked with key params, skill created/deleted/imported, agent started/completed, settings changed, auth login/logout |
+| **debug** | Internal details useful only when troubleshooting | Full request/response payloads, intermediate state, cache hits/misses, branch logic taken, SQL queries |
+
+### Rules
+
+- **Rust commands:** Every `#[tauri::command]` function logs `info!` on entry (with key params) and `error!` on failure. Use `debug!` for intermediate steps. Never log secrets (API keys, tokens).
+- **Frontend:** Use `console.error()` for caught errors, `console.warn()` for unexpected states, `console.log()` for significant user actions (navigation, form submissions). Don't log render cycles or state reads.
+- **Format:** Include context — `info!("import_github_skills: importing {} skills from {}", count, repo)` not just `info!("importing skills")`.
+
 ## Code Style
 
 - TypeScript strict mode, no `any`
