@@ -157,6 +157,7 @@ pub(crate) async fn list_github_skills_inner(
         "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
         owner, repo, branch
     );
+    log::info!("[list_github_skills_inner] fetching tree from {}/{} branch={}", owner, repo, branch);
 
     let response = client
         .get(&tree_url)
@@ -213,6 +214,11 @@ pub(crate) async fn list_github_skills_inner(
             Some(entry_path.to_string())
         })
         .collect();
+
+    log::info!(
+        "[list_github_skills_inner] found {} SKILL.md files in {}/{}: {:?}",
+        skill_md_paths.len(), owner, repo, skill_md_paths
+    );
 
     if skill_md_paths.is_empty() {
         return Ok(Vec::new());

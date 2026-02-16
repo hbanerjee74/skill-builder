@@ -30,14 +30,19 @@ pub async fn list_team_repo_skills(
         (owner, repo, token)
     };
 
+    info!(
+        "[list_team_repo_skills] using repo {}/{}",
+        owner, repo
+    );
+
     let client = super::github_import::build_github_client(Some(&token));
 
     // Fetch the default branch (may be "main", "master", etc.)
     let default_branch =
         super::github_push::get_default_branch(&client, &token, &owner, &repo).await?;
     info!(
-        "[list_team_repo_skills] using default branch '{}'",
-        default_branch
+        "[list_team_repo_skills] using default branch '{}' for {}/{}",
+        default_branch, owner, repo
     );
 
     // List all skills via the shared helper
