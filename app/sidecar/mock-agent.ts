@@ -144,6 +144,7 @@ export async function runMockAgent(
   const content = fs.readFileSync(templatePath, "utf-8");
   const lines = content.split("\n").filter((line) => line.trim());
 
+  let emittedResult = false;
   for (const line of lines) {
     if (externalSignal?.aborted) {
       onMessage({
@@ -157,6 +158,7 @@ export async function runMockAgent(
         total_cost_usd: 0,
         usage: { input_tokens: 0, output_tokens: 0 },
       });
+      emittedResult = true;
       break;
     }
 
@@ -166,6 +168,9 @@ export async function runMockAgent(
       if (message.timestamp) {
         message.timestamp = Date.now();
       }
+      if (message.type === "result") {
+        emittedResult = true;
+      }
       onMessage(message);
       // Short delay between messages for realistic UI streaming
       await delay(100);
@@ -174,6 +179,21 @@ export async function runMockAgent(
         `[mock-agent] Skipping malformed JSONL line: ${line.substring(0, 100)}\n`,
       );
     }
+  }
+
+  // Safety net: always emit a result so the UI doesn't hang
+  if (!emittedResult) {
+    onMessage({
+      type: "result",
+      subtype: "success",
+      result: `Mock: ${stepTemplate} completed`,
+      is_error: false,
+      duration_ms: 100,
+      duration_api_ms: 0,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
   }
 }
 
