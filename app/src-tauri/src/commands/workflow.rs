@@ -529,6 +529,7 @@ const VALID_PHASES: &[&str] = &[
 
 #[tauri::command]
 pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, String> {
+    log::info!("[get_agent_prompt] skill_type={} phase={}", skill_type, phase);
     // Validate inputs against allowlists to prevent path traversal
     if !VALID_SKILL_TYPES.contains(&skill_type.as_str()) {
         return Err(format!("Invalid skill type: '{}'", skill_type));
@@ -776,6 +777,7 @@ pub async fn run_workflow_step(
     workspace_path: String,
     resume: bool,
 ) -> Result<String, String> {
+    log::info!("[run_workflow_step] skill={} step={} domain={} resume={}", skill_name, step_id, domain, resume);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
@@ -810,6 +812,7 @@ pub async fn package_skill(
     workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<PackageResult, String> {
+    log::info!("[package_skill] skill={}", skill_name);
     let skills_path = read_skills_path(&db);
 
     // Determine where the skill files (SKILL.md, references/) live:
@@ -950,7 +953,11 @@ pub fn get_workflow_state(
     skill_name: String,
     db: tauri::State<'_, Db>,
 ) -> Result<WorkflowStateResponse, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_workflow_state] skill={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_workflow_state] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let run = crate::db::get_workflow_run(&conn, &skill_name)?;
     let steps = crate::db::get_workflow_steps(&conn, &skill_name)?;
     Ok(WorkflowStateResponse { run, steps })
@@ -966,7 +973,11 @@ pub fn save_workflow_state(
     step_statuses: Vec<StepStatusUpdate>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[save_workflow_state] skill={} step={} status={}", skill_name, current_step, status);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[save_workflow_state] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status, &skill_type)?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
@@ -1037,6 +1048,7 @@ pub fn verify_step_output(
     step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<bool, String> {
+    log::info!("[verify_step_output] skill={} step={}", skill_name, step_id);
     let files = get_step_output_files(step_id);
     // Steps with no expected output files are always valid
     if files.is_empty() {
@@ -1113,6 +1125,7 @@ pub fn preview_step_reset(
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
+    log::info!("[preview_step_reset] skill={} from_step={}", skill_name, from_step_id);
     let skills_path = read_skills_path(&db);
     let skill_dir = Path::new(&workspace_path).join(&skill_name);
     let skill_output_dir = if let Some(ref sp) = skills_path {

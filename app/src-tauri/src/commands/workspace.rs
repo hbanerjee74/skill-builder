@@ -105,7 +105,11 @@ pub fn init_workspace(
 
 #[tauri::command]
 pub fn get_workspace_path(db: tauri::State<'_, Db>) -> Result<String, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[get_workspace_path]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_workspace_path] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     settings
         .workspace_path
@@ -117,7 +121,11 @@ pub fn clear_workspace(
     app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[clear_workspace]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[clear_workspace] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings.workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
@@ -154,7 +162,11 @@ pub fn clear_workspace(
 
 #[tauri::command]
 pub fn reconcile_startup(db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[reconcile_startup]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let workspace_path = settings
         .workspace_path
@@ -181,7 +193,11 @@ pub fn resolve_orphan(
     action: String,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[resolve_orphan] skill={} action={}", skill_name, action);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[resolve_orphan] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     let settings = crate::db::read_settings(&conn)?;
     let skills_path = settings.skills_path;
 
@@ -197,7 +213,11 @@ pub fn create_workflow_session(
     session_id: String,
     skill_name: String,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[create_workflow_session] session={} skill={}", session_id, skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[create_workflow_session] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::create_workflow_session(&conn, &session_id, &skill_name, instance.pid)
 }
 
@@ -206,7 +226,11 @@ pub fn end_workflow_session(
     db: tauri::State<'_, Db>,
     session_id: String,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    log::info!("[end_workflow_session] session={}", session_id);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[end_workflow_session] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     crate::db::end_workflow_session(&conn, &session_id)
 }
 
