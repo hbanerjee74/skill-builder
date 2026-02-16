@@ -11,7 +11,7 @@ set -euo pipefail
 # ============================================
 # Set your Anthropic API key here for API-dependent tests
 # Or set ANTHROPIC_API_KEY environment variable before running
-: "${ANTHROPIC_API_KEY:=${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY environment variable before running}}"
+: "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY environment variable before running}"
 export ANTHROPIC_API_KEY
 
 # Colors
