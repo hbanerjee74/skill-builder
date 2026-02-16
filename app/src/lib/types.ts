@@ -28,6 +28,8 @@ export interface AppSettings {
   github_user_login: string | null
   github_user_avatar: string | null
   github_user_email: string | null
+  remote_repo_owner: string | null
+  remote_repo_name: string | null
 }
 
 export interface DeviceFlowResponse {
@@ -173,5 +175,20 @@ export interface AvailableSkill {
   name: string
   domain: string | null
   description: string | null
+}
+
+export interface PushResult {
+  pr_url: string
+  pr_number: number
+  branch: string
+  version: number
+  is_new_pr: boolean
+}
+
+export interface SkillBuilderManifest {
+  version: string
+  creator: string | null
+  created_at: string
+  app_version: string
 }
 

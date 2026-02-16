@@ -31,6 +31,7 @@ vi.mock("@/lib/tauri", () => ({
   githubPollForToken: vi.fn(),
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
+  validateRemoteRepo: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("@/components/github-login-dialog", () => ({
@@ -53,6 +54,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
+  remote_repo_owner: null,
+  remote_repo_name: null,
 };
 
 const populatedSettings: AppSettings = {
@@ -68,6 +71,8 @@ const populatedSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
+  remote_repo_owner: null,
+  remote_repo_name: null,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {

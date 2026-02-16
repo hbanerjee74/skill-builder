@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,7 @@ import type { AppSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir } from "@/lib/tauri"
+import { getDataDir, validateRemoteRepo } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -45,6 +45,10 @@ export default function SettingsPage() {
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
+  const [remoteRepo, setRemoteRepo] = useState("")
+  const [validating, setValidating] = useState(false)
+  const [validationStatus, setValidationStatus] = useState<"valid" | "error" | null>(null)
+  const [validationError, setValidationError] = useState("")
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
@@ -63,6 +67,10 @@ export default function SettingsPage() {
             setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
+            if (result.remote_repo_owner && result.remote_repo_name) {
+              setRemoteRepo(`${result.remote_repo_owner}/${result.remote_repo_name}`)
+              setValidationStatus("valid") // Assume valid if previously saved
+            }
             setLoading(false)
           }
           return
@@ -103,6 +111,8 @@ export default function SettingsPage() {
     logLevel: string;
     extendedContext: boolean;
     extendedThinking: boolean;
+    remoteRepoOwner: string | null;
+    remoteRepoName: string | null;
   }>) => {
     const settings: AppSettings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
@@ -118,6 +128,8 @@ export default function SettingsPage() {
       github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
       github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
+      remote_repo_owner: overrides.remoteRepoOwner !== undefined ? overrides.remoteRepoOwner : (useSettingsStore.getState().remoteRepoOwner ?? null),
+      remote_repo_name: overrides.remoteRepoName !== undefined ? overrides.remoteRepoName : (useSettingsStore.getState().remoteRepoName ?? null),
     }
     try {
       await invoke("save_settings", { settings })
@@ -130,6 +142,8 @@ export default function SettingsPage() {
         logLevel: settings.log_level,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
+        remoteRepoOwner: settings.remote_repo_owner,
+        remoteRepoName: settings.remote_repo_name,
       })
       console.log("[settings] Settings saved")
       setSaved(true)
@@ -188,6 +202,28 @@ export default function SettingsPage() {
       toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setClearing(false)
+    }
+  }
+
+  const handleValidateRemoteRepo = async () => {
+    const parts = remoteRepo.split("/")
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+      setValidationStatus("error")
+      setValidationError("Invalid format. Use owner/repo")
+      return
+    }
+    const [owner, repo] = parts
+    setValidating(true)
+    setValidationStatus(null)
+    try {
+      await validateRemoteRepo(owner, repo)
+      setValidationStatus("valid")
+      autoSave({ remoteRepoOwner: owner, remoteRepoName: repo })
+    } catch (err) {
+      setValidationStatus("error")
+      setValidationError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setValidating(false)
     }
   }
 
@@ -337,6 +373,76 @@ export default function SettingsPage() {
                 <Github className="size-4" />
                 Sign in with GitHub
               </Button>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Remote Repository</CardTitle>
+          <CardDescription>
+            Configure a GitHub repository to push finished skills as pull requests.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {!isLoggedIn ? (
+            <p className="text-sm text-muted-foreground">
+              Sign in with GitHub above to configure remote push.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="remote-repo">Repository (owner/repo)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="remote-repo"
+                    placeholder="octocat/skills-library"
+                    value={remoteRepo}
+                    onChange={(e) => {
+                      setRemoteRepo(e.target.value)
+                      setValidationStatus(null)
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleValidateRemoteRepo}
+                    disabled={validating || !remoteRepo.includes("/")}
+                  >
+                    {validating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : null}
+                    Validate
+                  </Button>
+                </div>
+                {validationStatus === "valid" && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="size-4 text-green-600" />
+                    <span className="text-green-600">Connected with push access</span>
+                  </div>
+                )}
+                {validationStatus === "error" && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <AlertCircle className="size-4 text-red-600" />
+                    <span className="text-red-600">{validationError}</span>
+                  </div>
+                )}
+              </div>
+              {remoteRepo && validationStatus === "valid" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-fit text-muted-foreground"
+                  onClick={() => {
+                    setRemoteRepo("")
+                    setValidationStatus(null)
+                    autoSave({ remoteRepoOwner: null, remoteRepoName: null })
+                  }}
+                >
+                  Remove remote
+                </Button>
+              )}
             </>
           )}
         </CardContent>
