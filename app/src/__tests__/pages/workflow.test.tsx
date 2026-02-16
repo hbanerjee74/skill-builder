@@ -505,10 +505,10 @@ describe("WorkflowPage — human review file loading priority", () => {
   it("loads review content from skillsPath context directory first", async () => {
     // skillsPath has the file — should use it even though workspace also has content
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/research-entities.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve("# From skills context dir");
       }
-      if (path === "/test/workspace/test-skill/context/research-entities.md") {
+      if (path === "/test/workspace/test-skill/context/clarifications.md") {
         return Promise.resolve("# From workspace");
       }
       return Promise.reject("not found");
@@ -530,7 +530,7 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     // readFile should have been called with the skillsPath location first
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/research-entities.md"
+      "/test/skills/test-skill/context/clarifications.md"
     );
   });
 
@@ -540,7 +540,7 @@ describe("WorkflowPage — human review file loading priority", () => {
       if (path.startsWith("/test/skills/")) {
         return Promise.reject("not found");
       }
-      if (path === "/test/workspace/test-skill/context/research-entities.md") {
+      if (path === "/test/workspace/test-skill/context/clarifications.md") {
         return Promise.resolve("# From workspace");
       }
       return Promise.reject("not found");
@@ -568,7 +568,7 @@ describe("WorkflowPage — human review file loading priority", () => {
     });
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/workspace/test-skill/context/research-entities.md") {
+      if (path === "/test/workspace/test-skill/context/clarifications.md") {
         return Promise.resolve("# From workspace (no skillsPath)");
       }
       return Promise.reject("not found");
@@ -591,10 +591,10 @@ describe("WorkflowPage — human review file loading priority", () => {
     expect(readFileCalls.some((p) => p.includes("/test/skills/"))).toBe(false);
   });
 
-  it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
-    // Step 3 reviews clarifications.md — same priority should apply
+  it("uses skillsPath context dir for step 3 (clarifications-detailed.md) too", async () => {
+    // Step 3 reviews clarifications-detailed.md — same priority should apply
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
+      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
         return Promise.resolve("# Merged clarifications from skills dir");
       }
       return Promise.reject("not found");
@@ -614,7 +614,7 @@ describe("WorkflowPage — human review file loading priority", () => {
     });
 
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.md"
+      "/test/skills/test-skill/context/clarifications-detailed.md"
     );
   });
 });
@@ -664,7 +664,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/research-entities.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -696,7 +696,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const writePath = vi.mocked(writeFile).mock.calls[0][0];
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
-    expect(writePath).toBe("/test/workspace/test-skill/context/research-entities.md");
+    expect(writePath).toBe("/test/workspace/test-skill/context/clarifications.md");
     expect(savedContent).toBe(reviewContent);
 
     // Verify no auto-fill happened
@@ -792,7 +792,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/research-entities.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -828,7 +828,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   });
 
   it("step 3 human review also saves without auto-fill", async () => {
-    // Step 3 reviews clarifications.md — same behavior expected
+    // Step 3 reviews clarifications-detailed.md — same behavior expected
     const reviewContent = [
       "## Merged Question 1",
       "**Recommendation**: Normalize customer dimensions",
@@ -840,7 +840,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
+      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -869,7 +869,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     // Verify it saved to the correct filesystem path for step 3
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/workspace/test-skill/context/clarifications.md",
+      "/test/workspace/test-skill/context/clarifications-detailed.md",
       reviewContent,
     );
 

@@ -36,24 +36,24 @@ describe("PromptsPage", () => {
 
   it("loads prompt when both type and phase selected", async () => {
     const user = userEvent.setup();
-    const promptContent = "# Build Agent\n\nBuild instructions here.";
+    const promptContent = "# Generate Skill Agent\n\nGenerate instructions here.";
     mockInvokeCommands({ get_agent_prompt: promptContent });
 
     render(<PromptsPage />);
 
     await user.selectOptions(screen.getByLabelText("Skill Type"), "platform");
-    await user.selectOptions(screen.getByLabelText("Phase"), "build");
+    await user.selectOptions(screen.getByLabelText("Phase"), "generate-skill");
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("get_agent_prompt", {
         skillType: "platform",
-        phase: "build",
+        phase: "generate-skill",
       });
     });
 
     await waitFor(() => {
       expect(screen.getByTestId("markdown")).toHaveTextContent(
-        "# Build Agent"
+        "# Generate Skill Agent"
       );
     });
   });
@@ -66,33 +66,33 @@ describe("PromptsPage", () => {
     render(<PromptsPage />);
 
     await user.selectOptions(screen.getByLabelText("Skill Type"), "platform");
-    await user.selectOptions(screen.getByLabelText("Phase"), "build");
+    await user.selectOptions(screen.getByLabelText("Phase"), "generate-skill");
 
     expect(screen.getByText("Loading prompt...")).toBeInTheDocument();
   });
 
   it("clears old content when a dropdown value changes", async () => {
     const user = userEvent.setup();
-    const firstPrompt = "# Build Agent\n\nBuild instructions here.";
+    const firstPrompt = "# Generate Skill Agent\n\nGenerate instructions here.";
 
-    // First load: return build prompt
+    // First load: return generate-skill prompt
     mockInvokeCommands({ get_agent_prompt: firstPrompt });
 
     render(<PromptsPage />);
 
     await user.selectOptions(screen.getByLabelText("Skill Type"), "platform");
-    await user.selectOptions(screen.getByLabelText("Phase"), "build");
+    await user.selectOptions(screen.getByLabelText("Phase"), "generate-skill");
 
     // Wait for first prompt to render
     await waitFor(() => {
-      expect(screen.getByTestId("markdown")).toHaveTextContent("# Build Agent");
+      expect(screen.getByTestId("markdown")).toHaveTextContent("# Generate Skill Agent");
     });
 
     // Now make the next invoke hang so we can observe the loading state
     mockInvoke.mockImplementation(() => new Promise(() => {}));
 
     // Change the phase dropdown
-    await user.selectOptions(screen.getByLabelText("Phase"), "validate");
+    await user.selectOptions(screen.getByLabelText("Phase"), "validate-skill");
 
     // Old content should be cleared and loading state shown
     expect(screen.queryByTestId("markdown")).not.toBeInTheDocument();
@@ -108,7 +108,7 @@ describe("PromptsPage", () => {
     render(<PromptsPage />);
 
     await user.selectOptions(screen.getByLabelText("Skill Type"), "domain");
-    await user.selectOptions(screen.getByLabelText("Phase"), "validate");
+    await user.selectOptions(screen.getByLabelText("Phase"), "validate-skill");
 
     await waitFor(() => {
       expect(
