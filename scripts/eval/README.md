@@ -288,6 +288,8 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
 - **RESPONSE_MODEL** — Model for generating responses (default: `sonnet`)
 - **MAX_TOKENS** — Max tokens per response (default: `4096`)
 - **VERBOSE** — Set to `1` for verbose output (default: `0`)
+- **INPUT_COST_PER_MTOK** — Input cost per million tokens in USD (default: `3.00` for Sonnet)
+- **OUTPUT_COST_PER_MTOK** — Output cost per million tokens in USD (default: `15.00` for Sonnet)
 
 ### Example
 
@@ -482,12 +484,106 @@ Second prompt
 - Verify file exists: `ls -la path/to/SKILL.md`
 - Check for typos in path
 
+## Cost Tracking
+
+The harness tracks token usage and estimated API costs for every response generation.
+
+### How Token Counting Works
+
+1. **Primary method (API):** The harness uses `--output-format json` with the Claude CLI, which returns a JSON response containing both the result text and a `usage` object with `input_tokens` and `output_tokens`. This provides exact counts from the API.
+
+2. **Fallback method (approximation):** If the JSON output does not contain usage data or cannot be parsed, the harness falls back to a word-count approximation: `tokens = words x 1.33`. Input tokens are set to 0 in this case since they cannot be estimated from the output alone.
+
+Token source is tracked per-response (`api` or `approximation`) so you can assess data quality.
+
+### Skill Size Tracking
+
+Skill files are measured in approximate tokens using the same word-count heuristic: `skill_tokens = word_count x 1.33`. This appears in the report configuration and per-prompt cost data.
+
+### Cost Calculation
+
+Per-prompt cost is calculated as:
+
+```
+cost = (input_tokens * INPUT_COST_PER_MTOK / 1,000,000) + (output_tokens * OUTPUT_COST_PER_MTOK / 1,000,000)
+```
+
+Default pricing is for Claude Sonnet ($3/MTok input, $15/MTok output). Override with environment variables for other models:
+
+```bash
+# Example: Haiku pricing
+INPUT_COST_PER_MTOK=0.25 OUTPUT_COST_PER_MTOK=1.25 \
+  ./scripts/eval/eval-skill-quality.sh --baseline skill.md --prompts prompts.txt
+
+# Example: Opus pricing
+INPUT_COST_PER_MTOK=15.00 OUTPUT_COST_PER_MTOK=75.00 \
+  ./scripts/eval/eval-skill-quality.sh --baseline skill.md --prompts prompts.txt
+```
+
+### Cost Perspective
+
+Use `--perspective cost` to focus exclusively on cost metrics (skips quality judges):
+
+```bash
+# Cost-only evaluation (cheaper, skips judges)
+./scripts/eval/eval-skill-quality.sh \
+  --baseline skill.md \
+  --prompts prompts.txt \
+  --perspective cost
+
+# Full evaluation including cost analysis
+./scripts/eval/eval-skill-quality.sh \
+  --baseline skill.md \
+  --prompts prompts.txt \
+  --perspective all
+```
+
+When `--perspective cost` is selected:
+- Responses are still generated (needed to measure tokens)
+- Both quality judges are skipped (saves ~$0.40-0.80 per prompt)
+- The verdict is based on cost comparison instead of quality scores
+- The report focuses on token usage and cost breakdown
+
+### Cost Efficiency Metrics
+
+When quality scores are available (perspective is `quality` or `all`), the report includes:
+- **Cost per quality point** — `avg_cost / quality_score`, lower is better
+- **Token delta %** — percentage difference in total tokens between variants
+- **Cost delta %** — percentage difference in estimated cost
+
+### Cost Fields in JSON Output
+
+Each prompt includes per-variant cost data:
+
+```json
+"cost": {
+  "input_tokens": 1250,
+  "output_tokens": 850,
+  "total_tokens": 2100,
+  "skill_tokens": 450,
+  "estimated_cost_usd": 0.016500,
+  "cost_per_quality_point": 0.001031,
+  "token_source": "api"
+}
+```
+
+The averages section includes aggregate cost data:
+
+```json
+"cost": {
+  "token_delta_pct": -15.3,
+  "cost_delta_pct": -15.3,
+  "total_eval_cost_usd": 0.165000,
+  "winner": "A"
+}
+```
+
 ## Future Enhancements
 
 See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
 
 - **VD-535:** ~~Claude best practices compliance (7 dimensions instead of 4)~~ (done)
-- **VD-536:** Cost tracking (token usage, API costs, efficiency metrics)
+- **VD-536:** ~~Cost tracking (token usage, API costs, efficiency metrics)~~ (done)
 - **VD-537:** Performance tracking (latency, success rate, skill discovery time)
 - **VD-538:** Multi-perspective reporting and recommendations engine
 

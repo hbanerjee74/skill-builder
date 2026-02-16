@@ -12,11 +12,13 @@
 #   ./scripts/eval-skill-quality.sh --compare path/to/v1/SKILL.md path/to/v2/SKILL.md --prompts prompts.txt
 #
 # Environment variables:
-#   CLAUDE_BIN     Path to claude binary (default: claude)
-#   JUDGE_MODEL    Model for the judge LLM (default: sonnet)
-#   RESPONSE_MODEL Model for generating responses (default: sonnet)
-#   MAX_TOKENS     Max tokens per response (default: 4096)
-#   VERBOSE        Set to 1 for verbose output
+#   CLAUDE_BIN           Path to claude binary (default: claude)
+#   JUDGE_MODEL          Model for the judge LLM (default: sonnet)
+#   RESPONSE_MODEL       Model for generating responses (default: sonnet)
+#   MAX_TOKENS           Max tokens per response (default: 4096)
+#   VERBOSE              Set to 1 for verbose output
+#   INPUT_COST_PER_MTOK  Input cost per million tokens (default: 3.00 for Sonnet)
+#   OUTPUT_COST_PER_MTOK Output cost per million tokens (default: 15.00 for Sonnet)
 #
 # Cost estimate (based on actual runs with sonnet):
 #   ~$0.70-1.40 per prompt (2 response generations + 2 judge calls)
@@ -35,30 +37,36 @@
 #     "prompts_file": "path to prompts file",
 #     "total_prompts": int,
 #     "evaluated": int,
-#     "failed": int
+#     "failed": int,
+#     "pricing": {"input_cost_per_mtok": float, "output_cost_per_mtok": float},
+#     "skill_tokens_a": int,
+#     "skill_tokens_b": int|null
 #   },
 #   "prompts": [
 #     {
 #       "index": int,
 #       "label": "prompt preview text",
 #       "variant_a": {
-#         "actionability": int,
-#         "specificity": int,
-#         "domain_depth": int,
-#         "self_containment": int,
-#         "progressive_disclosure": int,
-#         "structure_organization": int,
-#         "claude_centric_design": int,
-#         "quality_total": int,
-#         "practices_total": int,
-#         "total": int
+#         "actionability": int, "specificity": int, "domain_depth": int,
+#         "self_containment": int, "progressive_disclosure": int,
+#         "structure_organization": int, "claude_centric_design": int,
+#         "quality_total": int, "practices_total": int, "total": int,
+#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int},
+#         "cost": {
+#           "input_tokens": int, "output_tokens": int, "total_tokens": int,
+#           "skill_tokens": int, "estimated_cost_usd": float,
+#           "cost_per_quality_point": float|null, "token_source": str
+#         }
 #       },
 #       "variant_b": {
-#         "actionability": int,
-#         "specificity": int,
-#         "domain_depth": int,
-#         "self_containment": int,
-#         "total": int
+#         "actionability": int, "specificity": int, "domain_depth": int,
+#         "self_containment": int, "total": int,
+#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int},
+#         "cost": {
+#           "input_tokens": int, "output_tokens": int, "total_tokens": int,
+#           "skill_tokens": int, "estimated_cost_usd": float,
+#           "cost_per_quality_point": float|null, "token_source": str
+#         }
 #       },
 #       "explanation": "quality judge explanation text",
 #       "claude_practices_explanation": "best practices judge explanation text"
@@ -66,26 +74,25 @@
 #   ],
 #   "averages": {
 #     "variant_a": {
-#       "actionability": float,
-#       "specificity": float,
-#       "domain_depth": float,
-#       "self_containment": float,
-#       "progressive_disclosure": float,
-#       "structure_organization": float,
-#       "claude_centric_design": float,
-#       "quality_total": float,
-#       "practices_total": float,
-#       "total": float
+#       "actionability": float, "specificity": float, "domain_depth": float,
+#       "self_containment": float, "progressive_disclosure": float,
+#       "structure_organization": float, "claude_centric_design": float,
+#       "quality_total": float, "practices_total": float, "total": float,
+#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float},
+#       "cost": {"avg_input_tokens": float, "avg_output_tokens": float,
+#                "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float}
 #     },
 #     "variant_b": {
-#       "actionability": float,
-#       "specificity": float,
-#       "domain_depth": float,
-#       "self_containment": float,
-#       "total": float
+#       "actionability": float, "specificity": float, "domain_depth": float,
+#       "self_containment": float, "total": float,
+#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float},
+#       "cost": {"avg_input_tokens": float, "avg_output_tokens": float,
+#                "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float}
 #     },
 #     "quality_delta": float,
-#     "delta": float
+#     "delta": float,
+#     "cost": {"token_delta_pct": float, "cost_delta_pct": float,
+#              "total_eval_cost_usd": float, "winner": "A|B|TIE"}
 #   },
 #   "verdict": {
 #     "winner": "A|B|TIE",
@@ -113,6 +120,8 @@ JUDGE_MODEL="${JUDGE_MODEL:-sonnet}"
 RESPONSE_MODEL="${RESPONSE_MODEL:-sonnet}"
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 VERBOSE="${VERBOSE:-0}"
+INPUT_COST_PER_MTOK="${INPUT_COST_PER_MTOK:-3.00}"    # $3/MTok for Sonnet
+OUTPUT_COST_PER_MTOK="${OUTPUT_COST_PER_MTOK:-15.00}"  # $15/MTok for Sonnet
 OUTPUT_FILE=""
 OUTPUT_FORMAT="md"
 DRY_RUN=0
@@ -150,10 +159,12 @@ Options:
   --help                 Show this help message
 
 Environment:
-  CLAUDE_BIN         Path to claude binary (default: claude)
-  JUDGE_MODEL        Model for the judge LLM (default: sonnet)
-  RESPONSE_MODEL     Model for generating responses (default: sonnet)
-  VERBOSE            Set to 1 for verbose output
+  CLAUDE_BIN             Path to claude binary (default: claude)
+  JUDGE_MODEL            Model for the judge LLM (default: sonnet)
+  RESPONSE_MODEL         Model for generating responses (default: sonnet)
+  VERBOSE                Set to 1 for verbose output
+  INPUT_COST_PER_MTOK    Input cost per million tokens (default: 3.00)
+  OUTPUT_COST_PER_MTOK   Output cost per million tokens (default: 15.00)
 
 Examples:
   # Baseline: does the skill help vs no skill?
@@ -366,33 +377,36 @@ else
   echo "  Skill A:     $SKILL_A" >&2
   echo "  Skill B:     $SKILL_B" >&2
 fi
+echo "  Perspective: $PERSPECTIVE" >&2
 echo "  Judge model: $JUDGE_MODEL" >&2
 echo "  Resp model:  $RESPONSE_MODEL" >&2
+echo "  Pricing:     \$${INPUT_COST_PER_MTOK}/MTok in, \$${OUTPUT_COST_PER_MTOK}/MTok out" >&2
 echo "  Timestamp:   $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >&2
 echo "============================================" >&2
 echo "" >&2
 
 # ---------- Generate a response via claude CLI ----------
-# Args: prompt_text skill_path(or "none") output_file perf_file
+# Args: prompt_text skill_path(or "none") output_file perf_file cost_file
 generate_response() {
   local prompt="$1"
   local skill_path="$2"
   local output_file="$3"
   local perf_file="$4"
+  local cost_file="$5"
 
-  local cmd_args=(-p --model "$RESPONSE_MODEL" --allowedTools "" --no-session-persistence)
+  local cmd_args=(-p --model "$RESPONSE_MODEL" --allowedTools "" --no-session-persistence --output-format json)
 
   # Use --plugin-dir to load skills via Claude Code's skill loading mechanism
   # This tests the actual skill loading behavior instead of appending to system prompt
   if [ "$skill_path" != "none" ]; then
     # Create a temporary plugin directory with the skill
-    local temp_plugin_dir="$TMPDIR_BASE/plugin_$(basename "$skill_path" .md)"
+    local temp_plugin_dir="$TMPDIR_BASE/plugin_$(basename "$skill_path" .md)_$$_$(date +%s%N)"
     mkdir -p "$temp_plugin_dir/.claude-plugin"
     mkdir -p "$temp_plugin_dir/skills/test-skill"
-    
+
     # Copy the skill file to the temp plugin directory
     cp "$skill_path" "$temp_plugin_dir/skills/test-skill/SKILL.md"
-    
+
     # Create a minimal plugin.json manifest
     cat > "$temp_plugin_dir/.claude-plugin/plugin.json" <<EOF
 {
@@ -402,7 +416,7 @@ generate_response() {
   "skills": "./skills/"
 }
 EOF
-    
+
     # Add --plugin-dir to load the skill
     cmd_args+=(--plugin-dir "$temp_plugin_dir")
   fi
@@ -411,64 +425,109 @@ EOF
   local attempt=1
   local backoff=2
   local total_retries=0
-  
+  local raw_json_file="$output_file.raw_json"
+
   while [ $attempt -le "$MAX_RETRIES" ]; do
     verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\" (attempt $attempt/$MAX_RETRIES)"
 
     # Measure latency
     local start_time=$(date +%s%3N)
-    
+
     # Use timeout command to enforce response timeout
-    if echo "$prompt" | timeout "${RESPONSE_TIMEOUT}s" env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$output_file" 2>"$output_file.stderr"; then
+    # --output-format json returns {"type":"result","result":"text","usage":{"input_tokens":N,"output_tokens":N},...}
+    if echo "$prompt" | timeout "${RESPONSE_TIMEOUT}s" env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$raw_json_file" 2>"$output_file.stderr"; then
       # Success - measure end time
       local end_time=$(date +%s%3N)
       local latency_ms=$((end_time - start_time))
-      
+
       # Estimate TTFT as 25% of total latency (since streaming not available)
       local ttft_ms=$((latency_ms / 4))
-      
+
+      # Parse JSON output: extract response text and token usage
+      python3 -c "
+import json, sys, math
+try:
+    data = json.loads(sys.stdin.read())
+    # Extract response text
+    result_text = data.get('result', '')
+    with open('$output_file', 'w') as f:
+        f.write(result_text)
+    # Extract token usage (best effort)
+    usage = data.get('usage', {})
+    input_tokens = usage.get('input_tokens', 0)
+    output_tokens = usage.get('output_tokens', 0)
+    if input_tokens == 0 and output_tokens == 0:
+        # Fallback: approximate from word count
+        word_count = len(result_text.split())
+        output_tokens = math.ceil(word_count * 1.33)
+        input_tokens = 0  # Cannot estimate input from output alone
+    with open('$cost_file', 'w') as f:
+        f.write(f'input_tokens={input_tokens}\n')
+        f.write(f'output_tokens={output_tokens}\n')
+        f.write(f'token_source=api\n')
+except Exception as e:
+    # Fallback: treat raw output as plain text
+    print(f'Warning: JSON parse failed ({e}), falling back to word count', file=sys.stderr)
+    with open('$raw_json_file') as rf:
+        raw = rf.read()
+    with open('$output_file', 'w') as f:
+        f.write(raw)
+    word_count = len(raw.split())
+    import math
+    output_tokens = math.ceil(word_count * 1.33)
+    with open('$cost_file', 'w') as f:
+        f.write(f'input_tokens=0\n')
+        f.write(f'output_tokens={output_tokens}\n')
+        f.write(f'token_source=approximation\n')
+" < "$raw_json_file"
+
       # Write performance metrics
       echo "latency_ms=$latency_ms" > "$perf_file"
       echo "ttft_ms=$ttft_ms" >> "$perf_file"
       echo "success=true" >> "$perf_file"
       echo "retries=$total_retries" >> "$perf_file"
-      
+
       return 0
     fi
-    
+
     local exit_code=$?
     total_retries=$((total_retries + 1))
-    
+
     # Check if timeout occurred (exit code 124)
     if [ $exit_code -eq 124 ]; then
       warn "Response generation timed out after ${RESPONSE_TIMEOUT}s (attempt $attempt/$MAX_RETRIES)"
     else
       warn "claude CLI returned non-zero (exit code: $exit_code, attempt $attempt/$MAX_RETRIES)"
     fi
-    
+
     # If this was the last attempt, fail
     if [ $attempt -eq "$MAX_RETRIES" ]; then
       err "Failed after $MAX_RETRIES attempts"
       if [ ! -s "$output_file" ]; then
         echo "(No response generated after $MAX_RETRIES attempts)" > "$output_file"
       fi
-      
+
       # Write failure metrics
       echo "latency_ms=0" > "$perf_file"
       echo "ttft_ms=0" >> "$perf_file"
       echo "success=false" >> "$perf_file"
       echo "retries=$total_retries" >> "$perf_file"
-      
+
+      # Write zero cost metrics
+      echo "input_tokens=0" > "$cost_file"
+      echo "output_tokens=0" >> "$cost_file"
+      echo "token_source=none" >> "$cost_file"
+
       return 1
     fi
-    
+
     # Exponential backoff before retry
     verbose "Waiting ${backoff}s before retry..."
     sleep $backoff
     backoff=$((backoff * 2))
     attempt=$((attempt + 1))
   done
-  
+
   return 1
 }
 
@@ -627,6 +686,21 @@ FAILED=0
 TOTAL_A_LATENCY=0; TOTAL_A_TTFT=0; TOTAL_A_RETRIES=0; TOTAL_A_SUCCESS=0
 TOTAL_B_LATENCY=0; TOTAL_B_TTFT=0; TOTAL_B_RETRIES=0; TOTAL_B_SUCCESS=0
 
+# Cost accumulators
+TOTAL_INPUT_TOKENS_A=0; TOTAL_OUTPUT_TOKENS_A=0
+TOTAL_INPUT_TOKENS_B=0; TOTAL_OUTPUT_TOKENS_B=0
+TOTAL_COST_A="0.0"; TOTAL_COST_B="0.0"
+
+# Skill token counts (approximate: words * 1.33)
+skill_a_words=$(wc -w < "$SKILL_A" | tr -d ' ')
+SKILL_TOKENS_A=$(python3 -c "import math; print(math.ceil(${skill_a_words} * 1.33))")
+if [ "$MODE" = "compare" ]; then
+  skill_b_words=$(wc -w < "$SKILL_B" | tr -d ' ')
+  SKILL_TOKENS_B=$(python3 -c "import math; print(math.ceil(${skill_b_words} * 1.33))")
+else
+  SKILL_TOKENS_B=0
+fi
+
 # Store per-prompt results for the report
 declare -a PROMPT_LABELS
 declare -a PROMPT_SCORES_A
@@ -636,6 +710,8 @@ declare -a PROMPT_PERF_A
 declare -a PROMPT_PERF_B
 declare -a PROMPT_PRACTICES_SCORES
 declare -a PROMPT_PRACTICES_EXPLANATIONS
+declare -a PROMPT_COST_A
+declare -a PROMPT_COST_B
 
 for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   prompt_file="$TMPDIR_BASE/prompt_${i}.txt"
@@ -649,8 +725,9 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   # Generate response A (with skill)
   resp_a_file="$TMPDIR_BASE/response_a_${i}.txt"
   perf_a_file="$TMPDIR_BASE/perf_a_${i}.txt"
+  cost_a_file="$TMPDIR_BASE/cost_a_${i}.txt"
   log "Generating ${LABEL_A} response..."
-  if ! generate_response "$prompt_text" "$SKILL_A" "$resp_a_file" "$perf_a_file"; then
+  if ! generate_response "$prompt_text" "$SKILL_A" "$resp_a_file" "$perf_a_file" "$cost_a_file"; then
     warn "Failed to generate ${LABEL_A} response for prompt $((i + 1)), skipping"
     FAILED=$((FAILED + 1))
     continue
@@ -660,42 +737,66 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   # Generate response B (without skill or with skill B)
   resp_b_file="$TMPDIR_BASE/response_b_${i}.txt"
   perf_b_file="$TMPDIR_BASE/perf_b_${i}.txt"
+  cost_b_file="$TMPDIR_BASE/cost_b_${i}.txt"
   if [ "$MODE" = "baseline" ]; then
     skill_b_path="none"
   else
     skill_b_path="$SKILL_B"
   fi
   log "Generating ${LABEL_B} response..."
-  if ! generate_response "$prompt_text" "$skill_b_path" "$resp_b_file" "$perf_b_file"; then
+  if ! generate_response "$prompt_text" "$skill_b_path" "$resp_b_file" "$perf_b_file" "$cost_b_file"; then
     warn "Failed to generate ${LABEL_B} response for prompt $((i + 1)), skipping"
     FAILED=$((FAILED + 1))
     continue
   fi
   verbose "Response B: $(wc -c < "$resp_b_file") bytes"
-  
+
   # Read performance metrics
   source "$perf_a_file"
   a_latency=$latency_ms
   a_ttft=$ttft_ms
   a_success=$success
   a_retries=$retries
-  
+
   source "$perf_b_file"
   b_latency=$latency_ms
   b_ttft=$ttft_ms
   b_success=$success
   b_retries=$retries
-  
+
+  # Read cost metrics
+  source "$cost_a_file"
+  a_input_tokens=$input_tokens
+  a_output_tokens=$output_tokens
+  a_token_source=$token_source
+
+  source "$cost_b_file"
+  b_input_tokens=$input_tokens
+  b_output_tokens=$output_tokens
+  b_token_source=$token_source
+
+  # Calculate per-prompt costs using Python for floating-point
+  a_prompt_cost=$(python3 -c "print(f'{($a_input_tokens * $INPUT_COST_PER_MTOK / 1000000) + ($a_output_tokens * $OUTPUT_COST_PER_MTOK / 1000000):.6f}')")
+  b_prompt_cost=$(python3 -c "print(f'{($b_input_tokens * $INPUT_COST_PER_MTOK / 1000000) + ($b_output_tokens * $OUTPUT_COST_PER_MTOK / 1000000):.6f}')")
+
   # Accumulate performance metrics
   TOTAL_A_LATENCY=$((TOTAL_A_LATENCY + a_latency))
   TOTAL_A_TTFT=$((TOTAL_A_TTFT + a_ttft))
   TOTAL_A_RETRIES=$((TOTAL_A_RETRIES + a_retries))
   [ "$a_success" = "true" ] && TOTAL_A_SUCCESS=$((TOTAL_A_SUCCESS + 1))
-  
+
   TOTAL_B_LATENCY=$((TOTAL_B_LATENCY + b_latency))
   TOTAL_B_TTFT=$((TOTAL_B_TTFT + b_ttft))
   TOTAL_B_RETRIES=$((TOTAL_B_RETRIES + b_retries))
   [ "$b_success" = "true" ] && TOTAL_B_SUCCESS=$((TOTAL_B_SUCCESS + 1))
+
+  # Accumulate cost metrics
+  TOTAL_INPUT_TOKENS_A=$((TOTAL_INPUT_TOKENS_A + a_input_tokens))
+  TOTAL_OUTPUT_TOKENS_A=$((TOTAL_OUTPUT_TOKENS_A + a_output_tokens))
+  TOTAL_INPUT_TOKENS_B=$((TOTAL_INPUT_TOKENS_B + b_input_tokens))
+  TOTAL_OUTPUT_TOKENS_B=$((TOTAL_OUTPUT_TOKENS_B + b_output_tokens))
+  TOTAL_COST_A=$(python3 -c "print(f'{$TOTAL_COST_A + $a_prompt_cost:.6f}')")
+  TOTAL_COST_B=$(python3 -c "print(f'{$TOTAL_COST_B + $b_prompt_cost:.6f}')")
 
   # Judge
   response_a=$(cat "$resp_a_file")
@@ -926,6 +1027,8 @@ except Exception as e:
   PROMPT_PERF_B[$i]="${b_latency}|${b_ttft}|${b_success}|${b_retries}"
   PROMPT_PRACTICES_SCORES[$i]="${a_progressive}|${a_structure}|${a_claude_centric}"
   PROMPT_PRACTICES_EXPLANATIONS[$i]="$practices_explanation"
+  PROMPT_COST_A[$i]="${a_input_tokens}|${a_output_tokens}|${a_prompt_cost}|${a_token_source}"
+  PROMPT_COST_B[$i]="${b_input_tokens}|${b_output_tokens}|${b_prompt_cost}|${b_token_source}"
 
   # Print inline result
   a_quality=$((a_action + a_specific + a_depth + a_self))
@@ -934,8 +1037,31 @@ except Exception as e:
   a_total=$((a_quality + a_practices))
   b_total=$((b_quality))
 
-  if [ "$PERSPECTIVE" = "performance" ] || [ "$PERSPECTIVE" = "cost" ]; then
-    # Performance/cost-focused output
+  if [ "$PERSPECTIVE" = "cost" ]; then
+    # Cost-focused output
+    a_total_tokens=$((a_input_tokens + a_output_tokens))
+    b_total_tokens=$((b_input_tokens + b_output_tokens))
+    echo "  ${LABEL_A}: ${a_input_tokens} in / ${a_output_tokens} out = ${a_total_tokens} tokens (\$${a_prompt_cost})" >&2
+    echo "  ${LABEL_B}: ${b_input_tokens} in / ${b_output_tokens} out = ${b_total_tokens} tokens (\$${b_prompt_cost})" >&2
+    cost_winner=$(python3 -c "
+a = $a_prompt_cost
+b = $b_prompt_cost
+if abs(a - b) < 0.0001:
+    print('TIE')
+elif a < b:
+    print('A')
+else:
+    print('B')
+")
+    if [ "$cost_winner" = "A" ]; then
+      winner="${GREEN}${LABEL_A} cheaper${RESET}"
+    elif [ "$cost_winner" = "B" ]; then
+      winner="${GREEN}${LABEL_B} cheaper${RESET}"
+    else
+      winner="${YELLOW}Tie${RESET}"
+    fi
+  elif [ "$PERSPECTIVE" = "performance" ]; then
+    # Performance-focused output
     echo "  ${LABEL_A}: ${a_latency}ms latency, ${a_ttft}ms TTFT, ${a_retries} retries" >&2
     echo "  ${LABEL_B}: ${b_latency}ms latency, ${b_ttft}ms TTFT, ${b_retries} retries" >&2
     if [ "$a_latency" -lt "$b_latency" ]; then
@@ -946,7 +1072,7 @@ except Exception as e:
       winner="${YELLOW}Tie${RESET}"
     fi
   else
-    # Quality-focused output
+    # Quality-focused output (quality or all)
     if [ "$a_quality" -gt "$b_quality" ]; then
       winner="${GREEN}${LABEL_A} wins${RESET}"
     elif [ "$b_quality" -gt "$a_quality" ]; then
@@ -958,6 +1084,11 @@ except Exception as e:
     echo "  ${LABEL_B} quality: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_quality}/20" >&2
     echo "  ${LABEL_A} practices: ${a_progressive}/${a_structure}/${a_claude_centric} = ${a_practices}/15" >&2
     echo "  ${LABEL_A} combined: ${a_total}/35" >&2
+    # Also show cost summary for "all" perspective
+    if [ "$PERSPECTIVE" = "all" ]; then
+      echo "  ${LABEL_A} cost: \$${a_prompt_cost} (${a_input_tokens} in / ${a_output_tokens} out)" >&2
+      echo "  ${LABEL_B} cost: \$${b_prompt_cost} (${b_input_tokens} in / ${b_output_tokens} out)" >&2
+    fi
   fi
   echo "  Result: ${winner}" >&2
   echo "" >&2
@@ -1018,11 +1149,49 @@ avg_b_latency=$(compute_avg $TOTAL_B_LATENCY $EVALUATED)
 avg_b_ttft=$(compute_avg $TOTAL_B_TTFT $EVALUATED)
 avg_b_success_rate=$(python3 -c "print(f'{($TOTAL_B_SUCCESS * 100.0) / $EVALUATED:.1f}')")
 
+# Compute cost averages
+avg_input_tokens_a=$(compute_avg $TOTAL_INPUT_TOKENS_A $EVALUATED)
+avg_output_tokens_a=$(compute_avg $TOTAL_OUTPUT_TOKENS_A $EVALUATED)
+avg_cost_a=$(python3 -c "print(f'{$TOTAL_COST_A / $EVALUATED:.6f}')")
+total_tokens_a=$((TOTAL_INPUT_TOKENS_A + TOTAL_OUTPUT_TOKENS_A))
+avg_total_tokens_a=$(compute_avg $total_tokens_a $EVALUATED)
+
+avg_input_tokens_b=$(compute_avg $TOTAL_INPUT_TOKENS_B $EVALUATED)
+avg_output_tokens_b=$(compute_avg $TOTAL_OUTPUT_TOKENS_B $EVALUATED)
+avg_cost_b=$(python3 -c "print(f'{$TOTAL_COST_B / $EVALUATED:.6f}')")
+total_tokens_b=$((TOTAL_INPUT_TOKENS_B + TOTAL_OUTPUT_TOKENS_B))
+avg_total_tokens_b=$(compute_avg $total_tokens_b $EVALUATED)
+
+# Cost deltas (percentage difference)
+cost_delta_pct=$(python3 -c "
+a = $TOTAL_COST_A
+b = $TOTAL_COST_B
+if b > 0:
+    print(f'{((a - b) / b) * 100:+.1f}')
+elif a > 0:
+    print('+100.0')
+else:
+    print('+0.0')
+")
+token_delta_pct=$(python3 -c "
+a = $total_tokens_a
+b = $total_tokens_b
+if b > 0:
+    print(f'{((a - b) / b) * 100:+.1f}')
+elif a > 0:
+    print('+100.0')
+else:
+    print('+0.0')
+")
+
+# Total evaluation cost (both variants combined)
+total_eval_cost=$(python3 -c "print(f'{$TOTAL_COST_A + $TOTAL_COST_B:.6f}')")
+
 # ---------- Generate JSON report ----------
 generate_json_report() {
   local timestamp
   timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-  
+
   # Use Python to generate valid JSON (handles escaping, no line wrapping issues)
   python3 << 'PYTHON_EOF'
 import json
@@ -1080,6 +1249,27 @@ avg_b_latency = float(os.environ.get('avg_b_latency', '0'))
 avg_b_ttft = float(os.environ.get('avg_b_ttft', '0'))
 avg_b_success_rate = float(os.environ.get('avg_b_success_rate', '0'))
 
+# Cost data
+skill_tokens_a = int(os.environ.get('SKILL_TOKENS_A', '0'))
+skill_tokens_b = int(os.environ.get('SKILL_TOKENS_B', '0'))
+input_cost_per_mtok = float(os.environ.get('INPUT_COST_PER_MTOK', '3.0'))
+output_cost_per_mtok = float(os.environ.get('OUTPUT_COST_PER_MTOK', '15.0'))
+total_cost_a = float(os.environ.get('TOTAL_COST_A', '0'))
+total_cost_b = float(os.environ.get('TOTAL_COST_B', '0'))
+total_eval_cost = float(os.environ.get('total_eval_cost', '0'))
+avg_cost_a = float(os.environ.get('avg_cost_a', '0'))
+avg_cost_b = float(os.environ.get('avg_cost_b', '0'))
+avg_input_tokens_a = float(os.environ.get('avg_input_tokens_a', '0'))
+avg_output_tokens_a = float(os.environ.get('avg_output_tokens_a', '0'))
+avg_total_tokens_a = float(os.environ.get('avg_total_tokens_a', '0'))
+avg_input_tokens_b = float(os.environ.get('avg_input_tokens_b', '0'))
+avg_output_tokens_b = float(os.environ.get('avg_output_tokens_b', '0'))
+avg_total_tokens_b = float(os.environ.get('avg_total_tokens_b', '0'))
+token_delta_pct_str = os.environ.get('token_delta_pct', '0')
+token_delta_pct = float(token_delta_pct_str.replace('+', ''))
+cost_delta_pct_str = os.environ.get('cost_delta_pct', '0')
+cost_delta_pct = float(cost_delta_pct_str.replace('+', ''))
+
 # Winner
 winner_result = os.environ.get('winner_result', '')
 verdict_message = os.environ.get('verdict_message', '')
@@ -1095,6 +1285,8 @@ for i in range(num_prompts):
     perf_b = os.environ.get(f'PROMPT_PERF_B_{i}', '')
     practices = os.environ.get(f'PROMPT_PRACTICES_{i}', '')
     practices_expl = os.environ.get(f'PROMPT_PRACTICES_EXPL_{i}', '')
+    cost_a_str = os.environ.get(f'PROMPT_COST_A_{i}', '')
+    cost_b_str = os.environ.get(f'PROMPT_COST_B_{i}', '')
 
     if not scores_a:
         continue
@@ -1113,9 +1305,30 @@ for i in range(num_prompts):
     a_lat, a_ttft, a_succ, a_ret = perf_a.split('|')
     b_lat, b_ttft, b_succ, b_ret = perf_b.split('|')
 
+    # Parse cost metrics
+    if cost_a_str:
+        ca_parts = cost_a_str.split('|')
+        ca_in, ca_out = int(ca_parts[0]), int(ca_parts[1])
+        ca_cost = float(ca_parts[2])
+        ca_src = ca_parts[3] if len(ca_parts) > 3 else 'unknown'
+    else:
+        ca_in, ca_out, ca_cost, ca_src = 0, 0, 0.0, 'none'
+
+    if cost_b_str:
+        cb_parts = cost_b_str.split('|')
+        cb_in, cb_out = int(cb_parts[0]), int(cb_parts[1])
+        cb_cost = float(cb_parts[2])
+        cb_src = cb_parts[3] if len(cb_parts) > 3 else 'unknown'
+    else:
+        cb_in, cb_out, cb_cost, cb_src = 0, 0, 0.0, 'none'
+
     a_quality_total = aa + as_ + ad + asc
     a_practices_total = ap + ast + acc
     a_combined_total = a_quality_total + a_practices_total
+
+    # Cost per quality point
+    a_cost_per_qp = ca_cost / a_quality_total if a_quality_total > 0 else None
+    b_cost_per_qp = cb_cost / (ba + bs + bd + bsc) if (ba + bs + bd + bsc) > 0 else None
 
     prompt_data = {
         "index": i + 1,
@@ -1136,6 +1349,15 @@ for i in range(num_prompts):
                 "ttft_ms": int(a_ttft),
                 "success": a_succ == "true",
                 "retries": int(a_ret)
+            },
+            "cost": {
+                "input_tokens": ca_in,
+                "output_tokens": ca_out,
+                "total_tokens": ca_in + ca_out,
+                "skill_tokens": skill_tokens_a,
+                "estimated_cost_usd": round(ca_cost, 6),
+                "cost_per_quality_point": round(a_cost_per_qp, 6) if a_cost_per_qp is not None else None,
+                "token_source": ca_src
             }
         },
         "variant_b": {
@@ -1149,6 +1371,15 @@ for i in range(num_prompts):
                 "ttft_ms": int(b_ttft),
                 "success": b_succ == "true",
                 "retries": int(b_ret)
+            },
+            "cost": {
+                "input_tokens": cb_in,
+                "output_tokens": cb_out,
+                "total_tokens": cb_in + cb_out,
+                "skill_tokens": skill_tokens_b if mode == "compare" else 0,
+                "estimated_cost_usd": round(cb_cost, 6),
+                "cost_per_quality_point": round(b_cost_per_qp, 6) if b_cost_per_qp is not None else None,
+                "token_source": cb_src
             }
         },
         "explanation": explanation,
@@ -1156,6 +1387,20 @@ for i in range(num_prompts):
     }
 
     prompts.append(prompt_data)
+
+# Determine cost winner
+if total_cost_b > 0:
+    cost_diff_pct = abs(total_cost_a - total_cost_b) / max(total_cost_a, total_cost_b, 0.0001) * 100
+    if cost_diff_pct < 5:
+        cost_winner = "TIE"
+    elif total_cost_a < total_cost_b:
+        cost_winner = "A"
+    else:
+        cost_winner = "B"
+elif total_cost_a > 0:
+    cost_winner = "B"
+else:
+    cost_winner = "TIE"
 
 # Build final JSON structure
 result = {
@@ -1170,7 +1415,13 @@ result = {
         "prompts_file": prompts_file,
         "total_prompts": num_prompts,
         "evaluated": evaluated,
-        "failed": failed
+        "failed": failed,
+        "pricing": {
+            "input_cost_per_mtok": input_cost_per_mtok,
+            "output_cost_per_mtok": output_cost_per_mtok
+        },
+        "skill_tokens_a": skill_tokens_a,
+        "skill_tokens_b": skill_tokens_b if mode == "compare" else None
     },
     "prompts": prompts,
     "averages": {
@@ -1189,6 +1440,13 @@ result = {
                 "latency_ms": avg_a_latency,
                 "ttft_ms": avg_a_ttft,
                 "success_rate": avg_a_success_rate
+            },
+            "cost": {
+                "avg_input_tokens": avg_input_tokens_a,
+                "avg_output_tokens": avg_output_tokens_a,
+                "avg_total_tokens": avg_total_tokens_a,
+                "avg_cost_usd": round(avg_cost_a, 6),
+                "total_cost_usd": round(total_cost_a, 6)
             }
         },
         "variant_b": {
@@ -1201,10 +1459,23 @@ result = {
                 "latency_ms": avg_b_latency,
                 "ttft_ms": avg_b_ttft,
                 "success_rate": avg_b_success_rate
+            },
+            "cost": {
+                "avg_input_tokens": avg_input_tokens_b,
+                "avg_output_tokens": avg_output_tokens_b,
+                "avg_total_tokens": avg_total_tokens_b,
+                "avg_cost_usd": round(avg_cost_b, 6),
+                "total_cost_usd": round(total_cost_b, 6)
             }
         },
         "quality_delta": quality_delta,
-        "delta": delta
+        "delta": delta,
+        "cost": {
+            "token_delta_pct": token_delta_pct,
+            "cost_delta_pct": cost_delta_pct,
+            "total_eval_cost_usd": round(total_eval_cost, 6),
+            "winner": cost_winner
+        }
     },
     "verdict": {
         "winner": winner_result,
@@ -1228,17 +1499,21 @@ echo ""
 echo "## Configuration"
 echo ""
 echo "- **Mode:** $MODE"
+echo "- **Perspective:** $PERSPECTIVE"
 echo "- **Prompts:** $PROMPTS_FILE ($NUM_PROMPTS total, $EVALUATED evaluated, $FAILED failed)"
 if [ "$MODE" = "baseline" ]; then
-  echo "- **Skill:** \`$SKILL_A\`"
+  echo "- **Skill:** \`$SKILL_A\` (~${SKILL_TOKENS_A} tokens)"
 else
-  echo "- **Skill A:** \`$SKILL_A\`"
-  echo "- **Skill B:** \`$SKILL_B\`"
+  echo "- **Skill A:** \`$SKILL_A\` (~${SKILL_TOKENS_A} tokens)"
+  echo "- **Skill B:** \`$SKILL_B\` (~${SKILL_TOKENS_B} tokens)"
 fi
 echo "- **Judge model:** $JUDGE_MODEL"
 echo "- **Response model:** $RESPONSE_MODEL"
+echo "- **Pricing:** \$${INPUT_COST_PER_MTOK}/MTok input, \$${OUTPUT_COST_PER_MTOK}/MTok output"
 echo ""
 
+# Per-Prompt Results (skip for cost-only perspective)
+if [ "$PERSPECTIVE" != "cost" ]; then
 echo "## Per-Prompt Results"
 echo ""
 
@@ -1335,12 +1610,121 @@ echo "| Quality (4 dims) | $quality_a/20 | $quality_b/20 |"
 echo "| Practices (3 dims) | $practices_a/15 | N/A |"
 echo "| **Combined** | **$total_a/35** | **$total_b/20** |"
 echo ""
+fi  # end skip for cost-only
+
+# Cost Analysis section (shown for cost, quality, all)
+if [ "$PERSPECTIVE" = "cost" ] || [ "$PERSPECTIVE" = "all" ] || [ "$PERSPECTIVE" = "quality" ]; then
+echo "## Cost Analysis"
+echo ""
+
+echo "### Skill Size"
+echo ""
+echo "| Skill | Approx. Tokens |"
+echo "|---|---|"
+echo "| ${LABEL_A} | ~${SKILL_TOKENS_A} |"
+if [ "$MODE" = "compare" ]; then
+  echo "| ${LABEL_B} | ~${SKILL_TOKENS_B} |"
+fi
+echo ""
+
+echo "### Per-Prompt Token Usage"
+echo ""
+echo "| Prompt | ${LABEL_A} In | ${LABEL_A} Out | ${LABEL_A} Total | ${LABEL_A} Cost | ${LABEL_B} In | ${LABEL_B} Out | ${LABEL_B} Total | ${LABEL_B} Cost |"
+echo "|---|---|---|---|---|---|---|---|---|"
+
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  if [ -z "${PROMPT_COST_A[$i]:-}" ]; then
+    continue
+  fi
+
+  IFS='|' read -r ca_in ca_out ca_cost ca_src <<< "${PROMPT_COST_A[$i]}"
+  IFS='|' read -r cb_in cb_out cb_cost cb_src <<< "${PROMPT_COST_B[$i]}"
+  ca_total=$((ca_in + ca_out))
+  cb_total=$((cb_in + cb_out))
+
+  echo "| $((i + 1)) | ${ca_in} | ${ca_out} | ${ca_total} | \$${ca_cost} | ${cb_in} | ${cb_out} | ${cb_total} | \$${cb_cost} |"
+done
+
+echo ""
+
+echo "### Cost Summary"
+echo ""
+echo "| Metric | ${LABEL_A} | ${LABEL_B} | Delta |"
+echo "|---|---|---|---|"
+echo "| Avg input tokens | ${avg_input_tokens_a} | ${avg_input_tokens_b} | - |"
+echo "| Avg output tokens | ${avg_output_tokens_a} | ${avg_output_tokens_b} | - |"
+echo "| Avg total tokens | ${avg_total_tokens_a} | ${avg_total_tokens_b} | ${token_delta_pct}% |"
+echo "| Avg cost per prompt | \$${avg_cost_a} | \$${avg_cost_b} | ${cost_delta_pct}% |"
+echo "| **Total cost** | **\$${TOTAL_COST_A}** | **\$${TOTAL_COST_B}** | - |"
+echo "| **Total eval cost** | **\$${total_eval_cost}** | - | - |"
+echo ""
+
+# Cost-per-quality-point (only if quality scores available)
+if [ "$PERSPECTIVE" != "cost" ]; then
+  cost_per_quality_a=$(python3 -c "
+q = $quality_a
+c = float('$avg_cost_a')
+if q > 0:
+    print(f'{c / q:.6f}')
+else:
+    print('N/A')
+")
+  cost_per_quality_b=$(python3 -c "
+q = $quality_b
+c = float('$avg_cost_b')
+if q > 0:
+    print(f'{c / q:.6f}')
+else:
+    print('N/A')
+")
+  echo "### Cost Efficiency"
+  echo ""
+  echo "| Metric | ${LABEL_A} | ${LABEL_B} |"
+  echo "|---|---|---|"
+  echo "| Cost per quality point | \$${cost_per_quality_a} | \$${cost_per_quality_b} |"
+  echo ""
+fi
+fi  # end cost analysis
 
 echo "## Verdict"
 echo ""
 
 # Determine winner
-winner_result=$(python3 -c "
+if [ "$PERSPECTIVE" = "cost" ]; then
+  # Cost-based verdict
+  winner_result=$(python3 -c "
+a = float('$TOTAL_COST_A')
+b = float('$TOTAL_COST_B')
+diff_pct = abs(a - b) / max(a, b, 0.0001) * 100
+if diff_pct < 5:
+    print('TIE')
+elif a < b:
+    print('A')
+else:
+    print('B')
+")
+  case "$winner_result" in
+    A)
+      if [ "$MODE" = "baseline" ]; then
+        echo "${GREEN}${BOLD}The skill-loaded variant is ${cost_delta_pct}% cheaper.${RESET}"
+      else
+        echo "${GREEN}${BOLD}Skill A is cheaper by ${cost_delta_pct}%.${RESET}"
+      fi
+      ;;
+    B)
+      if [ "$MODE" = "baseline" ]; then
+        echo "${GREEN}${BOLD}The baseline (no skill) is cheaper by ${cost_delta_pct}%.${RESET}"
+      else
+        echo "${GREEN}${BOLD}Skill B is cheaper by ${cost_delta_pct}%.${RESET}"
+      fi
+      ;;
+    TIE)
+      echo "${YELLOW}${BOLD}No significant cost difference between variants (${cost_delta_pct}%).${RESET}"
+      ;;
+  esac
+else
+  # Quality-based verdict
+  winner_result=$(python3 -c "
 a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
 b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
 diff = a - b
@@ -1352,26 +1736,27 @@ else:
     print('B')
 ")
 
-case "$winner_result" in
-  A)
-    if [ "$MODE" = "baseline" ]; then
-      echo "${GREEN}${BOLD}The skill improves output quality by $delta points on average.${RESET}"
-    else
-      echo "${GREEN}${BOLD}Skill A wins by $delta points on average.${RESET}"
-    fi
-    ;;
-  B)
-    if [ "$MODE" = "baseline" ]; then
-      echo "${RED}${BOLD}The skill does NOT improve output quality ($delta points).${RESET}"
-      echo "Consider revising the skill content."
-    else
-      echo "${GREEN}${BOLD}Skill B wins by $delta points on average.${RESET}"
-    fi
-    ;;
-  TIE)
-    echo "${YELLOW}${BOLD}No significant difference between variants (delta: $delta).${RESET}"
-    ;;
-esac
+  case "$winner_result" in
+    A)
+      if [ "$MODE" = "baseline" ]; then
+        echo "${GREEN}${BOLD}The skill improves output quality by $delta points on average.${RESET}"
+      else
+        echo "${GREEN}${BOLD}Skill A wins by $delta points on average.${RESET}"
+      fi
+      ;;
+    B)
+      if [ "$MODE" = "baseline" ]; then
+        echo "${RED}${BOLD}The skill does NOT improve output quality ($delta points).${RESET}"
+        echo "Consider revising the skill content."
+      else
+        echo "${GREEN}${BOLD}Skill B wins by $delta points on average.${RESET}"
+      fi
+      ;;
+    TIE)
+      echo "${YELLOW}${BOLD}No significant difference between variants (delta: $delta).${RESET}"
+      ;;
+  esac
+fi
 
 echo ""
 echo "---"
@@ -1394,9 +1779,29 @@ if [ "$OUTPUT_FORMAT" = "json" ]; then
   export quality_a quality_b quality_delta practices_a
   export avg_a_latency avg_a_ttft avg_a_success_rate
   export avg_b_latency avg_b_ttft avg_b_success_rate
-  
-  # Determine winner
-  winner_result=$(python3 -c "
+  # Cost variables
+  export SKILL_TOKENS_A SKILL_TOKENS_B INPUT_COST_PER_MTOK OUTPUT_COST_PER_MTOK
+  export TOTAL_COST_A TOTAL_COST_B total_eval_cost
+  export avg_cost_a avg_cost_b
+  export avg_input_tokens_a avg_output_tokens_a avg_total_tokens_a
+  export avg_input_tokens_b avg_output_tokens_b avg_total_tokens_b
+  export token_delta_pct cost_delta_pct
+
+  # Determine winner (quality-based for non-cost, cost-based for cost perspective)
+  if [ "$PERSPECTIVE" = "cost" ]; then
+    winner_result=$(python3 -c "
+a = float('$TOTAL_COST_A')
+b = float('$TOTAL_COST_B')
+diff_pct = abs(a - b) / max(a, b, 0.0001) * 100
+if diff_pct < 5:
+    print('TIE')
+elif a < b:
+    print('A')
+else:
+    print('B')
+")
+  else
+    winner_result=$(python3 -c "
 a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
 b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
 diff = a - b
@@ -1407,30 +1812,53 @@ elif diff > 0:
 else:
     print('B')
 ")
+  fi
   export winner_result
-  
+
   # Generate verdict message
-  case "$winner_result" in
-    A)
-      if [ "$MODE" = "baseline" ]; then
-        verdict_message="The skill improves output quality by $delta points on average."
-      else
-        verdict_message="Skill A wins by $delta points on average."
-      fi
-      ;;
-    B)
-      if [ "$MODE" = "baseline" ]; then
-        verdict_message="The skill does NOT improve output quality ($delta points). Consider revising the skill content."
-      else
-        verdict_message="Skill B wins by $delta points on average."
-      fi
-      ;;
-    TIE)
-      verdict_message="No significant difference between variants (delta: $delta)."
-      ;;
-  esac
+  if [ "$PERSPECTIVE" = "cost" ]; then
+    case "$winner_result" in
+      A)
+        if [ "$MODE" = "baseline" ]; then
+          verdict_message="The skill-loaded variant is ${cost_delta_pct}% cheaper."
+        else
+          verdict_message="Skill A is cheaper by ${cost_delta_pct}%."
+        fi
+        ;;
+      B)
+        if [ "$MODE" = "baseline" ]; then
+          verdict_message="The baseline (no skill) is cheaper by ${cost_delta_pct}%."
+        else
+          verdict_message="Skill B is cheaper by ${cost_delta_pct}%."
+        fi
+        ;;
+      TIE)
+        verdict_message="No significant cost difference between variants (${cost_delta_pct}%)."
+        ;;
+    esac
+  else
+    case "$winner_result" in
+      A)
+        if [ "$MODE" = "baseline" ]; then
+          verdict_message="The skill improves output quality by $delta points on average."
+        else
+          verdict_message="Skill A wins by $delta points on average."
+        fi
+        ;;
+      B)
+        if [ "$MODE" = "baseline" ]; then
+          verdict_message="The skill does NOT improve output quality ($delta points). Consider revising the skill content."
+        else
+          verdict_message="Skill B wins by $delta points on average."
+        fi
+        ;;
+      TIE)
+        verdict_message="No significant difference between variants (delta: $delta)."
+        ;;
+    esac
+  fi
   export verdict_message
-  
+
   # Export prompt data
   for i in $(seq 0 $((NUM_PROMPTS - 1))); do
     if [ -n "${PROMPT_SCORES_A[$i]:-}" ]; then
@@ -1442,9 +1870,11 @@ else:
       export "PROMPT_PERF_B_${i}=${PROMPT_PERF_B[$i]}"
       export "PROMPT_PRACTICES_${i}=${PROMPT_PRACTICES_SCORES[$i]}"
       export "PROMPT_PRACTICES_EXPL_${i}=${PROMPT_PRACTICES_EXPLANATIONS[$i]}"
+      export "PROMPT_COST_A_${i}=${PROMPT_COST_A[$i]}"
+      export "PROMPT_COST_B_${i}=${PROMPT_COST_B[$i]}"
     fi
   done
-  
+
   generate_json_report
 else
   print_markdown_report
