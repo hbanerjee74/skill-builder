@@ -4,60 +4,40 @@ inclusion: always
 
 # Testing Strategy
 
-## Three Tiers of Tests
+All authoritative details are in `CLAUDE.md` (when to write tests, test discipline, choosing which tests to run, plugin test tiers). This file provides a Kiro-friendly summary.
 
-### Commands
+## Quick Commands
 
 ```bash
-cd app
+# App tests (all from app/)
+./tests/run.sh                    # All levels (unit + integration + e2e)
+./tests/run.sh unit               # Stores, utils, hooks, rust, sidecar
+./tests/run.sh integration        # Component + page tests
+./tests/run.sh e2e                # Playwright
+./tests/run.sh e2e --tag @workflow
+cd src-tauri && cargo test        # Rust tests
 
-# Tier 1: Frontend unit tests (Vitest + Testing Library)
-npm test              # Single run
-npm run test:watch    # Watch mode
-
-# Tier 2: Rust unit + integration tests
-cd src-tauri && cargo test
-
-# Tier 3: E2E tests (Playwright)
-npm run test:e2e      # Starts Vite in E2E mode, runs Playwright
-
-# All frontend tests
-npm run test:all      # Vitest + Playwright
+# Plugin tests
+./scripts/validate.sh             # Structural validation (free)
+./scripts/test-plugin.sh          # Full test harness (T1-T5)
 ```
 
-## Test Structure
+## When to Write Tests
 
-```
-app/
-├── src/__tests__/           # Frontend unit tests (Vitest)
-│   ├── stores/              # Zustand store logic
-│   ├── lib/                 # Utility functions
-│   └── pages/               # Page component tests
-├── e2e/                     # E2E tests (Playwright)
-├── src/test/                # Test infrastructure
-│   ├── setup.ts             # Vitest setup
-│   └── mocks/               # Tauri API mocks
-└── src-tauri/src/           # Rust tests (inline #[cfg(test)])
-```
+1. **New state logic** (Zustand store) → store unit tests
+2. **New Rust command** with testable logic → `#[cfg(test)]` tests
+3. **New UI interaction** (button states, forms) → component test
+4. **New page or major flow** → E2E test (happy path)
+5. **Bug fix** → regression test
+
+Purely cosmetic or wiring-only changes don't require tests. If unclear, ask.
+
+## Test Manifest
+
+Consult `app/tests/TEST_MANIFEST.md` for source-to-test mappings and test counts.
 
 ## Mocking Tauri APIs
 
 **Unit tests:** `@tauri-apps/api/core` globally mocked in `src/test/setup.ts`. Use `mockInvoke` from `src/test/mocks/tauri.ts`.
 
-**E2E tests:** Vite aliases replace `@tauri-apps/api/core` with `src/test/mocks/tauri-e2e.ts` when `TAURI_E2E=true`. Override via `window.__TAURI_MOCK_OVERRIDES__`.
-
-## Testing Rule
-
-When implementing a feature or fixing a bug, evaluate whether tests should be added:
-
-1. **New state logic** (Zustand store) → write store unit tests
-2. **New Rust command** with testable logic → add `#[cfg(test)]` tests
-3. **New UI interaction** (button states, forms, validation) → write component test
-4. **New page or major flow** → add E2E test for happy path
-5. **Bug fix** → write regression test
-
-Purely cosmetic changes (CSS, copy) or wiring-only changes don't require tests.
-
-**If unclear, ask the user.**
-
-Always run existing tests before committing: `npm test && cargo test`
+**E2E tests:** Vite aliases replace Tauri APIs with mocks when `TAURI_E2E=true`. Override via `window.__TAURI_MOCK_OVERRIDES__`.

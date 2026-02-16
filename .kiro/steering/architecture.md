@@ -4,36 +4,23 @@ inclusion: always
 
 # Skill Builder Architecture
 
+All authoritative details are in `CLAUDE.md`, `CLAUDE-APP.md`, and `CLAUDE-PLUGIN.md`. This file provides a Kiro-friendly summary.
+
 ## Project Overview
 
-A multi-agent workflow for creating Anthropic Claude skills. Available as:
-- **CLI** (Claude Code plugin) - Production
-- **Desktop App** (Tauri) - In development on `feature/desktop-ui` branch
+A multi-agent workflow for creating domain-specific Claude skills. Two frontends:
+- **CLI** (Claude Code plugin) — entry point: `/skill-builder:generate-skill`
+- **Desktop App** (Tauri) — all code in `app/`
 
 ## Tech Stack
 
-### Desktop App (app/)
+See `CLAUDE-APP.md` for full details.
 
-**Frontend:**
-- React 19 + TypeScript
-- Vite 7
-- Tailwind CSS 4 + shadcn/ui
-- Zustand (state)
-- TanStack Router + Query
-- React Hook Form + Zod
-- react-markdown
+**Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router, react-markdown
 
-**Backend:**
-- Tauri 2
-- rusqlite (SQLite)
-- notify (file watching)
-- pulldown-cmark (markdown parsing)
-- tokio
+**Backend:** Tauri 2, rusqlite, notify, pulldown-cmark, tokio
 
-**Agent Runtime:**
-- Node.js sidecar process
-- `@anthropic-ai/claude-agent-sdk`
-- Streams JSON messages via stdout
+**Agent Runtime:** Node.js 18-24 sidecar + `@anthropic-ai/claude-agent-sdk`
 
 ## Architecture
 
@@ -47,12 +34,10 @@ Backend (Rust) → Agent Orchestrator → Node.js Sidecar
 
 ## Key Directories
 
-- `app/src/` - React frontend
-- `app/src-tauri/` - Rust backend
-- `app/sidecar/` - Node.js agent runner
-- `agents/` - Agent prompt files organized by skill type (`{type}/` + `shared/`)
-- `workspace/` - Agent instructions (CLAUDE.md, auto-loaded into system prompt)
-
-## Runtime Dependency
-
-Requires **Node.js 18+** for the agent sidecar. Checked on startup.
+- `app/src/` — React frontend
+- `app/src-tauri/` — Rust backend
+- `app/sidecar/` — Node.js agent runner
+- `agents/templates/` — 5 agent templates (source of truth for generated agents)
+- `agents/shared/` — 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
+- `agents/{type}/` — 20 generated agents (5 templates × 4 types) — do not edit directly
+- `workspace/CLAUDE.md` — agent instructions (auto-loaded into system prompt)
