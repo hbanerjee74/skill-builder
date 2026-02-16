@@ -105,6 +105,7 @@ OUTPUT_FORMAT="md"
 DRY_RUN=0
 MAX_RETRIES=3
 RESPONSE_TIMEOUT=120
+PERSPECTIVE="quality"  # quality, cost, performance, or all
 
 # ---------- Temp directory ----------
 TMPDIR_BASE=$(mktemp -d "${TMPDIR:-/tmp}/eval-skill-XXXXXX")
@@ -128,11 +129,12 @@ Modes:
   --compare <skill-a> <skill-b>   Compare two skill versions
 
 Options:
-  --prompts <file>    Path to test prompts file (blocks separated by ---)
-  --output <file>     Save report to file instead of stdout
-  --format <md|json>  Output format: markdown (default) or JSON
-  --dry-run           Validate inputs without running evaluation
-  --help              Show this help message
+  --prompts <file>       Path to test prompts file (blocks separated by ---)
+  --output <file>        Save report to file instead of stdout
+  --format <md|json>     Output format: markdown (default) or JSON
+  --perspective <mode>   Evaluation perspective: quality (default), cost, performance, or all
+  --dry-run              Validate inputs without running evaluation
+  --help                 Show this help message
 
 Environment:
   CLAUDE_BIN         Path to claude binary (default: claude)
@@ -208,6 +210,14 @@ while [ $# -gt 0 ]; do
       OUTPUT_FORMAT="${2:-}"
       if [ "$OUTPUT_FORMAT" != "md" ] && [ "$OUTPUT_FORMAT" != "json" ]; then
         err "--format must be 'md' or 'json'"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --perspective)
+      PERSPECTIVE="${2:-}"
+      if [ "$PERSPECTIVE" != "quality" ] && [ "$PERSPECTIVE" != "cost" ] && [ "$PERSPECTIVE" != "performance" ] && [ "$PERSPECTIVE" != "all" ]; then
+        err "--perspective must be 'quality', 'cost', 'performance', or 'all'"
         exit 1
       fi
       shift 2
@@ -350,11 +360,12 @@ echo "============================================" >&2
 echo "" >&2
 
 # ---------- Generate a response via claude CLI ----------
-# Args: prompt_text skill_path(or "none") output_file
+# Args: prompt_text skill_path(or "none") output_file perf_file
 generate_response() {
   local prompt="$1"
   local skill_path="$2"
   local output_file="$3"
+  local perf_file="$4"
 
   local cmd_args=(-p --model "$RESPONSE_MODEL" --allowedTools "" --no-session-persistence)
 
@@ -386,17 +397,34 @@ EOF
   # Retry loop with exponential backoff
   local attempt=1
   local backoff=2
+  local total_retries=0
   
   while [ $attempt -le "$MAX_RETRIES" ]; do
     verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\" (attempt $attempt/$MAX_RETRIES)"
 
+    # Measure latency
+    local start_time=$(date +%s%3N)
+    
     # Use timeout command to enforce response timeout
     if echo "$prompt" | timeout "${RESPONSE_TIMEOUT}s" env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$output_file" 2>"$output_file.stderr"; then
-      # Success
+      # Success - measure end time
+      local end_time=$(date +%s%3N)
+      local latency_ms=$((end_time - start_time))
+      
+      # Estimate TTFT as 25% of total latency (since streaming not available)
+      local ttft_ms=$((latency_ms / 4))
+      
+      # Write performance metrics
+      echo "latency_ms=$latency_ms" > "$perf_file"
+      echo "ttft_ms=$ttft_ms" >> "$perf_file"
+      echo "success=true" >> "$perf_file"
+      echo "retries=$total_retries" >> "$perf_file"
+      
       return 0
     fi
     
     local exit_code=$?
+    total_retries=$((total_retries + 1))
     
     # Check if timeout occurred (exit code 124)
     if [ $exit_code -eq 124 ]; then
@@ -411,6 +439,13 @@ EOF
       if [ ! -s "$output_file" ]; then
         echo "(No response generated after $MAX_RETRIES attempts)" > "$output_file"
       fi
+      
+      # Write failure metrics
+      echo "latency_ms=0" > "$perf_file"
+      echo "ttft_ms=0" >> "$perf_file"
+      echo "success=false" >> "$perf_file"
+      echo "retries=$total_retries" >> "$perf_file"
+      
       return 1
     fi
     
@@ -503,11 +538,17 @@ TOTAL_B_ACTION=0; TOTAL_B_SPECIFIC=0; TOTAL_B_DEPTH=0; TOTAL_B_SELF=0
 EVALUATED=0
 FAILED=0
 
+# Performance accumulators
+TOTAL_A_LATENCY=0; TOTAL_A_TTFT=0; TOTAL_A_RETRIES=0; TOTAL_A_SUCCESS=0
+TOTAL_B_LATENCY=0; TOTAL_B_TTFT=0; TOTAL_B_RETRIES=0; TOTAL_B_SUCCESS=0
+
 # Store per-prompt results for the report
 declare -a PROMPT_LABELS
 declare -a PROMPT_SCORES_A
 declare -a PROMPT_SCORES_B
 declare -a PROMPT_EXPLANATIONS
+declare -a PROMPT_PERF_A
+declare -a PROMPT_PERF_B
 
 for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   prompt_file="$TMPDIR_BASE/prompt_${i}.txt"
@@ -520,8 +561,9 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
 
   # Generate response A (with skill)
   resp_a_file="$TMPDIR_BASE/response_a_${i}.txt"
+  perf_a_file="$TMPDIR_BASE/perf_a_${i}.txt"
   log "Generating ${LABEL_A} response..."
-  if ! generate_response "$prompt_text" "$SKILL_A" "$resp_a_file"; then
+  if ! generate_response "$prompt_text" "$SKILL_A" "$resp_a_file" "$perf_a_file"; then
     warn "Failed to generate ${LABEL_A} response for prompt $((i + 1)), skipping"
     FAILED=$((FAILED + 1))
     continue
@@ -530,35 +572,68 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
 
   # Generate response B (without skill or with skill B)
   resp_b_file="$TMPDIR_BASE/response_b_${i}.txt"
+  perf_b_file="$TMPDIR_BASE/perf_b_${i}.txt"
   if [ "$MODE" = "baseline" ]; then
     skill_b_path="none"
   else
     skill_b_path="$SKILL_B"
   fi
   log "Generating ${LABEL_B} response..."
-  if ! generate_response "$prompt_text" "$skill_b_path" "$resp_b_file"; then
+  if ! generate_response "$prompt_text" "$skill_b_path" "$resp_b_file" "$perf_b_file"; then
     warn "Failed to generate ${LABEL_B} response for prompt $((i + 1)), skipping"
     FAILED=$((FAILED + 1))
     continue
   fi
   verbose "Response B: $(wc -c < "$resp_b_file") bytes"
+  
+  # Read performance metrics
+  source "$perf_a_file"
+  a_latency=$latency_ms
+  a_ttft=$ttft_ms
+  a_success=$success
+  a_retries=$retries
+  
+  source "$perf_b_file"
+  b_latency=$latency_ms
+  b_ttft=$ttft_ms
+  b_success=$success
+  b_retries=$retries
+  
+  # Accumulate performance metrics
+  TOTAL_A_LATENCY=$((TOTAL_A_LATENCY + a_latency))
+  TOTAL_A_TTFT=$((TOTAL_A_TTFT + a_ttft))
+  TOTAL_A_RETRIES=$((TOTAL_A_RETRIES + a_retries))
+  [ "$a_success" = "true" ] && TOTAL_A_SUCCESS=$((TOTAL_A_SUCCESS + 1))
+  
+  TOTAL_B_LATENCY=$((TOTAL_B_LATENCY + b_latency))
+  TOTAL_B_TTFT=$((TOTAL_B_TTFT + b_ttft))
+  TOTAL_B_RETRIES=$((TOTAL_B_RETRIES + b_retries))
+  [ "$b_success" = "true" ] && TOTAL_B_SUCCESS=$((TOTAL_B_SUCCESS + 1))
 
   # Judge
   response_a=$(cat "$resp_a_file")
   response_b=$(cat "$resp_b_file")
-  judge_prompt=$(build_judge_prompt "$prompt_text" "$response_a" "$response_b" "$LABEL_A" "$LABEL_B")
-  judge_file="$TMPDIR_BASE/judge_${i}.txt"
+  
+  # Skip judge if perspective is performance-only
+  if [ "$PERSPECTIVE" = "performance" ]; then
+    # Use dummy scores for performance-only mode
+    a_action=0; a_specific=0; a_depth=0; a_self=0
+    b_action=0; b_specific=0; b_depth=0; b_self=0
+    explanation="(Performance-only evaluation - quality scoring skipped)"
+  else
+    judge_prompt=$(build_judge_prompt "$prompt_text" "$response_a" "$response_b" "$LABEL_A" "$LABEL_B")
+    judge_file="$TMPDIR_BASE/judge_${i}.txt"
 
-  log "Judging responses..."
-  if ! echo "$judge_prompt" | CLAUDECODE= "$CLAUDE_BIN" -p --model "$JUDGE_MODEL" --allowedTools "" --no-session-persistence > "$judge_file" 2>"$judge_file.stderr"; then
-    warn "Judge failed for prompt $((i + 1)), skipping"
-    FAILED=$((FAILED + 1))
-    continue
-  fi
+    log "Judging responses..."
+    if ! echo "$judge_prompt" | CLAUDECODE= "$CLAUDE_BIN" -p --model "$JUDGE_MODEL" --allowedTools "" --no-session-persistence > "$judge_file" 2>"$judge_file.stderr"; then
+      warn "Judge failed for prompt $((i + 1)), skipping"
+      FAILED=$((FAILED + 1))
+      continue
+    fi
 
-  # Extract JSON from judge output (handles markdown fences, nested objects, surrounding text)
-  judge_raw=$(cat "$judge_file")
-  judge_json=$(python3 -c "
+    # Extract JSON from judge output (handles markdown fences, nested objects, surrounding text)
+    judge_raw=$(cat "$judge_file")
+    judge_json=$(python3 -c "
 import sys, re, json
 
 def extract_json(text):
@@ -633,28 +708,29 @@ except Exception as e:
     sys.exit(1)
 " <<< "$judge_raw" 2>"$judge_file.parse_error")
 
-  if [ $? -ne 0 ] || [ -z "$judge_json" ] || [ "$judge_json" = "{}" ]; then
-    warn "Failed to parse judge output for prompt $((i + 1)), skipping"
-    if [ "$VERBOSE" = "1" ]; then
-      verbose "Parse error: $(cat "$judge_file.parse_error" 2>/dev/null || echo 'unknown')"
-      verbose "Raw judge output (first 500 chars): $(echo "$judge_raw" | head -c 500)"
+    if [ $? -ne 0 ] || [ -z "$judge_json" ] || [ "$judge_json" = "{}" ]; then
+      warn "Failed to parse judge output for prompt $((i + 1)), skipping"
+      if [ "$VERBOSE" = "1" ]; then
+        verbose "Parse error: $(cat "$judge_file.parse_error" 2>/dev/null || echo 'unknown')"
+        verbose "Raw judge output (first 500 chars): $(echo "$judge_raw" | head -c 500)"
+      fi
+      FAILED=$((FAILED + 1))
+      continue
     fi
-    FAILED=$((FAILED + 1))
-    continue
+
+    # Extract scores
+    a_action=$(extract_score "$judge_json" "variant_a.actionability")
+    a_specific=$(extract_score "$judge_json" "variant_a.specificity")
+    a_depth=$(extract_score "$judge_json" "variant_a.domain_depth")
+    a_self=$(extract_score "$judge_json" "variant_a.self_containment")
+
+    b_action=$(extract_score "$judge_json" "variant_b.actionability")
+    b_specific=$(extract_score "$judge_json" "variant_b.specificity")
+    b_depth=$(extract_score "$judge_json" "variant_b.domain_depth")
+    b_self=$(extract_score "$judge_json" "variant_b.self_containment")
+
+    explanation=$(extract_explanation "$judge_json")
   fi
-
-  # Extract scores
-  a_action=$(extract_score "$judge_json" "variant_a.actionability")
-  a_specific=$(extract_score "$judge_json" "variant_a.specificity")
-  a_depth=$(extract_score "$judge_json" "variant_a.domain_depth")
-  a_self=$(extract_score "$judge_json" "variant_a.self_containment")
-
-  b_action=$(extract_score "$judge_json" "variant_b.actionability")
-  b_specific=$(extract_score "$judge_json" "variant_b.specificity")
-  b_depth=$(extract_score "$judge_json" "variant_b.domain_depth")
-  b_self=$(extract_score "$judge_json" "variant_b.self_containment")
-
-  explanation=$(extract_explanation "$judge_json")
 
   # Accumulate
   TOTAL_A_ACTION=$((TOTAL_A_ACTION + a_action))
@@ -674,19 +750,36 @@ except Exception as e:
   PROMPT_SCORES_A[$i]="${a_action}|${a_specific}|${a_depth}|${a_self}"
   PROMPT_SCORES_B[$i]="${b_action}|${b_specific}|${b_depth}|${b_self}"
   PROMPT_EXPLANATIONS[$i]="$explanation"
+  PROMPT_PERF_A[$i]="${a_latency}|${a_ttft}|${a_success}|${a_retries}"
+  PROMPT_PERF_B[$i]="${b_latency}|${b_ttft}|${b_success}|${b_retries}"
 
   # Print inline result
   a_total=$((a_action + a_specific + a_depth + a_self))
   b_total=$((b_action + b_specific + b_depth + b_self))
-  if [ "$a_total" -gt "$b_total" ]; then
-    winner="${GREEN}${LABEL_A} wins${RESET}"
-  elif [ "$b_total" -gt "$a_total" ]; then
-    winner="${GREEN}${LABEL_B} wins${RESET}"
+  
+  if [ "$PERSPECTIVE" = "performance" ]; then
+    # Performance-focused output
+    echo "  ${LABEL_A}: ${a_latency}ms latency, ${a_ttft}ms TTFT, ${a_retries} retries" >&2
+    echo "  ${LABEL_B}: ${b_latency}ms latency, ${b_ttft}ms TTFT, ${b_retries} retries" >&2
+    if [ "$a_latency" -lt "$b_latency" ]; then
+      winner="${GREEN}${LABEL_A} faster${RESET}"
+    elif [ "$b_latency" -lt "$a_latency" ]; then
+      winner="${GREEN}${LABEL_B} faster${RESET}"
+    else
+      winner="${YELLOW}Tie${RESET}"
+    fi
   else
-    winner="${YELLOW}Tie${RESET}"
+    # Quality-focused output
+    if [ "$a_total" -gt "$b_total" ]; then
+      winner="${GREEN}${LABEL_A} wins${RESET}"
+    elif [ "$b_total" -gt "$a_total" ]; then
+      winner="${GREEN}${LABEL_B} wins${RESET}"
+    else
+      winner="${YELLOW}Tie${RESET}"
+    fi
+    echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20" >&2
+    echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20" >&2
   fi
-  echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20" >&2
-  echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20" >&2
   echo "  Result: ${winner}" >&2
   echo "" >&2
 done
@@ -718,6 +811,15 @@ b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EV
 print(f'{a - b:+.1f}')
 ")
 
+# Compute performance averages
+avg_a_latency=$(compute_avg $TOTAL_A_LATENCY $EVALUATED)
+avg_a_ttft=$(compute_avg $TOTAL_A_TTFT $EVALUATED)
+avg_a_success_rate=$(python3 -c "print(f'{($TOTAL_A_SUCCESS * 100.0) / $EVALUATED:.1f}')")
+
+avg_b_latency=$(compute_avg $TOTAL_B_LATENCY $EVALUATED)
+avg_b_ttft=$(compute_avg $TOTAL_B_TTFT $EVALUATED)
+avg_b_success_rate=$(python3 -c "print(f'{($TOTAL_B_SUCCESS * 100.0) / $EVALUATED:.1f}')")
+
 # ---------- Generate JSON report ----------
 generate_json_report() {
   local timestamp
@@ -731,6 +833,7 @@ import os
 
 # Read environment variables and arrays from bash
 mode = os.environ.get('MODE', '')
+perspective = os.environ.get('PERSPECTIVE', 'quality')
 timestamp = os.environ.get('JSON_TIMESTAMP', '')
 judge_model = os.environ.get('JUDGE_MODEL', '')
 response_model = os.environ.get('RESPONSE_MODEL', '')
@@ -757,6 +860,15 @@ total_b = float(os.environ.get('total_b', '0'))
 delta_str = os.environ.get('delta', '0')
 delta = float(delta_str.replace('+', ''))
 
+# Performance averages
+avg_a_latency = float(os.environ.get('avg_a_latency', '0'))
+avg_a_ttft = float(os.environ.get('avg_a_ttft', '0'))
+avg_a_success_rate = float(os.environ.get('avg_a_success_rate', '0'))
+
+avg_b_latency = float(os.environ.get('avg_b_latency', '0'))
+avg_b_ttft = float(os.environ.get('avg_b_ttft', '0'))
+avg_b_success_rate = float(os.environ.get('avg_b_success_rate', '0'))
+
 # Winner
 winner_result = os.environ.get('winner_result', '')
 verdict_message = os.environ.get('verdict_message', '')
@@ -768,6 +880,8 @@ for i in range(num_prompts):
     scores_a = os.environ.get(f'PROMPT_SCORES_A_{i}', '')
     scores_b = os.environ.get(f'PROMPT_SCORES_B_{i}', '')
     explanation = os.environ.get(f'PROMPT_EXPLANATION_{i}', '')
+    perf_a = os.environ.get(f'PROMPT_PERF_A_{i}', '')
+    perf_b = os.environ.get(f'PROMPT_PERF_B_{i}', '')
     
     if not scores_a:
         continue
@@ -776,7 +890,11 @@ for i in range(num_prompts):
     aa, as_, ad, asc = map(int, scores_a.split('|'))
     ba, bs, bd, bsc = map(int, scores_b.split('|'))
     
-    prompts.append({
+    # Parse performance metrics
+    a_lat, a_ttft, a_succ, a_ret = perf_a.split('|')
+    b_lat, b_ttft, b_succ, b_ret = perf_b.split('|')
+    
+    prompt_data = {
         "index": i + 1,
         "label": label,
         "variant_a": {
@@ -784,22 +902,37 @@ for i in range(num_prompts):
             "specificity": as_,
             "domain_depth": ad,
             "self_containment": asc,
-            "total": aa + as_ + ad + asc
+            "total": aa + as_ + ad + asc,
+            "performance": {
+                "latency_ms": int(a_lat),
+                "ttft_ms": int(a_ttft),
+                "success": a_succ == "true",
+                "retries": int(a_ret)
+            }
         },
         "variant_b": {
             "actionability": ba,
             "specificity": bs,
             "domain_depth": bd,
             "self_containment": bsc,
-            "total": ba + bs + bd + bsc
+            "total": ba + bs + bd + bsc,
+            "performance": {
+                "latency_ms": int(b_lat),
+                "ttft_ms": int(b_ttft),
+                "success": b_succ == "true",
+                "retries": int(b_ret)
+            }
         },
         "explanation": explanation
-    })
+    }
+    
+    prompts.append(prompt_data)
 
 # Build final JSON structure
 result = {
     "metadata": {
         "mode": mode,
+        "perspective": perspective,
         "timestamp": timestamp,
         "judge_model": judge_model,
         "response_model": response_model,
@@ -817,14 +950,24 @@ result = {
             "specificity": avg_a_specific,
             "domain_depth": avg_a_depth,
             "self_containment": avg_a_self,
-            "total": total_a
+            "total": total_a,
+            "performance": {
+                "latency_ms": avg_a_latency,
+                "ttft_ms": avg_a_ttft,
+                "success_rate": avg_a_success_rate
+            }
         },
         "variant_b": {
             "actionability": avg_b_action,
             "specificity": avg_b_specific,
             "domain_depth": avg_b_depth,
             "self_containment": avg_b_self,
-            "total": total_b
+            "total": total_b,
+            "performance": {
+                "latency_ms": avg_b_latency,
+                "ttft_ms": avg_b_ttft,
+                "success_rate": avg_b_success_rate
+            }
         },
         "delta": delta
     },
@@ -959,10 +1102,12 @@ fi
 
 if [ "$OUTPUT_FORMAT" = "json" ]; then
   # Export variables for Python JSON generation
-  export MODE JUDGE_MODEL RESPONSE_MODEL SKILL_A SKILL_B PROMPTS_FILE NUM_PROMPTS EVALUATED FAILED
+  export MODE JUDGE_MODEL RESPONSE_MODEL SKILL_A SKILL_B PROMPTS_FILE NUM_PROMPTS EVALUATED FAILED PERSPECTIVE
   export JSON_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   export avg_a_action avg_a_specific avg_a_depth avg_a_self total_a
   export avg_b_action avg_b_specific avg_b_depth avg_b_self total_b delta
+  export avg_a_latency avg_a_ttft avg_a_success_rate
+  export avg_b_latency avg_b_ttft avg_b_success_rate
   
   # Determine winner
   winner_result=$(python3 -c "
@@ -1007,6 +1152,8 @@ else:
       export "PROMPT_SCORES_A_${i}=${PROMPT_SCORES_A[$i]}"
       export "PROMPT_SCORES_B_${i}=${PROMPT_SCORES_B[$i]}"
       export "PROMPT_EXPLANATION_${i}=${PROMPT_EXPLANATIONS[$i]}"
+      export "PROMPT_PERF_A_${i}=${PROMPT_PERF_A[$i]}"
+      export "PROMPT_PERF_B_${i}=${PROMPT_PERF_B[$i]}"
     fi
   done
   
