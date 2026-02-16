@@ -140,8 +140,10 @@ pub fn upload_skill(
 
     let result = upload_skill_inner(&file_path, &workspace_path, &conn)?;
 
-    // Regenerate CLAUDE.md with imported skills section
-    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    // Regenerate CLAUDE.md with updated imported skills
+    if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+        log::warn!("Failed to update CLAUDE.md after skill upload: {}", e);
+    }
 
     Ok(result)
 }
@@ -322,7 +324,9 @@ pub fn toggle_skill_active(
     toggle_skill_active_inner(&skill_name, active, &workspace_path, &conn)?;
 
     // Regenerate CLAUDE.md with updated active skills
-    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+        log::warn!("Failed to update CLAUDE.md after toggling skill: {}", e);
+    }
 
     Ok(())
 }
@@ -394,7 +398,9 @@ pub fn delete_imported_skill(
     delete_imported_skill_inner(&skill_name, &workspace_path, &conn)?;
 
     // Regenerate CLAUDE.md without the deleted skill
-    let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+    if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+        log::warn!("Failed to update CLAUDE.md after deleting skill: {}", e);
+    }
 
     Ok(())
 }
@@ -456,7 +462,9 @@ pub fn update_trigger_text(
     // Regenerate CLAUDE.md with updated trigger text
     let settings = crate::db::read_settings(&conn)?;
     if let Some(workspace_path) = settings.workspace_path.as_deref() {
-        let _ = super::workflow::append_imported_skills_section(workspace_path, &conn);
+        if let Err(e) = super::workflow::update_skills_section(workspace_path, &conn) {
+            log::warn!("Failed to update CLAUDE.md after editing trigger text: {}", e);
+        }
     }
 
     Ok(())
@@ -472,7 +480,7 @@ pub fn regenerate_claude_md(
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
-    super::workflow::append_imported_skills_section(&workspace_path, &conn)
+    super::workflow::update_skills_section(&workspace_path, &conn)
 }
 
 #[tauri::command]
@@ -1062,15 +1070,15 @@ name: only-name
     // --- CLAUDE.md generation tests ---
 
     #[test]
-    fn test_append_imported_skills_section_creates_section() {
+    fn test_update_skills_section_creates_section() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Create a base CLAUDE.md
+        // Create a base CLAUDE.md with customization marker
         let claude_dir = workspace.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\nSome instructions.").unwrap();
+        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\nSome instructions.\n\n## Customization\n\nUser notes.\n").unwrap();
 
         // Insert an active skill with trigger text
         let skill = ImportedSkill {
@@ -1085,48 +1093,52 @@ name: only-name
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
-        // Call append
-        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+        crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        // Verify content
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("# Base Content"));
         assert!(content.contains("## Imported Skills"));
         assert!(content.contains("### /my-analytics"));
         assert!(content.contains("When the user asks about analytics, use this skill."));
+        // Customization preserved
+        assert!(content.contains("## Customization"));
+        assert!(content.contains("User notes."));
     }
 
     #[test]
-    fn test_append_imported_skills_section_no_active_skills() {
+    fn test_update_skills_section_no_active_skills() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Create a base CLAUDE.md
+        // Create a base CLAUDE.md with customization marker
         let claude_dir = workspace.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content").unwrap();
+        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\n## Customization\n\nMy rules.\n").unwrap();
 
-        // No skills inserted — section should not be appended
-        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+        // No skills inserted — section should not be present
+        crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
-        assert_eq!(content, "# Base Content");
+        assert!(content.contains("# Base Content"));
         assert!(!content.contains("## Imported Skills"));
+        // Customization preserved
+        assert!(content.contains("## Customization"));
+        assert!(content.contains("My rules."));
     }
 
     #[test]
-    fn test_append_imported_skills_section_replaces_existing() {
+    fn test_update_skills_section_replaces_existing() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Create CLAUDE.md with an existing imported skills section
+        // Create CLAUDE.md with an existing imported skills section + customization
         let claude_dir = workspace.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(
             claude_dir.join("CLAUDE.md"),
-            "# Base\n\n## Imported Skills\n\n### /old-skill\nOld trigger text.\n",
+            "# Base\n\n## Imported Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
         ).unwrap();
 
         // Insert a new active skill with trigger text
@@ -1142,7 +1154,7 @@ name: only-name
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
-        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+        crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("# Base"));
@@ -1151,20 +1163,23 @@ name: only-name
         // Old section should be replaced
         assert!(!content.contains("### /old-skill"));
         assert!(!content.contains("Old trigger text."));
+        // Customization preserved
+        assert!(content.contains("## Customization"));
+        assert!(content.contains("Keep me."));
     }
 
     #[test]
-    fn test_append_imported_skills_section_preserves_trailing_sections() {
+    fn test_update_skills_section_preserves_customization() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // CLAUDE.md with imported skills in the middle and another section after
+        // CLAUDE.md with imported skills in the middle and customization after
         let claude_dir = workspace.path().join(".claude");
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(
             claude_dir.join("CLAUDE.md"),
-            "# Base Content\n\nSome text.\n\n## Imported Skills\n\n### /old-skill\nOld trigger.\n\n## Trailing Section\n\nTrailing content.\n",
+            "# Base Content\n\nSome text.\n\n## Imported Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
         ).unwrap();
 
         // Insert a new active skill with trigger text
@@ -1180,21 +1195,72 @@ name: only-name
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
-        crate::commands::workflow::append_imported_skills_section(workspace_path, &conn).unwrap();
+        crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         // Base content preserved
         assert!(content.contains("# Base Content"));
         assert!(content.contains("Some text."));
-        // Trailing section preserved
-        assert!(content.contains("## Trailing Section"));
-        assert!(content.contains("Trailing content."));
         // New imported skills section present
         assert!(content.contains("### /new-skill"));
         assert!(content.contains("New trigger."));
         // Old skill removed
         assert!(!content.contains("### /old-skill"));
-        // No formatting corruption — trailing section should start on its own line
-        assert!(!content.contains("Base Content\n## Trailing"));
+        // Customization section preserved with user content
+        assert!(content.contains("## Customization"));
+        assert!(content.contains("My workspace rules."));
+    }
+
+    #[test]
+    fn test_rebuild_claude_md_preserves_customization() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Create a bundled base template with customization marker
+        let base_dir = tempdir().unwrap();
+        let base_path = base_dir.path().join("CLAUDE.md");
+        fs::write(&base_path, "# Agent Instructions\n\nBase content.\n\n## Customization\n\nDefault instructions.\n").unwrap();
+
+        // Create an existing workspace CLAUDE.md with user customization
+        let claude_dir = workspace.path().join(".claude");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::write(
+            claude_dir.join("CLAUDE.md"),
+            "# Old Base\n\n## Imported Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
+        ).unwrap();
+
+        // Insert an active skill
+        let skill = ImportedSkill {
+            skill_id: "imp-1".to_string(),
+            skill_name: "analytics".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            disk_path: "/tmp/a".to_string(),
+            trigger_text: Some("Use for analytics.".to_string()),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        // Simulate startup: rebuild from bundled base
+        crate::commands::workflow::rebuild_claude_md(&base_path, workspace_path, &conn).unwrap();
+
+        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        // Base content from bundled template (not old base)
+        assert!(content.contains("# Agent Instructions"));
+        assert!(content.contains("Base content."));
+        assert!(!content.contains("# Old Base"));
+        // Skills regenerated from DB
+        assert!(content.contains("## Imported Skills"));
+        assert!(content.contains("### /analytics"));
+        assert!(content.contains("Use for analytics."));
+        // Stale skill gone
+        assert!(!content.contains("### /stale-skill"));
+        // User customization preserved (not replaced with default)
+        assert!(content.contains("## Customization"));
+        assert!(content.contains("My custom instructions."));
+        assert!(content.contains("Do not lose this."));
+        assert!(!content.contains("Default instructions."));
     }
 }

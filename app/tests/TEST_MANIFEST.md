@@ -78,10 +78,10 @@ Maps every source file to its tests across all layers. Use this to determine whi
 |---|---|---|
 | `src-tauri/src/db.rs` | `cargo test db` (85) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (57) | `@workflow` |
-| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (47) | `@dashboard` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (55) | `@workflow` |
+| `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (42) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
-| `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (29) | -- |
+| `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (30) | -- |
 | `src-tauri/src/commands/files.rs` | `cargo test commands::files` (19) | `@workflow` |
 | `src-tauri/src/commands/settings.rs` | `cargo test commands::settings` (7) | `@settings` |
 | `src-tauri/src/commands/node.rs` | `cargo test commands::node` (6) | -- |

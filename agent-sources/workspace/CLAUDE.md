@@ -90,3 +90,7 @@ Used by validate agents to check skill quality.
 **Checklist:** Specific description with key terms | under 500 lines | separate reference files if needed | no stale info | consistent terms | concrete examples | one-level refs | progressive disclosure | clear workflow steps | 3+ evaluations | tested with target models and real scenarios
 
 **Anti-patterns:** Windows paths | too many options (default + escape hatch) | nested refs | vague descriptions | over-explaining what Claude knows
+
+## Customization
+
+Add your workspace-specific instructions below. This section is preserved across app updates and skill changes.

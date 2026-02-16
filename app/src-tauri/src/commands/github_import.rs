@@ -378,7 +378,9 @@ pub async fn import_github_skills(
     // Regenerate CLAUDE.md with imported skills section
     if !imported.is_empty() {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+        if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!("Failed to update CLAUDE.md after GitHub import: {}", e);
+        }
     }
 
     Ok(imported)

@@ -466,13 +466,20 @@ pub fn init_workspace(
     }
     drop(conn);
 
-    // Deploy bundled agents and CLAUDE.md to .claude/
+    // Deploy bundled agents to .claude/
     super::workflow::ensure_workspace_prompts_sync(app, &workspace_path)?;
 
-    // Append imported skills section to CLAUDE.md
+    // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+        let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(app);
+        if claude_md_src.is_file() {
+            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn) {
+                log::warn!("Failed to rebuild CLAUDE.md on startup: {}", e);
+            }
+        } else {
+            log::warn!("Bundled CLAUDE.md not found; skipping rebuild");
+        }
     }
 
     // Clean up stale root-level files from pre-reorganization layout
@@ -513,10 +520,15 @@ pub fn clear_workspace(
     // Re-deploy only bundled agents (not CLAUDE.md or skills)
     super::workflow::redeploy_agents(&app, &workspace_path)?;
 
-    // Append imported skills section to CLAUDE.md
+    // Rebuild CLAUDE.md: base template + imported skills from DB + user customization
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let _ = super::workflow::append_imported_skills_section(&workspace_path, &conn);
+        let (_, claude_md_src) = super::workflow::resolve_prompt_source_dirs_public(&app);
+        if claude_md_src.is_file() {
+            if let Err(e) = super::workflow::rebuild_claude_md(&claude_md_src, &workspace_path, &conn) {
+                log::warn!("Failed to rebuild CLAUDE.md on clear: {}", e);
+            }
+        }
     }
 
     // Clean up stale root-level files from pre-reorganization layout
