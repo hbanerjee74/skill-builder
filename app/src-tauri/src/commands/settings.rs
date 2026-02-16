@@ -116,9 +116,14 @@ fn handle_skills_path_change(old: Option<&str>, new: Option<&str>) -> Result<(),
                 )
             })?;
 
-            // Ensure git repo exists at new location
+            // Ensure git repo exists at new location and record the migration
             if let Err(e) = crate::git::ensure_repo(new) {
                 log::warn!("Failed to ensure git repo at {}: {}", new_path, e);
+            } else {
+                let msg = format!("Moved skills from {} to {}", old_path, new_path);
+                if let Err(e) = crate::git::commit_all(new, &msg) {
+                    log::warn!("Failed to record skills_path migration: {}", e);
+                }
             }
         }
         _ => {} // Same path or both None — no-op

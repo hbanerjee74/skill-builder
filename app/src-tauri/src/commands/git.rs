@@ -50,9 +50,13 @@ pub fn restore_skill_version(
     let root = Path::new(&output_root);
     crate::git::restore_version(root, &sha, &skill_name)?;
     // Commit the restore as a new version
-    let msg = format!("{}: restored to {}", skill_name, &sha[..8.min(sha.len())]);
+    let short_sha = if sha.len() >= 8 { &sha[..8] } else { &sha };
+    let msg = format!("{}: restored to {}", skill_name, short_sha);
     if let Err(e) = crate::git::commit_all(root, &msg) {
-        log::warn!("Git auto-commit failed after restore ({}): {}", msg, e);
+        log::error!(
+            "Git auto-commit failed after restore ({}): {}. Filesystem restored but git state is inconsistent.",
+            msg, e
+        );
     }
     Ok(())
 }

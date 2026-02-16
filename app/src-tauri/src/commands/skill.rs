@@ -197,11 +197,14 @@ fn delete_skill_inner(
         name, workspace_path, skills_path
     );
 
-    // Auto-commit: snapshot before deletion
+    // Auto-commit: snapshot before deletion (only if skill output exists)
     if let Some(sp) = skills_path {
-        let msg = format!("{}: deleted (snapshot before removal)", name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        let output_dir = Path::new(sp).join(name);
+        if output_dir.exists() {
+            let msg = format!("{}: deleted (snapshot before removal)", name);
+            if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+                log::warn!("Git auto-commit failed ({}): {}", msg, e);
+            }
         }
     }
 
