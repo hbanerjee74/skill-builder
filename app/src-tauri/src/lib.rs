@@ -1,6 +1,7 @@
 mod agents;
 mod commands;
 mod db;
+pub mod git;
 mod logging;
 mod types;
 
