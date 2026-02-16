@@ -15,7 +15,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, Play, Tag, Trash2 } from "lucide-react"
+import { Download, Lock, Play, Tag, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +33,9 @@ interface SkillCardProps {
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
   onEditTags?: (skill: SkillSummary) => void
+  onPushToRemote?: (skill: SkillSummary) => void
+  remoteConfigured?: boolean
+  isGitHubLoggedIn?: boolean
 }
 
 function parseStepProgress(currentStep: string | null): number {
@@ -128,6 +131,9 @@ export default function SkillCard({
   onDelete,
   onDownload,
   onEditTags,
+  onPushToRemote,
+  remoteConfigured,
+  isGitHubLoggedIn,
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step)
   const relativeTime = formatRelativeTime(skill.last_modified)
@@ -259,6 +265,31 @@ export default function SkillCard({
             {!canDownload && (
               <span className="text-xs text-muted-foreground">
                 Complete all workflow steps to download
+              </span>
+            )}
+          </span>
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          disabled={!canDownload || !remoteConfigured || !isGitHubLoggedIn}
+          onSelect={() => canDownload && remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
+        >
+          <Upload className="size-4" />
+          <span className="flex flex-col">
+            <span>Push to remote</span>
+            {!canDownload && (
+              <span className="text-xs text-muted-foreground">
+                Complete all workflow steps first
+              </span>
+            )}
+            {canDownload && !isGitHubLoggedIn && (
+              <span className="text-xs text-muted-foreground">
+                Sign in with GitHub in Settings
+              </span>
+            )}
+            {canDownload && isGitHubLoggedIn && !remoteConfigured && (
+              <span className="text-xs text-muted-foreground">
+                Configure remote repository in Settings
               </span>
             )}
           </span>

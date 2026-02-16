@@ -56,6 +56,8 @@ const defaultSettings: AppSettings = {
   github_user_login: null,
   github_user_avatar: null,
   github_user_email: null,
+  remote_repo_owner: null,
+  remote_repo_name: null,
 };
 
 const sampleSkills: SkillSummary[] = [

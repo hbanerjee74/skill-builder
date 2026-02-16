@@ -132,9 +132,9 @@ describe("buildQueryOptions", () => {
     expect(opts.abortController).toBe(ac);
   });
 
-  it("sets executable to process.execPath", () => {
+  it("sets executable to 'node'", () => {
     const opts = buildQueryOptions(makeConfig(), new AbortController());
-    expect(opts.executable).toBe(process.execPath);
+    expect(opts.executable).toBe("node");
   });
 
   it("always includes cwd from config", () => {

@@ -12,6 +12,8 @@ interface SettingsState {
   githubUserLogin: string | null;
   githubUserAvatar: string | null;
   githubUserEmail: string | null;
+  remoteRepoOwner: string | null;
+  remoteRepoName: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -29,6 +31,8 @@ const initialState = {
   githubUserLogin: null,
   githubUserAvatar: null,
   githubUserEmail: null,
+  remoteRepoOwner: null,
+  remoteRepoName: null,
   isConfigured: false,
 };
 

@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo } from "@/lib/types";
 
 // --- Settings ---
 
@@ -278,4 +278,18 @@ export const regenerateClaudeMd = () =>
 
 export const generateTriggerText = (skillName: string) =>
   invoke<string>("generate_trigger_text", { skillName });
+
+// --- GitHub Push ---
+
+export const validateRemoteRepo = (owner: string, repo: string) =>
+  invoke<void>("validate_remote_repo", { owner, repo })
+
+export const pushSkillToRemote = (skillName: string) =>
+  invoke<PushResult>("push_skill_to_remote", { skillName })
+
+export const reconcileManifests = () =>
+  invoke<number>("reconcile_manifests")
+
+export const listUserRepos = () =>
+  invoke<GitHubRepo[]>("list_user_repos")
 

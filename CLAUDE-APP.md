@@ -10,7 +10,7 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 
 **Frontend:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router, react-markdown
 
-**Backend:** Tauri 2, rusqlite, notify, pulldown-cmark, tauri-plugin-shell, tokio
+**Backend:** Tauri 2, rusqlite, git2, reqwest, notify, pulldown-cmark, tauri-plugin-shell, tokio
 
 **Agent Runtime:** Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar process)
 
@@ -74,7 +74,30 @@ Set `MOCK_AGENTS=true` to skip real SDK `query()` calls. The sidecar replays bun
 
 ### GitHub OAuth
 
-The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow). Users authenticate in Settings; the token is stored in the app database and used for feedback submission (GitHub Issues).
+The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow). Users authenticate in Settings; the token is stored in the app database and used for feedback submission (GitHub Issues) and push-to-remote.
+
+### Git Version Control
+
+The skills output directory (`skills_path`) is a local git repo managed by the `git2` crate (`src-tauri/src/git.rs`). Auto-commits happen on key skill events:
+- Skill created/deleted
+- Workflow step completed (with step label in commit message)
+- Manifest reconciliation
+- Push to remote
+
+On first use or upgrade, the app initializes the repo and creates an initial snapshot. A `.gitignore` is auto-created to exclude OS/IDE artifacts.
+
+The git module also provides history browsing (`get_history`), diff viewing (`get_diff`), and version restore (`restore_version`) for skills.
+
+### Push to Remote
+
+Users can push completed skills to a shared GitHub repository via branch + PR:
+
+1. **Settings:** Configure a remote repo (owner/name) — only repos with push access are listed
+2. **Dashboard:** Right-click a completed skill → "Push to remote"
+3. **Backend flow:** Fetches the remote's default branch, builds a tree with only the skill's files, commits on top of the remote's history, force-pushes a `skill/{user}/{skill-name}` branch, and creates (or updates) a PR with an AI-generated changelog
+4. **Manifests:** Each skill directory gets a `.skill-builder` JSON file (`version`, `creator`, `created_at`, `app_version`) — written on skill creation, reconciled on startup and after GitHub login
+
+Key files: `commands/github_push.rs` (5 Tauri commands + helpers), `commands/github_auth.rs` (device flow), `git.rs` (local git operations).
 
 ## Directory Layout
 
@@ -86,9 +109,11 @@ The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/a
 - `<skill-name>/logs/` — agent execution logs (JSONL)
 
 **Skill output** (configurable `skills_path` in Settings, falls back to workspace):
+- `.git/` — auto-managed by git2 (auto-commits on skill events)
 - `<skill-name>/SKILL.md` — final skill entry point
 - `<skill-name>/references/` — deep-dive reference files
 - `<skill-name>/<skill-name>.skill` — packaged zip
+- `<skill-name>/.skill-builder` — manifest JSON (version, creator, app_version)
 
 **App database** (`~/.local/share/com.skillbuilder.app/skill-builder.db`):
 - Workflow runs, steps, artifacts, agent runs, workflow sessions, chat sessions, settings, tags, imported skills

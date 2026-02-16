@@ -31,7 +31,8 @@ import TagFilter from "@/components/tag-filter"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
-import { packageSkill, getLockedSkills } from "@/lib/tauri"
+import { useAuthStore } from "@/stores/auth-store"
+import { packageSkill, getLockedSkills, pushSkillToRemote } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
@@ -47,6 +48,10 @@ export default function DashboardPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
+  const remoteRepoOwner = useSettingsStore((s) => s.remoteRepoOwner)
+  const remoteRepoName = useSettingsStore((s) => s.remoteRepoName)
+  const remoteConfigured = !!(remoteRepoOwner && remoteRepoName)
   const lockedSkills = useSkillStore((s) => s.lockedSkills)
   const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
 
@@ -166,6 +171,32 @@ export default function DashboardPage() {
       toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
     }
   }, [workspacePath])
+
+  const handlePushToRemote = useCallback(async (skill: SkillSummary) => {
+    const toastId = toast.loading("Pushing skill to remote...")
+    try {
+      const result = await pushSkillToRemote(skill.name)
+      toast.success(
+        <div className="flex flex-col gap-1">
+          <span>Skill pushed successfully!</span>
+          <a
+            href={result.pr_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm underline"
+          >
+            View PR #{result.pr_number}
+          </a>
+        </div>,
+        { id: toastId, duration: 8000 }
+      )
+    } catch (err) {
+      toast.error(
+        `Push failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId, duration: Infinity }
+      )
+    }
+  }, [])
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -323,6 +354,9 @@ export default function DashboardPage() {
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onEditTags={setEditTagsTarget}
+              onPushToRemote={handlePushToRemote}
+              remoteConfigured={remoteConfigured}
+              isGitHubLoggedIn={isLoggedIn}
             />
           ))}
         </div>

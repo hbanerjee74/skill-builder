@@ -26,6 +26,10 @@ pub struct AppSettings {
     pub github_user_avatar: Option<String>,
     #[serde(default)]
     pub github_user_email: Option<String>,
+    #[serde(default)]
+    pub remote_repo_owner: Option<String>,
+    #[serde(default)]
+    pub remote_repo_name: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -44,8 +48,36 @@ impl Default for AppSettings {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
+            remote_repo_owner: None,
+            remote_repo_name: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushResult {
+    pub pr_url: String,
+    pub pr_number: u64,
+    pub branch: String,
+    pub version: u32,
+    pub is_new_pr: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRepo {
+    pub full_name: String,
+    pub owner: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_private: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillBuilderManifest {
+    pub version: String,
+    pub creator: Option<String>,
+    pub created_at: String,
+    pub app_version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -342,6 +374,8 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
+        assert!(settings.remote_repo_owner.is_none());
+        assert!(settings.remote_repo_name.is_none());
     }
 
     #[test]
@@ -360,6 +394,8 @@ mod tests {
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
+            remote_repo_owner: Some("my-org".to_string()),
+            remote_repo_name: Some("shared-skills".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -379,6 +415,14 @@ mod tests {
             deserialized.preferred_model.as_deref(),
             Some("sonnet")
         );
+        assert_eq!(
+            deserialized.remote_repo_owner.as_deref(),
+            Some("my-org")
+        );
+        assert_eq!(
+            deserialized.remote_repo_name.as_deref(),
+            Some("shared-skills")
+        );
     }
 
     #[test]
@@ -393,6 +437,8 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
+        assert!(settings.remote_repo_owner.is_none());
+        assert!(settings.remote_repo_name.is_none());
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;

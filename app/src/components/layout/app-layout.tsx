@@ -30,10 +30,13 @@ export function AppLayout() {
         preferredModel: s.preferred_model,
         logLevel: s.log_level,
         extendedContext: s.extended_context,
+        extendedThinking: s.extended_thinking,
         githubOauthToken: s.github_oauth_token,
         githubUserLogin: s.github_user_login,
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
+        remoteRepoOwner: s.remote_repo_owner,
+        remoteRepoName: s.remote_repo_name,
       });
       setSettingsLoaded(true);
     }).catch(() => {
