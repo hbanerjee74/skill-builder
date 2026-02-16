@@ -160,7 +160,7 @@ export default function WorkflowPage() {
   // Safety-net cleanup: revert running state on unmount (e.g. if the
   // component is removed without going through the blocker dialog).
   // Also flushes buffered agent messages, ends the workflow session,
-  // and shuts down the persistent sidecar.
+  // releases the skill lock, and shuts down the persistent sidecar.
   useEffect(() => {
     return () => {
       // Flush any pending RAF-batched messages so they aren't lost
@@ -184,7 +184,8 @@ export default function WorkflowPage() {
         useWorkflowStore.setState({ workflowSessionId: null });
       }
 
-      // Fire-and-forget: shut down persistent sidecar for this skill
+      // Fire-and-forget: release skill lock and shut down persistent sidecar
+      releaseLock(skillName).catch(() => {});
       cleanupSkillSidecar(skillName).catch(() => {});
     };
   }, [skillName]);
