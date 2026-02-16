@@ -417,7 +417,7 @@ generate_response() {
   # This tests the actual skill loading behavior instead of appending to system prompt
   if [ "$skill_path" != "none" ]; then
     # Create a temporary plugin directory with the skill
-    local temp_plugin_dir="$TMPDIR_BASE/plugin_$(basename "$skill_path" .md)_$$_$(date +%s%N)"
+    local temp_plugin_dir="$TMPDIR_BASE/plugin_$(basename "$skill_path" .md)_$$_$(python3 -c "import time; print(int(time.time()*1e9))")"
     mkdir -p "$temp_plugin_dir/.claude-plugin"
     mkdir -p "$temp_plugin_dir/skills/test-skill"
 
@@ -456,12 +456,12 @@ EOF
     verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\" (attempt $attempt/$MAX_RETRIES)"
 
     # Measure latency
-    local start_time=$(date +%s%3N)
+    local start_time=$(python3 -c "import time; print(int(time.time()*1000))")
 
     # --output-format json returns {"type":"result","result":"text","usage":{"input_tokens":N,"output_tokens":N},...}
     if echo "$prompt" | $timeout_cmd env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$raw_json_file" 2>"$output_file.stderr"; then
       # Success - measure end time
-      local end_time=$(date +%s%3N)
+      local end_time=$(python3 -c "import time; print(int(time.time()*1000))")
       local latency_ms=$((end_time - start_time))
 
       # Estimate TTFT as 25% of total latency (since streaming not available)
