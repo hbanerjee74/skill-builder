@@ -66,3 +66,15 @@ if (existsSync(sdkDir)) {
 } else {
   console.warn("SDK not found — skipping runtime file copy");
 }
+
+// Copy mock-templates directory for MOCK_AGENTS mode.
+// These are JSONL replay files and output file templates used when
+// MOCK_AGENTS=true to skip real SDK calls during UI development.
+const mockSrc = resolve(__dirname, "mock-templates");
+const mockDest = resolve(__dirname, "dist/mock-templates");
+if (existsSync(mockSrc)) {
+  cpSync(mockSrc, mockDest, { recursive: true });
+  console.log("Copied mock-templates to dist/mock-templates/");
+} else {
+  console.warn("mock-templates not found — skipping");
+}

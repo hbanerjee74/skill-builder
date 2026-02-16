@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
+import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
 import { createAbortState } from "./shutdown.js";
 
@@ -31,6 +32,10 @@ export async function runAgentRequest(
   onMessage: (message: Record<string, unknown>) => void,
   externalSignal?: AbortSignal,
 ): Promise<void> {
+  if (process.env.MOCK_AGENTS === "true") {
+    return runMockAgent(config, onMessage, externalSignal);
+  }
+
   if (config.apiKey) {
     process.env.ANTHROPIC_API_KEY = config.apiKey;
   }

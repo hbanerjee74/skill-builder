@@ -8,6 +8,9 @@
 context/
 workflow-state.md
 
+# Allow mock-template context/ dirs (bundled test fixtures, not user output)
+!app/sidecar/mock-templates/**/context/
+
 # Test results
 app/test-results/
 app/src-tauri/test-results/
