@@ -48,29 +48,47 @@ pub async fn list_team_repo_skills(
     let mut team_skills = Vec::new();
 
     for skill in &available_skills {
-        // Try to fetch the .skill-builder manifest (optional — skills without it are still listed)
+        // Fetch the .skill-builder manifest — only skills with a manifest are listed
         let manifest_url = format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}/.skill-builder",
             owner, repo, default_branch, skill.path
         );
 
-        let (creator, created_at) = match client.get(&manifest_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                match resp.text().await {
-                    Ok(text) => match serde_json::from_str::<SkillBuilderManifest>(&text) {
-                        Ok(m) => (m.creator, Some(m.created_at)),
-                        Err(e) => {
-                            warn!(
-                                "[list_team_repo_skills] failed to parse manifest for '{}': {}",
-                                skill.path, e
-                            );
-                            (None, None)
-                        }
-                    },
-                    Err(_) => (None, None),
-                }
+        let manifest_resp = match client.get(&manifest_url).send().await {
+            Ok(resp) if resp.status().is_success() => resp,
+            Ok(_) => {
+                // No manifest — skip this skill
+                continue;
             }
-            _ => (None, None),
+            Err(e) => {
+                warn!(
+                    "[list_team_repo_skills] failed to fetch manifest for '{}': {}",
+                    skill.path, e
+                );
+                continue;
+            }
+        };
+
+        let manifest_text = match manifest_resp.text().await {
+            Ok(t) => t,
+            Err(e) => {
+                warn!(
+                    "[list_team_repo_skills] failed to read manifest body for '{}': {}",
+                    skill.path, e
+                );
+                continue;
+            }
+        };
+
+        let (creator, created_at) = match serde_json::from_str::<SkillBuilderManifest>(&manifest_text) {
+            Ok(m) => (m.creator, Some(m.created_at)),
+            Err(e) => {
+                warn!(
+                    "[list_team_repo_skills] failed to parse manifest for '{}': {}",
+                    skill.path, e
+                );
+                continue;
+            }
         };
 
         team_skills.push(TeamRepoSkill {
