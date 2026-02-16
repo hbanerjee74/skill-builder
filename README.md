@@ -35,17 +35,16 @@ Configure your Anthropic API key and workspace folder in Settings before running
 
 ## How It Works
 
-The workflow guides you through building a skill in 9 steps:
+The workflow guides you through building a skill in 8 steps:
 
 0. **Init** -- select skill type and name, detect previous progress
-1. **Research concepts** -- agents identify key entities, metrics, and KPIs
-2. **Review concept questions** -- you answer clarification questions
-3. **Research patterns + data + merge** -- agents research business patterns and data models
-4. **Review merged questions** -- you answer a consolidated set of questions
-5. **Reasoning** -- agent analyzes your answers, detects gaps and contradictions
-6. **Build** -- agent creates SKILL.md and reference files
+1. **Research** -- agents research key concepts, practices, and implementation patterns
+2. **Review** -- you answer clarification questions
+3. **Detailed Research** -- agents dive deeper per section, produce consolidated questions
+4. **Review** -- you answer a second round of questions
+5. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
+6. **Generate Skill** -- agent creates SKILL.md and reference files
 7. **Validate & Test** -- agent checks against best practices, generates and evaluates test prompts
-8. **Package / Refine** -- zip for distribution (plugin) or iterative improvement via chat (app)
 
 Skills are organized by type: **domain** (business knowledge), **platform** (tool-specific), **source** (extraction patterns), and **data-engineering** (technical patterns).
 
