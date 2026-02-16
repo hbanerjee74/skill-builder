@@ -5,6 +5,21 @@ use log::{debug, error, info};
 use crate::db::Db;
 use crate::types::{PushResult, SkillBuilderManifest, SkillDiff};
 
+// --- Validation ---
+
+/// Validate that a GitHub identifier (owner or repo name) contains only safe characters.
+fn validate_github_identifier(s: &str, label: &str) -> Result<(), String> {
+    if s.is_empty()
+        || s.contains('/')
+        || s.contains('\\')
+        || s.contains('@')
+        || s.contains(' ')
+    {
+        return Err(format!("Invalid GitHub {}: '{}'", label, s));
+    }
+    Ok(())
+}
+
 // --- Tauri Commands ---
 
 /// Validate that the authenticated user has push access to the remote repo.
@@ -14,6 +29,8 @@ pub async fn validate_remote_repo(
     owner: String,
     repo: String,
 ) -> Result<(), String> {
+    validate_github_identifier(&owner, "owner")?;
+    validate_github_identifier(&repo, "repository name")?;
     info!("validate_remote_repo: checking {}/{}", owner, repo);
 
     let token = {
@@ -120,7 +137,11 @@ pub async fn push_skill_to_remote(
         )
     };
 
-    // 2. Resolve output root
+    // 2. Validate identifiers
+    validate_github_identifier(&owner, "owner")?;
+    validate_github_identifier(&repo_name, "repository name")?;
+
+    // 3. Resolve output root
     let output_root = skills_path.unwrap_or(workspace_path);
     let output_path = Path::new(&output_root);
     let skill_dir = output_path.join(&skill_name);
@@ -176,9 +197,9 @@ pub async fn push_skill_to_remote(
                     e
                 );
                 if is_first_push {
-                    format!("Initial push of skill `{}`.", skill_name)
+                    format!("Initial push of skill `{}`.\n\n*Automatic summary unavailable*", skill_name)
                 } else {
-                    format!("Updated skill `{}` to v{}.", skill_name, version)
+                    format!("Updated skill `{}` to v{}.\n\n*Automatic changelog unavailable*", skill_name, version)
                 }
             }
         }
