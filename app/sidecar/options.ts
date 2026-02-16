@@ -41,7 +41,7 @@ export function buildQueryOptions(
     abortController,
     // Use the same Node binary that's running this sidecar process,
     // so the SDK spawns cli.js with a compatible Node version.
-    executable: 'node' as const,
+    executable: process.execPath as 'node',
     ...(config.pathToClaudeCodeExecutable
       ? { pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable }
       : {}),
