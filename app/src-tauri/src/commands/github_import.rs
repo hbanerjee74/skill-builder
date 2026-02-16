@@ -5,7 +5,7 @@ use std::path::Path;
 
 /// Build a `reqwest::Client` with standard GitHub API headers.
 /// If an OAuth token is available in settings, it is included as a Bearer token.
-fn build_github_client(token: Option<&str>) -> reqwest::Client {
+pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Accept", "application/vnd.github+json".parse().unwrap());
     headers.insert("User-Agent", "SkillBuilder".parse().unwrap());
@@ -143,7 +143,7 @@ pub async fn list_github_skills(
         .await
 }
 
-async fn list_github_skills_inner(
+pub(crate) async fn list_github_skills_inner(
     owner: &str,
     repo: &str,
     branch: &str,
@@ -390,7 +390,7 @@ pub async fn import_github_skills(
 }
 
 /// Import a single skill directory from the repo tree.
-async fn import_single_skill(
+pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
     owner: &str,
     repo: &str,
