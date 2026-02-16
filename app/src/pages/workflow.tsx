@@ -100,7 +100,7 @@ export default function WorkflowPage() {
     clearInitializing,
     runtimeError,
     clearRuntimeError,
-    rerunFromStep,
+    resetToStep,
     loadWorkflowState,
     setHydrated,
   } = useWorkflowStore();
@@ -765,7 +765,7 @@ export default function WorkflowPage() {
                   }
                 }
                 clearRuns();
-                rerunFromStep(currentStep);
+                resetToStep(currentStep);
                 toast.success(`Reset step ${currentStep + 1}`);
               }}
             >
@@ -871,7 +871,7 @@ export default function WorkflowPage() {
             // End active session — resetting to a prior step starts a fresh workflow context
             endActiveSession();
             clearRuns();
-            rerunFromStep(resetTarget);
+            resetToStep(resetTarget);
             setResetTarget(null);
           }
         }}
@@ -904,7 +904,7 @@ export default function WorkflowPage() {
                   }
                 }
                 clearRuns();
-                rerunFromStep(currentStep);
+                resetToStep(currentStep);
                 toast.success(`Reset step ${currentStep + 1}`);
               }}>
                 Reset
