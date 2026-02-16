@@ -1,9 +1,9 @@
-Design a sales pipeline tracking system that handles multi-stage opportunity progression with automatic stage validation rules, including minimum required activities per stage, time-in-stage thresholds, and rollback handling when deals regress to earlier stages.
+Design a lead qualification framework for a cloud services company selling managed Kubernetes services, including scoring criteria for technical maturity, decision-maker access, budget alignment, and expansion potential from initial engagement to enterprise-wide adoption.
 ---
-Build a commission calculation engine that supports territory-based splits, overlay assignments, and accelerators, including handling of mid-quarter territory reassignments and clawback provisions for deals that cancel within 90 days.
+Create a deal stage progression model for professional services engagements that tracks conversion metrics at each milestone, identifies common stall points between discovery and contract signature, and establishes velocity benchmarks for 30-90 day sales cycles.
 ---
-Create a forecast accuracy tracking system that maintains multiple forecast categories (commit, best case, pipeline), calculates weekly variance analysis, and implements a weighted pipeline methodology using historical win rates by deal size and stage.
+Build a territory planning and quota allocation strategy for a team of 5-8 sales reps covering both new logo acquisition and existing account expansion, balancing geographic coverage, industry vertical expertise, and account size segmentation for a $2-5M ARR target.
 ---
-Design an opportunity scoring model that calculates win probability based on engagement metrics (executive sponsor identified, technical validation completed, budget confirmed), competitive positioning, and deal velocity compared to historical patterns for similar opportunities.
+Design a pipeline forecasting methodology that categorizes opportunities by confidence level, incorporates deal age and engagement signals, accounts for seasonal patterns in cloud infrastructure buying cycles, and provides weekly forecast accuracy within 15% for 90-day rolling windows.
 ---
-Build a territory management system that handles quota assignment, account ownership rules with named vs. pooled account logic, and automatic routing of inbound leads based on geographic, industry, and account size criteria with conflict resolution for overlapping territories.
+Create a customer relationship tracking framework that maps stakeholder influence across technical, procurement, and executive buyers, documents engagement cadence and touchpoint quality, and identifies expansion signals like infrastructure growth, new project initiatives, or competitive displacement opportunities.

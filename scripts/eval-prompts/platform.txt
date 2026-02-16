@@ -1,9 +1,9 @@
-Design a comprehensive testing strategy for a dbt project with 100+ models across bronze/silver/gold layers, including schema tests, data tests, custom singular tests, and unit tests. Explain how to enforce data contracts at layer boundaries and ensure test coverage metrics.
+Design an incremental model strategy in dbt for a large event fact table that uses the merge incremental strategy, handles late-arriving data with a lookback window, and includes data contracts to enforce schema and freshness requirements.
 ---
-Implement a custom generic test in dbt that validates cross-model referential integrity between fact and dimension tables, handles incremental models, and provides detailed failure messages with row-level diagnostics.
+Create a comprehensive testing strategy for a dbt project that combines unit tests for transformation logic, data tests for quality checks, and data contracts at model boundaries to prevent breaking changes downstream.
 ---
-Create a data contract enforcement framework for dbt models that validates column-level constraints (nullability, uniqueness, accepted values), enforces naming conventions, and fails builds when contracts are violated. Include strategies for versioning contracts as schemas evolve.
+Build a reusable dbt macro package for standardizing data quality checks across multiple projects, including parameterized tests for null rates, uniqueness thresholds, and referential integrity with proper documentation and versioning.
 ---
-Design a unit testing approach for complex dbt macros and models with multiple CTEs, including mock input data setup, expected output assertions, and integration with CI/CD pipelines for automated test execution.
+Design a multi-environment deployment strategy for dbt that uses CI/CD pipelines to run slim CI on pull requests, deploy to staging with full refresh capability, and promote to production with blue-green deployment patterns.
 ---
-Build a test coverage monitoring system for a dbt project that tracks which models have schema tests, data tests, and unit tests, identifies untested critical paths, and generates coverage reports that can be enforced in pull request checks.
+Implement a documentation strategy in dbt that leverages auto-generated lineage graphs, custom metadata in schema.yml files, and dbt-docs to create a searchable data catalog with business context and ownership information.
