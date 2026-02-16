@@ -30,12 +30,20 @@ pub async fn list_team_repo_skills(
         (owner, repo, token)
     };
 
+    let client = super::github_import::build_github_client(Some(&token));
+
+    // Fetch the default branch (may be "main", "master", etc.)
+    let default_branch =
+        super::github_push::get_default_branch(&client, &token, &owner, &repo).await?;
+    info!(
+        "[list_team_repo_skills] using default branch '{}'",
+        default_branch
+    );
+
     // List all skills via the shared helper
     let available_skills =
-        super::github_import::list_github_skills_inner(&owner, &repo, "main", None, Some(&token))
+        super::github_import::list_github_skills_inner(&owner, &repo, &default_branch, None, Some(&token))
             .await?;
-
-    let client = super::github_import::build_github_client(Some(&token));
 
     let mut team_skills = Vec::new();
 
@@ -43,7 +51,7 @@ pub async fn list_team_repo_skills(
         // Try to fetch the .skill-builder manifest
         let manifest_url = format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}/.skill-builder",
-            owner, repo, "main", skill.path
+            owner, repo, default_branch, skill.path
         );
 
         let manifest_resp = match client.get(&manifest_url).send().await {
@@ -227,10 +235,14 @@ pub async fn import_team_repo_skill(
 
     let client = super::github_import::build_github_client(Some(&token));
 
+    // Fetch the default branch (may be "main", "master", etc.)
+    let default_branch =
+        super::github_push::get_default_branch(&client, &token, &owner, &repo).await?;
+
     // Fetch the full recursive tree
     let tree_url = format!(
         "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-        owner, repo, "main"
+        owner, repo, default_branch
     );
 
     let response = client
@@ -326,7 +338,7 @@ pub async fn import_team_repo_skill(
 
         let raw_url = format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            owner, repo, "main", file_path
+            owner, repo, default_branch, file_path
         );
 
         let response = client
@@ -373,7 +385,7 @@ pub async fn import_team_repo_skill(
     // Fetch manifest for creator info
     let manifest_url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}/{}/.skill-builder",
-        owner, repo, "main", skill_path
+        owner, repo, default_branch, skill_path
     );
 
     let manifest_creator = match client.get(&manifest_url).send().await {
