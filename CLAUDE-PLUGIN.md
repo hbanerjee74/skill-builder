@@ -17,7 +17,7 @@ skill-builder/
 │   │   ├── eval-skill-quality.sh    # LLM-as-judge evaluation script
 │   │   ├── prompts/                 # Test prompts for eval harness (per skill type)
 │   │   └── results/                 # Evaluation outputs (gitignored)
-│   └── tests/                       # Test harness scripts (T1-T5)
+│   └── plugin-tests/                # Test harness scripts (T1-T5)
 ├── skills/
 │   └── generate-skill/
 │       └── SKILL.md                 # Coordinator skill (entry point, self-contained)

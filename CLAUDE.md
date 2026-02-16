@@ -45,11 +45,12 @@ cd app && npm install && npm run sidecar:build
 npm run dev                              # Dev mode (hot reload)
 
 # Testing (all from app/)
-./tests/run.sh                           # All levels (unit + integration + e2e)
+./tests/run.sh                           # All levels (unit + integration + e2e + plugin + eval)
 ./tests/run.sh unit                      # Level 1: stores, utils, hooks, rust, sidecar
 ./tests/run.sh integration               # Level 2: component + page tests
 ./tests/run.sh e2e                       # Level 3: Playwright
 ./tests/run.sh e2e --tag @workflow       # Level 3, filtered by tag
+./tests/run.sh eval                      # Eval harness tests
 npm run test:unit                        # Unit tests only (frontend)
 npm run test:integration                 # Integration tests only (frontend)
 npm run test:e2e                         # All E2E tests
@@ -111,6 +112,10 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 - Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
+
+**Eval quick rules:**
+- Changed `scripts/eval/eval-skill-quality.sh` or `scripts/eval/test-eval-harness.sh`? → `./tests/run.sh eval`
+- Changed `scripts/eval/prompts/`? → no tests needed (prompts are data files)
 
 **Cross-cutting** (shared files affect both app and plugin):
 - Changed `agents/`, `references/`, or `.claude-plugin/`? → run both `./tests/run.sh plugin --tag <tag>` and `./scripts/test-plugin.sh t1`

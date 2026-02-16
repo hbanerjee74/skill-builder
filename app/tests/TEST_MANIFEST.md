@@ -135,6 +135,15 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 ./scripts/test-plugin.sh t1                   # Quick structural check (free, no LLM)
 ```
 
+### Skill Evaluation Harness
+
+| Source | Test Script | Test Count |
+|---|---|---|
+| `scripts/eval/eval-skill-quality.sh` | `scripts/eval/test-eval-harness.sh` (14 structural + 5 live API) | 19 |
+| `scripts/eval/prompts/*.txt` (4 files) | -- | -- |
+
+**Command:** `./tests/run.sh eval`
+
 ## Change Impact Rules
 
 ### Shared infrastructure (run everything)

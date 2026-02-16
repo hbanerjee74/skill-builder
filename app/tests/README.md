@@ -15,6 +15,7 @@ cd app
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
 ./tests/run.sh plugin          # CLI plugin tests (structural + smoke)
+./tests/run.sh eval            # Eval harness tests
 
 # Run E2E tests by feature area
 ./tests/run.sh e2e --tag @dashboard
@@ -75,7 +76,15 @@ CLI plugin structural validation and agent smoke tests. Uses the 5-tier harness 
 
 | Runtime | Command | Location |
 |---|---|---|
-| Bash + Claude | `./tests/run.sh plugin` | `scripts/tests/t1-*.sh` through `t5-*.sh` |
+| Bash + Claude | `./tests/run.sh plugin` | `scripts/plugin-tests/t1-*.sh` through `t5-*.sh` |
+
+### Level 5: Eval Harness Tests
+
+Structural and live API tests for the skill evaluation harness. Structural tests run without API keys; live tests require `ANTHROPIC_API_KEY`.
+
+| Runtime | Command | Location |
+|---|---|---|
+| Bash + Claude | `./tests/run.sh eval` | `scripts/eval/test-eval-harness.sh` |
 
 ### Self-Tests
 
