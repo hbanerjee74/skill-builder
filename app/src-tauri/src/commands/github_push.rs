@@ -35,7 +35,7 @@ pub async fn validate_remote_repo(
 
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         settings
             .github_oauth_token
             .ok_or_else(|| "Not authenticated with GitHub. Please sign in first.".to_string())?
@@ -108,7 +108,7 @@ pub async fn push_skill_to_remote(
     // 1. Load settings
     let (token, owner, repo_name, github_login, workspace_path, skills_path, api_key) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let token = settings
             .github_oauth_token
             .ok_or_else(|| "Not authenticated with GitHub. Please sign in first.".to_string())?;
@@ -369,7 +369,7 @@ pub fn write_skill_manifest(
     info!("write_skill_manifest: writing manifest for '{}'", skill_name);
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = crate::db::read_settings(&conn)?;
+    let settings = crate::db::read_settings_hydrated(&conn)?;
     let github_login = settings.github_user_login;
     let output_root = settings
         .skills_path
@@ -400,7 +400,7 @@ pub async fn list_user_repos(
 
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         settings
             .github_oauth_token
             .ok_or_else(|| "Not authenticated with GitHub. Please sign in first.".to_string())?

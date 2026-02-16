@@ -135,7 +135,7 @@ pub async fn list_github_skills(
     // Read OAuth token if available
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         settings.github_oauth_token.clone()
     };
 
@@ -297,7 +297,7 @@ pub async fn import_github_skills(
     // Read settings
     let (workspace_path, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let wp = settings
             .workspace_path
             .ok_or_else(|| "Workspace path not initialized".to_string())?;

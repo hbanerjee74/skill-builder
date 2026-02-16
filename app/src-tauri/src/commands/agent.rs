@@ -28,7 +28,7 @@ pub async fn start_agent(
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let key = settings
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;

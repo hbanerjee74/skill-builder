@@ -105,6 +105,7 @@ pub fn run() {
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails)
+            // and migrate plaintext secrets from SQLite to OS keychain.
             {
                 let db_state = app.state::<db::Db>();
                 let conn = db_state.0.lock().expect("failed to lock db for settings");
@@ -113,6 +114,16 @@ pub fn run() {
                         logging::set_log_level(&settings.log_level);
                         log::info!("Log level: {}", settings.log_level);
                         log::info!("Skills path: {}", settings.skills_path.as_deref().unwrap_or("(not configured)"));
+
+                        // Migrate plaintext secrets from SQLite → OS keychain
+                        let (updated, migrated) = keychain::migrate_secrets_from_db(&settings);
+                        if migrated {
+                            if let Err(e) = db::write_settings(&conn, &updated) {
+                                log::warn!("Failed to persist secret migration: {}", e);
+                            } else {
+                                log::info!("Secrets migrated from SQLite to OS keychain");
+                            }
+                        }
                     }
                     Err(e) => {
                         logging::set_log_level("info");

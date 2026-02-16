@@ -524,7 +524,7 @@ pub async fn generate_trigger_text(
     log::info!("[generate_trigger_text] skill_name={}", skill_name);
     let (api_key, context) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let api_key = settings
             .anthropic_api_key
             .ok_or_else(|| "API key not configured".to_string())?;

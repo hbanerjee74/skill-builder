@@ -602,6 +602,16 @@ pub fn read_settings(conn: &Connection) -> Result<AppSettings, String> {
     }
 }
 
+/// Read settings and hydrate secrets from the OS keychain.
+///
+/// Use this for all code paths that need to *use* settings (commands, etc.).
+/// Use `read_settings()` only for migration paths that need the raw DB state.
+pub fn read_settings_hydrated(conn: &Connection) -> Result<AppSettings, String> {
+    let mut settings = read_settings(conn)?;
+    crate::keychain::hydrate_secrets(&mut settings);
+    Ok(settings)
+}
+
 pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), String> {
     let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
     conn.execute(
