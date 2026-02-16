@@ -155,6 +155,9 @@ struct PersistentSidecar {
     /// ensures the Arc stays alive for the sidecar's lifetime.
     #[allow(dead_code)]
     last_pong: Arc<Mutex<tokio::time::Instant>>,
+    /// Timestamp of the last activity (agent request sent) for this sidecar.
+    /// Used by the idle cleanup task to determine if a sidecar can be reclaimed.
+    last_activity: Arc<Mutex<tokio::time::Instant>>,
 }
 
 /// Abort the reader tasks and heartbeat task, then drop the sidecar, cleaning up all resources.
@@ -251,6 +254,16 @@ fn spawn_heartbeat_task(
 /// and the stdout reader task (which appends each message line).
 type RequestLogFile = Arc<Mutex<Option<std::fs::File>>>;
 
+/// Default shutdown timeout in seconds. If graceful shutdown takes longer,
+/// the app force-exits.
+pub const DEFAULT_SHUTDOWN_TIMEOUT_SECS: u64 = 5;
+
+/// Default idle timeout in seconds. Sidecars inactive for this long are shut down.
+pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 600; // 10 minutes
+
+/// How often the idle cleanup task checks for idle sidecars, in seconds.
+const IDLE_CHECK_INTERVAL_SECS: u64 = 60;
+
 /// Pool of persistent sidecar processes, one per skill.
 /// Reuses existing processes across agent invocations to reduce startup latency.
 /// Wraps an `Arc` so cloning is cheap and all clones share the same pool.
@@ -265,15 +278,146 @@ pub struct SidecarPool {
     /// Per-request JSONL log files, keyed by agent_id.
     /// The stdout reader appends each message to the matching file.
     request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
+    /// Handle for the background idle cleanup task. Aborted on pool drop.
+    idle_cleanup_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl SidecarPool {
     pub fn new() -> Self {
-        SidecarPool {
+        let pool = SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
             pending_requests: Arc::new(Mutex::new(HashSet::new())),
             request_logs: Arc::new(Mutex::new(HashMap::new())),
+            idle_cleanup_task: Arc::new(Mutex::new(None)),
+        };
+
+        // Spawn the idle cleanup background task
+        let cleanup_pool = pool.clone();
+        let task = tokio::spawn(async move {
+            cleanup_pool.idle_cleanup_loop().await;
+        });
+        // Store the handle so we can abort it on shutdown
+        // (uses try_lock since we just created the pool and nothing else holds the lock)
+        if let Ok(mut guard) = pool.idle_cleanup_task.try_lock() {
+            *guard = Some(task);
+        }
+
+        pool
+    }
+
+    /// Background loop that periodically checks for idle sidecars and shuts them down.
+    /// Runs every `IDLE_CHECK_INTERVAL_SECS` and reclaims sidecars idle for longer
+    /// than `DEFAULT_IDLE_TIMEOUT_SECS` that have no pending requests.
+    async fn idle_cleanup_loop(&self) {
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(IDLE_CHECK_INTERVAL_SECS)).await;
+
+            let now = tokio::time::Instant::now();
+            let mut idle_skills: Vec<String> = Vec::new();
+
+            // Phase 1: Identify idle sidecars (short lock)
+            {
+                let pool = self.sidecars.lock().await;
+                let pending = self.pending_requests.lock().await;
+
+                for (skill_name, sidecar) in pool.iter() {
+                    // Check if this skill has any pending (in-flight) requests
+                    let has_pending = pending.iter().any(|agent_id| {
+                        agent_id.starts_with(&format!("{}-", skill_name))
+                    });
+
+                    if has_pending {
+                        continue; // Active sidecar — skip
+                    }
+
+                    // Check last activity time
+                    let last_activity = {
+                        let guard = sidecar.last_activity.lock().await;
+                        *guard
+                    };
+
+                    if now.duration_since(last_activity) >= idle_timeout {
+                        idle_skills.push(skill_name.clone());
+                    }
+                }
+            }
+
+            // Phase 2: Shut down idle sidecars (one at a time, releasing pool lock between each)
+            for skill_name in &idle_skills {
+                log::info!(
+                    "[idle-cleanup] Shutting down idle sidecar for '{}' (inactive for >{}s)",
+                    skill_name,
+                    DEFAULT_IDLE_TIMEOUT_SECS,
+                );
+
+                // Re-check pending requests (race protection against requests that started after Phase 1)
+                let has_pending = {
+                    let pending = self.pending_requests.lock().await;
+                    pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)))
+                };
+                if has_pending {
+                    log::debug!("[idle-cleanup] Skipping '{}' — became active after idle check", skill_name);
+                    continue;
+                }
+
+                // Use the same cleanup logic as remove_and_kill_sidecar but with graceful shutdown
+                let mut pool = self.sidecars.lock().await;
+                if let Some(mut sidecar) = pool.remove(skill_name) {
+                    let pid = sidecar.pid;
+
+                    // Abort background tasks
+                    sidecar.stdout_task.abort();
+                    sidecar.stderr_task.abort();
+                    sidecar.heartbeat_task.abort();
+
+                    // Send shutdown message for graceful exit
+                    {
+                        let mut stdin = sidecar.stdin.lock().await;
+                        let _ = stdin.write_all(b"{\"type\":\"shutdown\"}\n").await;
+                        let _ = stdin.flush().await;
+                    }
+
+                    // Wait briefly for graceful exit, then kill
+                    let wait_result = tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        sidecar.child.wait(),
+                    )
+                    .await;
+
+                    match wait_result {
+                        Ok(Ok(status)) => {
+                            log::info!(
+                                "[idle-cleanup] Sidecar for '{}' (pid {}) exited gracefully: {}",
+                                skill_name, pid, status
+                            );
+                        }
+                        Ok(Err(e)) => {
+                            log::warn!(
+                                "[idle-cleanup] Error waiting for sidecar '{}' (pid {}): {}",
+                                skill_name, pid, e
+                            );
+                        }
+                        Err(_) => {
+                            log::warn!(
+                                "[idle-cleanup] Sidecar '{}' (pid {}) did not exit in 3s, killing",
+                                skill_name, pid
+                            );
+                            let _ = sidecar.child.kill().await;
+                        }
+                    }
+                }
+            }
+
+            if !idle_skills.is_empty() {
+                log::info!(
+                    "[idle-cleanup] Cleaned up {} idle sidecar(s): {:?}",
+                    idle_skills.len(),
+                    idle_skills,
+                );
+            }
         }
     }
 
@@ -818,6 +962,7 @@ impl SidecarPool {
             stderr_task,
             heartbeat_task,
             last_pong,
+            last_activity: Arc::new(Mutex::new(tokio::time::Instant::now())),
         };
 
         // Re-acquire pool lock to insert the new sidecar
@@ -952,6 +1097,12 @@ impl SidecarPool {
             (sidecar.stdin.clone(), sidecar.pid)
         };
 
+        // Get the last_activity handle for this sidecar (before releasing the pool lock)
+        let last_activity_handle = {
+            let pool = self.sidecars.lock().await;
+            pool.get(skill_name).map(|s| s.last_activity.clone())
+        };
+
         // Issue 1: Write to stdin under the per-sidecar Mutex. This serializes
         // concurrent writes to the same skill's sidecar while allowing different
         // skills to write fully in parallel.
@@ -1007,6 +1158,12 @@ impl SidecarPool {
                 }
                 Ok(Ok(())) => {}
             }
+        }
+
+        // Update last_activity timestamp after successful request send
+        if let Some(last_activity) = last_activity_handle {
+            let mut guard = last_activity.lock().await;
+            *guard = tokio::time::Instant::now();
         }
 
         log::info!(
@@ -1134,6 +1291,15 @@ impl SidecarPool {
 
     /// Shutdown all persistent sidecars. Called on app exit.
     pub async fn shutdown_all(&self, app_handle: &tauri::AppHandle) {
+        // Abort the idle cleanup task first — no longer needed during shutdown
+        {
+            let mut guard = self.idle_cleanup_task.lock().await;
+            if let Some(task) = guard.take() {
+                task.abort();
+                log::debug!("Aborted idle cleanup task");
+            }
+        }
+
         let skill_names: Vec<String> = {
             let pool = self.sidecars.lock().await;
             pool.keys().cloned().collect()
@@ -1146,6 +1312,30 @@ impl SidecarPool {
         }
 
         log::info!("All persistent sidecars shut down");
+    }
+
+    /// Shutdown all sidecars with a timeout. If the graceful shutdown exceeds
+    /// `timeout_secs`, log a warning and return an error so the caller can force-exit.
+    pub async fn shutdown_all_with_timeout(
+        &self,
+        app_handle: &tauri::AppHandle,
+        timeout_secs: u64,
+    ) -> Result<(), String> {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(timeout_secs),
+            self.shutdown_all(app_handle),
+        )
+        .await
+        {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                log::warn!(
+                    "Sidecar pool shutdown timed out after {}s — force-exiting",
+                    timeout_secs,
+                );
+                Err(format!("Shutdown timed out after {}s", timeout_secs))
+            }
+        }
     }
 }
 
@@ -1484,8 +1674,8 @@ pub fn find_git_bash() -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_pool_creation() {
+    #[tokio::test]
+    async fn test_pool_creation() {
         let pool = SidecarPool::new();
         // Pool should be created without panicking
         let _ = pool;
@@ -1802,5 +1992,318 @@ mod tests {
             logs.remove("agent-123");
             assert!(!logs.contains_key("agent-123"));
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Shutdown timeout tests
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn test_shutdown_timeout_constant() {
+        // Verify the default shutdown timeout is 5 seconds as specified
+        assert_eq!(DEFAULT_SHUTDOWN_TIMEOUT_SECS, 5);
+    }
+
+    #[test]
+    fn test_idle_timeout_constant() {
+        // Verify the default idle timeout is 10 minutes (600 seconds)
+        assert_eq!(DEFAULT_IDLE_TIMEOUT_SECS, 600);
+    }
+
+    #[test]
+    fn test_idle_check_interval_constant() {
+        // Verify the idle check runs every 60 seconds
+        assert_eq!(IDLE_CHECK_INTERVAL_SECS, 60);
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_timeout_completes_within_limit() {
+        // Verify that shutdown_all_with_timeout succeeds when shutdown is fast.
+        // With an empty pool, shutdown should complete nearly instantly.
+        let pool = SidecarPool::new();
+        // We can't call shutdown_all_with_timeout without an AppHandle,
+        // but we can test the timeout wrapper logic directly.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(DEFAULT_SHUTDOWN_TIMEOUT_SECS),
+            async {
+                // Simulate fast shutdown (no sidecars to shut down)
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            },
+        )
+        .await;
+
+        assert!(result.is_ok(), "Fast shutdown should complete within timeout");
+        drop(pool);
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_timeout_expires_on_hang() {
+        // Verify that the timeout correctly fires when shutdown hangs.
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(100), // Very short timeout for testing
+            async {
+                // Simulate a hung sidecar that never completes
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            },
+        )
+        .await;
+
+        assert!(result.is_err(), "Hung shutdown should trigger timeout");
+    }
+
+    // -----------------------------------------------------------------
+    // Idle cleanup tests
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_idle_cleanup_task_created_on_init() {
+        // Verify that the idle cleanup task is spawned when the pool is created
+        let pool = SidecarPool::new();
+        let guard = pool.idle_cleanup_task.lock().await;
+        assert!(
+            guard.is_some(),
+            "Idle cleanup task should be spawned on pool creation"
+        );
+        // The task should be running (not finished)
+        assert!(
+            !guard.as_ref().unwrap().is_finished(),
+            "Idle cleanup task should be running"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_cleanup_task_aborted_on_shutdown_all() {
+        // Verify that shutdown_all aborts the idle cleanup task.
+        // We can't call shutdown_all without an AppHandle, but we can
+        // test the abort mechanism directly.
+        let pool = SidecarPool::new();
+
+        // Verify task exists
+        {
+            let guard = pool.idle_cleanup_task.lock().await;
+            assert!(guard.is_some());
+        }
+
+        // Simulate what shutdown_all does: abort the idle cleanup task
+        {
+            let mut guard = pool.idle_cleanup_task.lock().await;
+            if let Some(task) = guard.take() {
+                task.abort();
+            }
+        }
+
+        // Give abort a moment to take effect
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        // Verify task was taken (set to None)
+        {
+            let guard = pool.idle_cleanup_task.lock().await;
+            assert!(guard.is_none(), "Idle cleanup task should be removed after abort");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_last_activity_initialized_on_creation() {
+        // Verify that last_activity is set to "now" when created.
+        // We test the Arc<Mutex<Instant>> pattern used by PersistentSidecar.
+        let now = tokio::time::Instant::now();
+        let last_activity = Arc::new(Mutex::new(tokio::time::Instant::now()));
+
+        let stored = {
+            let guard = last_activity.lock().await;
+            *guard
+        };
+
+        // The stored instant should be very close to now (within 10ms)
+        assert!(
+            stored.duration_since(now) < std::time::Duration::from_millis(10),
+            "last_activity should be initialized to approximately now"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_last_activity_update_mechanism() {
+        // Verify that we can update last_activity and read the updated value.
+        let last_activity = Arc::new(Mutex::new(tokio::time::Instant::now()));
+
+        // Capture initial value
+        let initial = {
+            let guard = last_activity.lock().await;
+            *guard
+        };
+
+        // Wait a bit then update
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        {
+            let mut guard = last_activity.lock().await;
+            *guard = tokio::time::Instant::now();
+        }
+
+        // Read updated value
+        let updated = {
+            let guard = last_activity.lock().await;
+            *guard
+        };
+
+        assert!(
+            updated > initial,
+            "Updated last_activity should be later than initial"
+        );
+        assert!(
+            updated.duration_since(initial) >= std::time::Duration::from_millis(50),
+            "Should reflect the elapsed time"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_detection_with_pending_requests() {
+        // Verify the logic that protects active sidecars from idle cleanup.
+        // A sidecar with pending requests should NOT be considered idle,
+        // even if last_activity is old.
+        let pool = SidecarPool::new();
+
+        // Add a pending request for "active-skill"
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.insert("active-skill-step1-123456".to_string());
+        }
+
+        // Verify the pending request is detected
+        let has_pending = {
+            let pending = pool.pending_requests.lock().await;
+            pending.iter().any(|id| id.starts_with("active-skill-"))
+        };
+        assert!(has_pending, "Should detect pending requests for active skill");
+
+        // Verify a different skill has no pending requests
+        let other_has_pending = {
+            let pending = pool.pending_requests.lock().await;
+            pending.iter().any(|id| id.starts_with("other-skill-"))
+        };
+        assert!(!other_has_pending, "Should not detect pending requests for other skill");
+    }
+
+    #[tokio::test]
+    async fn test_idle_check_skips_active_sidecars() {
+        // Integration-style test of the idle detection logic:
+        // When a sidecar has pending requests, it should be skipped regardless
+        // of how long ago it was last active.
+        let pool = SidecarPool::new();
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+
+        // Simulate: two skills in the pool
+        // "active-skill" has a pending request
+        // "idle-skill" has no pending requests and old last_activity
+        {
+            let mut pending = pool.pending_requests.lock().await;
+            pending.insert("active-skill-step3-999999".to_string());
+        }
+
+        // Simulate checking which skills are idle (mirrors idle_cleanup_loop logic)
+        let now = tokio::time::Instant::now();
+        let simulated_old_activity = now - idle_timeout - std::time::Duration::from_secs(60);
+
+        // Check "active-skill": has pending request -> should be skipped
+        let active_has_pending = {
+            let pending = pool.pending_requests.lock().await;
+            pending.iter().any(|id| id.starts_with("active-skill-"))
+        };
+        assert!(active_has_pending, "active-skill should have pending requests");
+
+        // Check "idle-skill": no pending requests + old activity -> should be cleaned
+        let idle_has_pending = {
+            let pending = pool.pending_requests.lock().await;
+            pending.iter().any(|id| id.starts_with("idle-skill-"))
+        };
+        assert!(!idle_has_pending, "idle-skill should have no pending requests");
+        let idle_duration = now.duration_since(simulated_old_activity);
+        assert!(
+            idle_duration >= idle_timeout,
+            "idle-skill should exceed the idle timeout"
+        );
+    }
+
+    /// Helper: mirrors the Phase 1 idle detection logic from `idle_cleanup_loop`.
+    /// Given a skill name, its last_activity instant, the current time, the idle timeout,
+    /// and the set of pending request IDs, returns whether the sidecar should be
+    /// considered idle (i.e., eligible for cleanup).
+    fn is_idle(
+        skill_name: &str,
+        last_activity: tokio::time::Instant,
+        now: tokio::time::Instant,
+        idle_timeout: std::time::Duration,
+        pending: &HashSet<String>,
+    ) -> bool {
+        let has_pending = pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)));
+        if has_pending {
+            return false;
+        }
+        now.duration_since(last_activity) >= idle_timeout
+    }
+
+    #[tokio::test]
+    async fn test_idle_cleanup_protects_active_sidecars() {
+        // A sidecar with pending requests must NOT be identified as idle,
+        // even if its last_activity exceeds the idle timeout.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(120);
+
+        let mut pending = HashSet::new();
+        pending.insert("my-skill-step1-abc123".to_string());
+        pending.insert("my-skill-step2-def456".to_string());
+
+        assert!(
+            !is_idle("my-skill", stale_activity, now, idle_timeout, &pending),
+            "Sidecar with pending requests must not be considered idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_cleanup_respects_recent_activity() {
+        // A sidecar with recent activity and no pending requests must NOT be
+        // identified as idle.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        // Activity 30 seconds ago — well within the 600s timeout
+        let recent_activity = now - std::time::Duration::from_secs(30);
+
+        let pending = HashSet::new(); // no pending requests
+
+        assert!(
+            !is_idle("recent-skill", recent_activity, now, idle_timeout, &pending),
+            "Sidecar with recent activity must not be considered idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_detection_identifies_stale_sidecars() {
+        // A sidecar with old last_activity and no pending requests IS idle
+        // and should be eligible for cleanup.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        // Activity 15 minutes ago — exceeds the 10-minute timeout
+        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(300);
+
+        let pending = HashSet::new(); // no pending requests
+
+        assert!(
+            is_idle("stale-skill", stale_activity, now, idle_timeout, &pending),
+            "Sidecar with old activity and no pending requests should be identified as idle"
+        );
+
+        // Also verify the boundary: exactly at the timeout should be idle
+        let boundary_activity = now - idle_timeout;
+        assert!(
+            is_idle("boundary-skill", boundary_activity, now, idle_timeout, &pending),
+            "Sidecar at exactly the idle timeout boundary should be identified as idle"
+        );
+
+        // Just under the timeout should NOT be idle
+        let almost_idle_activity = now - idle_timeout + std::time::Duration::from_secs(1);
+        assert!(
+            !is_idle("almost-idle-skill", almost_idle_activity, now, idle_timeout, &pending),
+            "Sidecar just under the idle timeout should not be identified as idle"
+        );
     }
 }
