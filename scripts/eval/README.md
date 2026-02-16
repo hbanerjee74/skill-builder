@@ -216,7 +216,10 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
     "prompts_file": "path to prompts file",
     "total_prompts": int,
     "evaluated": int,
-    "failed": int
+    "failed": int,
+    "pricing": {"input_cost_per_mtok": float, "output_cost_per_mtok": float},
+    "skill_tokens_a": int,
+    "skill_tokens_b": int | null
   },
   "prompts": [
     {
@@ -232,14 +235,34 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
         "claude_centric_design": int,
         "quality_total": int,
         "practices_total": int,
-        "total": int
+        "total": int,
+        "performance": {
+          "latency_ms": int, "ttft_ms": int, "success": bool, "retries": int,
+          "tokens_per_second": float, "skill_discovery_ms": int,
+          "progressive_levels": int
+        },
+        "cost": {
+          "input_tokens": int, "output_tokens": int, "total_tokens": int,
+          "skill_tokens": int, "estimated_cost_usd": float,
+          "cost_per_quality_point": float | null, "token_source": str
+        }
       },
       "variant_b": {
         "actionability": int,
         "specificity": int,
         "domain_depth": int,
         "self_containment": int,
-        "total": int
+        "total": int,
+        "performance": {
+          "latency_ms": int, "ttft_ms": int, "success": bool, "retries": int,
+          "tokens_per_second": float, "skill_discovery_ms": int,
+          "progressive_levels": int
+        },
+        "cost": {
+          "input_tokens": int, "output_tokens": int, "total_tokens": int,
+          "skill_tokens": int, "estimated_cost_usd": float,
+          "cost_per_quality_point": float | null, "token_source": str
+        }
       },
       "explanation": "quality judge explanation text",
       "claude_practices_explanation": "best practices judge explanation text"
@@ -247,26 +270,40 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
   ],
   "averages": {
     "variant_a": {
-      "actionability": float,
-      "specificity": float,
-      "domain_depth": float,
-      "self_containment": float,
-      "progressive_disclosure": float,
-      "structure_organization": float,
+      "actionability": float, "specificity": float,
+      "domain_depth": float, "self_containment": float,
+      "progressive_disclosure": float, "structure_organization": float,
       "claude_centric_design": float,
-      "quality_total": float,
-      "practices_total": float,
-      "total": float
+      "quality_total": float, "practices_total": float, "total": float,
+      "performance": {
+        "latency_ms": float, "ttft_ms": float, "success_rate": float,
+        "tokens_per_second": float, "skill_discovery_ms": int,
+        "progressive_levels": int
+      },
+      "cost": {
+        "avg_input_tokens": float, "avg_output_tokens": float,
+        "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float
+      }
     },
     "variant_b": {
-      "actionability": float,
-      "specificity": float,
-      "domain_depth": float,
-      "self_containment": float,
-      "total": float
+      "actionability": float, "specificity": float,
+      "domain_depth": float, "self_containment": float, "total": float,
+      "performance": {
+        "latency_ms": float, "ttft_ms": float, "success_rate": float,
+        "tokens_per_second": float, "skill_discovery_ms": int,
+        "progressive_levels": int
+      },
+      "cost": {
+        "avg_input_tokens": float, "avg_output_tokens": float,
+        "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float
+      }
     },
     "quality_delta": float,
-    "delta": float
+    "delta": float,
+    "cost": {
+      "token_delta_pct": float, "cost_delta_pct": float,
+      "total_eval_cost_usd": float, "winner": "A|B|TIE"
+    }
   },
   "verdict": {
     "winner": "A|B|TIE",
@@ -578,13 +615,65 @@ The averages section includes aggregate cost data:
 }
 ```
 
+## Performance Tracking
+
+The harness tracks performance metrics for every response generation, enabling comparison of response speed and reliability between variants.
+
+### Metrics Tracked
+
+| Metric | Description | Source |
+|---|---|---|
+| **Latency (ms)** | Total wall-clock time for response generation | Measured via `date +%s%3N` |
+| **TTFT (ms)** | Time to first token (estimated as 25% of total latency) | Estimated |
+| **Tokens/s** | Output throughput: `output_tokens / (latency_ms / 1000)` | Calculated from API token count and latency |
+| **Success/Failure** | Whether the response generation succeeded | CLI exit code |
+| **Retries** | Number of retry attempts before success or failure | Counted per-prompt |
+| **Skill discovery time (ms)** | Estimated overhead of loading the skill: `50 + (skill_tokens / 10)` | Estimated from skill file size |
+| **Progressive disclosure levels** | How many layers the skill uses (1 = SKILL.md only, 2 = SKILL.md + references) | Counted from skill directory |
+
+### Performance Perspective
+
+Use `--perspective performance` to focus on performance metrics (skips quality judges):
+
+```bash
+# Performance-only evaluation (cheaper, skips judges)
+./scripts/eval/eval-skill-quality.sh \
+  --baseline skill.md \
+  --prompts prompts.txt \
+  --perspective performance
+```
+
+When `--perspective performance` is selected:
+- Responses are still generated (needed to measure latency and throughput)
+- Both quality judges are skipped (saves ~$0.40-0.80 per prompt)
+- The verdict is based on latency comparison
+- The report includes per-prompt and summary performance tables
+
+### Performance Fields in JSON Output
+
+Each prompt includes per-variant performance data:
+
+```json
+"performance": {
+  "latency_ms": 3200,
+  "ttft_ms": 800,
+  "success": true,
+  "retries": 0,
+  "tokens_per_second": 24.6,
+  "skill_discovery_ms": 120,
+  "progressive_levels": 2
+}
+```
+
+The averages section includes aggregate performance data with the same fields.
+
 ## Future Enhancements
 
 See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
 
 - **VD-535:** ~~Claude best practices compliance (7 dimensions instead of 4)~~ (done)
 - **VD-536:** ~~Cost tracking (token usage, API costs, efficiency metrics)~~ (done)
-- **VD-537:** Performance tracking (latency, success rate, skill discovery time)
+- **VD-537:** ~~Performance tracking (latency, success rate, skill discovery time)~~ (done)
 - **VD-538:** Multi-perspective reporting and recommendations engine
 
 ## See Also

@@ -51,7 +51,9 @@
 #         "self_containment": int, "progressive_disclosure": int,
 #         "structure_organization": int, "claude_centric_design": int,
 #         "quality_total": int, "practices_total": int, "total": int,
-#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int},
+#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int,
+#                        "tokens_per_second": float, "skill_discovery_ms": int,
+#                        "progressive_levels": int},
 #         "cost": {
 #           "input_tokens": int, "output_tokens": int, "total_tokens": int,
 #           "skill_tokens": int, "estimated_cost_usd": float,
@@ -61,7 +63,9 @@
 #       "variant_b": {
 #         "actionability": int, "specificity": int, "domain_depth": int,
 #         "self_containment": int, "total": int,
-#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int},
+#         "performance": {"latency_ms": int, "ttft_ms": int, "success": bool, "retries": int,
+#                        "tokens_per_second": float, "skill_discovery_ms": int,
+#                        "progressive_levels": int},
 #         "cost": {
 #           "input_tokens": int, "output_tokens": int, "total_tokens": int,
 #           "skill_tokens": int, "estimated_cost_usd": float,
@@ -78,14 +82,18 @@
 #       "self_containment": float, "progressive_disclosure": float,
 #       "structure_organization": float, "claude_centric_design": float,
 #       "quality_total": float, "practices_total": float, "total": float,
-#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float},
+#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float,
+#                      "tokens_per_second": float, "skill_discovery_ms": int,
+#                      "progressive_levels": int},
 #       "cost": {"avg_input_tokens": float, "avg_output_tokens": float,
 #                "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float}
 #     },
 #     "variant_b": {
 #       "actionability": float, "specificity": float, "domain_depth": float,
 #       "self_containment": float, "total": float,
-#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float},
+#       "performance": {"latency_ms": float, "ttft_ms": float, "success_rate": float,
+#                      "tokens_per_second": float, "skill_discovery_ms": int,
+#                      "progressive_levels": int},
 #       "cost": {"avg_input_tokens": float, "avg_output_tokens": float,
 #                "avg_total_tokens": float, "avg_cost_usd": float, "total_cost_usd": float}
 #     },
@@ -685,6 +693,7 @@ FAILED=0
 # Performance accumulators
 TOTAL_A_LATENCY=0; TOTAL_A_TTFT=0; TOTAL_A_RETRIES=0; TOTAL_A_SUCCESS=0
 TOTAL_B_LATENCY=0; TOTAL_B_TTFT=0; TOTAL_B_RETRIES=0; TOTAL_B_SUCCESS=0
+TOTAL_A_TPS="0.0"; TOTAL_B_TPS="0.0"
 
 # Cost accumulators
 TOTAL_INPUT_TOKENS_A=0; TOTAL_OUTPUT_TOKENS_A=0
@@ -699,6 +708,38 @@ if [ "$MODE" = "compare" ]; then
   SKILL_TOKENS_B=$(python3 -c "import math; print(math.ceil(${skill_b_words} * 1.33))")
 else
   SKILL_TOKENS_B=0
+fi
+
+# Skill discovery time estimate: 50ms base + proportional to skill size
+SKILL_DISCOVERY_MS_A=$(python3 -c "print(50 + ${SKILL_TOKENS_A} // 10)")
+if [ "$MODE" = "compare" ]; then
+  SKILL_DISCOVERY_MS_B=$(python3 -c "print(50 + ${SKILL_TOKENS_B} // 10)")
+else
+  SKILL_DISCOVERY_MS_B=0
+fi
+
+# Progressive disclosure levels: count reference files in skill directory
+# Level 1: SKILL.md only; Level 2: SKILL.md + reference files
+count_progressive_levels() {
+  local skill_path="$1"
+  local skill_dir
+  skill_dir=$(dirname "$skill_path")
+  local ref_count=0
+  if [ -d "$skill_dir/references" ]; then
+    ref_count=$(ls "$skill_dir/references/" 2>/dev/null | wc -l | tr -d ' ')
+  fi
+  if [ "$ref_count" -gt 0 ]; then
+    echo 2
+  else
+    echo 1
+  fi
+}
+
+PROGRESSIVE_LEVELS_A=$(count_progressive_levels "$SKILL_A")
+if [ "$MODE" = "compare" ]; then
+  PROGRESSIVE_LEVELS_B=$(count_progressive_levels "$SKILL_B")
+else
+  PROGRESSIVE_LEVELS_B=0
 fi
 
 # Store per-prompt results for the report
@@ -779,6 +820,24 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   a_prompt_cost=$(python3 -c "print(f'{($a_input_tokens * $INPUT_COST_PER_MTOK / 1000000) + ($a_output_tokens * $OUTPUT_COST_PER_MTOK / 1000000):.6f}')")
   b_prompt_cost=$(python3 -c "print(f'{($b_input_tokens * $INPUT_COST_PER_MTOK / 1000000) + ($b_output_tokens * $OUTPUT_COST_PER_MTOK / 1000000):.6f}')")
 
+  # Calculate tokens per second: output_tokens / (latency_ms / 1000)
+  a_tokens_per_second=$(python3 -c "
+lat = $a_latency
+out = $a_output_tokens
+if lat > 0:
+    print(f'{out / (lat / 1000.0):.1f}')
+else:
+    print('0.0')
+")
+  b_tokens_per_second=$(python3 -c "
+lat = $b_latency
+out = $b_output_tokens
+if lat > 0:
+    print(f'{out / (lat / 1000.0):.1f}')
+else:
+    print('0.0')
+")
+
   # Accumulate performance metrics
   TOTAL_A_LATENCY=$((TOTAL_A_LATENCY + a_latency))
   TOTAL_A_TTFT=$((TOTAL_A_TTFT + a_ttft))
@@ -789,6 +848,8 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   TOTAL_B_TTFT=$((TOTAL_B_TTFT + b_ttft))
   TOTAL_B_RETRIES=$((TOTAL_B_RETRIES + b_retries))
   [ "$b_success" = "true" ] && TOTAL_B_SUCCESS=$((TOTAL_B_SUCCESS + 1))
+  TOTAL_A_TPS=$(python3 -c "print(f'{$TOTAL_A_TPS + $a_tokens_per_second:.1f}')")
+  TOTAL_B_TPS=$(python3 -c "print(f'{$TOTAL_B_TPS + $b_tokens_per_second:.1f}')")
 
   # Accumulate cost metrics
   TOTAL_INPUT_TOKENS_A=$((TOTAL_INPUT_TOKENS_A + a_input_tokens))
@@ -1023,8 +1084,8 @@ except Exception as e:
   PROMPT_SCORES_A[$i]="${a_action}|${a_specific}|${a_depth}|${a_self}"
   PROMPT_SCORES_B[$i]="${b_action}|${b_specific}|${b_depth}|${b_self}"
   PROMPT_EXPLANATIONS[$i]="$explanation"
-  PROMPT_PERF_A[$i]="${a_latency}|${a_ttft}|${a_success}|${a_retries}"
-  PROMPT_PERF_B[$i]="${b_latency}|${b_ttft}|${b_success}|${b_retries}"
+  PROMPT_PERF_A[$i]="${a_latency}|${a_ttft}|${a_success}|${a_retries}|${a_tokens_per_second}"
+  PROMPT_PERF_B[$i]="${b_latency}|${b_ttft}|${b_success}|${b_retries}|${b_tokens_per_second}"
   PROMPT_PRACTICES_SCORES[$i]="${a_progressive}|${a_structure}|${a_claude_centric}"
   PROMPT_PRACTICES_EXPLANATIONS[$i]="$practices_explanation"
   PROMPT_COST_A[$i]="${a_input_tokens}|${a_output_tokens}|${a_prompt_cost}|${a_token_source}"
@@ -1062,8 +1123,8 @@ else:
     fi
   elif [ "$PERSPECTIVE" = "performance" ]; then
     # Performance-focused output
-    echo "  ${LABEL_A}: ${a_latency}ms latency, ${a_ttft}ms TTFT, ${a_retries} retries" >&2
-    echo "  ${LABEL_B}: ${b_latency}ms latency, ${b_ttft}ms TTFT, ${b_retries} retries" >&2
+    echo "  ${LABEL_A}: ${a_latency}ms latency, ${a_ttft}ms TTFT, ${a_tokens_per_second} tok/s, ${a_retries} retries" >&2
+    echo "  ${LABEL_B}: ${b_latency}ms latency, ${b_ttft}ms TTFT, ${b_tokens_per_second} tok/s, ${b_retries} retries" >&2
     if [ "$a_latency" -lt "$b_latency" ]; then
       winner="${GREEN}${LABEL_A} faster${RESET}"
     elif [ "$b_latency" -lt "$a_latency" ]; then
@@ -1148,6 +1209,8 @@ avg_a_success_rate=$(python3 -c "print(f'{($TOTAL_A_SUCCESS * 100.0) / $EVALUATE
 avg_b_latency=$(compute_avg $TOTAL_B_LATENCY $EVALUATED)
 avg_b_ttft=$(compute_avg $TOTAL_B_TTFT $EVALUATED)
 avg_b_success_rate=$(python3 -c "print(f'{($TOTAL_B_SUCCESS * 100.0) / $EVALUATED:.1f}')")
+avg_a_tps=$(python3 -c "print(f'{$TOTAL_A_TPS / $EVALUATED:.1f}')")
+avg_b_tps=$(python3 -c "print(f'{$TOTAL_B_TPS / $EVALUATED:.1f}')")
 
 # Compute cost averages
 avg_input_tokens_a=$(compute_avg $TOTAL_INPUT_TOKENS_A $EVALUATED)
@@ -1248,6 +1311,12 @@ avg_a_success_rate = float(os.environ.get('avg_a_success_rate', '0'))
 avg_b_latency = float(os.environ.get('avg_b_latency', '0'))
 avg_b_ttft = float(os.environ.get('avg_b_ttft', '0'))
 avg_b_success_rate = float(os.environ.get('avg_b_success_rate', '0'))
+avg_a_tps = float(os.environ.get('avg_a_tps', '0'))
+avg_b_tps = float(os.environ.get('avg_b_tps', '0'))
+skill_discovery_ms_a = int(os.environ.get('SKILL_DISCOVERY_MS_A', '0'))
+skill_discovery_ms_b = int(os.environ.get('SKILL_DISCOVERY_MS_B', '0'))
+progressive_levels_a = int(os.environ.get('PROGRESSIVE_LEVELS_A', '0'))
+progressive_levels_b = int(os.environ.get('PROGRESSIVE_LEVELS_B', '0'))
 
 # Cost data
 skill_tokens_a = int(os.environ.get('SKILL_TOKENS_A', '0'))
@@ -1302,8 +1371,12 @@ for i in range(num_prompts):
         ap, ast, acc = 0, 0, 0
 
     # Parse performance metrics
-    a_lat, a_ttft, a_succ, a_ret = perf_a.split('|')
-    b_lat, b_ttft, b_succ, b_ret = perf_b.split('|')
+    perf_a_parts = perf_a.split('|')
+    a_lat, a_ttft, a_succ, a_ret = perf_a_parts[0], perf_a_parts[1], perf_a_parts[2], perf_a_parts[3]
+    a_tps = perf_a_parts[4] if len(perf_a_parts) > 4 else '0.0'
+    perf_b_parts = perf_b.split('|')
+    b_lat, b_ttft, b_succ, b_ret = perf_b_parts[0], perf_b_parts[1], perf_b_parts[2], perf_b_parts[3]
+    b_tps = perf_b_parts[4] if len(perf_b_parts) > 4 else '0.0'
 
     # Parse cost metrics
     if cost_a_str:
@@ -1348,7 +1421,10 @@ for i in range(num_prompts):
                 "latency_ms": int(a_lat),
                 "ttft_ms": int(a_ttft),
                 "success": a_succ == "true",
-                "retries": int(a_ret)
+                "retries": int(a_ret),
+                "tokens_per_second": float(a_tps),
+                "skill_discovery_ms": skill_discovery_ms_a,
+                "progressive_levels": progressive_levels_a
             },
             "cost": {
                 "input_tokens": ca_in,
@@ -1370,7 +1446,10 @@ for i in range(num_prompts):
                 "latency_ms": int(b_lat),
                 "ttft_ms": int(b_ttft),
                 "success": b_succ == "true",
-                "retries": int(b_ret)
+                "retries": int(b_ret),
+                "tokens_per_second": float(b_tps),
+                "skill_discovery_ms": skill_discovery_ms_b if mode == "compare" else 0,
+                "progressive_levels": progressive_levels_b if mode == "compare" else 0
             },
             "cost": {
                 "input_tokens": cb_in,
@@ -1439,7 +1518,10 @@ result = {
             "performance": {
                 "latency_ms": avg_a_latency,
                 "ttft_ms": avg_a_ttft,
-                "success_rate": avg_a_success_rate
+                "success_rate": avg_a_success_rate,
+                "tokens_per_second": avg_a_tps,
+                "skill_discovery_ms": skill_discovery_ms_a,
+                "progressive_levels": progressive_levels_a
             },
             "cost": {
                 "avg_input_tokens": avg_input_tokens_a,
@@ -1458,7 +1540,10 @@ result = {
             "performance": {
                 "latency_ms": avg_b_latency,
                 "ttft_ms": avg_b_ttft,
-                "success_rate": avg_b_success_rate
+                "success_rate": avg_b_success_rate,
+                "tokens_per_second": avg_b_tps,
+                "skill_discovery_ms": skill_discovery_ms_b if mode == "compare" else 0,
+                "progressive_levels": progressive_levels_b if mode == "compare" else 0
             },
             "cost": {
                 "avg_input_tokens": avg_input_tokens_b,
@@ -1686,6 +1771,57 @@ else:
 fi
 fi  # end cost analysis
 
+# Performance Analysis section (shown for performance or all)
+if [ "$PERSPECTIVE" = "performance" ] || [ "$PERSPECTIVE" = "all" ]; then
+echo "## Performance Analysis"
+echo ""
+
+echo "### Per-Prompt Performance"
+echo ""
+echo "| Prompt | ${LABEL_A} Latency | ${LABEL_A} TTFT | ${LABEL_A} Tok/s | ${LABEL_B} Latency | ${LABEL_B} TTFT | ${LABEL_B} Tok/s |"
+echo "|---|---|---|---|---|---|---|"
+
+for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+  if [ -z "${PROMPT_PERF_A[$i]:-}" ]; then
+    continue
+  fi
+
+  IFS='|' read -r pa_lat pa_ttft pa_succ pa_ret pa_tps <<< "${PROMPT_PERF_A[$i]}"
+  IFS='|' read -r pb_lat pb_ttft pb_succ pb_ret pb_tps <<< "${PROMPT_PERF_B[$i]}"
+
+  echo "| $((i + 1)) | ${pa_lat}ms | ${pa_ttft}ms | ${pa_tps} | ${pb_lat}ms | ${pb_ttft}ms | ${pb_tps} |"
+done
+
+echo ""
+
+echo "### Performance Summary"
+echo ""
+echo "| Metric | ${LABEL_A} | ${LABEL_B} |"
+echo "|---|---|---|"
+echo "| Avg latency | ${avg_a_latency}ms | ${avg_b_latency}ms |"
+echo "| Avg TTFT | ${avg_a_ttft}ms | ${avg_b_ttft}ms |"
+echo "| Avg tokens/s | ${avg_a_tps} | ${avg_b_tps} |"
+echo "| Success rate | ${avg_a_success_rate}% | ${avg_b_success_rate}% |"
+echo ""
+
+echo "### Skill Loading"
+echo ""
+echo "| Metric | ${LABEL_A} |"
+echo "|---|---|"
+echo "| Skill discovery time (est.) | ${SKILL_DISCOVERY_MS_A}ms |"
+echo "| Progressive disclosure levels | ${PROGRESSIVE_LEVELS_A} |"
+echo "| Skill tokens | ~${SKILL_TOKENS_A} |"
+if [ "$MODE" = "compare" ]; then
+  echo ""
+  echo "| Metric | ${LABEL_B} |"
+  echo "|---|---|"
+  echo "| Skill discovery time (est.) | ${SKILL_DISCOVERY_MS_B}ms |"
+  echo "| Progressive disclosure levels | ${PROGRESSIVE_LEVELS_B} |"
+  echo "| Skill tokens | ~${SKILL_TOKENS_B} |"
+fi
+echo ""
+fi  # end performance analysis
+
 echo "## Verdict"
 echo ""
 
@@ -1777,8 +1913,9 @@ if [ "$OUTPUT_FORMAT" = "json" ]; then
   export avg_b_action avg_b_specific avg_b_depth avg_b_self total_b delta
   export avg_a_progressive avg_a_structure avg_a_claude_centric
   export quality_a quality_b quality_delta practices_a
-  export avg_a_latency avg_a_ttft avg_a_success_rate
-  export avg_b_latency avg_b_ttft avg_b_success_rate
+  export avg_a_latency avg_a_ttft avg_a_success_rate avg_a_tps
+  export avg_b_latency avg_b_ttft avg_b_success_rate avg_b_tps
+  export SKILL_DISCOVERY_MS_A SKILL_DISCOVERY_MS_B PROGRESSIVE_LEVELS_A PROGRESSIVE_LEVELS_B
   # Cost variables
   export SKILL_TOKENS_A SKILL_TOKENS_B INPUT_COST_PER_MTOK OUTPUT_COST_PER_MTOK
   export TOTAL_COST_A TOTAL_COST_B total_eval_cost
