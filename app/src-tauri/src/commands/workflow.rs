@@ -490,7 +490,8 @@ fn build_prompt(
         "The domain is: {}. The skill name is: {}. \
          The skill directory is: {}. \
          The context directory is: {}. \
-         The skill output directory (SKILL.md and references/) is: {}.",
+         The skill output directory (SKILL.md and references/) is: {}. \
+         All directories already exist — never create directories with mkdir or any other method. Write files directly.",
         domain,
         skill_name,
         skill_dir.display(),

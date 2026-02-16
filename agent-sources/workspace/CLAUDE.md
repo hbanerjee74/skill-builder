@@ -30,7 +30,7 @@ Data/analytics engineers who need domain context to model silver and gold layer 
 3. **Guide WHAT and WHY, not HOW** — "Your customer dimension needs X because..." not "Create table dim_account with columns..." Exception: be prescriptive when exactness matters (metric formulas, business rule logic).
 
 ## Output Paths
-The coordinator provides **context directory** and **skill output directory** paths. Write files only to these directories — no extra subdirectories. The skill output structure is `SKILL.md` at root + `references/` subfolder.
+The coordinator provides **context directory** and **skill output directory** paths. All directories already exist — never run `mkdir` or create directories. Write files directly to the provided paths. The skill output structure is `SKILL.md` at root + `references/` subfolder.
 
 ## File Formats
 
