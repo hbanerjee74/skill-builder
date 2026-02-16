@@ -82,6 +82,12 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
 /// picked up until the app is restarted.
 static COPIED_WORKSPACES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
+/// Public wrapper for `resolve_prompt_source_dirs` — used by `workspace.rs`
+/// to pass the bundled CLAUDE.md path into `rebuild_claude_md`.
+pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (PathBuf, PathBuf) {
+    resolve_prompt_source_dirs(app_handle)
+}
+
 /// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
 /// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
 /// if not found (caller should check `.is_dir()` / `.is_file()` before using).
@@ -196,17 +202,10 @@ pub async fn ensure_workspace_prompts(
 }
 
 /// Synchronous inner copy logic shared by async and sync entry points.
-fn copy_prompts_sync(agents_dir: &Path, claude_md: &Path, workspace_path: &str) -> Result<(), String> {
+/// Only copies agents — CLAUDE.md is rebuilt separately via `rebuild_claude_md`.
+fn copy_prompts_sync(agents_dir: &Path, _claude_md: &Path, workspace_path: &str) -> Result<(), String> {
     if agents_dir.is_dir() {
         copy_agents_to_claude_dir(agents_dir, workspace_path)?;
-    }
-    if claude_md.is_file() {
-        let claude_dir = Path::new(workspace_path).join(".claude");
-        std::fs::create_dir_all(&claude_dir)
-            .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
-        let dest = claude_dir.join("CLAUDE.md");
-        std::fs::copy(claude_md, &dest)
-            .map_err(|e| format!("Failed to copy CLAUDE.md to .claude/: {}", e))?;
     }
     Ok(())
 }
@@ -243,11 +242,89 @@ pub fn redeploy_agents(app_handle: &tauri::AppHandle, workspace_path: &str) -> R
     Ok(())
 }
 
-/// Append (or replace) the "## Imported Skills" section in the workspace's
-/// `.claude/CLAUDE.md` file. Reads the existing file, strips any previous
-/// imported-skills section, queries the DB for active skills with trigger text,
-/// and appends the new section if any exist. Safe to call multiple times.
-pub fn append_imported_skills_section(
+/// Extract the user's customization content from an existing CLAUDE.md.
+/// Returns everything from `\n## Customization\n` onward (inclusive), or empty string.
+fn extract_customization_section(content: &str) -> String {
+    if let Some(pos) = content.find("\n## Customization\n") {
+        content[pos..].to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// Generate the "## Imported Skills" section from DB, or empty string if none.
+fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String> {
+    let skills = crate::db::list_active_skills_with_triggers(conn)?;
+    if skills.is_empty() {
+        return Ok(String::new());
+    }
+    let mut section = String::from("\n\n## Imported Skills\n");
+    for skill in &skills {
+        let trigger = skill.trigger_text.as_deref().unwrap_or("");
+        section.push_str(&format!("\n### /{}\n{}\n", skill.skill_name, trigger));
+    }
+    Ok(section)
+}
+
+const DEFAULT_CUSTOMIZATION_SECTION: &str =
+    "\n\n## Customization\n\nAdd your workspace-specific instructions below. This section is preserved across app updates and skill changes.\n";
+
+/// Rebuild workspace CLAUDE.md with a three-section merge:
+///   1. Base (from bundled template — always overwritten)
+///   2. Imported Skills (from DB — regenerated)
+///   3. Customization (from existing file — preserved)
+///
+/// Used by `init_workspace` and `clear_workspace` which have access to
+/// the bundled template path via AppHandle.
+pub fn rebuild_claude_md(
+    bundled_base_path: &Path,
+    workspace_path: &str,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+
+    // 1. Read bundled base template (strip its own ## Customization marker if present)
+    let raw_base = std::fs::read_to_string(bundled_base_path)
+        .map_err(|e| format!("Failed to read bundled CLAUDE.md: {}", e))?;
+    let base = if let Some(pos) = raw_base.find("\n## Customization\n") {
+        raw_base[..pos].trim_end().to_string()
+    } else {
+        raw_base.trim_end().to_string()
+    };
+
+    // 2. Generate imported skills section from DB
+    let skills_section = generate_skills_section(conn)?;
+
+    // 3. Extract existing customization from workspace CLAUDE.md
+    let customization = if claude_md_path.is_file() {
+        let existing = std::fs::read_to_string(&claude_md_path)
+            .map_err(|e| format!("Failed to read existing .claude/CLAUDE.md: {}", e))?;
+        let section = extract_customization_section(&existing);
+        if section.is_empty() { DEFAULT_CUSTOMIZATION_SECTION.to_string() } else { section }
+    } else {
+        DEFAULT_CUSTOMIZATION_SECTION.to_string()
+    };
+
+    // 4. Merge: base + skills + customization
+    let mut final_content = base;
+    final_content.push_str(&skills_section);
+    final_content.push_str(&customization);
+
+    // 5. Write
+    let claude_dir = Path::new(workspace_path).join(".claude");
+    std::fs::create_dir_all(&claude_dir)
+        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
+    std::fs::write(&claude_md_path, final_content)
+        .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
+    Ok(())
+}
+
+/// Update only the Imported Skills zone in an existing workspace CLAUDE.md,
+/// preserving both the base section above and customization section below.
+///
+/// Used by skill mutation callers (import, activate, delete, trigger edit)
+/// which don't have access to the bundled template path.
+pub fn update_skills_section(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
@@ -257,48 +334,31 @@ pub fn append_imported_skills_section(
         std::fs::read_to_string(&claude_md_path)
             .map_err(|e| format!("Failed to read .claude/CLAUDE.md: {}", e))?
     } else {
-        String::new()
+        return Err("CLAUDE.md does not exist; run init_workspace first".to_string());
     };
 
-    // Strip any existing "## Imported Skills" section (to end of file or next ## heading)
-    let base_content = if let Some(pos) = content.find("\n## Imported Skills\n") {
-        // Check if there's another ## heading after it
-        let after_section = &content[pos + "\n## Imported Skills\n".len()..];
-        if let Some(next_heading) = after_section.find("\n## ") {
-            // Keep everything before the section (including the newline at pos)
-            // and everything from the next heading onward
-            let mut result = content[..pos].to_string();
-            result.push('\n');
-            result.push_str(&after_section[next_heading..]);
-            result
-        } else {
-            // Section goes to end of file — just keep everything before it
-            content[..pos].to_string()
-        }
+    // Extract base: everything before "## Imported Skills" or "## Customization"
+    let base_end = content
+        .find("\n## Imported Skills\n")
+        .or_else(|| content.find("\n## Customization\n"))
+        .unwrap_or(content.len());
+    let base = content[..base_end].trim_end().to_string();
+
+    // Generate skills section from DB
+    let skills_section = generate_skills_section(conn)?;
+
+    // Extract customization (preserved verbatim)
+    let customization = extract_customization_section(&content);
+    let customization = if customization.is_empty() {
+        DEFAULT_CUSTOMIZATION_SECTION.to_string()
     } else {
-        content
+        customization
     };
 
-    // Query active imported skills with trigger text
-    let skills = crate::db::list_active_skills_with_triggers(conn)?;
-
-    let mut final_content = base_content;
-
-    if !skills.is_empty() {
-        final_content.push_str("\n\n## Imported Skills\n");
-        for skill in &skills {
-            let trigger = skill.trigger_text.as_deref().unwrap_or("");
-            final_content.push_str(&format!(
-                "\n### /{}\n{}\n",
-                skill.skill_name, trigger
-            ));
-        }
-    }
-
-    // Ensure .claude directory exists
-    let claude_dir = Path::new(workspace_path).join(".claude");
-    std::fs::create_dir_all(&claude_dir)
-        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
+    // Merge: base + skills + customization
+    let mut final_content = base;
+    final_content.push_str(&skills_section);
+    final_content.push_str(&customization);
 
     std::fs::write(&claude_md_path, final_content)
         .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
