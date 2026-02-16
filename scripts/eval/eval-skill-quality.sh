@@ -19,13 +19,14 @@
 #   VERBOSE        Set to 1 for verbose output
 #
 # Cost estimate (based on actual runs with sonnet):
-#   ~$0.50-1.00 per prompt (2 response generations + 1 judge call)
-#   Full 5-prompt evaluation: ~$3-5
+#   ~$0.70-1.40 per prompt (2 response generations + 2 judge calls)
+#   Full 5-prompt evaluation: ~$4-7
 #
 # JSON Output Schema (--format json):
 # {
 #   "metadata": {
 #     "mode": "baseline|compare",
+#     "perspective": "quality|cost|performance|all",
 #     "timestamp": "ISO-8601 timestamp",
 #     "judge_model": "model name",
 #     "response_model": "model name",
@@ -45,6 +46,11 @@
 #         "specificity": int,
 #         "domain_depth": int,
 #         "self_containment": int,
+#         "progressive_disclosure": int,
+#         "structure_organization": int,
+#         "claude_centric_design": int,
+#         "quality_total": int,
+#         "practices_total": int,
 #         "total": int
 #       },
 #       "variant_b": {
@@ -54,7 +60,8 @@
 #         "self_containment": int,
 #         "total": int
 #       },
-#       "explanation": "judge explanation text"
+#       "explanation": "quality judge explanation text",
+#       "claude_practices_explanation": "best practices judge explanation text"
 #     }
 #   ],
 #   "averages": {
@@ -63,6 +70,11 @@
 #       "specificity": float,
 #       "domain_depth": float,
 #       "self_containment": float,
+#       "progressive_disclosure": float,
+#       "structure_organization": float,
+#       "claude_centric_design": float,
+#       "quality_total": float,
+#       "practices_total": float,
 #       "total": float
 #     },
 #     "variant_b": {
@@ -72,6 +84,7 @@
 #       "self_containment": float,
 #       "total": float
 #     },
+#     "quality_delta": float,
 #     "delta": float
 #   },
 #   "verdict": {
@@ -499,6 +512,59 @@ Return ONLY a JSON object with this exact structure (no markdown fences, no comm
 JUDGE
 }
 
+# ---------- Claude Best Practices Judge Prompt ----------
+build_claude_practices_judge_prompt() {
+  local skill_content="$1"
+  local response="$2"
+  local prompt_text="$3"
+
+  cat <<JUDGE_EOF
+You are an expert evaluator assessing Claude Agent Skills against Anthropic's official best practices.
+
+## Original Task
+${prompt_text}
+
+## Skill Content
+${skill_content}
+
+## Response Generated Using This Skill
+${response}
+
+## Evaluation Rubric
+
+Score on these dimensions (1-5 scale):
+
+1. **Progressive Disclosure** (1-5):
+   - Clear name/description for discovery?
+   - Core content in SKILL.md with details in references?
+   - Content organized for efficient loading?
+   - 1=monolithic blob, 5=perfectly layered
+
+2. **Structure & Organization** (1-5):
+   - Organized like an onboarding guide?
+   - Clear flow from overview to specifics?
+   - Appropriate separation of concerns?
+   - 1=chaotic, 5=exemplary structure
+
+3. **Claude-Centric Design** (1-5):
+   - Clear when to trigger the skill?
+   - Unambiguous instructions?
+   - Handles common failure modes?
+   - Written from Claude's perspective?
+   - 1=confusing, 5=perfectly clear
+
+## Required Output Format
+
+Return ONLY a JSON object (no markdown fences, no commentary outside the JSON):
+{
+  "progressive_disclosure": <int 1-5>,
+  "structure_organization": <int 1-5>,
+  "claude_centric_design": <int 1-5>,
+  "explanation": "<2-3 sentences on compliance with Claude best practices>"
+}
+JUDGE_EOF
+}
+
 # ---------- Parse judge JSON ----------
 # Extract a numeric score from JSON. Args: json_string path (e.g., "variant_a.specificity")
 extract_score() {
@@ -531,10 +597,29 @@ except:
 " <<< "$json"
 }
 
+# Extract a numeric score from flat JSON. Args: json_string key (e.g., "progressive_disclosure")
+extract_flat_score() {
+  local json="$1"
+  local key="$2"
+  python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d['${key}'])
+except Exception as e:
+    print('-1', file=sys.stderr)
+    print('0')
+" <<< "$json"
+}
+
 # ---------- Run evaluation ----------
-# Accumulators for averages
+# Accumulators for averages (quality judge — 4 dimensions)
 TOTAL_A_ACTION=0; TOTAL_A_SPECIFIC=0; TOTAL_A_DEPTH=0; TOTAL_A_SELF=0
 TOTAL_B_ACTION=0; TOTAL_B_SPECIFIC=0; TOTAL_B_DEPTH=0; TOTAL_B_SELF=0
+
+# Accumulators for Claude best practices judge — 3 dimensions (skill A only)
+TOTAL_A_PROGRESSIVE=0; TOTAL_A_STRUCTURE=0; TOTAL_A_CLAUDE_CENTRIC=0
+
 EVALUATED=0
 FAILED=0
 
@@ -549,6 +634,8 @@ declare -a PROMPT_SCORES_B
 declare -a PROMPT_EXPLANATIONS
 declare -a PROMPT_PERF_A
 declare -a PROMPT_PERF_B
+declare -a PROMPT_PRACTICES_SCORES
+declare -a PROMPT_PRACTICES_EXPLANATIONS
 
 for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   prompt_file="$TMPDIR_BASE/prompt_${i}.txt"
@@ -614,12 +701,14 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   response_a=$(cat "$resp_a_file")
   response_b=$(cat "$resp_b_file")
   
-  # Skip judge if perspective is performance-only
-  if [ "$PERSPECTIVE" = "performance" ]; then
-    # Use dummy scores for performance-only mode
+  # Skip judges if perspective is performance-only or cost-only
+  if [ "$PERSPECTIVE" = "performance" ] || [ "$PERSPECTIVE" = "cost" ]; then
+    # Use dummy scores for non-quality modes
     a_action=0; a_specific=0; a_depth=0; a_self=0
     b_action=0; b_specific=0; b_depth=0; b_self=0
-    explanation="(Performance-only evaluation - quality scoring skipped)"
+    explanation="(Quality scoring skipped for ${PERSPECTIVE}-only evaluation)"
+    a_progressive=0; a_structure=0; a_claude_centric=0
+    practices_explanation="(Quality scoring skipped for ${PERSPECTIVE}-only evaluation)"
   else
     judge_prompt=$(build_judge_prompt "$prompt_text" "$response_a" "$response_b" "$LABEL_A" "$LABEL_B")
     judge_file="$TMPDIR_BASE/judge_${i}.txt"
@@ -730,9 +819,87 @@ except Exception as e:
     b_self=$(extract_score "$judge_json" "variant_b.self_containment")
 
     explanation=$(extract_explanation "$judge_json")
+
+    # ---------- Claude Best Practices Judge (second judge call) ----------
+    # Read skill content for the practices judge
+    skill_content=$(cat "$SKILL_A")
+    practices_judge_prompt=$(build_claude_practices_judge_prompt "$skill_content" "$response_a" "$prompt_text")
+    practices_judge_file="$TMPDIR_BASE/practices_judge_${i}.txt"
+
+    a_progressive=0; a_structure=0; a_claude_centric=0
+    practices_explanation="(Claude practices judge did not run)"
+
+    log "Judging Claude best practices compliance..."
+    if echo "$practices_judge_prompt" | CLAUDECODE= "$CLAUDE_BIN" -p --model "$JUDGE_MODEL" --allowedTools "" --no-session-persistence > "$practices_judge_file" 2>"$practices_judge_file.stderr"; then
+      # Extract JSON from practices judge output
+      practices_raw=$(cat "$practices_judge_file")
+      practices_json=$(python3 -c "
+import sys, re, json
+
+def extract_flat_json(text):
+    \"\"\"Extract valid JSON with progressive_disclosure key using multiple strategies.\"\"\"
+    # Strategy 1: Strip markdown code fences
+    cleaned = re.sub(r'\`\`\`(?:json)?\s*\n?', '', text)
+    # Strategy 2: Find first valid JSON object using brace counting
+    brace_count = 0
+    start_idx = -1
+    for i, char in enumerate(cleaned):
+        if char == '{':
+            if start_idx == -1:
+                start_idx = i
+            brace_count += 1
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0 and start_idx != -1:
+                candidate = cleaned[start_idx:i+1]
+                try:
+                    obj = json.loads(candidate)
+                    if 'progressive_disclosure' in obj:
+                        return obj
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+                start_idx = -1
+    # Strategy 3: Try the whole text stripped
+    try:
+        obj = json.loads(cleaned.strip())
+        if 'progressive_disclosure' in obj:
+            return obj
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+    return None
+
+try:
+    text = sys.stdin.read()
+    result = extract_flat_json(text)
+    if result:
+        print(json.dumps(result))
+        sys.exit(0)
+    else:
+        print('ERROR: Could not find valid JSON with progressive_disclosure', file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR: {str(e)}', file=sys.stderr)
+    sys.exit(1)
+" <<< "$practices_raw" 2>"$practices_judge_file.parse_error")
+
+      if [ $? -eq 0 ] && [ -n "$practices_json" ]; then
+        a_progressive=$(extract_flat_score "$practices_json" "progressive_disclosure")
+        a_structure=$(extract_flat_score "$practices_json" "structure_organization")
+        a_claude_centric=$(extract_flat_score "$practices_json" "claude_centric_design")
+        practices_explanation=$(extract_explanation "$practices_json")
+      else
+        warn "Failed to parse Claude practices judge output for prompt $((i + 1)), using zeros"
+        if [ "$VERBOSE" = "1" ]; then
+          verbose "Practices parse error: $(cat "$practices_judge_file.parse_error" 2>/dev/null || echo 'unknown')"
+          verbose "Raw practices judge output (first 500 chars): $(echo "$practices_raw" | head -c 500)"
+        fi
+      fi
+    else
+      warn "Claude practices judge failed for prompt $((i + 1)), using zeros"
+    fi
   fi
 
-  # Accumulate
+  # Accumulate quality scores
   TOTAL_A_ACTION=$((TOTAL_A_ACTION + a_action))
   TOTAL_A_SPECIFIC=$((TOTAL_A_SPECIFIC + a_specific))
   TOTAL_A_DEPTH=$((TOTAL_A_DEPTH + a_depth))
@@ -743,6 +910,11 @@ except Exception as e:
   TOTAL_B_DEPTH=$((TOTAL_B_DEPTH + b_depth))
   TOTAL_B_SELF=$((TOTAL_B_SELF + b_self))
 
+  # Accumulate Claude best practices scores
+  TOTAL_A_PROGRESSIVE=$((TOTAL_A_PROGRESSIVE + a_progressive))
+  TOTAL_A_STRUCTURE=$((TOTAL_A_STRUCTURE + a_structure))
+  TOTAL_A_CLAUDE_CENTRIC=$((TOTAL_A_CLAUDE_CENTRIC + a_claude_centric))
+
   EVALUATED=$((EVALUATED + 1))
 
   # Store for report
@@ -752,13 +924,18 @@ except Exception as e:
   PROMPT_EXPLANATIONS[$i]="$explanation"
   PROMPT_PERF_A[$i]="${a_latency}|${a_ttft}|${a_success}|${a_retries}"
   PROMPT_PERF_B[$i]="${b_latency}|${b_ttft}|${b_success}|${b_retries}"
+  PROMPT_PRACTICES_SCORES[$i]="${a_progressive}|${a_structure}|${a_claude_centric}"
+  PROMPT_PRACTICES_EXPLANATIONS[$i]="$practices_explanation"
 
   # Print inline result
-  a_total=$((a_action + a_specific + a_depth + a_self))
-  b_total=$((b_action + b_specific + b_depth + b_self))
-  
-  if [ "$PERSPECTIVE" = "performance" ]; then
-    # Performance-focused output
+  a_quality=$((a_action + a_specific + a_depth + a_self))
+  b_quality=$((b_action + b_specific + b_depth + b_self))
+  a_practices=$((a_progressive + a_structure + a_claude_centric))
+  a_total=$((a_quality + a_practices))
+  b_total=$((b_quality))
+
+  if [ "$PERSPECTIVE" = "performance" ] || [ "$PERSPECTIVE" = "cost" ]; then
+    # Performance/cost-focused output
     echo "  ${LABEL_A}: ${a_latency}ms latency, ${a_ttft}ms TTFT, ${a_retries} retries" >&2
     echo "  ${LABEL_B}: ${b_latency}ms latency, ${b_ttft}ms TTFT, ${b_retries} retries" >&2
     if [ "$a_latency" -lt "$b_latency" ]; then
@@ -770,15 +947,17 @@ except Exception as e:
     fi
   else
     # Quality-focused output
-    if [ "$a_total" -gt "$b_total" ]; then
+    if [ "$a_quality" -gt "$b_quality" ]; then
       winner="${GREEN}${LABEL_A} wins${RESET}"
-    elif [ "$b_total" -gt "$a_total" ]; then
+    elif [ "$b_quality" -gt "$a_quality" ]; then
       winner="${GREEN}${LABEL_B} wins${RESET}"
     else
       winner="${YELLOW}Tie${RESET}"
     fi
-    echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20" >&2
-    echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20" >&2
+    echo "  ${LABEL_A} quality: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_quality}/20" >&2
+    echo "  ${LABEL_B} quality: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_quality}/20" >&2
+    echo "  ${LABEL_A} practices: ${a_progressive}/${a_structure}/${a_claude_centric} = ${a_practices}/15" >&2
+    echo "  ${LABEL_A} combined: ${a_total}/35" >&2
   fi
   echo "  Result: ${winner}" >&2
   echo "" >&2
@@ -793,6 +972,7 @@ fi
 # Compute averages using python for floating point
 compute_avg() { python3 -c "print(f'{$1 / $2:.1f}')"; }
 
+# Quality dimension averages
 avg_a_action=$(compute_avg $TOTAL_A_ACTION $EVALUATED)
 avg_a_specific=$(compute_avg $TOTAL_A_SPECIFIC $EVALUATED)
 avg_a_depth=$(compute_avg $TOTAL_A_DEPTH $EVALUATED)
@@ -803,13 +983,31 @@ avg_b_specific=$(compute_avg $TOTAL_B_SPECIFIC $EVALUATED)
 avg_b_depth=$(compute_avg $TOTAL_B_DEPTH $EVALUATED)
 avg_b_self=$(compute_avg $TOTAL_B_SELF $EVALUATED)
 
-total_a=$(python3 -c "print(f'{($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED:.1f}')")
+# Claude best practices dimension averages (skill A only)
+avg_a_progressive=$(compute_avg $TOTAL_A_PROGRESSIVE $EVALUATED)
+avg_a_structure=$(compute_avg $TOTAL_A_STRUCTURE $EVALUATED)
+avg_a_claude_centric=$(compute_avg $TOTAL_A_CLAUDE_CENTRIC $EVALUATED)
+
+# Quality subtotal (4 dims, max 20)
+quality_a=$(python3 -c "print(f'{($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED:.1f}')")
+quality_b=$(python3 -c "print(f'{($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED:.1f}')")
+
+# Practices subtotal (3 dims, max 15, skill A only)
+practices_a=$(python3 -c "print(f'{($TOTAL_A_PROGRESSIVE + $TOTAL_A_STRUCTURE + $TOTAL_A_CLAUDE_CENTRIC) / $EVALUATED:.1f}')")
+
+# Combined total (7 dims, max 35)
+total_a=$(python3 -c "print(f'{($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF + $TOTAL_A_PROGRESSIVE + $TOTAL_A_STRUCTURE + $TOTAL_A_CLAUDE_CENTRIC) / $EVALUATED:.1f}')")
 total_b=$(python3 -c "print(f'{($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED:.1f}')")
-delta=$(python3 -c "
+
+# Quality delta (comparing 4 shared dims between A and B)
+quality_delta=$(python3 -c "
 a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
 b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
 print(f'{a - b:+.1f}')
 ")
+
+# Overall delta (A has 7 dims / 35 max, B has 4 dims / 20 max — use quality delta for comparison)
+delta="$quality_delta"
 
 # Compute performance averages
 avg_a_latency=$(compute_avg $TOTAL_A_LATENCY $EVALUATED)
@@ -844,7 +1042,7 @@ num_prompts = int(os.environ.get('NUM_PROMPTS', '0'))
 evaluated = int(os.environ.get('EVALUATED', '0'))
 failed = int(os.environ.get('FAILED', '0'))
 
-# Averages
+# Quality averages
 avg_a_action = float(os.environ.get('avg_a_action', '0'))
 avg_a_specific = float(os.environ.get('avg_a_specific', '0'))
 avg_a_depth = float(os.environ.get('avg_a_depth', '0'))
@@ -856,6 +1054,19 @@ avg_b_specific = float(os.environ.get('avg_b_specific', '0'))
 avg_b_depth = float(os.environ.get('avg_b_depth', '0'))
 avg_b_self = float(os.environ.get('avg_b_self', '0'))
 total_b = float(os.environ.get('total_b', '0'))
+
+# Claude best practices averages (skill A only)
+avg_a_progressive = float(os.environ.get('avg_a_progressive', '0'))
+avg_a_structure = float(os.environ.get('avg_a_structure', '0'))
+avg_a_claude_centric = float(os.environ.get('avg_a_claude_centric', '0'))
+
+# Subtotals
+quality_a = float(os.environ.get('quality_a', '0'))
+quality_b = float(os.environ.get('quality_b', '0'))
+practices_a = float(os.environ.get('practices_a', '0'))
+
+quality_delta_str = os.environ.get('quality_delta', '0')
+quality_delta = float(quality_delta_str.replace('+', ''))
 
 delta_str = os.environ.get('delta', '0')
 delta = float(delta_str.replace('+', ''))
@@ -882,18 +1093,30 @@ for i in range(num_prompts):
     explanation = os.environ.get(f'PROMPT_EXPLANATION_{i}', '')
     perf_a = os.environ.get(f'PROMPT_PERF_A_{i}', '')
     perf_b = os.environ.get(f'PROMPT_PERF_B_{i}', '')
-    
+    practices = os.environ.get(f'PROMPT_PRACTICES_{i}', '')
+    practices_expl = os.environ.get(f'PROMPT_PRACTICES_EXPL_{i}', '')
+
     if not scores_a:
         continue
-    
-    # Parse scores
+
+    # Parse quality scores
     aa, as_, ad, asc = map(int, scores_a.split('|'))
     ba, bs, bd, bsc = map(int, scores_b.split('|'))
-    
+
+    # Parse Claude best practices scores
+    if practices:
+        ap, ast, acc = map(int, practices.split('|'))
+    else:
+        ap, ast, acc = 0, 0, 0
+
     # Parse performance metrics
     a_lat, a_ttft, a_succ, a_ret = perf_a.split('|')
     b_lat, b_ttft, b_succ, b_ret = perf_b.split('|')
-    
+
+    a_quality_total = aa + as_ + ad + asc
+    a_practices_total = ap + ast + acc
+    a_combined_total = a_quality_total + a_practices_total
+
     prompt_data = {
         "index": i + 1,
         "label": label,
@@ -902,7 +1125,12 @@ for i in range(num_prompts):
             "specificity": as_,
             "domain_depth": ad,
             "self_containment": asc,
-            "total": aa + as_ + ad + asc,
+            "progressive_disclosure": ap,
+            "structure_organization": ast,
+            "claude_centric_design": acc,
+            "quality_total": a_quality_total,
+            "practices_total": a_practices_total,
+            "total": a_combined_total,
             "performance": {
                 "latency_ms": int(a_lat),
                 "ttft_ms": int(a_ttft),
@@ -923,9 +1151,10 @@ for i in range(num_prompts):
                 "retries": int(b_ret)
             }
         },
-        "explanation": explanation
+        "explanation": explanation,
+        "claude_practices_explanation": practices_expl
     }
-    
+
     prompts.append(prompt_data)
 
 # Build final JSON structure
@@ -950,6 +1179,11 @@ result = {
             "specificity": avg_a_specific,
             "domain_depth": avg_a_depth,
             "self_containment": avg_a_self,
+            "progressive_disclosure": avg_a_progressive,
+            "structure_organization": avg_a_structure,
+            "claude_centric_design": avg_a_claude_centric,
+            "quality_total": quality_a,
+            "practices_total": practices_a,
             "total": total_a,
             "performance": {
                 "latency_ms": avg_a_latency,
@@ -969,6 +1203,7 @@ result = {
                 "success_rate": avg_b_success_rate
             }
         },
+        "quality_delta": quality_delta,
         "delta": delta
     },
     "verdict": {
@@ -1014,6 +1249,10 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
 
   echo "### Prompt $((i + 1)): ${PROMPT_LABELS[$i]}..."
   echo ""
+
+  # Quality dimensions (both variants)
+  echo "#### Quality Scores"
+  echo ""
   echo "| Dimension | ${LABEL_A} | ${LABEL_B} |"
   echo "|---|---|---|"
 
@@ -1025,15 +1264,41 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   echo "| Domain Depth | $ad | $bd |"
   echo "| Self-Containment | $asc | $bsc |"
 
-  a_sum=$((aa + as + ad + asc))
-  b_sum=$((ba + bs + bd + bsc))
-  echo "| **Total** | **$a_sum/20** | **$b_sum/20** |"
+  a_qsum=$((aa + as + ad + asc))
+  b_qsum=$((ba + bs + bd + bsc))
+  echo "| **Quality Subtotal** | **$a_qsum/20** | **$b_qsum/20** |"
   echo ""
-  echo "> ${PROMPT_EXPLANATIONS[$i]}"
+
+  # Claude best practices dimensions (skill A only)
+  echo "#### Claude Best Practices (${LABEL_A} only)"
+  echo ""
+  echo "| Dimension | Score |"
+  echo "|---|---|"
+
+  IFS='|' read -r ap ast acc <<< "${PROMPT_PRACTICES_SCORES[$i]}"
+
+  echo "| Progressive Disclosure | $ap |"
+  echo "| Structure & Organization | $ast |"
+  echo "| Claude-Centric Design | $acc |"
+
+  a_psum=$((ap + ast + acc))
+  echo "| **Practices Subtotal** | **$a_psum/15** |"
+  echo ""
+
+  a_combined=$((a_qsum + a_psum))
+  echo "**${LABEL_A} Combined Total: $a_combined/35**"
+  echo ""
+
+  echo "> **Quality:** ${PROMPT_EXPLANATIONS[$i]}"
+  echo ""
+  echo "> **Best Practices:** ${PROMPT_PRACTICES_EXPLANATIONS[$i]}"
   echo ""
 done
 
 echo "## Dimension Averages"
+echo ""
+
+echo "### Quality Dimensions"
 echo ""
 echo "| Dimension | ${LABEL_A} | ${LABEL_B} | Delta |"
 echo "|---|---|---|---|"
@@ -1049,7 +1314,26 @@ for dim in actionability specificity domain_depth self_containment; do
   echo "| $label | $a_val | $b_val | $dim_delta |"
 done
 
-echo "| **Overall** | **$total_a** | **$total_b** | **$delta** |"
+echo "| **Quality Subtotal** | **$quality_a/20** | **$quality_b/20** | **$quality_delta** |"
+echo ""
+
+echo "### Claude Best Practices (${LABEL_A} only)"
+echo ""
+echo "| Dimension | ${LABEL_A} |"
+echo "|---|---|"
+echo "| Progressive Disclosure | $avg_a_progressive |"
+echo "| Structure & Organization | $avg_a_structure |"
+echo "| Claude-Centric Design | $avg_a_claude_centric |"
+echo "| **Practices Subtotal** | **$practices_a/15** |"
+echo ""
+
+echo "### Overall"
+echo ""
+echo "| Metric | ${LABEL_A} | ${LABEL_B} |"
+echo "|---|---|---|"
+echo "| Quality (4 dims) | $quality_a/20 | $quality_b/20 |"
+echo "| Practices (3 dims) | $practices_a/15 | N/A |"
+echo "| **Combined** | **$total_a/35** | **$total_b/20** |"
 echo ""
 
 echo "## Verdict"
@@ -1106,6 +1390,8 @@ if [ "$OUTPUT_FORMAT" = "json" ]; then
   export JSON_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   export avg_a_action avg_a_specific avg_a_depth avg_a_self total_a
   export avg_b_action avg_b_specific avg_b_depth avg_b_self total_b delta
+  export avg_a_progressive avg_a_structure avg_a_claude_centric
+  export quality_a quality_b quality_delta practices_a
   export avg_a_latency avg_a_ttft avg_a_success_rate
   export avg_b_latency avg_b_ttft avg_b_success_rate
   
@@ -1154,6 +1440,8 @@ else:
       export "PROMPT_EXPLANATION_${i}=${PROMPT_EXPLANATIONS[$i]}"
       export "PROMPT_PERF_A_${i}=${PROMPT_PERF_A[$i]}"
       export "PROMPT_PERF_B_${i}=${PROMPT_PERF_B[$i]}"
+      export "PROMPT_PRACTICES_${i}=${PROMPT_PRACTICES_SCORES[$i]}"
+      export "PROMPT_PRACTICES_EXPL_${i}=${PROMPT_PRACTICES_EXPLANATIONS[$i]}"
     fi
   done
   

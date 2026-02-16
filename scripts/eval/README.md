@@ -4,7 +4,7 @@ LLM-as-judge evaluation framework for measuring skill quality, cost, and perform
 
 ## Overview
 
-The evaluation harness compares Claude's responses with and without skills (baseline mode) or between two skill versions (compare mode). It uses an LLM judge to score responses across four quality dimensions that align with the Skill Builder's validation criteria.
+The evaluation harness compares Claude's responses with and without skills (baseline mode) or between two skill versions (compare mode). It uses two LLM judges: a quality judge scoring responses across four dimensions aligned with the Skill Builder's validation criteria, and a Claude best practices judge evaluating three additional dimensions for compliance with Anthropic's official skill design guidelines (7 dimensions total, max 35 points).
 
 ## Quick Start
 
@@ -81,29 +81,58 @@ Compares two skill versions head-to-head to answer: **Which skill version is bet
 
 ## Evaluation Rubric
 
-Each response is scored on four dimensions (1-5 scale). These align with the Skill Builder's validate agent criteria:
+Responses are scored across two judge passes totaling 7 dimensions (max 35 points).
 
-### 1. Actionability (1-5)
+### Quality Dimensions (both variants, max 20)
+
+These align with the Skill Builder's validate agent criteria. Both variant A and variant B are scored.
+
+#### 1. Actionability (1-5)
 Could an engineer follow this response to implement the pattern in a real system?
 - **1** = Too abstract to act on
 - **5** = Ready to implement with clear steps and decisions
 
-### 2. Specificity (1-5)
+#### 2. Specificity (1-5)
 Are the instructions concrete with specific implementation details (SQL/code examples, exact patterns, named strategies)?
 - **1** = Vague/generic boilerplate
 - **5** = Highly specific with concrete examples
 
-### 3. Domain Depth (1-5)
+#### 3. Domain Depth (1-5)
 Does the response demonstrate deep domain knowledge — hard-to-find rules, edge cases, non-obvious entity relationships, industry-specific pitfalls?
 - **1** = Surface-level/common knowledge
 - **5** = Expert-level domain insight
 
-### 4. Self-Containment (1-5)
+#### 4. Self-Containment (1-5)
 Does the response provide enough context to be useful standalone — WHAT and WHY (entities, metrics, business rules, trade-offs)?
 - **1** = Requires significant external context
 - **5** = Fully self-contained guidance
 
-**Total Score:** Sum of all dimensions (max 20 points)
+### Claude Best Practices Dimensions (skill A only, max 15)
+
+These evaluate how well the skill follows Anthropic's official best practices for Claude Agent Skills. Only the skill-loaded variant (A) is scored.
+
+#### 5. Progressive Disclosure (1-5)
+Is content organized for efficient loading with clear layering?
+- **1** = Monolithic blob with everything in one file
+- **5** = Perfectly layered: clear name/description for discovery, core content in SKILL.md, details in references
+
+#### 6. Structure & Organization (1-5)
+Is the skill organized like an onboarding guide with clear flow?
+- **1** = Chaotic, no clear structure or separation of concerns
+- **5** = Exemplary structure: clear flow from overview to specifics, appropriate separation
+
+#### 7. Claude-Centric Design (1-5)
+Is the skill written from Claude's perspective with clear instructions?
+- **1** = Confusing: unclear when to trigger, ambiguous instructions
+- **5** = Perfectly clear: obvious triggers, unambiguous instructions, handles common failure modes
+
+### Scoring Summary
+
+| Category | Dimensions | Max Score | Applies To |
+|---|---|---|---|
+| Quality | 4 (actionability, specificity, domain depth, self-containment) | 20 | Both variants |
+| Claude Best Practices | 3 (progressive disclosure, structure, claude-centric design) | 15 | Skill A only |
+| **Combined** | **7** | **35** | **Skill A** |
 
 ## Test Prompts
 
@@ -178,6 +207,7 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
 {
   "metadata": {
     "mode": "baseline|compare",
+    "perspective": "quality|cost|performance|all",
     "timestamp": "ISO-8601 timestamp",
     "judge_model": "model name",
     "response_model": "model name",
@@ -197,15 +227,45 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
         "specificity": int,
         "domain_depth": int,
         "self_containment": int,
+        "progressive_disclosure": int,
+        "structure_organization": int,
+        "claude_centric_design": int,
+        "quality_total": int,
+        "practices_total": int,
         "total": int
       },
-      "variant_b": { /* same structure */ },
-      "explanation": "judge explanation text"
+      "variant_b": {
+        "actionability": int,
+        "specificity": int,
+        "domain_depth": int,
+        "self_containment": int,
+        "total": int
+      },
+      "explanation": "quality judge explanation text",
+      "claude_practices_explanation": "best practices judge explanation text"
     }
   ],
   "averages": {
-    "variant_a": { /* dimension averages */ },
-    "variant_b": { /* dimension averages */ },
+    "variant_a": {
+      "actionability": float,
+      "specificity": float,
+      "domain_depth": float,
+      "self_containment": float,
+      "progressive_disclosure": float,
+      "structure_organization": float,
+      "claude_centric_design": float,
+      "quality_total": float,
+      "practices_total": float,
+      "total": float
+    },
+    "variant_b": {
+      "actionability": float,
+      "specificity": float,
+      "domain_depth": float,
+      "self_containment": float,
+      "total": float
+    },
+    "quality_delta": float,
     "delta": float
   },
   "verdict": {
@@ -246,14 +306,15 @@ export VERBOSE=1
 
 Based on actual runs with Claude Sonnet:
 
-- **Per prompt:** ~$0.50-1.00 (2 response generations + 1 judge call)
-- **5-prompt evaluation:** ~$3-5
-- **Full skill type suite (4 × 5 prompts):** ~$12-20
+- **Per prompt:** ~$0.70-1.40 (2 response generations + 2 judge calls)
+- **5-prompt evaluation:** ~$4-7
+- **Full skill type suite (4 × 5 prompts):** ~$16-28
 
 **Cost breakdown:**
 1. Generate response A (with skill) — ~$0.15-0.30
 2. Generate response B (without skill or with skill B) — ~$0.15-0.30
-3. Judge comparison — ~$0.20-0.40
+3. Quality judge comparison — ~$0.20-0.40
+4. Claude best practices judge — ~$0.20-0.40
 
 **Tips to reduce costs:**
 - Use smaller prompt sets during development
@@ -425,7 +486,7 @@ Second prompt
 
 See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
 
-- **VD-535:** Claude best practices compliance (7 dimensions instead of 4)
+- **VD-535:** ~~Claude best practices compliance (7 dimensions instead of 4)~~ (done)
 - **VD-536:** Cost tracking (token usage, API costs, efficiency metrics)
 - **VD-537:** Performance tracking (latency, success rate, skill discovery time)
 - **VD-538:** Multi-perspective reporting and recommendations engine
