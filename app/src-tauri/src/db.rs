@@ -1284,6 +1284,27 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
     Ok(count as u32)
 }
 
+/// Returns true if the given skill has an active workflow session (ended_at IS NULL)
+/// whose PID is still alive. Used by startup reconciliation to skip skills owned by
+/// another running instance.
+pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> bool {
+    let mut stmt = match conn.prepare(
+        "SELECT pid FROM workflow_sessions WHERE skill_name = ?1 AND ended_at IS NULL",
+    ) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let pids: Vec<u32> = match stmt.query_map([skill_name], |row| {
+        Ok(row.get::<_, i64>(0)? as u32)
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => return false,
+    };
+
+    pids.iter().any(|&pid| check_pid_alive(pid))
+}
+
 pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
     // Find all sessions that were never ended
     let mut stmt = conn
