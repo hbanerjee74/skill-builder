@@ -985,6 +985,7 @@ pub fn save_workflow_state(
     // nothing changed on disk, so redundant calls are cheap.
     let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
     if has_completed_step {
+        log::info!("[save_workflow_state] Step completed for '{}', checking git auto-commit", skill_name);
         if let Ok(settings) = crate::db::read_settings(&conn) {
             if let Some(ref sp) = settings.skills_path {
                 let completed_steps: Vec<i32> = step_statuses
@@ -1004,7 +1005,11 @@ pub fn save_workflow_state(
                 if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
                     log::warn!("Git auto-commit failed ({}): {}", msg, e);
                 }
+            } else {
+                log::debug!("[save_workflow_state] skills_path not configured — skipping git auto-commit");
             }
+        } else {
+            log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit");
         }
     }
 
