@@ -30,7 +30,7 @@ cd app
 
 # Validate the harness and manifest themselves
 ./tests/harness-test.sh        # Harness arg parsing + error handling (21 tests)
-./tests/manifest-scenarios.sh  # Manifest coverage for all change types (68 scenarios)
+./tests/manifest-scenarios.sh  # Cross-layer manifest validation (45 scenarios)
 
 # npm script equivalents
 npm run test:unit
@@ -88,12 +88,12 @@ Structural and live API tests for the skill evaluation harness. Structural tests
 
 ### Self-Tests
 
-Validate the test infrastructure itself — argument parsing, tag routing, and manifest completeness.
+Validate the test infrastructure itself — argument parsing, tag routing, and cross-layer manifest mappings.
 
 | Script | Tests | What it validates |
 |---|---|---|
 | `./tests/harness-test.sh` | 21 | run.sh and test-plugin.sh accept valid args, reject invalid ones, show help |
-| `./tests/manifest-scenarios.sh` | 68 | Every source file category maps to the right tests (app, plugin, cross-cutting) |
+| `./tests/manifest-scenarios.sh` | 45 | Cross-layer mappings: Rust → E2E tags, shared infra, plugin sources |
 
 ## Running by Area
 
@@ -156,10 +156,10 @@ Available tags: `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@nav
 ```
 app/tests/
   README.md              # This file
-  TEST_MANIFEST.md       # Source-to-test mapping (for AI-assisted test selection)
+  TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
   run.sh                 # Unified test runner (unit, integration, e2e, plugin)
   harness-test.sh        # Self-tests for run.sh and test-plugin.sh (21 tests)
-  manifest-scenarios.sh  # Manifest coverage validation (68 scenarios)
+  manifest-scenarios.sh  # Cross-layer manifest validation (45 scenarios)
   unit/
     frontend/            -> ../../src/__tests__/       (symlink)
     sidecar/             -> ../../sidecar/__tests__/   (symlink)
@@ -170,4 +170,4 @@ Symlinks provide a single entry point for browsing tests without moving files fr
 
 ## For AI Assistants
 
-When deciding which tests to run after a code change, consult **`TEST_MANIFEST.md`** in this directory. It maps every source file to its corresponding tests across all three levels, with exact commands for each.
+For frontend changes, use `npm run test:changed` to auto-detect affected tests. For Rust and cross-layer concerns, consult **`TEST_MANIFEST.md`** in this directory — it maps Rust modules to E2E tags, shared infrastructure files, and plugin sources.

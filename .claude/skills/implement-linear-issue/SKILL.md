@@ -51,7 +51,7 @@ Given the issue, deliver a working implementation that satisfies all acceptance 
 **Before declaring done:**
 - Code review: see [review-flow.md](references/review-flow.md). Max 2 cycles.
 - Tests pass for changed files per the project's test strategy. Max 3 attempts, then escalate to user.
-- **Update `app/tests/TEST_MANIFEST.md`** if any tests were added, removed, or renamed — keep test counts, source-to-test mappings, and E2E tag associations current.
+- **Update `app/tests/TEST_MANIFEST.md`** if you add new Rust commands, E2E spec files, or plugin source patterns — keep the cross-layer map current.
 - All ACs verified checked on Linear. If any missed, spawn a fix agent and re-verify.
 - PR created and linked. See [git-and-pr.md](references/git-and-pr.md). **Do NOT remove the worktree** — user tests manually on it.
 

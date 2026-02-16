@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario-based validation of TEST_MANIFEST.md.
-# Verifies the manifest produces correct test selections for app-only,
-# plugin-only, and cross-cutting file changes.
+# Verifies the cross-layer manifest maps Rust → E2E tags, shared infrastructure,
+# plugin sources, and E2E spec files correctly.
 #
 # Usage: ./tests/manifest-scenarios.sh
 
@@ -70,102 +70,59 @@ echo " Manifest Scenario Validation"
 echo "============================================"
 echo ""
 
-# ===== App-only: Store Changes =====
+# ===== Shared Infrastructure =====
 
-echo -e "${CYAN}${BOLD}━━━ App: Store Change ━━━${RESET}"
-assert_row_contains "agent-store → unit test"         "agent-store.ts"    "agent-store.test.ts"
-assert_row_contains "agent-store → E2E tag"           "agent-store.ts"    "@workflow-agent"
-assert_row_contains "workflow-store → unit test"      "workflow-store.ts"  "workflow-store.test.ts"
-assert_row_contains "workflow-store → E2E tag"        "workflow-store.ts"  "@workflow"
-assert_row_contains "settings-store → unit test"      "settings-store.ts"  "settings-store.test.ts"
-assert_row_contains "settings-store → E2E tag"        "settings-store.ts"  "@settings"
-assert_row_contains "skill-store → unit test"         "skill-store.ts"     "skill-store.test.ts"
-assert_row_contains "imported-skills-store → unit"    "imported-skills-store.ts" "imported-skills-store.test.ts"
+echo -e "${CYAN}${BOLD}━━━ Shared Infrastructure ━━━${RESET}"
+assert_in_manifest  "tauri.ts in shared infrastructure"     "src/lib/tauri.ts"
+assert_in_manifest  "tauri mock in shared infrastructure"   "src/test/mocks/tauri.ts"
+assert_in_manifest  "e2e mock in shared infrastructure"     "src/test/mocks/tauri-e2e.ts"
+assert_in_manifest  "e2e event mock in shared infra"        "src/test/mocks/tauri-e2e-event.ts"
+assert_in_manifest  "full suite instruction present"        "run the full test suite"
 
-# ===== App-only: Component Changes =====
+# ===== Rust → E2E Tags =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Component Change ━━━${RESET}"
-assert_row_contains "skill-card → integration"        "skill-card.tsx"          "skill-card.test.tsx"
-assert_row_contains "skill-card → E2E tag"            "skill-card.tsx"          "@dashboard"
-assert_row_contains "agent-output-panel → integration" "agent-output-panel.tsx" "agent-output-panel.test.tsx"
-assert_row_contains "agent-output-panel → E2E tag"    "agent-output-panel.tsx"  "@workflow-agent"
-assert_row_contains "reasoning-review → integration"    "reasoning-review.tsx"      "reasoning-review.test.tsx"
-assert_row_contains "reasoning-review → E2E tag"        "reasoning-review.tsx"      "@workflow"
-assert_row_contains "feedback-dialog → integration"   "feedback-dialog.tsx"     "feedback-dialog.test.tsx"
+echo -e "${CYAN}${BOLD}━━━ Rust → E2E Tags ━━━${RESET}"
+assert_row_contains "workflow.rs → cargo filter"    "commands/workflow.rs"    "commands::workflow"
+assert_row_contains "workflow.rs → E2E tag"         "commands/workflow.rs"    "@workflow"
+assert_row_contains "workspace.rs → cargo filter"   "commands/workspace.rs"   "commands::workspace"
+assert_row_contains "workspace.rs → E2E tag"        "commands/workspace.rs"   "@dashboard"
+assert_row_contains "skill.rs → cargo filter"       "commands/skill.rs"       "commands::skill"
+assert_row_contains "skill.rs → E2E tag"            "commands/skill.rs"       "@dashboard"
+assert_row_contains "files.rs → cargo filter"       "commands/files.rs"       "commands::files"
+assert_row_contains "files.rs → E2E tag"            "commands/files.rs"       "@workflow"
+assert_row_contains "settings.rs → cargo filter"    "commands/settings.rs"    "commands::settings"
+assert_row_contains "settings.rs → E2E tag"         "commands/settings.rs"    "@settings"
+assert_row_contains "sidecar.rs → cargo filter"     "agents/sidecar.rs"       "agents::sidecar"
+assert_row_contains "sidecar.rs → E2E tag"          "agents/sidecar.rs"       "@workflow-agent"
+assert_row_contains "sidecar_pool.rs → cargo filter" "agents/sidecar_pool.rs" "agents::sidecar_pool"
+assert_row_contains "sidecar_pool.rs → E2E tag"     "agents/sidecar_pool.rs"  "@workflow-agent"
+assert_row_contains "github_push.rs → cargo filter" "commands/github_push.rs" "commands::github_push"
+assert_row_contains "github_push.rs → E2E tag"      "commands/github_push.rs" "@dashboard"
+assert_row_contains "reconciliation.rs → E2E tag"   "reconciliation.rs"       "@dashboard"
+assert_row_contains "db.rs → cargo filter"          "db.rs"                   "db"
 
-# ===== App-only: Page Changes =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Page Change ━━━${RESET}"
-assert_row_contains "dashboard → integration"         "pages/dashboard.tsx"     "dashboard.test.tsx"
-assert_row_contains "dashboard → E2E tag"             "pages/dashboard.tsx"     "@dashboard"
-assert_row_contains "workflow → integration"          "pages/workflow.tsx"      "workflow.test.tsx"
-assert_row_contains "workflow → E2E tag"              "pages/workflow.tsx"      "@workflow"
-assert_row_contains "settings → integration"          "pages/settings.tsx"      "settings.test.tsx"
-assert_row_contains "settings → E2E tag"              "pages/settings.tsx"      "@settings"
-
-# ===== App-only: Rust Commands =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Rust Command Change ━━━${RESET}"
-assert_row_contains "workflow.rs → cargo test"        "commands/workflow.rs"    "commands::workflow"
-assert_row_contains "workflow.rs → E2E tag"           "commands/workflow.rs"    "@workflow"
-assert_row_contains "workspace.rs → cargo test"       "commands/workspace.rs"   "commands::workspace"
-assert_row_contains "workspace.rs → E2E tag"          "commands/workspace.rs"   "@dashboard"
-assert_row_contains "settings.rs → cargo test"        "commands/settings.rs"    "commands::settings"
-assert_row_contains "settings.rs → E2E tag"           "commands/settings.rs"    "@settings"
-assert_row_contains "skill.rs → cargo test"           "commands/skill.rs"       "commands::skill"
-assert_row_contains "files.rs → cargo test"           "commands/files.rs"       "commands::files"
-
-# ===== App-only: Hooks =====
+# ===== Plugin: Agent Prompts =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Hook Change ━━━${RESET}"
-assert_row_contains "use-agent-stream → unit test"    "use-agent-stream.ts"     "use-agent-stream.test.ts"
-assert_row_contains "use-agent-stream → E2E tag"      "use-agent-stream.ts"     "@workflow-agent"
-
-# ===== App-only: Libraries =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Library Change ━━━${RESET}"
-assert_row_contains "reasoning-parser → unit test"    "reasoning-parser.ts"     "reasoning-parser.test.ts"
-assert_row_contains "reasoning-parser → integration"  "reasoning-parser.ts"     "reasoning-review.test.tsx"
-assert_row_contains "chat-storage → unit test"        "chat-storage.ts"         "chat-storage.test.ts"
-assert_row_contains "utils → unit test"               "src/lib/utils.ts"        "utils.test.ts"
-
-# ===== App-only: Sidecar =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ App: Sidecar Change ━━━${RESET}"
-assert_row_contains "run-agent → unit test"           "sidecar/run-agent.ts"    "run-agent.test.ts"
-assert_row_contains "agent-runner → unit test"        "sidecar/agent-runner.ts" "agent-runner.test.ts"
-assert_row_contains "config → unit test"              "sidecar/config.ts"       "config.test.ts"
-assert_row_contains "persistent-mode → unit test"     "sidecar/persistent-mode.ts" "persistent-mode.test.ts"
-assert_row_contains "options → unit test"             "sidecar/options.ts"      "options.test.ts"
-assert_row_contains "shutdown → unit test"            "sidecar/shutdown.ts"     "shutdown.test.ts"
-
-# ===== Plugin-only: Agent Prompts =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Agent Prompt Change ━━━${RESET}"
+echo -e "${CYAN}${BOLD}━━━ Plugin: Agent Prompts ━━━${RESET}"
 assert_in_manifest  "CLI Plugin section exists"       "CLI Plugin"
 assert_row_contains "agent files → plugin tag"        "agents/{type}/*.md"      "@agents"
 assert_row_contains "agent files → tier t1"           "agents/{type}/*.md"      "t1"
 assert_row_contains "agent files → tier t4"           "agents/{type}/*.md"      "t4"
 
-# ===== Plugin-only: Shared Agents =====
+# ===== Plugin: Shared Agents =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Shared Agent Change ━━━${RESET}"
+echo -e "${CYAN}${BOLD}━━━ Plugin: Shared Agents ━━━${RESET}"
 assert_row_contains "shared agents → plugin tag"      "agents/shared/*.md"      "@agents"
 assert_row_contains "shared agents → tier t1"         "agents/shared/*.md"      "t1"
 assert_row_contains "shared agents → tier t4"         "agents/shared/*.md"      "t4"
 
-# ===== Plugin-only: Coordinator =====
+# ===== Plugin: Coordinator =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Coordinator Change ━━━${RESET}"
+echo -e "${CYAN}${BOLD}━━━ Plugin: Coordinator ━━━${RESET}"
 assert_row_contains "SKILL.md → plugin tag"           "skills/generate-skill/SKILL.md"   "@coordinator"
 assert_row_contains "SKILL.md → tier t1"              "skills/generate-skill/SKILL.md"   "t1"
 assert_row_contains "SKILL.md → tier t2"              "skills/generate-skill/SKILL.md"   "t2"
@@ -186,20 +143,10 @@ echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Plugin Manifest ━━━${RESET
 assert_row_contains "plugin.json → plugin tag"        "plugin.json"             "@structure"
 assert_row_contains "plugin.json → tier t1"           "plugin.json"             "t1"
 
-# ===== Infrastructure: Shared Test Mocks =====
+# ===== E2E Spec Files =====
 
 echo ""
-echo -e "${CYAN}${BOLD}━━━ Infrastructure: Shared Files ━━━${RESET}"
-assert_in_manifest  "tauri.ts in shared infrastructure"     "src/lib/tauri.ts"
-assert_in_manifest  "tauri mock in shared infrastructure"   "src/test/mocks/tauri.ts"
-assert_in_manifest  "e2e mock in shared infrastructure"     "src/test/mocks/tauri-e2e.ts"
-assert_in_manifest  "e2e event mock in shared infra"        "src/test/mocks/tauri-e2e-event.ts"
-assert_in_manifest  "full suite instruction present"        "run the full test suite"
-
-# ===== E2E Coverage =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ E2E Test Files ━━━${RESET}"
+echo -e "${CYAN}${BOLD}━━━ E2E Spec Files ━━━${RESET}"
 assert_in_manifest  "dashboard spec listed"           "dashboard.spec.ts"
 assert_in_manifest  "dashboard-states spec listed"    "dashboard-states.spec.ts"
 assert_in_manifest  "skill-crud spec listed"          "skill-crud.spec.ts"

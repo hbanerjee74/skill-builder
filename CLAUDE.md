@@ -97,12 +97,17 @@ Before writing any test code, read existing tests for the files you changed:
 
 ### Choosing which tests to run
 
-Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files you're changing — during planning to scope the work, and before committing to verify coverage.
+**Frontend (stores, hooks, components, pages):** Use `npm run test:changed` to auto-detect and run tests affected by your changes. This uses `vitest --changed` which traces module dependencies — no manual mapping needed. For targeted runs: `npm run test:unit`, `npm run test:integration`, or specific test files.
+
+**Rust:** Run `cargo test --manifest-path src-tauri/Cargo.toml <module>` for the module you changed. If the command is UI-facing, also run the cross-layer E2E tag from `app/tests/TEST_MANIFEST.md`.
+
+**Sidecar:** `cd sidecar && npx vitest run`
+
+**Shared infrastructure** (`src/lib/tauri.ts`, test mocks, config files): Run `./tests/run.sh` (all levels). See the manifest for the full list.
 
 **App quick rules:**
-- Changed a store? → `./tests/run.sh unit` + E2E tag from manifest
-- Changed a component? → `./tests/run.sh integration` + E2E tag from manifest
-- Changed a Rust command? → `cargo test` + E2E tag if UI-facing
+- Changed a store/hook/component/page? → `npm run test:changed`
+- Changed a Rust command? → `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md`
 - Changed `src/lib/tauri.ts` or test mocks? → `./tests/run.sh` (all levels)
 - Unsure? → `./tests/run.sh` runs everything
 
@@ -162,7 +167,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 ### Updating the test manifest
 
-When you add, remove, or rename tests (including adding tests to existing files), update `app/tests/TEST_MANIFEST.md` to keep test counts and source-to-test mappings current. The manifest has tables per source category (stores, hooks, components, pages, Rust, sidecar, plugin). Each row maps a source file to its unit tests, integration tests, and E2E tag with counts in parentheses.
+Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new plugin source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
 
 ## Code Style
 

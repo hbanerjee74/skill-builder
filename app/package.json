@@ -22,6 +22,7 @@
     "test:e2e:settings": "playwright test --grep @settings",
     "test:e2e:workflow": "playwright test --grep '@workflow|@workflow-agent'",
     "test:e2e:navigation": "playwright test --grep @navigation",
+    "test:changed": "vitest run --changed HEAD~1",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {
