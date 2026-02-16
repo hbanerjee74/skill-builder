@@ -932,3 +932,292 @@ fn create_push_tag(
     debug!("create_push_tag: created tag '{}'", tag_name);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{FileDiff, SkillDiff};
+
+    // --- validate_github_identifier ---
+
+    #[test]
+    fn test_validate_github_identifier_valid() {
+        assert!(validate_github_identifier("octocat", "owner").is_ok());
+        assert!(validate_github_identifier("my-org", "owner").is_ok());
+        assert!(validate_github_identifier("repo_name", "repo").is_ok());
+        assert!(validate_github_identifier("123", "owner").is_ok());
+    }
+
+    #[test]
+    fn test_validate_github_identifier_empty() {
+        let err = validate_github_identifier("", "owner").unwrap_err();
+        assert!(err.contains("Invalid GitHub owner"));
+    }
+
+    #[test]
+    fn test_validate_github_identifier_slash() {
+        let err = validate_github_identifier("owner/repo", "owner").unwrap_err();
+        assert!(err.contains("Invalid GitHub owner"));
+    }
+
+    #[test]
+    fn test_validate_github_identifier_backslash() {
+        assert!(validate_github_identifier("foo\\bar", "repo").is_err());
+    }
+
+    #[test]
+    fn test_validate_github_identifier_at_sign() {
+        assert!(validate_github_identifier("@user", "owner").is_err());
+    }
+
+    #[test]
+    fn test_validate_github_identifier_space() {
+        assert!(validate_github_identifier("my repo", "repository name").is_err());
+    }
+
+    // --- format_diff_for_changelog ---
+
+    #[test]
+    fn test_format_diff_empty() {
+        let diff = SkillDiff { files: vec![] };
+        assert_eq!(format_diff_for_changelog(&diff), "");
+    }
+
+    #[test]
+    fn test_format_diff_single_added_file() {
+        let diff = SkillDiff {
+            files: vec![FileDiff {
+                path: "SKILL.md".to_string(),
+                status: "added".to_string(),
+                old_content: None,
+                new_content: Some("# My Skill\nLine 2".to_string()),
+            }],
+        };
+        let result = format_diff_for_changelog(&diff);
+        assert!(result.contains("--- SKILL.md (added) ---"));
+        assert!(result.contains("# My Skill"));
+        assert!(result.contains("Line 2"));
+    }
+
+    #[test]
+    fn test_format_diff_deleted_file_no_content() {
+        let diff = SkillDiff {
+            files: vec![FileDiff {
+                path: "old-file.md".to_string(),
+                status: "deleted".to_string(),
+                old_content: Some("old content".to_string()),
+                new_content: None,
+            }],
+        };
+        let result = format_diff_for_changelog(&diff);
+        assert!(result.contains("--- old-file.md (deleted) ---"));
+        // Deleted files have no new_content, so only the header shows
+        assert!(!result.contains("old content"));
+    }
+
+    #[test]
+    fn test_format_diff_truncates_long_files() {
+        let long_content = (0..100)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let diff = SkillDiff {
+            files: vec![FileDiff {
+                path: "big.md".to_string(),
+                status: "modified".to_string(),
+                old_content: None,
+                new_content: Some(long_content),
+            }],
+        };
+        let result = format_diff_for_changelog(&diff);
+        assert!(result.contains("... (50 more lines)"));
+        assert!(result.contains("line 49"));
+        assert!(!result.contains("line 50\n"));
+    }
+
+    #[test]
+    fn test_format_diff_multiple_files() {
+        let diff = SkillDiff {
+            files: vec![
+                FileDiff {
+                    path: "a.md".to_string(),
+                    status: "added".to_string(),
+                    old_content: None,
+                    new_content: Some("content a".to_string()),
+                },
+                FileDiff {
+                    path: "b.md".to_string(),
+                    status: "modified".to_string(),
+                    old_content: None,
+                    new_content: Some("content b".to_string()),
+                },
+            ],
+        };
+        let result = format_diff_for_changelog(&diff);
+        assert!(result.contains("--- a.md (added) ---"));
+        assert!(result.contains("--- b.md (modified) ---"));
+    }
+
+    // --- collect_skill_files ---
+
+    #[test]
+    fn test_collect_skill_files_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SKILL.md"), "# Test Skill").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), "some notes").unwrap();
+
+        let result = collect_skill_files(dir.path()).unwrap();
+        assert!(result.contains("--- SKILL.md ---"));
+        assert!(result.contains("# Test Skill"));
+        assert!(result.contains("--- notes.txt ---"));
+        assert!(result.contains("some notes"));
+    }
+
+    #[test]
+    fn test_collect_skill_files_skips_hidden() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("SKILL.md"), "visible").unwrap();
+        std::fs::write(dir.path().join(".skill-builder"), r#"{"version":"1.0"}"#).unwrap();
+
+        let result = collect_skill_files(dir.path()).unwrap();
+        assert!(result.contains("SKILL.md"));
+        assert!(!result.contains(".skill-builder"));
+    }
+
+    #[test]
+    fn test_collect_skill_files_nested_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let refs = dir.path().join("references");
+        std::fs::create_dir(&refs).unwrap();
+        std::fs::write(refs.join("guide.md"), "reference content").unwrap();
+
+        let result = collect_skill_files(dir.path()).unwrap();
+        assert!(result.contains("references/guide.md"));
+        assert!(result.contains("reference content"));
+    }
+
+    #[test]
+    fn test_collect_skill_files_truncates_long() {
+        let dir = tempfile::tempdir().unwrap();
+        let long_content = (0..100)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(dir.path().join("big.md"), &long_content).unwrap();
+
+        let result = collect_skill_files(dir.path()).unwrap();
+        assert!(result.contains("... (50 more lines)"));
+    }
+
+    // --- write_manifest_file ---
+
+    #[test]
+    fn test_write_manifest_with_creator() {
+        let dir = tempfile::tempdir().unwrap();
+        write_manifest_file(dir.path(), Some("octocat")).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join(".skill-builder")).unwrap();
+        let manifest: SkillBuilderManifest = serde_json::from_str(&content).unwrap();
+        assert_eq!(manifest.version, "1.0");
+        assert_eq!(manifest.creator.as_deref(), Some("octocat"));
+        assert!(!manifest.created_at.is_empty());
+        assert!(!manifest.app_version.is_empty());
+    }
+
+    #[test]
+    fn test_write_manifest_without_creator() {
+        let dir = tempfile::tempdir().unwrap();
+        write_manifest_file(dir.path(), None).unwrap();
+
+        let content = std::fs::read_to_string(dir.path().join(".skill-builder")).unwrap();
+        let manifest: SkillBuilderManifest = serde_json::from_str(&content).unwrap();
+        assert!(manifest.creator.is_none());
+    }
+
+    #[test]
+    fn test_write_manifest_nonexistent_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad_path = dir.path().join("nonexistent");
+        let err = write_manifest_file(&bad_path, None).unwrap_err();
+        assert!(err.contains("Failed to write manifest"));
+    }
+
+    // --- get_next_push_version + create_push_tag ---
+
+    fn init_test_repo() -> (tempfile::TempDir, git2::Repository) {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(dir.path()).unwrap();
+
+        // Create an initial commit so HEAD exists
+        {
+            let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+            let mut index = repo.index().unwrap();
+            std::fs::write(dir.path().join("README.md"), "init").unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+
+        (dir, repo)
+    }
+
+    #[test]
+    fn test_get_next_push_version_no_tags() {
+        let (_dir, repo) = init_test_repo();
+        let version = get_next_push_version(&repo, "my-skill").unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn test_get_next_push_version_with_tags() {
+        let (_dir, repo) = init_test_repo();
+
+        // Create tags for versions 1 and 2
+        create_push_tag(&repo, "my-skill", 1).unwrap();
+        create_push_tag(&repo, "my-skill", 2).unwrap();
+
+        let version = get_next_push_version(&repo, "my-skill").unwrap();
+        assert_eq!(version, 3);
+    }
+
+    #[test]
+    fn test_get_next_push_version_ignores_other_skills() {
+        let (_dir, repo) = init_test_repo();
+
+        create_push_tag(&repo, "other-skill", 1).unwrap();
+        create_push_tag(&repo, "other-skill", 5).unwrap();
+
+        let version = get_next_push_version(&repo, "my-skill").unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn test_create_push_tag() {
+        let (_dir, repo) = init_test_repo();
+        create_push_tag(&repo, "my-skill", 1).unwrap();
+
+        // Verify the tag exists
+        let tag_ref = repo.find_reference("refs/tags/pushed/my-skill/v1");
+        assert!(tag_ref.is_ok());
+    }
+
+    #[test]
+    fn test_create_push_tag_overwrites() {
+        let (_dir, repo) = init_test_repo();
+        create_push_tag(&repo, "my-skill", 1).unwrap();
+        // Should not error when overwriting
+        create_push_tag(&repo, "my-skill", 1).unwrap();
+    }
+
+    // --- write_manifest_to_dir (public helper) ---
+
+    #[test]
+    fn test_write_manifest_to_dir_delegates() {
+        let dir = tempfile::tempdir().unwrap();
+        write_manifest_to_dir(dir.path(), Some("user")).unwrap();
+        assert!(dir.path().join(".skill-builder").exists());
+    }
+}
