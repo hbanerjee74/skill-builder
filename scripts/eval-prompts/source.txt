@@ -1,9 +1,9 @@
-Design an incremental sync strategy for Salesforce Opportunity objects that captures relationship changes to Account and Contact, handles deleted records via IsDeleted flag, and manages custom fields with field-level security considerations.
+Extract Salesforce Sales Cloud opportunity data for revenue analytics, including the Account → Opportunity → OpportunityLineItem hierarchy with proper handling of deleted records, record type filtering, and stage history tracking for conversion funnel analysis.
 ---
-Build a data pipeline for Salesforce Account hierarchy that preserves parent-child relationships through ParentId, handles circular reference detection, and maintains historical snapshots of the organizational structure over time.
+Design a data extraction strategy for Salesforce custom fields and record types in a PS/MS sales process, addressing field-level security, picklist value changes over time, and maintaining referential integrity when custom lookup relationships span standard and custom objects.
 ---
-Create a change data capture implementation for Salesforce custom objects that uses PlatformEventRelayConfig, handles event replay scenarios with ReplayId, and ensures exactly-once processing with idempotent upserts.
+Implement historical tracking for Salesforce opportunity changes using Field History Tracking and/or Change Data Capture, explaining the tradeoffs between approaches, retention limits, and how to reconstruct point-in-time snapshots for trend analysis in a services business.
 ---
-Design a historical tracking system for Opportunity stage transitions that leverages OpportunityFieldHistory, reconstructs the complete stage progression timeline, and calculates time-in-stage metrics while handling data retention policies.
+Extract Salesforce opportunity data with multi-currency enabled and opportunity splits for team-based services deals, handling currency conversion for historical rates, split ownership percentages, and ensuring revenue attribution sums correctly across split types.
 ---
-Build a Salesforce API integration pattern that combines Bulk API 2.0 for large data volumes with REST API for real-time updates, implements exponential backoff for rate limit handling, and uses composite requests to minimize API call consumption.
+Build an extraction pipeline for Salesforce activity data (Tasks, Events) linked to opportunities and accounts for services engagement analytics, addressing the polymorphic WhoId/WhatId relationships, completed vs. planned activities, and recurring event expansion for accurate touch-point tracking.
