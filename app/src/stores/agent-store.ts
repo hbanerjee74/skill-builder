@@ -75,26 +75,26 @@ export interface AgentMessage {
   timestamp: number;
 }
 
-export interface ContextSnapshot {
+interface ContextSnapshot {
   turn: number;
   inputTokens: number;
   outputTokens: number;
 }
 
-export interface CompactionEvent {
+interface CompactionEvent {
   turn: number;
   preTokens: number;
   timestamp: number;
 }
 
-export type ResultSubtype =
+type ResultSubtype =
   | "success"
   | "error_max_turns"
   | "error_during_execution"
   | "error_max_budget_usd"
   | "error_max_structured_output_retries";
 
-export type StopReason =
+type StopReason =
   | "end_turn"
   | "max_tokens"
   | "stop_sequence"
@@ -103,7 +103,7 @@ export type StopReason =
   | "refusal"
   | "model_context_window_exceeded";
 
-export interface AgentRun {
+interface AgentRun {
   agentId: string;
   model: string;
   status: "running" | "completed" | "error" | "shutdown";
