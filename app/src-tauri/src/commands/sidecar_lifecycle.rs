@@ -51,12 +51,13 @@ pub async fn graceful_shutdown(
         }
         Err(_) => {
             log::warn!(
-                "[graceful_shutdown] timed out after {}s — force-exiting process",
+                "[graceful_shutdown] timed out after {}s",
                 DEFAULT_SHUTDOWN_TIMEOUT_SECS,
             );
-            // Force-exit the process. This is a last resort when sidecars hang
-            // or the DB lock is held indefinitely.
-            std::process::exit(1);
+            Err(format!(
+                "Graceful shutdown timed out after {}s. Force-exit required.",
+                DEFAULT_SHUTDOWN_TIMEOUT_SECS
+            ))
         }
     }
 }

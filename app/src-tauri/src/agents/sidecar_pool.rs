@@ -353,6 +353,16 @@ impl SidecarPool {
                     DEFAULT_IDLE_TIMEOUT_SECS,
                 );
 
+                // Re-check pending requests (race protection against requests that started after Phase 1)
+                let has_pending = {
+                    let pending = self.pending_requests.lock().await;
+                    pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)))
+                };
+                if has_pending {
+                    log::debug!("[idle-cleanup] Skipping '{}' — became active after idle check", skill_name);
+                    continue;
+                }
+
                 // Use the same cleanup logic as remove_and_kill_sidecar but with graceful shutdown
                 let mut pool = self.sidecars.lock().await;
                 if let Some(mut sidecar) = pool.remove(skill_name) {
@@ -2210,6 +2220,90 @@ mod tests {
         assert!(
             idle_duration >= idle_timeout,
             "idle-skill should exceed the idle timeout"
+        );
+    }
+
+    /// Helper: mirrors the Phase 1 idle detection logic from `idle_cleanup_loop`.
+    /// Given a skill name, its last_activity instant, the current time, the idle timeout,
+    /// and the set of pending request IDs, returns whether the sidecar should be
+    /// considered idle (i.e., eligible for cleanup).
+    fn is_idle(
+        skill_name: &str,
+        last_activity: tokio::time::Instant,
+        now: tokio::time::Instant,
+        idle_timeout: std::time::Duration,
+        pending: &HashSet<String>,
+    ) -> bool {
+        let has_pending = pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)));
+        if has_pending {
+            return false;
+        }
+        now.duration_since(last_activity) >= idle_timeout
+    }
+
+    #[tokio::test]
+    async fn test_idle_cleanup_protects_active_sidecars() {
+        // A sidecar with pending requests must NOT be identified as idle,
+        // even if its last_activity exceeds the idle timeout.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(120);
+
+        let mut pending = HashSet::new();
+        pending.insert("my-skill-step1-abc123".to_string());
+        pending.insert("my-skill-step2-def456".to_string());
+
+        assert!(
+            !is_idle("my-skill", stale_activity, now, idle_timeout, &pending),
+            "Sidecar with pending requests must not be considered idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_cleanup_respects_recent_activity() {
+        // A sidecar with recent activity and no pending requests must NOT be
+        // identified as idle.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        // Activity 30 seconds ago — well within the 600s timeout
+        let recent_activity = now - std::time::Duration::from_secs(30);
+
+        let pending = HashSet::new(); // no pending requests
+
+        assert!(
+            !is_idle("recent-skill", recent_activity, now, idle_timeout, &pending),
+            "Sidecar with recent activity must not be considered idle"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_idle_detection_identifies_stale_sidecars() {
+        // A sidecar with old last_activity and no pending requests IS idle
+        // and should be eligible for cleanup.
+        let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
+        let now = tokio::time::Instant::now();
+        // Activity 15 minutes ago — exceeds the 10-minute timeout
+        let stale_activity = now - idle_timeout - std::time::Duration::from_secs(300);
+
+        let pending = HashSet::new(); // no pending requests
+
+        assert!(
+            is_idle("stale-skill", stale_activity, now, idle_timeout, &pending),
+            "Sidecar with old activity and no pending requests should be identified as idle"
+        );
+
+        // Also verify the boundary: exactly at the timeout should be idle
+        let boundary_activity = now - idle_timeout;
+        assert!(
+            is_idle("boundary-skill", boundary_activity, now, idle_timeout, &pending),
+            "Sidecar at exactly the idle timeout boundary should be identified as idle"
+        );
+
+        // Just under the timeout should NOT be idle
+        let almost_idle_activity = now - idle_timeout + std::time::Duration::from_secs(1);
+        assert!(
+            !is_idle("almost-idle-skill", almost_idle_activity, now, idle_timeout, &pending),
+            "Sidecar just under the idle timeout should not be identified as idle"
         );
     }
 }
