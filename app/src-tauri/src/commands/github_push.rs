@@ -228,20 +228,21 @@ pub async fn push_skill_to_remote(
         );
     }
 
-    // 9. Create branch and push to remote
+    // 9. Fetch default branch, create branch based on remote history, and push
+    let client = reqwest::Client::new();
+    let default_branch = get_default_branch(&client, &token, &owner, &repo_name).await?;
     let branch_name = format!("skill/{}/{}", github_login, skill_name);
     push_branch_to_remote(
         &repo,
         &branch_name,
+        &skill_name,
+        &skill_dir,
         &owner,
         &repo_name,
+        &default_branch,
         &github_login,
         &token,
     )?;
-
-    // 10. Fetch default branch and create or update PR
-    let client = reqwest::Client::new();
-    let default_branch = get_default_branch(&client, &token, &owner, &repo_name).await?;
     let (pr_url, pr_number, is_new_pr) = create_or_update_pr(
         &client,
         &token,
@@ -700,11 +701,18 @@ async fn generate_changelog(
 }
 
 /// Create or update a local branch and force-push it to the remote.
+///
+/// The branch is based on the remote's default branch (fetched first) so that
+/// the PR will have a common ancestor. Skill files are added to a tree built
+/// on top of the remote's tip commit.
 fn push_branch_to_remote(
     repo: &git2::Repository,
     branch_name: &str,
+    skill_name: &str,
+    skill_dir: &Path,
     owner: &str,
     repo_name: &str,
+    default_branch: &str,
     github_login: &str,
     token: &str,
 ) -> Result<(), String> {
@@ -730,14 +738,52 @@ fn push_branch_to_remote(
             .map_err(|e| format!("Failed to create remote '{}': {e}", remote_name))?,
     };
 
-    // Create (or update) a local branch pointing at HEAD
-    let head = repo
-        .head()
-        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
-    let head_commit = head
+    // Fetch the remote's default branch so we share history
+    {
+        let login = github_login.to_string();
+        let tok = token.to_string();
+        let mut fetch_cbs = git2::RemoteCallbacks::new();
+        fetch_cbs.credentials(move |_url, _username_from_url, _allowed_types| {
+            git2::Cred::userpass_plaintext(&login, &tok)
+        });
+        let mut fetch_opts = git2::FetchOptions::new();
+        fetch_opts.remote_callbacks(fetch_cbs);
+        remote
+            .fetch(&[default_branch], Some(&mut fetch_opts), None)
+            .map_err(|e| format!("Failed to fetch '{}' from remote: {e}", default_branch))?;
+    }
+
+    // Resolve the fetched default branch commit
+    let remote_ref_name = format!("refs/remotes/{}/{}", remote_name, default_branch);
+    let remote_commit = repo
+        .find_reference(&remote_ref_name)
+        .or_else(|_| {
+            // Fallback: try FETCH_HEAD
+            repo.find_reference("FETCH_HEAD")
+        })
+        .map_err(|e| format!("Failed to find fetched ref '{}': {e}", remote_ref_name))?
         .peel_to_commit()
-        .map_err(|e| format!("Failed to resolve HEAD: {e}"))?;
-    repo.branch(branch_name, &head_commit, true)
+        .map_err(|e| format!("Failed to resolve remote commit: {e}"))?;
+
+    // Build a tree containing only this skill's files under skill_name/
+    let tree_oid = build_skill_tree(repo, skill_name, skill_dir)?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|e| format!("Failed to find built tree: {e}"))?;
+
+    // Create a commit on top of the remote's default branch
+    let sig = git2::Signature::now(github_login, &format!("{}@users.noreply.github.com", github_login))
+        .map_err(|e| format!("Failed to create signature: {e}"))?;
+    let commit_msg = format!("Update `{}`", skill_name);
+    let commit_oid = repo
+        .commit(None, &sig, &sig, &commit_msg, &tree, &[&remote_commit])
+        .map_err(|e| format!("Failed to create commit: {e}"))?;
+
+    // Point the branch at the new commit
+    let commit = repo
+        .find_commit(commit_oid)
+        .map_err(|e| format!("Failed to find new commit: {e}"))?;
+    repo.branch(branch_name, &commit, true)
         .map_err(|e| format!("Failed to create branch '{}': {e}", branch_name))?;
 
     // Push with force (we own the branch)
@@ -760,10 +806,77 @@ fn push_branch_to_remote(
         .map_err(|e| format!("Failed to push branch '{}': {e}", branch_name))?;
 
     info!(
-        "push_branch_to_remote: pushed {} to {}/{}",
-        branch_name, owner, repo_name
+        "push_branch_to_remote: pushed {} to {}/{} (based on {})",
+        branch_name, owner, repo_name, default_branch
     );
     Ok(())
+}
+
+/// Build a git tree containing the skill's files under `{skill_name}/`.
+/// Reads files from the filesystem and creates blob + tree objects in the repo.
+fn build_skill_tree(
+    repo: &git2::Repository,
+    skill_name: &str,
+    skill_dir: &Path,
+) -> Result<git2::Oid, String> {
+    let mut root_builder = repo
+        .treebuilder(None)
+        .map_err(|e| format!("Failed to create root tree builder: {e}"))?;
+
+    // Build a subtree for the skill directory
+    let skill_tree_oid = build_dir_tree(repo, skill_dir)?;
+
+    root_builder
+        .insert(skill_name, skill_tree_oid, 0o040000)
+        .map_err(|e| format!("Failed to insert skill subtree: {e}"))?;
+
+    root_builder
+        .write()
+        .map_err(|e| format!("Failed to write root tree: {e}"))
+}
+
+/// Recursively build a tree from a directory on disk.
+fn build_dir_tree(repo: &git2::Repository, dir: &Path) -> Result<git2::Oid, String> {
+    let mut builder = repo
+        .treebuilder(None)
+        .map_err(|e| format!("Failed to create tree builder for {}: {e}", dir.display()))?;
+
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read directory {}: {e}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        // Skip hidden files/dirs (e.g. .git)
+        if name_str.starts_with('.') {
+            continue;
+        }
+
+        let path = entry.path();
+        if path.is_dir() {
+            let subtree_oid = build_dir_tree(repo, &path)?;
+            builder
+                .insert(name_str.as_ref(), subtree_oid, 0o040000)
+                .map_err(|e| format!("Failed to insert subtree '{}': {e}", name_str))?;
+        } else if path.is_file() {
+            let content = std::fs::read(&path)
+                .map_err(|e| format!("Failed to read file {}: {e}", path.display()))?;
+            let blob_oid = repo
+                .blob(&content)
+                .map_err(|e| format!("Failed to create blob for {}: {e}", path.display()))?;
+            builder
+                .insert(name_str.as_ref(), blob_oid, 0o100644)
+                .map_err(|e| format!("Failed to insert blob '{}': {e}", name_str))?;
+        }
+    }
+
+    builder
+        .write()
+        .map_err(|e| format!("Failed to write tree for {}: {e}", dir.display()))
 }
 
 /// Fetch the default branch name for a GitHub repository.
