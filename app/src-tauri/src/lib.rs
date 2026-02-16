@@ -21,7 +21,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
