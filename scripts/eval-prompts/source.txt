@@ -1,0 +1,9 @@
+Design an incremental sync strategy for Salesforce Opportunity objects that captures relationship changes to Account and Contact, handles deleted records via IsDeleted flag, and manages custom fields with field-level security considerations.
+---
+Build a data pipeline for Salesforce Account hierarchy that preserves parent-child relationships through ParentId, handles circular reference detection, and maintains historical snapshots of the organizational structure over time.
+---
+Create a change data capture implementation for Salesforce custom objects that uses PlatformEventRelayConfig, handles event replay scenarios with ReplayId, and ensures exactly-once processing with idempotent upserts.
+---
+Design a historical tracking system for Opportunity stage transitions that leverages OpportunityFieldHistory, reconstructs the complete stage progression timeline, and calculates time-in-stage metrics while handling data retention policies.
+---
+Build a Salesforce API integration pattern that combines Bulk API 2.0 for large data volumes with REST API for real-time updates, implements exponential backoff for rate limit handling, and uses composite requests to minimize API call consumption.
