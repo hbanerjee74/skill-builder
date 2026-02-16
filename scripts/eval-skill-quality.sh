@@ -14,6 +14,68 @@
 #   RESPONSE_MODEL Model for generating responses (default: sonnet)
 #   MAX_TOKENS     Max tokens per response (default: 4096)
 #   VERBOSE        Set to 1 for verbose output
+#
+# Cost estimate (based on actual runs with sonnet):
+#   ~$0.50-1.00 per prompt (2 response generations + 1 judge call)
+#   Full 5-prompt evaluation: ~$3-5
+#
+# JSON Output Schema (--format json):
+# {
+#   "metadata": {
+#     "mode": "baseline|compare",
+#     "timestamp": "ISO-8601 timestamp",
+#     "judge_model": "model name",
+#     "response_model": "model name",
+#     "skill_a": "path to skill A",
+#     "skill_b": "path to skill B or null",
+#     "prompts_file": "path to prompts file",
+#     "total_prompts": int,
+#     "evaluated": int,
+#     "failed": int
+#   },
+#   "prompts": [
+#     {
+#       "index": int,
+#       "label": "prompt preview text",
+#       "variant_a": {
+#         "actionability": int,
+#         "specificity": int,
+#         "domain_depth": int,
+#         "self_containment": int,
+#         "total": int
+#       },
+#       "variant_b": {
+#         "actionability": int,
+#         "specificity": int,
+#         "domain_depth": int,
+#         "self_containment": int,
+#         "total": int
+#       },
+#       "explanation": "judge explanation text"
+#     }
+#   ],
+#   "averages": {
+#     "variant_a": {
+#       "actionability": float,
+#       "specificity": float,
+#       "domain_depth": float,
+#       "self_containment": float,
+#       "total": float
+#     },
+#     "variant_b": {
+#       "actionability": float,
+#       "specificity": float,
+#       "domain_depth": float,
+#       "self_containment": float,
+#       "total": float
+#     },
+#     "delta": float
+#   },
+#   "verdict": {
+#     "winner": "A|B|TIE",
+#     "message": "verdict message"
+#   }
+# }
 
 set -o pipefail
 
@@ -35,6 +97,11 @@ JUDGE_MODEL="${JUDGE_MODEL:-sonnet}"
 RESPONSE_MODEL="${RESPONSE_MODEL:-sonnet}"
 MAX_TOKENS="${MAX_TOKENS:-4096}"
 VERBOSE="${VERBOSE:-0}"
+OUTPUT_FILE=""
+OUTPUT_FORMAT="md"
+DRY_RUN=0
+MAX_RETRIES=3
+RESPONSE_TIMEOUT=120
 
 # ---------- Temp directory ----------
 TMPDIR_BASE=$(mktemp -d "${TMPDIR:-/tmp}/eval-skill-XXXXXX")
@@ -42,7 +109,7 @@ cleanup() { rm -rf "$TMPDIR_BASE"; }
 trap cleanup EXIT
 
 # ---------- Helpers ----------
-log()     { echo "${CYAN}[eval]${RESET} $*"; }
+log()     { echo "${CYAN}[eval]${RESET} $*" >&2; }
 warn()    { echo "${YELLOW}[warn]${RESET} $*" >&2; }
 err()     { echo "${RED}[error]${RESET} $*" >&2; }
 verbose() { [ "$VERBOSE" = "1" ] && echo "${BOLD}[debug]${RESET} $*" >&2; }
@@ -50,16 +117,19 @@ verbose() { [ "$VERBOSE" = "1" ] && echo "${BOLD}[debug]${RESET} $*" >&2; }
 usage() {
   cat <<'USAGE'
 Usage:
-  eval-skill-quality.sh --baseline <skill-path> --prompts <prompts-file>
-  eval-skill-quality.sh --compare <skill-a> <skill-b> --prompts <prompts-file>
+  eval-skill-quality.sh --baseline <skill-path> --prompts <prompts-file> [options]
+  eval-skill-quality.sh --compare <skill-a> <skill-b> --prompts <prompts-file> [options]
 
 Modes:
   --baseline <skill-path>         Compare skill-loaded vs no-skill responses
   --compare <skill-a> <skill-b>   Compare two skill versions
 
 Options:
-  --prompts <file>   Path to test prompts file (blocks separated by ---)
-  --help             Show this help message
+  --prompts <file>    Path to test prompts file (blocks separated by ---)
+  --output <file>     Save report to file instead of stdout
+  --format <md|json>  Output format: markdown (default) or JSON
+  --dry-run           Validate inputs without running evaluation
+  --help              Show this help message
 
 Environment:
   CLAUDE_BIN         Path to claude binary (default: claude)
@@ -73,10 +143,14 @@ Examples:
     --baseline agents/data-engineering/generate-skill.md \
     --prompts scripts/eval-prompts/data-engineering.txt
 
-  # Compare: is v2 better than v1?
+  # Compare with JSON output saved to file
   ./scripts/eval-skill-quality.sh \
     --compare skills/v1/SKILL.md skills/v2/SKILL.md \
-    --prompts scripts/eval-prompts/data-engineering.txt
+    --prompts scripts/eval-prompts/data-engineering.txt \
+    --format json --output results.json
+
+  # Dry run to validate inputs
+  ./scripts/eval-skill-quality.sh --baseline skill.md --prompts prompts.txt --dry-run
 USAGE
   exit 0
 }
@@ -119,6 +193,26 @@ while [ $# -gt 0 ]; do
       fi
       shift 2
       ;;
+    --output)
+      OUTPUT_FILE="${2:-}"
+      if [ -z "$OUTPUT_FILE" ]; then
+        err "--output requires a file path"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --format)
+      OUTPUT_FORMAT="${2:-}"
+      if [ "$OUTPUT_FORMAT" != "md" ] && [ "$OUTPUT_FORMAT" != "json" ]; then
+        err "--format must be 'md' or 'json'"
+        exit 1
+      fi
+      shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
     *)
       err "Unknown argument: $1"
       echo "Run with --help for usage."
@@ -157,6 +251,27 @@ fi
 if ! command -v "$CLAUDE_BIN" >/dev/null 2>&1; then
   err "'$CLAUDE_BIN' not found. Install Claude Code or set CLAUDE_BIN."
   exit 1
+fi
+
+# ---------- Dry run mode ----------
+if [ "$DRY_RUN" = "1" ]; then
+  log "Dry run mode - validating inputs only"
+  echo ""
+  echo "${GREEN}✓${RESET} Mode: $MODE"
+  echo "${GREEN}✓${RESET} Prompts file: $PROMPTS_FILE"
+  echo "${GREEN}✓${RESET} Skill A: $SKILL_A"
+  [ "$MODE" = "compare" ] && echo "${GREEN}✓${RESET} Skill B: $SKILL_B"
+  echo "${GREEN}✓${RESET} Claude CLI: $CLAUDE_BIN"
+  echo "${GREEN}✓${RESET} Output format: $OUTPUT_FORMAT"
+  [ -n "$OUTPUT_FILE" ] && echo "${GREEN}✓${RESET} Output file: $OUTPUT_FILE"
+  echo ""
+  
+  # Parse and count prompts
+  NUM_PROMPTS=$(parse_prompts "$PROMPTS_FILE")
+  echo "${GREEN}✓${RESET} Found $NUM_PROMPTS prompts in $PROMPTS_FILE"
+  echo ""
+  echo "${BOLD}All validations passed. Ready to run evaluation.${RESET}"
+  exit 0
 fi
 
 # ---------- Parse prompts ----------
@@ -212,23 +327,23 @@ else
 fi
 
 # ---------- Banner ----------
-echo ""
-echo "${BOLD}============================================${RESET}"
-echo "${BOLD} Skill Quality Evaluation${RESET}"
-echo "============================================"
-echo "  Mode:        $MODE"
-echo "  Prompts:     $PROMPTS_FILE ($NUM_PROMPTS prompts)"
+echo "" >&2
+echo "${BOLD}============================================${RESET}" >&2
+echo "${BOLD} Skill Quality Evaluation${RESET}" >&2
+echo "============================================" >&2
+echo "  Mode:        $MODE" >&2
+echo "  Prompts:     $PROMPTS_FILE ($NUM_PROMPTS prompts)" >&2
 if [ "$MODE" = "baseline" ]; then
-  echo "  Skill:       $SKILL_A"
+  echo "  Skill:       $SKILL_A" >&2
 else
-  echo "  Skill A:     $SKILL_A"
-  echo "  Skill B:     $SKILL_B"
+  echo "  Skill A:     $SKILL_A" >&2
+  echo "  Skill B:     $SKILL_B" >&2
 fi
-echo "  Judge model: $JUDGE_MODEL"
-echo "  Resp model:  $RESPONSE_MODEL"
-echo "  Timestamp:   $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-echo "============================================"
-echo ""
+echo "  Judge model: $JUDGE_MODEL" >&2
+echo "  Resp model:  $RESPONSE_MODEL" >&2
+echo "  Timestamp:   $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >&2
+echo "============================================" >&2
+echo "" >&2
 
 # ---------- Generate a response via claude CLI ----------
 # Args: prompt_text skill_path(or "none") output_file
@@ -245,17 +360,45 @@ generate_response() {
     cmd_args+=(--append-system-prompt "$skill_content")
   fi
 
-  verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\""
+  # Retry loop with exponential backoff
+  local attempt=1
+  local backoff=2
+  
+  while [ $attempt -le "$MAX_RETRIES" ]; do
+    verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\" (attempt $attempt/$MAX_RETRIES)"
 
-  if ! echo "$prompt" | CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$output_file" 2>"$output_file.stderr"; then
-    warn "claude CLI returned non-zero for prompt (see $output_file.stderr)"
-    # Still continue — partial output may be usable
-    if [ ! -s "$output_file" ]; then
-      echo "(No response generated)" > "$output_file"
+    # Use timeout command to enforce response timeout
+    if echo "$prompt" | timeout "${RESPONSE_TIMEOUT}s" env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$output_file" 2>"$output_file.stderr"; then
+      # Success
+      return 0
+    fi
+    
+    local exit_code=$?
+    
+    # Check if timeout occurred (exit code 124)
+    if [ $exit_code -eq 124 ]; then
+      warn "Response generation timed out after ${RESPONSE_TIMEOUT}s (attempt $attempt/$MAX_RETRIES)"
+    else
+      warn "claude CLI returned non-zero (exit code: $exit_code, attempt $attempt/$MAX_RETRIES)"
+    fi
+    
+    # If this was the last attempt, fail
+    if [ $attempt -eq "$MAX_RETRIES" ]; then
+      err "Failed after $MAX_RETRIES attempts"
+      if [ ! -s "$output_file" ]; then
+        echo "(No response generated after $MAX_RETRIES attempts)" > "$output_file"
+      fi
       return 1
     fi
-  fi
-  return 0
+    
+    # Exponential backoff before retry
+    verbose "Waiting ${backoff}s before retry..."
+    sleep $backoff
+    backoff=$((backoff * 2))
+    attempt=$((attempt + 1))
+  done
+  
+  return 1
 }
 
 # ---------- Judge prompt ----------
@@ -348,9 +491,9 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   prompt_text=$(cat "$prompt_file")
   prompt_short=$(echo "$prompt_text" | head -1 | cut -c1-70)
 
-  echo "${BOLD}--- Prompt $((i + 1))/$NUM_PROMPTS ---${RESET}"
-  echo "  ${prompt_short}..."
-  echo ""
+  echo "${BOLD}--- Prompt $((i + 1))/$NUM_PROMPTS ---${RESET}" >&2
+  echo "  ${prompt_short}..." >&2
+  echo "" >&2
 
   # Generate response A (with skill)
   resp_a_file="$TMPDIR_BASE/response_a_${i}.txt"
@@ -394,48 +537,85 @@ for i in $(seq 0 $((NUM_PROMPTS - 1))); do
   judge_raw=$(cat "$judge_file")
   judge_json=$(python3 -c "
 import sys, re, json
-text = sys.stdin.read()
 
-# Strip markdown code fences
-text = re.sub(r'\`\`\`(?:json)?\s*\n?', '', text)
-
-# Find first valid JSON object containing variant_a and variant_b using brace counting
-brace_count = 0
-start_idx = -1
-for i, char in enumerate(text):
-    if char == '{':
-        if start_idx == -1:
-            start_idx = i
-        brace_count += 1
-    elif char == '}':
-        brace_count -= 1
-        if brace_count == 0 and start_idx != -1:
-            candidate = text[start_idx:i+1]
+def extract_json(text):
+    \"\"\"Extract valid JSON with variant_a and variant_b using multiple strategies.\"\"\"
+    
+    # Strategy 1: Strip markdown code fences
+    cleaned = re.sub(r'\`\`\`(?:json)?\s*\n?', '', text)
+    
+    # Strategy 2: Find first valid JSON object using brace counting
+    brace_count = 0
+    start_idx = -1
+    for i, char in enumerate(cleaned):
+        if char == '{':
+            if start_idx == -1:
+                start_idx = i
+            brace_count += 1
+        elif char == '}':
+            brace_count -= 1
+            if brace_count == 0 and start_idx != -1:
+                candidate = cleaned[start_idx:i+1]
+                try:
+                    obj = json.loads(candidate)
+                    if 'variant_a' in obj and 'variant_b' in obj:
+                        # Validate structure
+                        if isinstance(obj['variant_a'], dict) and isinstance(obj['variant_b'], dict):
+                            return obj
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+                start_idx = -1
+    
+    # Strategy 3: Try the whole text stripped
+    try:
+        obj = json.loads(cleaned.strip())
+        if 'variant_a' in obj and 'variant_b' in obj:
+            if isinstance(obj['variant_a'], dict) and isinstance(obj['variant_b'], dict):
+                return obj
+    except (json.JSONDecodeError, KeyError, TypeError):
+        pass
+    
+    # Strategy 4: Look for JSON between common delimiters
+    patterns = [
+        r'```json\s*(\{.*?\})\s*```',
+        r'```\s*(\{.*?\})\s*```',
+        r'(\{[^{}]*\"variant_a\"[^{}]*\"variant_b\"[^{}]*\})',
+    ]
+    for pattern in patterns:
+        matches = re.findall(pattern, text, re.DOTALL)
+        for match in matches:
             try:
-                obj = json.loads(candidate)
+                obj = json.loads(match)
                 if 'variant_a' in obj and 'variant_b' in obj:
-                    print(json.dumps(obj))
-                    sys.exit(0)
-            except json.JSONDecodeError:
-                pass
-            start_idx = -1
+                    if isinstance(obj['variant_a'], dict) and isinstance(obj['variant_b'], dict):
+                        return obj
+            except (json.JSONDecodeError, KeyError, TypeError):
+                continue
+    
+    return None
 
-# Fallback: try the whole text stripped
 try:
-    obj = json.loads(text.strip())
-    if 'variant_a' in obj and 'variant_b' in obj:
-        print(json.dumps(obj))
+    text = sys.stdin.read()
+    result = extract_json(text)
+    if result:
+        print(json.dumps(result))
         sys.exit(0)
-except json.JSONDecodeError:
-    pass
-
-print('{}', file=sys.stderr)
-sys.exit(1)
-" <<< "$judge_raw" 2>/dev/null)
+    else:
+        print('ERROR: Could not find valid JSON with variant_a and variant_b', file=sys.stderr)
+        print('{}', file=sys.stderr)
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR: {str(e)}', file=sys.stderr)
+    print('{}', file=sys.stderr)
+    sys.exit(1)
+" <<< "$judge_raw" 2>"$judge_file.parse_error")
 
   if [ $? -ne 0 ] || [ -z "$judge_json" ] || [ "$judge_json" = "{}" ]; then
     warn "Failed to parse judge output for prompt $((i + 1)), skipping"
-    verbose "Raw judge output: $judge_raw"
+    if [ "$VERBOSE" = "1" ]; then
+      verbose "Parse error: $(cat "$judge_file.parse_error" 2>/dev/null || echo 'unknown')"
+      verbose "Raw judge output (first 500 chars): $(echo "$judge_raw" | head -c 500)"
+    fi
     FAILED=$((FAILED + 1))
     continue
   fi
@@ -482,10 +662,10 @@ sys.exit(1)
   else
     winner="${YELLOW}Tie${RESET}"
   fi
-  echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20"
-  echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20"
-  echo "  Result: ${winner}"
-  echo ""
+  echo "  ${LABEL_A}: ${a_action}/${a_specific}/${a_depth}/${a_self} = ${a_total}/20" >&2
+  echo "  ${LABEL_B}: ${b_action}/${b_specific}/${b_depth}/${b_self} = ${b_total}/20" >&2
+  echo "  Result: ${winner}" >&2
+  echo "" >&2
 done
 
 # ---------- Report ----------
@@ -515,7 +695,129 @@ b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EV
 print(f'{a - b:+.1f}')
 ")
 
+# ---------- Generate JSON report ----------
+generate_json_report() {
+  local timestamp
+  timestamp=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  
+  # Use Python to generate valid JSON (handles escaping, no line wrapping issues)
+  python3 << 'PYTHON_EOF'
+import json
+import sys
+import os
+
+# Read environment variables and arrays from bash
+mode = os.environ.get('MODE', '')
+timestamp = os.environ.get('JSON_TIMESTAMP', '')
+judge_model = os.environ.get('JUDGE_MODEL', '')
+response_model = os.environ.get('RESPONSE_MODEL', '')
+skill_a = os.environ.get('SKILL_A', '')
+skill_b = os.environ.get('SKILL_B', '')
+prompts_file = os.environ.get('PROMPTS_FILE', '')
+num_prompts = int(os.environ.get('NUM_PROMPTS', '0'))
+evaluated = int(os.environ.get('EVALUATED', '0'))
+failed = int(os.environ.get('FAILED', '0'))
+
+# Averages
+avg_a_action = float(os.environ.get('avg_a_action', '0'))
+avg_a_specific = float(os.environ.get('avg_a_specific', '0'))
+avg_a_depth = float(os.environ.get('avg_a_depth', '0'))
+avg_a_self = float(os.environ.get('avg_a_self', '0'))
+total_a = float(os.environ.get('total_a', '0'))
+
+avg_b_action = float(os.environ.get('avg_b_action', '0'))
+avg_b_specific = float(os.environ.get('avg_b_specific', '0'))
+avg_b_depth = float(os.environ.get('avg_b_depth', '0'))
+avg_b_self = float(os.environ.get('avg_b_self', '0'))
+total_b = float(os.environ.get('total_b', '0'))
+
+delta_str = os.environ.get('delta', '0')
+delta = float(delta_str.replace('+', ''))
+
+# Winner
+winner_result = os.environ.get('winner_result', '')
+verdict_message = os.environ.get('verdict_message', '')
+
+# Build prompts array
+prompts = []
+for i in range(num_prompts):
+    label = os.environ.get(f'PROMPT_LABEL_{i}', '')
+    scores_a = os.environ.get(f'PROMPT_SCORES_A_{i}', '')
+    scores_b = os.environ.get(f'PROMPT_SCORES_B_{i}', '')
+    explanation = os.environ.get(f'PROMPT_EXPLANATION_{i}', '')
+    
+    if not scores_a:
+        continue
+    
+    # Parse scores
+    aa, as_, ad, asc = map(int, scores_a.split('|'))
+    ba, bs, bd, bsc = map(int, scores_b.split('|'))
+    
+    prompts.append({
+        "index": i + 1,
+        "label": label,
+        "variant_a": {
+            "actionability": aa,
+            "specificity": as_,
+            "domain_depth": ad,
+            "self_containment": asc,
+            "total": aa + as_ + ad + asc
+        },
+        "variant_b": {
+            "actionability": ba,
+            "specificity": bs,
+            "domain_depth": bd,
+            "self_containment": bsc,
+            "total": ba + bs + bd + bsc
+        },
+        "explanation": explanation
+    })
+
+# Build final JSON structure
+result = {
+    "metadata": {
+        "mode": mode,
+        "timestamp": timestamp,
+        "judge_model": judge_model,
+        "response_model": response_model,
+        "skill_a": skill_a,
+        "skill_b": skill_b if mode != "baseline" else None,
+        "prompts_file": prompts_file,
+        "total_prompts": num_prompts,
+        "evaluated": evaluated,
+        "failed": failed
+    },
+    "prompts": prompts,
+    "averages": {
+        "variant_a": {
+            "actionability": avg_a_action,
+            "specificity": avg_a_specific,
+            "domain_depth": avg_a_depth,
+            "self_containment": avg_a_self,
+            "total": total_a
+        },
+        "variant_b": {
+            "actionability": avg_b_action,
+            "specificity": avg_b_specific,
+            "domain_depth": avg_b_depth,
+            "self_containment": avg_b_self,
+            "total": total_b
+        },
+        "delta": delta
+    },
+    "verdict": {
+        "winner": winner_result,
+        "message": verdict_message
+    }
+}
+
+# Output formatted JSON
+print(json.dumps(result, indent=2))
+PYTHON_EOF
+}
+
 # ---------- Print markdown report ----------
+print_markdown_report() {
 echo ""
 echo "${BOLD}============================================${RESET}"
 echo "${BOLD} Evaluation Report${RESET}"
@@ -624,3 +926,72 @@ esac
 echo ""
 echo "---"
 echo "Generated by eval-skill-quality.sh at $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+}
+
+# ---------- Generate and output report ----------
+if [ -n "$OUTPUT_FILE" ]; then
+  # Redirect stdout to file for report generation
+  exec > "$OUTPUT_FILE"
+fi
+
+if [ "$OUTPUT_FORMAT" = "json" ]; then
+  # Export variables for Python JSON generation
+  export MODE JUDGE_MODEL RESPONSE_MODEL SKILL_A SKILL_B PROMPTS_FILE NUM_PROMPTS EVALUATED FAILED
+  export JSON_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  export avg_a_action avg_a_specific avg_a_depth avg_a_self total_a
+  export avg_b_action avg_b_specific avg_b_depth avg_b_self total_b delta
+  
+  # Determine winner
+  winner_result=$(python3 -c "
+a = ($TOTAL_A_ACTION + $TOTAL_A_SPECIFIC + $TOTAL_A_DEPTH + $TOTAL_A_SELF) / $EVALUATED
+b = ($TOTAL_B_ACTION + $TOTAL_B_SPECIFIC + $TOTAL_B_DEPTH + $TOTAL_B_SELF) / $EVALUATED
+diff = a - b
+if abs(diff) < 0.5:
+    print('TIE')
+elif diff > 0:
+    print('A')
+else:
+    print('B')
+")
+  export winner_result
+  
+  # Generate verdict message
+  case "$winner_result" in
+    A)
+      if [ "$MODE" = "baseline" ]; then
+        verdict_message="The skill improves output quality by $delta points on average."
+      else
+        verdict_message="Skill A wins by $delta points on average."
+      fi
+      ;;
+    B)
+      if [ "$MODE" = "baseline" ]; then
+        verdict_message="The skill does NOT improve output quality ($delta points). Consider revising the skill content."
+      else
+        verdict_message="Skill B wins by $delta points on average."
+      fi
+      ;;
+    TIE)
+      verdict_message="No significant difference between variants (delta: $delta)."
+      ;;
+  esac
+  export verdict_message
+  
+  # Export prompt data
+  for i in $(seq 0 $((NUM_PROMPTS - 1))); do
+    if [ -n "${PROMPT_SCORES_A[$i]:-}" ]; then
+      export "PROMPT_LABEL_${i}=${PROMPT_LABELS[$i]}"
+      export "PROMPT_SCORES_A_${i}=${PROMPT_SCORES_A[$i]}"
+      export "PROMPT_SCORES_B_${i}=${PROMPT_SCORES_B[$i]}"
+      export "PROMPT_EXPLANATION_${i}=${PROMPT_EXPLANATIONS[$i]}"
+    fi
+  done
+  
+  generate_json_report
+else
+  print_markdown_report
+fi
+
+if [ -n "$OUTPUT_FILE" ]; then
+  echo "Report saved to: $OUTPUT_FILE" >&2
+fi
