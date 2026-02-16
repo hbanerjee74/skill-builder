@@ -500,7 +500,6 @@ export default function WorkflowPage() {
         domain,
         workspacePath,
         resume,
-        false,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
