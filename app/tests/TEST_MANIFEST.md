@@ -37,8 +37,8 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
 | `src/pages/dashboard.tsx` | -- | `pages/dashboard.test.tsx` (18) | `@dashboard` |
-| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (29) | `@workflow`, `@workflow-agent` |
-| `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (33) | `@settings` |
+| `src/pages/workflow.tsx` | -- | `pages/workflow.test.tsx` (26) | `@workflow`, `@workflow-agent` |
+| `src/pages/settings.tsx` | -- | `pages/settings.test.tsx` (32) | `@settings` |
 | `src/pages/skills.tsx` | -- | `pages/skills.test.tsx` (10) | -- |
 | `src/pages/prompts.tsx` | -- | `pages/prompts.test.tsx` (6) | -- |
 | `src/pages/usage.tsx` | -- | `pages/usage.test.tsx` (14) | -- |
@@ -51,13 +51,13 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
 | `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (9) | `@settings` |
-| `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (36) | `@dashboard` |
+| `src/components/skill-card.tsx` | -- | `components/skill-card.test.tsx` (35) | `@dashboard` |
 | `src/components/new-skill-dialog.tsx` | -- | `components/new-skill-dialog.test.tsx` (21) | `@dashboard` |
 | `src/components/delete-skill-dialog.tsx` | -- | `components/delete-skill-dialog.test.tsx` (8) | `@dashboard` |
 | `src/components/reset-step-dialog.tsx` | -- | `components/reset-step-dialog.test.tsx` (7) | `@workflow` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
-| `src/components/reasoning-review.tsx` | -- | `components/reasoning-review.test.tsx` (9) | `@workflow` |
+| `src/components/reasoning-review.tsx` | -- | `components/reasoning-review.test.tsx` (8) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
 | `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (14) | -- |
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
@@ -82,9 +82,9 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Cargo Tests | E2E Tag |
 |---|---|---|
-| `src-tauri/src/db.rs` | `cargo test db` (85) | -- |
+| `src-tauri/src/db.rs` | `cargo test db` (84) | -- |
 | `src-tauri/src/types.rs` | `cargo test types` (5) | -- |
-| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (55) | `@workflow` |
+| `src-tauri/src/commands/workflow.rs` | `cargo test commands::workflow` (54) | `@workflow` |
 | `src-tauri/src/commands/workspace.rs` | `cargo test commands::workspace` (42) | `@dashboard` |
 | `src-tauri/src/commands/skill.rs` | `cargo test commands::skill` (19) | `@dashboard` |
 | `src-tauri/src/commands/imported_skills.rs` | `cargo test commands::imported_skills` (30) | -- |
