@@ -4,6 +4,28 @@ use git2::{DiffOptions, Repository, Signature, StatusOptions};
 
 use crate::types::{FileDiff, SkillCommit, SkillDiff};
 
+/// Standard .gitignore for the skills output folder.
+const GITIGNORE_CONTENT: &str = "\
+# macOS
+.DS_Store
+._*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temp files
+*.tmp
+*.bak
+";
+
 /// Open an existing repo or initialize a new one at `path`.
 pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
     if path.join(".git").exists() {
@@ -12,16 +34,24 @@ pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
         let repo =
             Repository::init(path).map_err(|e| format!("Failed to init git repo at {}: {}", path.display(), e))?;
 
-        // Create an initial empty commit so HEAD exists
+        // Write .gitignore for the skills output folder
+        std::fs::write(path.join(".gitignore"), GITIGNORE_CONTENT)
+            .map_err(|e| format!("Failed to write .gitignore: {}", e))?;
+
+        // Stage .gitignore and create initial commit so HEAD exists
         {
-            let sig = default_signature(&repo)?;
-            let tree_id = repo
-                .index()
-                .and_then(|mut idx| idx.write_tree())
+            let mut index = repo.index()
+                .map_err(|e| format!("Failed to get index: {}", e))?;
+            index.add_path(Path::new(".gitignore"))
+                .map_err(|e| format!("Failed to stage .gitignore: {}", e))?;
+            index.write()
+                .map_err(|e| format!("Failed to write index: {}", e))?;
+            let tree_id = index.write_tree()
                 .map_err(|e| format!("Failed to write initial tree: {}", e))?;
             let tree = repo
                 .find_tree(tree_id)
                 .map_err(|e| format!("Failed to find initial tree: {}", e))?;
+            let sig = default_signature(&repo)?;
             repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
                 .map_err(|e| format!("Failed to create initial commit: {}", e))?;
         }
@@ -350,6 +380,14 @@ mod tests {
         // HEAD should exist with initial commit
         let head = repo.head().unwrap();
         assert!(head.peel_to_commit().is_ok());
+
+        // .gitignore should be created and committed
+        let gitignore = dir.path().join(".gitignore");
+        assert!(gitignore.exists());
+        let content = std::fs::read_to_string(&gitignore).unwrap();
+        assert!(content.contains(".DS_Store"));
+        assert!(content.contains("Thumbs.db"));
+        assert!(content.contains(".idea/"));
     }
 
     #[test]

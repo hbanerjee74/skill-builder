@@ -197,17 +197,6 @@ fn delete_skill_inner(
         name, workspace_path, skills_path
     );
 
-    // Auto-commit: snapshot before deletion (only if skill output exists)
-    if let Some(sp) = skills_path {
-        let output_dir = Path::new(sp).join(name);
-        if output_dir.exists() {
-            let msg = format!("{}: deleted (snapshot before removal)", name);
-            if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-                log::warn!("Git auto-commit failed ({}): {}", msg, e);
-            }
-        }
-    }
-
     let base = Path::new(workspace_path).join(name);
 
     // Delete workspace working directory if it exists
@@ -237,6 +226,14 @@ fn delete_skill_inner(
         }
     } else {
         log::info!("[delete_skill] no skills_path configured, skipping output dir cleanup");
+    }
+
+    // Auto-commit: record the deletion in git
+    if let Some(sp) = skills_path {
+        let msg = format!("{}: deleted", name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
     }
 
     // Full DB cleanup: workflow_run + steps + agent_runs + tags

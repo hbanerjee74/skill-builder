@@ -991,7 +991,9 @@ pub fn save_workflow_state(
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
 
-    // Auto-commit when a step is completed
+    // Auto-commit when a step is completed.
+    // Called on every debounced save (~300ms) but commit_all is a no-op when
+    // nothing changed on disk, so redundant calls are cheap.
     let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
     if has_completed_step {
         if let Ok(settings) = crate::db::read_settings(&conn) {
