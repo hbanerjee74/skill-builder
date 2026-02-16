@@ -105,10 +105,10 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 - Unsure? → `./tests/run.sh` runs everything
 
 **Plugin quick rules:**
-- Changed a template (`agents/templates/`) or type config (`agents/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
+- Changed a template (`agent-sources/templates/`) or type config (`agent-sources/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
 - Changed a shared agent (`agents/shared/`)? → `./scripts/test-plugin.sh t1`
 - Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
-- Changed `workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
+- Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
 
@@ -148,7 +148,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 **Cost:** ~$0.50-1.00 per prompt (2 response generations + 1 judge call). A full 5-prompt DE evaluation run costs ~$3-5.
 
 **When to use:**
-- After changing focus lines, entity examples, or output examples in `agents/types/` — run baseline mode to verify the skill type still beats no-skill
+- After changing focus lines, entity examples, or output examples in `agent-sources/types/` — run baseline mode to verify the skill type still beats no-skill
 - When iterating on prompt content — run compare mode with before/after versions to measure improvement
 
 ### Updating the test manifest
@@ -163,18 +163,18 @@ When you add, remove, or rename tests (including adding tests to existing files)
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Parallel worktrees**: `npm run dev` auto-assigns a free port.
-- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agents/templates/` or `agents/types/` instead, then run `./scripts/build-agents.sh`. Shared agents in `agents/shared/` are edited directly.
+- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agent-sources/templates/` or `agent-sources/types/` instead, then run `./scripts/build-agents.sh`. Shared agents in `agents/shared/` are edited directly.
 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
 - `agents/{type}/` -- 5 agents per type (4 types = 20 files), **generated** by `scripts/build-agents.sh`
-- `agents/templates/` -- 5 phase templates (research-concepts, research-practices, research-implementation, research, generate-skill)
-- `agents/types/` -- 4 type configs with output examples (focus lines, entity examples)
+- `agent-sources/templates/` -- 5 phase templates (research-concepts, research-practices, research-implementation, research, generate-skill)
+- `agent-sources/types/` -- 4 type configs with output examples (focus lines, entity examples)
 - `agents/shared/` -- 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
-- `workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); deployed to `.claude/CLAUDE.md` in workspace
+- `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin embeds it in SKILL.md
 
-**Adding a new skill type:** Create `agents/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
+**Adding a new skill type:** Create `agent-sources/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
 
 ## Skill Configuration
 

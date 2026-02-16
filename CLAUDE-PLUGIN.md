@@ -18,10 +18,13 @@ skill-builder/
 │   └── tests/                       # Test harness scripts (T1-T5)
 ├── skills/
 │   └── generate-skill/
-│       └── SKILL.md                 # Coordinator skill (entry point)
+│       └── SKILL.md                 # Coordinator skill (entry point, self-contained)
 ├── agents/                          # Agent prompts (see CLAUDE.md for layout)
-└── workspace/
-    └── CLAUDE.md                    # Agent instructions (auto-loaded into system prompt)
+└── agent-sources/
+    ├── templates/                   # 5 phase templates (source of truth for generated agents)
+    ├── types/                       # 4 type configs with output examples
+    └── workspace/
+        └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
 ```
 
 ## Architecture
@@ -32,7 +35,7 @@ Three layers:
 
 2. **Subagents** (`agents/{type}/*.md` and `agents/shared/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Type-specific agents are spawned via `Task(subagent_type: "skill-builder:{type_prefix}-{agent}")`, shared agents via `Task(subagent_type: "skill-builder:{agent}")`.
 
-3. **Agent instructions** (`workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. Auto-loaded into every agent's system prompt — agents do not need to read it manually.
+3. **Agent instructions** (`agent-sources/workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. In the app, auto-loaded into every agent's system prompt. In the plugin, embedded directly in `skills/generate-skill/SKILL.md` so the coordinator skill is self-contained.
 
 ## Development Guide
 
@@ -40,7 +43,7 @@ Three layers:
 
 Agent files in `agents/{type}/` are **generated** — do not edit them directly.
 
-1. Edit the template in `agents/templates/` (5 templates: research-concepts, research-practices, research-implementation, research, generate-skill) or the config in `agents/types/{type}/` (type-specific content)
+1. Edit the template in `agent-sources/templates/` (5 templates: research-concepts, research-practices, research-implementation, research, generate-skill) or the config in `agent-sources/types/{type}/` (type-specific content)
 2. Run `./scripts/build-agents.sh` to regenerate all 20 type-specific agent files
 3. Use `./scripts/build-agents.sh --check` to verify generated files match templates (used in CI)
 4. Shared agents (`agents/shared/`: consolidate-research, confirm-decisions, validate-skill, detailed-research) are edited directly — they are not generated
@@ -63,5 +66,5 @@ For test commands, tiers, and quick rules, see the Testing section in CLAUDE.md.
 
 ### Key constraints
 
-- **`workspace/CLAUDE.md`**: Auto-loaded into every agent's system prompt. Changes here affect all agents.
+- **`agent-sources/workspace/CLAUDE.md`**: In the app, auto-loaded into every agent's system prompt. In the plugin, embedded in SKILL.md. Changes here affect all agents — remember to update SKILL.md when modifying this file.
 - **Plugin caching**: Plugins are copied to a cache dir on install. All file references must be within the plugin directory or in the user's CWD.
