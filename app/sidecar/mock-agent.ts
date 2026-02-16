@@ -15,6 +15,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function resolveStepTemplate(agentName: string | undefined): string | null {
   if (!agentName) return null;
 
+  // Research sub-agents: {type}-research-{concepts|practices|implementation}
+  if (/-research-(concepts|practices|implementation)$/.test(agentName)) {
+    return "step0-research";
+  }
   // Research orchestrator: {type}-research (but NOT detailed-research or consolidate-research)
   if (
     agentName.endsWith("-research") &&
@@ -23,6 +27,8 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   ) {
     return "step0-research";
   }
+  // Consolidate-research is spawned as a sub-agent during steps 0 and 2
+  if (agentName === "consolidate-research") return "step0-research";
   if (agentName === "detailed-research") return "step2-detailed-research";
   if (agentName === "confirm-decisions") return "step4-confirm-decisions";
   if (agentName.endsWith("-generate-skill")) return "step5-generate-skill";
@@ -56,11 +62,16 @@ function parsePromptPaths(prompt: string): {
   skillOutputDir: string | null;
   skillDir: string | null;
 } {
-  const contextMatch = prompt.match(/The context directory is: ([^.]+)\./);
-  const outputMatch = prompt.match(
-    /The skill output directory \(SKILL\.md and references\/\) is: ([^.]+)\./,
+  // Use [^\n]+ to capture paths that may contain dots (e.g., /Users/john.doe/)
+  const contextMatch = prompt.match(
+    /The context directory is: ([^\n]+?)\.\s/,
   );
-  const skillDirMatch = prompt.match(/The skill directory is: ([^.]+)\./);
+  const outputMatch = prompt.match(
+    /The skill output directory \(SKILL\.md and references\/\) is: ([^\n]+?)\.\s/,
+  );
+  const skillDirMatch = prompt.match(
+    /The skill directory is: ([^\n]+?)\.\s/,
+  );
 
   return {
     contextDir: contextMatch?.[1]?.trim() ?? null,
@@ -134,7 +145,20 @@ export async function runMockAgent(
   const lines = content.split("\n").filter((line) => line.trim());
 
   for (const line of lines) {
-    if (externalSignal?.aborted) break;
+    if (externalSignal?.aborted) {
+      onMessage({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: ["Mock agent cancelled"],
+        duration_ms: 0,
+        duration_api_ms: 0,
+        num_turns: 0,
+        total_cost_usd: 0,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      });
+      break;
+    }
 
     try {
       const message = JSON.parse(line) as Record<string, unknown>;
@@ -146,7 +170,9 @@ export async function runMockAgent(
       // Short delay between messages for realistic UI streaming
       await delay(100);
     } catch {
-      // Skip unparseable lines
+      process.stderr.write(
+        `[mock-agent] Skipping malformed JSONL line: ${line.substring(0, 100)}\n`,
+      );
     }
   }
 }
