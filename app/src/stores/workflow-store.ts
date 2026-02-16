@@ -88,12 +88,6 @@ const defaultSteps: WorkflowStep[] = [
     description: "Validate skill and run test prompts against it",
     status: "pending",
   },
-  {
-    id: 7,
-    name: "Refine",
-    description: "Chat with an agent to review, iterate, and polish the skill output",
-    status: "pending",
-  },
 ];
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({

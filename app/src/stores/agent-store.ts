@@ -128,7 +128,7 @@ interface AgentState {
   activeAgentId: string | null;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
-   *  Used by chat components (reasoning, refinement) that manage their own lifecycle. */
+   *  Used by reasoning-review component that manages its own lifecycle. */
   registerRun: (agentId: string, model: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
   completeRun: (agentId: string, success: boolean) => void;
@@ -208,7 +208,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 thinkingEnabled: false,
               },
         },
-        // Do NOT set activeAgentId — chat components manage their own lifecycle
+        // Do NOT set activeAgentId — reasoning-review manages its own lifecycle
       };
     }),
 

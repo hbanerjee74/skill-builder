@@ -56,20 +56,12 @@ vi.mock("@/components/agent-output-panel", () => ({
   AgentOutputPanel: () => <div data-testid="agent-output" />,
 }));
 vi.mock("@/components/workflow-step-complete", () => ({
-  WorkflowStepComplete: ({ onRerun }: { onRerun?: () => void }) => (
-    <div data-testid="step-complete">
-      {onRerun && <button onClick={onRerun}>Rerun Step</button>}
-    </div>
+  WorkflowStepComplete: () => (
+    <div data-testid="step-complete" />
   ),
 }));
 vi.mock("@/components/reasoning-review", () => ({
   ReasoningReview: () => <div data-testid="reasoning-review" />,
-}));
-vi.mock("@/components/refinement-chat", () => ({
-  RefinementChat: () => <div data-testid="refinement-chat" />,
-}));
-vi.mock("@/components/step-rerun-chat", () => ({
-  StepRerunChat: () => <div data-testid="step-rerun-chat" />,
 }));
 
 // Import after mocks
@@ -459,14 +451,14 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(screen.queryByText("Resume")).toBeNull();
   });
 
-  it("renders completion screen on last step (step 7)", async () => {
-    // Simulate all steps complete, on step 7 (the last step)
+  it("renders completion screen on last step (step 6)", async () => {
+    // Simulate all steps complete, on step 6 (the last step)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 7; i++) {
       useWorkflowStore.getState().updateStepStatus(i, "completed");
     }
-    useWorkflowStore.getState().setCurrentStep(7);
+    useWorkflowStore.getState().setCurrentStep(6);
 
     render(<WorkflowPage />);
 
@@ -476,117 +468,6 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     // Should render completion screen
     expect(screen.queryByTestId("step-complete")).toBeTruthy();
-  });
-
-  it("renders RefinementChat on step 7 when step is not completed", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    // Complete steps 0-6 so we can be on step 7
-    for (let i = 0; i < 7; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(7);
-
-    render(<WorkflowPage />);
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // RefinementChat should be rendered
-    expect(screen.queryByTestId("refinement-chat")).toBeTruthy();
-  });
-
-  it("shows Mark Complete and Skip buttons on refinement step", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 7; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(7);
-
-    render(<WorkflowPage />);
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Both buttons should be present
-    expect(screen.getByText("Mark Complete")).toBeTruthy();
-    expect(screen.getByText("Skip")).toBeTruthy();
-  });
-
-  it("Mark Complete button marks step 7 as completed", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 7; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(7);
-
-    render(<WorkflowPage />);
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Click Mark Complete
-    const markCompleteBtn = screen.getByText("Mark Complete");
-    act(() => {
-      markCompleteBtn.click();
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
-    });
-
-    expect(mockToast.success).toHaveBeenCalledWith("Step 8 marked complete");
-  });
-
-  it("Skip button marks step 7 as completed", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 7; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(7);
-
-    render(<WorkflowPage />);
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Click Skip
-    const skipBtn = screen.getByText("Skip");
-    act(() => {
-      skipBtn.click();
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
-    });
-
-    expect(mockToast.success).toHaveBeenCalledWith("Step 8 skipped");
-  });
-
-  it("does not show Mark Complete / Skip buttons when step 7 is completed", async () => {
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 8; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(7);
-
-    render(<WorkflowPage />);
-
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // Buttons should NOT appear when step is already completed
-    expect(screen.queryByText("Mark Complete")).toBeNull();
-    expect(screen.queryByText("Skip")).toBeNull();
   });
 });
 
@@ -865,40 +746,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 2 auto-completed (debug)");
   });
 
-  it("debug mode skips refinement step (7) on advance from step 6", async () => {
-    // Enable debug mode
-    useSettingsStore.getState().setSettings({ debugMode: true });
-
-    // Simulate: steps 0-5 completed, step 6 (validate) running
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 6; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().setCurrentStep(6);
-    useWorkflowStore.getState().updateStepStatus(6, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-validate-test", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes step 6 (validate) — should skip refinement (7)
-    act(() => {
-      useAgentStore.getState().completeRun("agent-validate-test", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[6].status).toBe("completed");
-    });
-
-    // Step 7 (refinement) should be auto-completed in debug mode
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[7].status).toBe("completed");
-    });
-
-    expect(mockToast.success).toHaveBeenCalledWith("Step 8 auto-completed (debug)");
-  });
-
   it("normal mode does not auto-complete human review steps", async () => {
     // Ensure debug mode is OFF (default)
     useSettingsStore.getState().setSettings({ debugMode: false });
@@ -1161,169 +1008,6 @@ describe("WorkflowPage — debug auto-start behavior", () => {
   });
 });
 
-describe("WorkflowPage — rerun integration", () => {
-  beforeEach(() => {
-    resetTauriMocks();
-    useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
-    useSettingsStore.getState().reset();
-
-    useSettingsStore.getState().setSettings({
-      workspacePath: "/test/workspace",
-      skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-    });
-
-    mockToast.success.mockClear();
-    mockToast.error.mockClear();
-    mockToast.info.mockClear();
-    mockBlocker.proceed.mockClear();
-    mockBlocker.reset.mockClear();
-    mockBlocker.status = "idle";
-
-    vi.mocked(saveWorkflowState).mockClear();
-    vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(readFile).mockClear();
-    vi.mocked(writeFile).mockClear();
-    vi.mocked(runWorkflowStep).mockClear();
-    vi.mocked(resetWorkflowStep).mockClear();
-  });
-
-  afterEach(() => {
-    useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
-    useSettingsStore.getState().reset();
-  });
-
-  it("clicking Rerun on a completed agent step enters rerun chat mode", async () => {
-    // Step 0 is a completed agent step — clicking "Rerun Step" should render StepRerunChat
-    // instead of calling resetWorkflowStep (destructive reset).
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "completed");
-    useWorkflowStore.getState().setCurrentStep(0);
-
-    render(<WorkflowPage />);
-
-    // Wait for effects to settle and the "Rerun Step" button to appear
-    await waitFor(() => {
-      expect(screen.queryByText("Rerun Step")).toBeTruthy();
-    });
-
-    // Click "Rerun Step"
-    act(() => {
-      screen.getByText("Rerun Step").click();
-    });
-
-    // StepRerunChat should render (not a destructive reset)
-    await waitFor(() => {
-      expect(screen.queryByTestId("step-rerun-chat")).toBeTruthy();
-    });
-
-    // resetWorkflowStep should NOT have been called (non-destructive rerun)
-    expect(vi.mocked(resetWorkflowStep)).not.toHaveBeenCalled();
-  });
-
-  it("resume with partial output enters rerun chat for agent steps", async () => {
-    // Step 0 has partial output on disk — clicking "Resume" should enter rerun chat
-    // mode instead of calling handleStartStep with resume=true.
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-entities.md")) {
-        return Promise.resolve("# Partial research output");
-      }
-      return Promise.reject("not found");
-    });
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    // Step 0 is pending (interrupted run — partial output exists)
-    useWorkflowStore.getState().setCurrentStep(0);
-
-    render(<WorkflowPage />);
-
-    // Wait for partial output detection and the "Resume" button to appear
-    await waitFor(() => {
-      expect(screen.queryByText("Resume")).toBeTruthy();
-    });
-
-    // Click "Resume"
-    act(() => {
-      screen.getByText("Resume").click();
-    });
-
-    // StepRerunChat should render (interactive resume via rerun chat)
-    await waitFor(() => {
-      expect(screen.queryByTestId("step-rerun-chat")).toBeTruthy();
-    });
-
-    // runWorkflowStep should NOT have been called (we entered rerun chat, not direct agent start)
-    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
-  });
-
-  it("rerun on step 4 (reasoning) does NOT enter rerun chat", async () => {
-    // Step 4 (reasoning) has its own chat component — rerun should use
-    // the legacy destructive reset path, not StepRerunChat.
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    for (let i = 0; i < 4; i++) {
-      useWorkflowStore.getState().updateStepStatus(i, "completed");
-    }
-    useWorkflowStore.getState().updateStepStatus(4, "completed");
-    useWorkflowStore.getState().setCurrentStep(4);
-
-    render(<WorkflowPage />);
-
-    // Wait for the "Rerun Step" button to appear
-    await waitFor(() => {
-      expect(screen.queryByText("Rerun Step")).toBeTruthy();
-    });
-
-    // Click "Rerun Step"
-    act(() => {
-      screen.getByText("Rerun Step").click();
-    });
-
-    // Wait for async resetWorkflowStep to complete
-    await waitFor(() => {
-      expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledTimes(1);
-    });
-
-    // StepRerunChat should NOT render — reasoning has its own chat component
-    expect(screen.queryByTestId("step-rerun-chat")).toBeNull();
-
-    // resetWorkflowStep should have been called (legacy destructive reset)
-    expect(vi.mocked(resetWorkflowStep)).toHaveBeenCalledWith(
-      "/test/workspace",
-      "test-skill",
-      4,
-    );
-  });
-
-  it("handleRerunComplete marks step as completed", async () => {
-    // This test verifies that when the rerun chat completes,
-    // the workflow properly marks the step as completed.
-    // The actual error -> completed transition is tested in step-rerun-chat.test.tsx.
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-
-    // Set step 0 to error status (simulating a failed step)
-    useWorkflowStore.getState().updateStepStatus(0, "error");
-    useWorkflowStore.getState().setCurrentStep(0);
-
-    // Verify initial state
-    expect(useWorkflowStore.getState().steps[0].status).toBe("error");
-
-    // Simulate the handleRerunComplete logic (which marks the step complete)
-    act(() => {
-      useWorkflowStore.getState().updateStepStatus(0, "completed");
-    });
-
-    // Verify step status changed from error -> completed
-    expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-  });
-});
-
 describe("WorkflowPage — reset flow session lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
@@ -1404,7 +1088,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile returns content for the step's output file → errorHasArtifacts = true
+    // readFile returns content for the step's output file -> errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path.includes("research-entities.md")) {
         return Promise.resolve("partial content");
@@ -1414,10 +1098,9 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection to complete — "Continue in Chat" only appears
-    // when errorHasArtifacts is true (requires the readFile promise to resolve)
+    // Wait for artifact detection and error UI to render
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Continue in Chat/ })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
     });
 
     // Click "Reset Step" — should show confirmation dialog (since artifacts exist)

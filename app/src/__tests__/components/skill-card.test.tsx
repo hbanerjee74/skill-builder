@@ -236,13 +236,8 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns false for step 6 (Validate -- not yet 100%)", () => {
+  it("returns true for step 6 (Validate -- last step, 100%)", () => {
     const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns true for step 7 (Refine -- last step, 100%)", () => {
-    const skill = { ...baseSkill, current_step: "Step 7", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(true);
   });
 
@@ -271,8 +266,8 @@ describe("isWorkflowComplete", () => {
     expect(isWorkflowComplete(skill)).toBe(false);
   });
 
-  it("returns true for step numbers above 7", () => {
-    const skill = { ...baseSkill, current_step: "Step 8", status: "in_progress" };
+  it("returns true for step numbers above 6", () => {
+    const skill = { ...baseSkill, current_step: "Step 7", status: "in_progress" };
     expect(isWorkflowComplete(skill)).toBe(true);
   });
 });

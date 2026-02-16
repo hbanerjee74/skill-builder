@@ -26,12 +26,6 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 
-const MODEL_OPTIONS = [
-  { value: "sonnet", label: "Claude Sonnet 4.5", description: "Fast and capable" },
-  { value: "haiku", label: "Claude Haiku 4.5", description: "Fastest, lower cost" },
-  { value: "opus", label: "Claude Opus 4.6", description: "Most capable" },
-] as const
-
 export default function SettingsPage() {
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
@@ -271,32 +265,6 @@ export default function SettingsPage() {
                 {apiKeyValid ? "Valid" : "Test"}
               </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Model</CardTitle>
-          <CardDescription>
-            Model used for chat sessions. Workflow steps use per-agent models defined in agent files.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="model-select">Chat Model</Label>
-            <select
-              id="model-select"
-              value={preferredModel}
-              onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
-              className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {MODEL_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label} — {opt.description}
-                </option>
-              ))}
-            </select>
           </div>
         </CardContent>
       </Card>

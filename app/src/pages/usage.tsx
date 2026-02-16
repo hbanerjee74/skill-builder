@@ -33,8 +33,6 @@ const STEP_NAMES: Record<number, string> = {
   5: "Confirm Decisions",
   6: "Generate Skill",
   7: "Validate Skill",
-  8: "Refine",
-  [-1]: "Chat",
 }
 
 const STEP_COLORS: Record<number, string> = {
@@ -46,8 +44,6 @@ const STEP_COLORS: Record<number, string> = {
   5: "bg-purple-500",
   6: "bg-green-500",
   7: "bg-amber-500",
-  8: "bg-emerald-500",
-  [-1]: "bg-teal-400",
 }
 
 const MODEL_COLORS: Record<string, string> = {

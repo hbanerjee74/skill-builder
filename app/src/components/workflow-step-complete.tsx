@@ -1,4 +1,4 @@
-import { CheckCircle2, FileText, Clock, DollarSign, RotateCcw, ArrowRight } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface WorkflowStepCompleteProps {
@@ -6,7 +6,6 @@ interface WorkflowStepCompleteProps {
   outputFiles: string[];
   duration?: number;
   cost?: number;
-  onRerun?: () => void;
   onNextStep?: () => void;
   isLastStep?: boolean;
 }
@@ -24,7 +23,6 @@ export function WorkflowStepComplete({
   outputFiles,
   duration,
   cost,
-  onRerun,
   onNextStep,
   isLastStep = false,
 }: WorkflowStepCompleteProps) {
@@ -67,12 +65,6 @@ export function WorkflowStepComplete({
         </div>
 
         <div className="flex items-center gap-2 mt-2">
-          {onRerun && (
-            <Button variant="outline" size="sm" onClick={onRerun}>
-              <RotateCcw className="size-3.5" />
-              Rerun Step
-            </Button>
-          )}
           {onNextStep && !isLastStep && (
             <Button size="sm" onClick={onNextStep}>
               <ArrowRight className="size-3.5" />
