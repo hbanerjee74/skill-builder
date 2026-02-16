@@ -424,6 +424,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
 
     render(<WorkflowPage />);
 
@@ -673,6 +674,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     // Set up step 1 (human review for concepts)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
     useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
@@ -762,6 +764,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setCurrentStep(1);
     useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
@@ -810,6 +813,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
     useWorkflowStore.getState().updateStepStatus(2, "completed");
@@ -891,6 +895,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // Set up workflow with an active session
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
     const sessionId = useWorkflowStore.getState().workflowSessionId;
     expect(sessionId).toBeTruthy();
@@ -922,6 +927,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // Set up workflow with an active session
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
     const sessionId = useWorkflowStore.getState().workflowSessionId;
     expect(sessionId).toBeTruthy();
@@ -978,6 +984,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // Set up workflow with an active session
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
     useWorkflowStore.getState().setRunning(true); // creates a session ID
     const sessionId = useWorkflowStore.getState().workflowSessionId;
     expect(sessionId).toBeTruthy();
