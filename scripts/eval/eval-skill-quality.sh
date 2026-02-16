@@ -444,15 +444,22 @@ EOF
   local total_retries=0
   local raw_json_file="$output_file.raw_json"
 
+  # Detect timeout command (GNU coreutils timeout or macOS gtimeout)
+  local timeout_cmd=""
+  if command -v timeout &>/dev/null; then
+    timeout_cmd="timeout ${RESPONSE_TIMEOUT}s"
+  elif command -v gtimeout &>/dev/null; then
+    timeout_cmd="gtimeout ${RESPONSE_TIMEOUT}s"
+  fi
+
   while [ $attempt -le "$MAX_RETRIES" ]; do
     verbose "Running: $CLAUDE_BIN ${cmd_args[*]} \"<prompt>\" (attempt $attempt/$MAX_RETRIES)"
 
     # Measure latency
     local start_time=$(date +%s%3N)
 
-    # Use timeout command to enforce response timeout
     # --output-format json returns {"type":"result","result":"text","usage":{"input_tokens":N,"output_tokens":N},...}
-    if echo "$prompt" | timeout "${RESPONSE_TIMEOUT}s" env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$raw_json_file" 2>"$output_file.stderr"; then
+    if echo "$prompt" | $timeout_cmd env CLAUDECODE= "$CLAUDE_BIN" "${cmd_args[@]}" > "$raw_json_file" 2>"$output_file.stderr"; then
       # Success - measure end time
       local end_time=$(date +%s%3N)
       local latency_ms=$((end_time - start_time))
@@ -469,18 +476,32 @@ try:
     result_text = data.get('result', '')
     with open('$output_file', 'w') as f:
         f.write(result_text)
-    # Extract token usage (best effort)
-    usage = data.get('usage', {})
-    input_tokens = usage.get('input_tokens', 0)
-    output_tokens = usage.get('output_tokens', 0)
+    # Extract token usage from modelUsage (more accurate) or usage (fallback)
+    input_tokens = 0
+    output_tokens = 0
+    model_usage = data.get('modelUsage', {})
+    if model_usage:
+        for model_data in model_usage.values():
+            input_tokens += model_data.get('inputTokens', 0)
+            input_tokens += model_data.get('cacheReadInputTokens', 0)
+            input_tokens += model_data.get('cacheCreationInputTokens', 0)
+            output_tokens += model_data.get('outputTokens', 0)
+    if input_tokens == 0 and output_tokens == 0:
+        # Fallback to top-level usage
+        usage = data.get('usage', {})
+        input_tokens = usage.get('input_tokens', 0) + usage.get('cache_read_input_tokens', 0) + usage.get('cache_creation_input_tokens', 0)
+        output_tokens = usage.get('output_tokens', 0)
     if input_tokens == 0 and output_tokens == 0:
         # Fallback: approximate from word count
         word_count = len(result_text.split())
         output_tokens = math.ceil(word_count * 1.33)
         input_tokens = 0  # Cannot estimate input from output alone
+    # Use actual cost from CLI if available, otherwise mark for calculation
+    actual_cost = data.get('total_cost_usd', 0)
     with open('$cost_file', 'w') as f:
         f.write(f'input_tokens={input_tokens}\n')
         f.write(f'output_tokens={output_tokens}\n')
+        f.write(f'actual_cost_usd={actual_cost}\n')
         f.write(f'token_source=api\n')
 except Exception as e:
     # Fallback: treat raw output as plain text
@@ -507,7 +528,9 @@ except Exception as e:
       return 0
     fi
 
-    local exit_code=$?
+    # Capture exit code BEFORE local (local resets $? to 0)
+    local exit_code
+    exit_code=$?
     total_retries=$((total_retries + 1))
 
     # Check if timeout occurred (exit code 124)
