@@ -4,6 +4,9 @@
 # Compares responses with skill vs without skill (baseline mode), or
 # compares two skill versions against each other (compare mode).
 #
+# Uses Claude Code's --plugin-dir mechanism to load skills, testing the actual
+# skill loading behavior rather than appending to system prompt.
+#
 # Usage:
 #   ./scripts/eval-skill-quality.sh --baseline path/to/SKILL.md --prompts prompts.txt
 #   ./scripts/eval-skill-quality.sh --compare path/to/v1/SKILL.md path/to/v2/SKILL.md --prompts prompts.txt
@@ -354,10 +357,29 @@ generate_response() {
 
   local cmd_args=(-p --model "$RESPONSE_MODEL" --allowedTools "" --no-session-persistence)
 
+  # Use --plugin-dir to load skills via Claude Code's skill loading mechanism
+  # This tests the actual skill loading behavior instead of appending to system prompt
   if [ "$skill_path" != "none" ]; then
-    local skill_content
-    skill_content=$(cat "$skill_path")
-    cmd_args+=(--append-system-prompt "$skill_content")
+    # Create a temporary plugin directory with the skill
+    local temp_plugin_dir="$TMPDIR_BASE/plugin_$(basename "$skill_path" .md)"
+    mkdir -p "$temp_plugin_dir/.claude-plugin"
+    mkdir -p "$temp_plugin_dir/skills/test-skill"
+    
+    # Copy the skill file to the temp plugin directory
+    cp "$skill_path" "$temp_plugin_dir/skills/test-skill/SKILL.md"
+    
+    # Create a minimal plugin.json manifest
+    cat > "$temp_plugin_dir/.claude-plugin/plugin.json" <<EOF
+{
+  "name": "eval-test-skill",
+  "version": "0.1.0",
+  "description": "Temporary plugin for skill evaluation",
+  "skills": "./skills/"
+}
+EOF
+    
+    # Add --plugin-dir to load the skill
+    cmd_args+=(--plugin-dir "$temp_plugin_dir")
   fi
 
   # Retry loop with exponential backoff
