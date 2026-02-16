@@ -819,18 +819,7 @@ When using a specific perspective, only relevant criteria are checked:
 - `--perspective performance`: Checks success rate and latency only
 - `--perspective all`: Checks all criteria
 
-## Future Enhancements
-
-See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
-
-- **VD-535:** ~~Claude best practices compliance (7 dimensions instead of 4)~~ (done)
-- **VD-536:** ~~Cost tracking (token usage, API costs, efficiency metrics)~~ (done)
-- **VD-537:** ~~Performance tracking (latency, success rate, skill discovery time)~~ (done)
-- **VD-538:** ~~Multi-perspective reporting and recommendations engine~~ (done)
-
 ## See Also
 
 - `../README.md` — Scripts directory overview
 - `../../CLAUDE.md` — Main development guide
-- `../../VD-529-EVALUATION-FRAMEWORK.md` — Comprehensive evaluation framework design
-- `../../EVALUATION-SUMMARY.md` — Current evaluation results
