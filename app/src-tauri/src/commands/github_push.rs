@@ -318,6 +318,10 @@ pub fn reconcile_manifests_inner(
 
         let manifest_path = path.join(".skill-builder");
         if !manifest_path.exists() {
+            // Create manifest for pre-existing skill directories that don't have one
+            write_manifest_file(&path, github_login.as_deref())?;
+            updated_count += 1;
+            debug!("reconcile_manifests: created manifest for '{}'", name);
             continue;
         }
 
@@ -1219,5 +1223,27 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_manifest_to_dir(dir.path(), Some("user")).unwrap();
         assert!(dir.path().join(".skill-builder").exists());
+    }
+
+    // --- reconcile: creates missing manifests ---
+
+    #[test]
+    fn test_reconcile_creates_manifest_for_existing_skill() {
+        // Simulate a skill directory that existed before VD-560 (no .skill-builder)
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("my-old-skill");
+        std::fs::create_dir(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Old Skill").unwrap();
+
+        // No .skill-builder exists yet
+        assert!(!skill_dir.join(".skill-builder").exists());
+
+        // Call write_manifest_file (what reconcile now does for missing manifests)
+        write_manifest_file(&skill_dir, Some("octocat")).unwrap();
+
+        // Manifest should now exist with correct creator
+        let content = std::fs::read_to_string(skill_dir.join(".skill-builder")).unwrap();
+        let manifest: SkillBuilderManifest = serde_json::from_str(&content).unwrap();
+        assert_eq!(manifest.creator.as_deref(), Some("octocat"));
     }
 }
