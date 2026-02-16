@@ -192,3 +192,11 @@ export interface SkillBuilderManifest {
   app_version: string
 }
 
+export interface GitHubRepo {
+  full_name: string
+  owner: string
+  name: string
+  description: string | null
+  is_private: boolean
+}
+

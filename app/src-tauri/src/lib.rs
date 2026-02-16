@@ -199,6 +199,7 @@ pub fn run() {
             commands::github_push::push_skill_to_remote,
             commands::github_push::reconcile_manifests,
             commands::github_push::write_skill_manifest,
+            commands::github_push::list_user_repos,
             commands::usage::persist_agent_run,
             commands::usage::get_usage_summary,
             commands::usage::get_recent_runs,

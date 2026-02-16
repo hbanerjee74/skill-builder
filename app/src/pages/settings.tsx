@@ -4,7 +4,7 @@ import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
 import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle, Search } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,12 +17,15 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { AppSettings } from "@/lib/types"
+import type { AppSettings, GitHubRepo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir, validateRemoteRepo } from "@/lib/tauri"
+import { getDataDir, validateRemoteRepo, listUserRepos } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 
@@ -49,6 +52,9 @@ export default function SettingsPage() {
   const [validating, setValidating] = useState(false)
   const [validationStatus, setValidationStatus] = useState<"valid" | "error" | null>(null)
   const [validationError, setValidationError] = useState("")
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false)
+  const [repos, setRepos] = useState<GitHubRepo[]>([])
+  const [loadingRepos, setLoadingRepos] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
@@ -227,6 +233,36 @@ export default function SettingsPage() {
     }
   }
 
+  const loadRepos = async () => {
+    setLoadingRepos(true)
+    try {
+      const result = await listUserRepos()
+      setRepos(result)
+    } catch (err) {
+      toast.error(`Failed to load repos: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setLoadingRepos(false)
+    }
+  }
+
+  const handleSelectRepo = async (repo: GitHubRepo) => {
+    setRepoPickerOpen(false)
+    setRemoteRepo(repo.full_name)
+    // Auto-validate and save
+    setValidating(true)
+    setValidationStatus(null)
+    try {
+      await validateRemoteRepo(repo.owner, repo.name)
+      setValidationStatus("valid")
+      autoSave({ remoteRepoOwner: repo.owner, remoteRepoName: repo.name })
+    } catch (err) {
+      setValidationStatus("error")
+      setValidationError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setValidating(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -392,56 +428,125 @@ export default function SettingsPage() {
             </p>
           ) : (
             <>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="remote-repo">Repository (owner/repo)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="remote-repo"
-                    placeholder="octocat/skills-library"
-                    value={remoteRepo}
-                    onChange={(e) => {
-                      setRemoteRepo(e.target.value)
-                      setValidationStatus(null)
-                    }}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleValidateRemoteRepo}
-                    disabled={validating || !remoteRepo.includes("/")}
-                  >
-                    {validating ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : null}
-                    Validate
-                  </Button>
-                </div>
-                {validationStatus === "valid" && (
-                  <div className="flex items-center gap-2 text-sm">
+              {validationStatus === "valid" && remoteRepo ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
                     <CheckCircle2 className="size-4 text-green-600" />
-                    <span className="text-green-600">Connected with push access</span>
+                    <code className="text-sm">{remoteRepo}</code>
                   </div>
-                )}
-                {validationStatus === "error" && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <AlertCircle className="size-4 text-red-600" />
-                    <span className="text-red-600">{validationError}</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setValidationStatus(null)
+                        setRemoteRepo("")
+                        setRepoPickerOpen(true)
+                      }}
+                    >
+                      Change
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground"
+                      onClick={() => {
+                        setRemoteRepo("")
+                        setValidationStatus(null)
+                        autoSave({ remoteRepoOwner: null, remoteRepoName: null })
+                      }}
+                    >
+                      Remove
+                    </Button>
                   </div>
-                )}
-              </div>
-              {remoteRepo && validationStatus === "valid" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-fit text-muted-foreground"
-                  onClick={() => {
-                    setRemoteRepo("")
-                    setValidationStatus(null)
-                    autoSave({ remoteRepoOwner: null, remoteRepoName: null })
-                  }}
-                >
-                  Remove remote
-                </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Label>Repository</Label>
+                  <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-muted-foreground font-normal"
+                        onClick={() => {
+                          setRepoPickerOpen(true)
+                          if (repos.length === 0 && !loadingRepos) {
+                            loadRepos()
+                          }
+                        }}
+                      >
+                        <Search className="size-4 mr-2" />
+                        {remoteRepo || "Select a repository..."}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search repositories..." />
+                        <CommandList>
+                          {loadingRepos ? (
+                            <div className="flex items-center justify-center py-6">
+                              <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : (
+                            <>
+                              <CommandEmpty>No repositories found.</CommandEmpty>
+                              <CommandGroup>
+                                {repos.map((repo) => (
+                                  <CommandItem
+                                    key={repo.full_name}
+                                    value={repo.full_name}
+                                    onSelect={() => handleSelectRepo(repo)}
+                                  >
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">{repo.full_name}</span>
+                                      {repo.description && (
+                                        <span className="text-xs text-muted-foreground line-clamp-1">
+                                          {repo.description}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {repo.is_private && (
+                                      <Badge variant="outline" className="ml-auto text-xs">Private</Badge>
+                                    )}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </>
+                          )}
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">or</span>
+                    <div className="flex flex-1 gap-2">
+                      <Input
+                        placeholder="owner/repo"
+                        value={remoteRepo}
+                        onChange={(e) => {
+                          setRemoteRepo(e.target.value)
+                          setValidationStatus(null)
+                        }}
+                        className="text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleValidateRemoteRepo}
+                        disabled={validating || !remoteRepo.includes("/")}
+                      >
+                        {validating ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                        Validate
+                      </Button>
+                    </div>
+                  </div>
+                  {validationStatus === "error" && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <AlertCircle className="size-4 text-red-600" />
+                      <span className="text-red-600">{validationError}</span>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )}

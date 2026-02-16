@@ -381,6 +381,95 @@ pub fn write_skill_manifest(
     Ok(())
 }
 
+/// List GitHub repos the authenticated user has push access to.
+#[tauri::command]
+pub async fn list_user_repos(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<crate::types::GitHubRepo>, String> {
+    info!("list_user_repos: fetching repos with push access");
+
+    let token = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings(&conn)?;
+        settings
+            .github_oauth_token
+            .ok_or_else(|| "Not authenticated with GitHub. Please sign in first.".to_string())?
+    };
+
+    let client = reqwest::Client::new();
+    let mut all_repos = Vec::new();
+    let mut page = 1u32;
+
+    loop {
+        let url = format!(
+            "https://api.github.com/user/repos?sort=updated&per_page=100&page={}&affiliation=owner,collaborator,organization_member",
+            page
+        );
+        let response = client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "SkillBuilder")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .await
+            .map_err(|e| format!("list_user_repos: failed to reach GitHub: {e}"))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body: serde_json::Value = response.json().await.unwrap_or_default();
+            let message = body["message"].as_str().unwrap_or("Unknown error");
+            error!("list_user_repos: GitHub API error ({}): {}", status, message);
+            return Err(format!("Failed to list repos: {} — {}", status, message));
+        }
+
+        let repos: Vec<serde_json::Value> = response
+            .json()
+            .await
+            .map_err(|e| format!("list_user_repos: failed to parse response: {e}"))?;
+
+        if repos.is_empty() {
+            break;
+        }
+
+        for repo in &repos {
+            // Only include repos with push access
+            let has_push = repo["permissions"]["push"].as_bool().unwrap_or(false);
+            if !has_push {
+                continue;
+            }
+
+            let full_name = repo["full_name"].as_str().unwrap_or_default().to_string();
+            let owner = repo["owner"]["login"].as_str().unwrap_or_default().to_string();
+            let name = repo["name"].as_str().unwrap_or_default().to_string();
+            let description = repo["description"].as_str().map(|s| s.to_string());
+            let is_private = repo["private"].as_bool().unwrap_or(false);
+
+            all_repos.push(crate::types::GitHubRepo {
+                full_name,
+                owner,
+                name,
+                description,
+                is_private,
+            });
+        }
+
+        // GitHub paginates with 100 per page. If we got < 100, we're done.
+        if repos.len() < 100 {
+            break;
+        }
+        page += 1;
+
+        // Safety limit to avoid infinite loops
+        if page > 10 {
+            break;
+        }
+    }
+
+    info!("list_user_repos: found {} repos with push access", all_repos.len());
+    Ok(all_repos)
+}
+
 // --- Public Helpers (used by other commands) ---
 
 /// Write the .skill-builder manifest JSON file into a skill directory.

@@ -64,6 +64,15 @@ pub struct PushResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRepo {
+    pub full_name: String,
+    pub owner: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_private: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillBuilderManifest {
     pub version: String,
     pub creator: Option<String>,

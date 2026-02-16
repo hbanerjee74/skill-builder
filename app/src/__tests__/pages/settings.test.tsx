@@ -32,6 +32,7 @@ vi.mock("@/lib/tauri", () => ({
   githubGetUser: vi.fn(() => Promise.resolve(null)),
   githubLogout: vi.fn(),
   validateRemoteRepo: vi.fn(() => Promise.resolve()),
+  listUserRepos: vi.fn(() => Promise.resolve([])),
 }));
 
 vi.mock("@/components/github-login-dialog", () => ({
