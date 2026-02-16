@@ -45,7 +45,6 @@ const defaultSettings: AppSettings = {
   workspace_path: null,
   skills_path: null,
   preferred_model: null,
-  debug_mode: false,
   log_level: "info",
   extended_context: false,
   extended_thinking: false,
@@ -61,7 +60,6 @@ const populatedSettings: AppSettings = {
   workspace_path: "/home/user/workspace",
   skills_path: null,
   preferred_model: "sonnet",
-  debug_mode: false,
   log_level: "info",
   extended_context: false,
   extended_thinking: false,
@@ -163,27 +161,6 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("auto-saves when debug mode toggle is changed", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks(populatedSettings);
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-    });
-
-    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
-    await user.click(debugSwitch);
-
-    await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
-        settings: expect.objectContaining({
-          debug_mode: true,
-        }),
-      });
-    });
-  });
-
   it("auto-saves when Extended Thinking toggle is changed", async () => {
     const user = userEvent.setup();
     setupDefaultMocks(populatedSettings);
@@ -237,8 +214,8 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
-    await user.click(debugSwitch);
+    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
+    await user.click(thinkingSwitch);
 
     await waitFor(() => {
       expect(screen.getByText("Saved")).toBeInTheDocument();
@@ -261,8 +238,8 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    const debugSwitch = screen.getByRole("switch", { name: /Unattended workflow/i });
-    await user.click(debugSwitch);
+    const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
+    await user.click(thinkingSwitch);
 
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Failed to save: DB error", { duration: Infinity });
@@ -501,7 +478,6 @@ describe("SettingsPage", () => {
       expect(mockInvoke).toHaveBeenCalledWith("save_settings", {
         settings: expect.objectContaining({
           log_level: "debug",
-          debug_mode: false,
         }),
       });
     });

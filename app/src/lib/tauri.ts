@@ -151,8 +151,8 @@ export const writeBase64ToTempFile = (fileName: string, base64Content: string) =
 
 // --- Lifecycle ---
 
-export const hasRunningAgents = () =>
-  invoke<boolean>("has_running_agents");
+export const hasRunningAgents = (workflowSessionId?: string | null) =>
+  invoke<boolean>("has_running_agents", { workflowSessionId: workflowSessionId ?? null });
 
 export const getWorkspacePath = () =>
   invoke<string>("get_workspace_path");
@@ -160,6 +160,10 @@ export const getWorkspacePath = () =>
 /** Shut down the persistent sidecar process for a skill (fire-and-forget). */
 export const cleanupSkillSidecar = (skillName: string) =>
   invoke<void>("cleanup_skill_sidecar", { skillName });
+
+/** Graceful shutdown: stop all sidecars, release locks, end sessions. */
+export const gracefulShutdown = () =>
+  invoke<void>("graceful_shutdown");
 
 // --- Workflow Sessions ---
 

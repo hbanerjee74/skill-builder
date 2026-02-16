@@ -162,7 +162,6 @@ describe("ReasoningReview", () => {
     useSettingsStore.getState().setSettings({
       workspacePath: "/workspace",
       skillsPath: "/skills",
-      debugMode: false,
     });
 
     mockRunWorkflowStep.mockReset().mockResolvedValue("agent-1");
@@ -175,7 +174,7 @@ describe("ReasoningReview", () => {
 
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace", false, false,
+        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace", false,
       );
     });
 
@@ -354,48 +353,6 @@ describe("ReasoningReview", () => {
       expect(store.steps[4].status).toBe("completed");
     });
 
-    expect(defaultProps.onStepComplete).toHaveBeenCalled();
-  });
-
-  it("debug mode auto-completes after agent finishes, skipping decisions validation", async () => {
-    // Enable debug mode
-    useSettingsStore.getState().setSettings({ debugMode: true });
-
-    // No decisions.md exists anywhere -- would normally block completion
-    mockReadFile.mockRejectedValue(new Error("not found"));
-
-    render(<ReasoningReview {...defaultProps} />);
-
-    // Wait for auto-start
-    await waitFor(() => {
-      expect(mockRunWorkflowStep).toHaveBeenCalled();
-    });
-
-    // Simulate agent completion -- loadDecisions will find nothing, but that's ok for debug
-    // We need decisionsContent to be set for the debug auto-complete effect to fire.
-    // The component checks: if (!debugMode || debugAutoCompletedRef.current) return;
-    //                       if (!agentCompleted || !decisionsContent) return;
-    // So for debug auto-complete, decisionsContent must be truthy.
-    // Let's provide decisions so it triggers.
-    mockReadFile.mockReset().mockImplementation((...args: unknown[]) => {
-      const filePath = args[0] as string;
-      if (filePath.includes("decisions.md")) {
-        return Promise.resolve(DECISIONS_MD);
-      }
-      return Promise.reject(new Error("not found"));
-    });
-
-    act(() => {
-      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
-    });
-
-    // In debug mode, should auto-complete after agent finishes + decisions loaded
-    await waitFor(() => {
-      const store = useWorkflowStore.getState();
-      expect(store.steps[4].status).toBe("completed");
-    }, { timeout: 1000 });
-
-    // Should call onStepComplete
     expect(defaultProps.onStepComplete).toHaveBeenCalled();
   });
 

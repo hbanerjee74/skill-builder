@@ -48,7 +48,6 @@ const defaultSettings: AppSettings = {
   workspace_path: "/home/user/workspace",
   skills_path: null,
   preferred_model: "sonnet",
-  debug_mode: false,
   log_level: "info",
   extended_context: false,
   extended_thinking: false,

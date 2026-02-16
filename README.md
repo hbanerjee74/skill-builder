@@ -33,6 +33,14 @@ npm run dev             # Start in dev mode
 
 Configure your Anthropic API key and workspace folder in Settings before running workflows.
 
+**Mock mode** -- for UI development without API calls:
+
+```bash
+cd app && MOCK_AGENTS=true npm run dev
+```
+
+This replays bundled JSONL templates with short delays, writes mock output files, and advances the workflow through all steps without hitting the Anthropic API.
+
 ## How It Works
 
 The workflow guides you through building a skill in 8 steps:

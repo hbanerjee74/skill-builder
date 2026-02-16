@@ -43,6 +43,7 @@ Agent prompts are optimized for thinking mode using goal-oriented patterns (not 
 # Desktop app
 cd app && npm install && npm run sidecar:build
 npm run dev                              # Dev mode (hot reload)
+MOCK_AGENTS=true npm run dev             # Mock mode (no API calls, replays bundled templates)
 
 # Testing (all from app/)
 ./tests/run.sh                           # All levels (unit + integration + e2e + plugin + eval)

@@ -25,7 +25,7 @@ pub fn run() {
 
             // Native app menu with About item (macOS)
             {
-                use tauri::menu::{AboutMetadata, MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+                use tauri::menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
                 let icon = app.default_window_icon().cloned();
                 let about = PredefinedMenuItem::about(
                     app,
@@ -40,6 +40,10 @@ pub fn run() {
                     }),
                 )?;
 
+                let quit_item = MenuItemBuilder::with_id("graceful-quit", "Quit Skill Builder")
+                    .accelerator("CmdOrCtrl+Q")
+                    .build(app)?;
+
                 let app_submenu = SubmenuBuilder::new(app, "Skill Builder")
                     .item(&about)
                     .separator()
@@ -49,7 +53,7 @@ pub fn run() {
                     .hide_others()
                     .show_all()
                     .separator()
-                    .quit()
+                    .item(&quit_item)
                     .build()?;
 
                 let edit_submenu = SubmenuBuilder::new(app, "Edit")
@@ -62,12 +66,16 @@ pub fn run() {
                     .select_all()
                     .build()?;
 
+                let close_window_item = MenuItemBuilder::with_id("graceful-close", "Close Window")
+                    .accelerator("CmdOrCtrl+W")
+                    .build(app)?;
+
                 let window_submenu = SubmenuBuilder::new(app, "Window")
                     .minimize()
                     .maximize()
                     .separator()
                     .fullscreen()
-                    .close_window()
+                    .item(&close_window_item)
                     .build()?;
 
                 let menu = MenuBuilder::new(app)
@@ -161,6 +169,7 @@ pub fn run() {
             commands::workflow::verify_step_output,
             commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
+            commands::sidecar_lifecycle::graceful_shutdown,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
@@ -198,8 +207,20 @@ pub fn run() {
         .on_window_event(|window, event| {
             use tauri::Emitter;
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                log::debug!("close-guard: WindowEvent::CloseRequested intercepted, emitting close-requested");
                 api.prevent_close();
                 let _ = window.emit("close-requested", ());
+            }
+        })
+        .on_menu_event(|app_handle, event| {
+            use tauri::Manager;
+            use tauri::Emitter;
+            let id = event.id().0.as_str();
+            if id == "graceful-quit" || id == "graceful-close" {
+                log::debug!("close-guard: menu item '{}' triggered, emitting close-requested", id);
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.emit("close-requested", ());
+                }
             }
         })
         .build(tauri::generate_context!())

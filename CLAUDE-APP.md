@@ -62,6 +62,16 @@ Optional fields (`sessionId`, `betas`, `pathToClaudeCodeExecutable`) are omitted
 
 The app has a **global user preference** in Settings (Sonnet 4.5, Haiku 4.5, or Opus 4.6) that overrides the shared model tiers (see CLAUDE.md). The Rust backend passes the user's selected model to every sidecar invocation.
 
+### Mock agent mode
+
+Set `MOCK_AGENTS=true` to skip real SDK `query()` calls. The sidecar replays bundled JSONL templates and writes mock output files to disk so the workflow advances through all steps without API spend.
+
+- **Activation:** `MOCK_AGENTS=true npm run dev` (env var, not a config setting)
+- **Implementation:** `app/sidecar/mock-agent.ts` — checks `process.env.MOCK_AGENTS` at the top of `runAgentRequest()`, maps agent names to step templates, streams pre-recorded messages with short delays
+- **Templates:** `app/sidecar/mock-templates/` — 5 JSONL replay files (`step0-research.jsonl` through `step6-validate-skill.jsonl`) plus `outputs/` with mock files per step (clarifications.md, decisions.md, SKILL.md, etc.)
+- **Agent name mapping:** All research sub-agents and orchestrators map to `step0-research`; shared agents (`detailed-research`, `confirm-decisions`, `validate-skill`) and generate-skill agents map to their respective step templates. Same templates are used regardless of skill type.
+- **Build:** `build.js` copies `mock-templates/` into `dist/` (with `rmSync` clean before copy to prevent stale files)
+
 ### GitHub OAuth
 
 The app supports GitHub OAuth via the [device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow). Users authenticate in Settings; the token is stored in the app database and used for feedback submission (GitHub Issues).

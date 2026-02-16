@@ -20,7 +20,6 @@ export interface AppSettings {
   workspace_path: string | null
   skills_path: string | null
   preferred_model: string | null
-  debug_mode: boolean
   log_level: string
   extended_context: boolean
   extended_thinking: boolean

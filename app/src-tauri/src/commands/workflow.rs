@@ -652,7 +652,6 @@ struct WorkflowSettings {
     skills_path: Option<String>,
     api_key: String,
     extended_context: bool,
-    debug_mode: bool,
     extended_thinking: bool,
     skill_type: String,
     author_login: Option<String>,
@@ -674,7 +673,6 @@ fn read_workflow_settings(
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
     let extended_context = settings.extended_context;
-    let debug_mode = settings.debug_mode;
     let extended_thinking = settings.extended_thinking;
 
     // Validate prerequisites (step 5 requires decisions.md)
@@ -696,7 +694,6 @@ fn read_workflow_settings(
         skills_path,
         api_key,
         extended_context,
-        debug_mode,
         extended_thinking,
         skill_type,
         author_login,
@@ -737,17 +734,12 @@ async fn run_workflow_step_inner(
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
 
-    // Determine the effective model for betas: debug_mode forces sonnet,
-    // otherwise use the agent front-matter default for this step.
-    let model = if settings.debug_mode {
-        resolve_model_id("sonnet")
-    } else {
-        resolve_model_id(default_model_for_step(step_id))
-    };
+    // Use the agent front-matter default model for this step.
+    let model = resolve_model_id(default_model_for_step(step_id));
 
     let config = SidecarConfig {
         prompt,
-        model: if settings.debug_mode { Some(model.clone()) } else { None },
+        model: None,
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
@@ -1020,9 +1012,6 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
-            "context/research-entities.md",
-            "context/clarifications-practices.md",
-            "context/clarifications-implementation.md",
             "context/clarifications.md",
         ],
         1 => vec![],  // Human review
@@ -1569,11 +1558,6 @@ mod tests {
 
         // Create output files for steps 0, 2, 4, 5
         std::fs::write(
-            skill_dir.join("context/research-entities.md"),
-            "step0",
-        )
-        .unwrap();
-        std::fs::write(
             skill_dir.join("context/clarifications.md"),
             "step0",
         )
@@ -1592,7 +1576,7 @@ mod tests {
         delete_step_output_files(workspace, "my-skill", 4, None);
 
         // Steps 0, 2 outputs should still exist
-        assert!(skill_dir.join("context/research-entities.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
@@ -1844,8 +1828,8 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("research-entities.md"),
-            "# Concepts",
+            source_dir.join("context").join("clarifications-detailed.md"),
+            "# Detailed",
         ).unwrap();
         std::fs::write(
             source_dir.join("context").join("clarifications.md"),
@@ -2007,24 +1991,7 @@ mod tests {
     }
 
     #[test]
-    fn test_debug_mode_model_override_logic() {
-        // Verify the model selection logic used in run_workflow_step:
-        // debug_mode=true  → Some(resolve_model_id("sonnet"))
-        // debug_mode=false → None (agent front matter model is used)
-
-        let debug_mode = true;
-        let model: Option<String> = if debug_mode { Some(resolve_model_id("sonnet")) } else { None };
-        assert_eq!(model, Some("claude-sonnet-4-5-20250929".to_string()));
-
-        let debug_mode = false;
-        let model: Option<String> = if debug_mode { Some(resolve_model_id("sonnet")) } else { None };
-        assert_eq!(model, None);
-    }
-
-    #[test]
-    fn test_step_max_turns_unchanged_regardless_of_debug() {
-        // Ensure every agent step has the same max_turns value
-        // regardless of any debug flag — debug mode no longer reduces turns.
+    fn test_step_max_turns() {
         let steps_with_expected_turns = [
             (0, 50),
             (2, 50),
@@ -2034,11 +2001,9 @@ mod tests {
         ];
         for (step_id, normal_turns) in steps_with_expected_turns {
             let config = get_step_config(step_id).unwrap();
-            // In the old code, debug mode would have reduced these values.
-            // Now they should always be the normal values.
             assert_eq!(
                 config.max_turns, normal_turns,
-                "Step {} max_turns should always be {} (not reduced for debug)",
+                "Step {} max_turns should be {}",
                 step_id, normal_turns
             );
         }
@@ -2053,7 +2018,7 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(
-            skill_dir.join("context/research-entities.md"),
+            skill_dir.join("context/clarifications.md"),
             "# Will be wiped",
         ).unwrap();
 
@@ -2067,7 +2032,7 @@ mod tests {
         }
 
         // Context directory should have been wiped
-        assert!(!skill_dir.join("context/research-entities.md").exists());
+        assert!(!skill_dir.join("context/clarifications.md").exists());
     }
 
     #[test]
@@ -2164,9 +2129,6 @@ mod tests {
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = [
-            "research-entities.md",
-            "clarifications-practices.md",
-            "clarifications-implementation.md",
             "clarifications.md",
             "clarifications-detailed.md",
             "decisions.md",

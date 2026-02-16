@@ -416,7 +416,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("shows Resume when partial output exists on disk", async () => {
     // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-entities.md")) {
+      if (path.includes("clarifications.md")) {
         return Promise.resolve("# Partial research output");
       }
       return Promise.reject("not found");
@@ -712,44 +712,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
   });
 
-  it("debug mode auto-completes human review steps on advance", async () => {
-    // Enable debug mode
-    useSettingsStore.getState().setSettings({ debugMode: true });
-
-    // Simulate: step 0 is running an agent
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes step 0 — should advance to step 1 (human) and auto-complete it
-    act(() => {
-      useAgentStore.getState().completeRun("agent-1", true);
-    });
-
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-    });
-
-    // Step 1 (human review) should be auto-completed in debug mode
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
-    });
-
-    // Should have advanced past step 1 to step 2 (next agent step)
-    expect(useWorkflowStore.getState().currentStep).toBe(2);
-
-    // Toast for auto-complete should fire
-    expect(mockToast.success).toHaveBeenCalledWith("Step 2 auto-completed (debug)");
-  });
-
-  it("normal mode does not auto-complete human review steps", async () => {
-    // Ensure debug mode is OFF (default)
-    useSettingsStore.getState().setSettings({ debugMode: false });
-
+  it("does not auto-complete human review steps on advance", async () => {
     // Simulate: step 0 is running an agent
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -887,127 +850,6 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   });
 });
 
-describe("WorkflowPage — debug auto-start behavior", () => {
-  beforeEach(() => {
-    resetTauriMocks();
-    useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
-    useSettingsStore.getState().reset();
-
-    useSettingsStore.getState().setSettings({
-      workspacePath: "/test/workspace",
-      skillsPath: "/test/skills",
-      anthropicApiKey: "sk-test",
-      debugMode: true,
-    });
-
-    mockToast.success.mockClear();
-    mockToast.error.mockClear();
-    mockToast.info.mockClear();
-    mockBlocker.proceed.mockClear();
-    mockBlocker.reset.mockClear();
-    mockBlocker.status = "idle";
-
-    vi.mocked(saveWorkflowState).mockClear();
-    vi.mocked(getWorkflowState).mockClear();
-    vi.mocked(readFile).mockClear();
-    vi.mocked(writeFile).mockClear();
-    vi.mocked(runWorkflowStep).mockClear();
-  });
-
-  afterEach(() => {
-    useWorkflowStore.getState().reset();
-    useAgentStore.getState().clearRuns();
-    useSettingsStore.getState().reset();
-  });
-
-  it("auto-starts step 2 (agent) after step 0 completes and step 1 is auto-completed in debug mode", async () => {
-    // Mock runWorkflowStep to return an agent ID so handleStartAgentStep succeeds
-    vi.mocked(runWorkflowStep).mockResolvedValue("auto-agent-2");
-
-    // Simulate: step 0 is running an agent
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().updateStepStatus(0, "in_progress");
-    useWorkflowStore.getState().setRunning(true);
-    useAgentStore.getState().startRun("agent-1", "sonnet");
-
-    render(<WorkflowPage />);
-
-    // Agent completes step 0
-    act(() => {
-      useAgentStore.getState().completeRun("agent-1", true);
-    });
-
-    // Step 0 should complete
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[0].status).toBe("completed");
-    });
-
-    // Step 1 (human review) should be auto-completed in debug mode
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
-    });
-
-    // Current step should advance to step 2 (the next agent step)
-    expect(useWorkflowStore.getState().currentStep).toBe(2);
-
-    // Debug auto-complete toast should fire for step 1
-    expect(mockToast.success).toHaveBeenCalledWith("Step 2 auto-completed (debug)");
-
-    // Debug auto-start effect should trigger handleStartAgentStep for step 2
-    await waitFor(() => {
-      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledTimes(1);
-    });
-
-    // runWorkflowStep should be called with correct arguments for step 2
-    expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledWith(
-      "test-skill",
-      2,
-      "test domain",
-      "/test/workspace",
-      false,
-      false,
-    );
-
-    // Step 2 should now be in_progress (started by debug auto-start)
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[2].status).toBe("in_progress");
-    });
-    expect(useWorkflowStore.getState().isRunning).toBe(true);
-  });
-
-  it("debugAutoStartedRef prevents duplicate auto-starts on re-render", async () => {
-    // Mock runWorkflowStep to return an agent ID
-    vi.mocked(runWorkflowStep).mockResolvedValue("auto-agent-0");
-
-    // Set up: step 0 is pending and debug mode is on — auto-start should fire
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-
-    const { rerender } = render(<WorkflowPage />);
-
-    // Wait for the debug auto-start effect to fire (100ms setTimeout in the effect)
-    await waitFor(() => {
-      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalledTimes(1);
-    });
-
-    // Clear the call count to track subsequent calls
-    vi.mocked(runWorkflowStep).mockClear();
-
-    // Re-render the component — should NOT re-trigger auto-start for the same step
-    rerender(<WorkflowPage />);
-
-    // Give the effect time to potentially re-fire
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 200));
-    });
-
-    // runWorkflowStep should NOT have been called again
-    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
-  });
-});
-
 describe("WorkflowPage — reset flow session lifecycle", () => {
   beforeEach(() => {
     resetTauriMocks();
@@ -1090,7 +932,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     // readFile returns content for the step's output file -> errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-entities.md")) {
+      if (path.includes("clarifications.md")) {
         return Promise.resolve("partial content");
       }
       return Promise.reject("not found");

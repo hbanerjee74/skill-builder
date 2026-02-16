@@ -10,7 +10,6 @@ const defaultSettings = {
   anthropic_api_key: null,
   workspace_path: null,
   preferred_model: null,
-  debug_mode: false,
   log_level: "info",
 };
 

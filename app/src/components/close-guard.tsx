@@ -10,10 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { invoke } from "@tauri-apps/api/core";
+import { gracefulShutdown, hasRunningAgents } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
+import { Loader2 } from "lucide-react";
 
 export function CloseGuard() {
   const [showDialog, setShowDialog] = useState(false);
+  const [closing, setClosing] = useState(false);
 
   const destroyWindow = useCallback(async () => {
     try {
@@ -28,9 +31,10 @@ export function CloseGuard() {
   }, []);
 
   const handleCloseRequested = useCallback(async () => {
+    const sessionId = useWorkflowStore.getState().workflowSessionId;
     let agentsRunning = false;
     try {
-      agentsRunning = await invoke<boolean>("has_running_agents");
+      agentsRunning = await hasRunningAgents(sessionId);
     } catch {
       // If we can't check, assume no agents and close
     }
@@ -38,6 +42,11 @@ export function CloseGuard() {
     if (agentsRunning) {
       setShowDialog(true);
     } else {
+      try {
+        await gracefulShutdown();
+      } catch {
+        // Best-effort
+      }
       await destroyWindow();
     }
   }, [destroyWindow]);
@@ -47,6 +56,12 @@ export function CloseGuard() {
   }, []);
 
   const handleCloseAnyway = useCallback(async () => {
+    setClosing(true);
+    try {
+      await gracefulShutdown();
+    } catch {
+      // Best-effort — proceed to close even if shutdown fails
+    }
     await destroyWindow();
   }, [destroyWindow]);
 
@@ -64,7 +79,7 @@ export function CloseGuard() {
   if (!showDialog) return null;
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) handleStay(); }}>
+    <Dialog open onOpenChange={(open) => { if (!open && !closing) handleStay(); }}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Agents Still Running</DialogTitle>
@@ -73,14 +88,22 @@ export function CloseGuard() {
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={handleStay}>
+          <Button variant="outline" onClick={handleStay} disabled={closing}>
             Stay
           </Button>
           <Button
             variant="destructive"
             onClick={handleCloseAnyway}
+            disabled={closing}
           >
-            Close Anyway
+            {closing ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" />
+                Closing…
+              </>
+            ) : (
+              "Close Anyway"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

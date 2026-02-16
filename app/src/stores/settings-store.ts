@@ -5,7 +5,6 @@ interface SettingsState {
   workspacePath: string | null;
   skillsPath: string | null;
   preferredModel: string | null;
-  debugMode: boolean;
   logLevel: string;
   extendedContext: boolean;
   extendedThinking: boolean;
@@ -23,7 +22,6 @@ const initialState = {
   workspacePath: null,
   skillsPath: null,
   preferredModel: null,
-  debugMode: false,
   logLevel: "info",
   extendedContext: false,
   extendedThinking: false,

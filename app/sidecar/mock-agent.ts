@@ -1,0 +1,260 @@
+import type { SidecarConfig } from "./config.js";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Map agent names to step template files.
+ *
+ * Agent names follow the pattern `{type}-{phase}` (e.g., `domain-research`,
+ * `de-generate-skill`). Shared agents use bare names (`detailed-research`,
+ * `confirm-decisions`, `validate-skill`).
+ */
+function resolveStepTemplate(agentName: string | undefined): string | null {
+  if (!agentName) return null;
+
+  // Research sub-agents: {type}-research-{concepts|practices|implementation}
+  if (/-research-(concepts|practices|implementation)$/.test(agentName)) {
+    return "step0-research";
+  }
+  // Research orchestrator: {type}-research (but NOT detailed-research or consolidate-research)
+  if (
+    agentName.endsWith("-research") &&
+    !agentName.startsWith("detailed") &&
+    !agentName.startsWith("consolidate")
+  ) {
+    return "step0-research";
+  }
+  // Consolidate-research is spawned as a sub-agent during steps 0 and 2
+  if (agentName === "consolidate-research") return "step0-research";
+  if (agentName === "detailed-research") return "step2-detailed-research";
+  if (agentName === "confirm-decisions") return "step4-confirm-decisions";
+  if (agentName.endsWith("-generate-skill")) return "step5-generate-skill";
+  if (agentName === "validate-skill") return "step6-validate-skill";
+
+  return null;
+}
+
+/** Map step template name to the outputs subdirectory. */
+function getOutputDir(stepTemplate: string): string {
+  const stepMap: Record<string, string> = {
+    "step0-research": "step0",
+    "step2-detailed-research": "step2",
+    "step4-confirm-decisions": "step4",
+    "step5-generate-skill": "step5",
+    "step6-validate-skill": "step6",
+  };
+  return stepMap[stepTemplate] || "";
+}
+
+/**
+ * Extract directory paths from the agent prompt.
+ *
+ * The Rust backend injects these into every prompt:
+ *   "The context directory is: /path/to/context."
+ *   "The skill output directory (SKILL.md and references/) is: /path/to/output."
+ *   "The skill directory is: /path/to/skill."
+ */
+function parsePromptPaths(prompt: string): {
+  contextDir: string | null;
+  skillOutputDir: string | null;
+  skillDir: string | null;
+} {
+  // Use [^\n]+ to capture paths that may contain dots (e.g., /Users/john.doe/)
+  const contextMatch = prompt.match(
+    /The context directory is: ([^\n]+?)\.\s/,
+  );
+  const outputMatch = prompt.match(
+    /The skill output directory \(SKILL\.md and references\/\) is: ([^\n]+?)\.\s/,
+  );
+  const skillDirMatch = prompt.match(
+    /The skill directory is: ([^\n]+?)\.\s/,
+  );
+
+  return {
+    contextDir: contextMatch?.[1]?.trim() ?? null,
+    skillOutputDir: outputMatch?.[1]?.trim() ?? null,
+    skillDir: skillDirMatch?.[1]?.trim() ?? null,
+  };
+}
+
+/**
+ * Run a mock agent that replays pre-recorded JSONL messages and writes
+ * mock output files to disk. Used when `MOCK_AGENTS=true` is set.
+ */
+export async function runMockAgent(
+  config: SidecarConfig,
+  onMessage: (message: Record<string, unknown>) => void,
+  externalSignal?: AbortSignal,
+): Promise<void> {
+  const stepTemplate = resolveStepTemplate(config.agentName);
+
+  if (!stepTemplate) {
+    // Unknown agent — emit a simple success result
+    onMessage({ type: "system", subtype: "init_start", timestamp: Date.now() });
+    await delay(50);
+    onMessage({ type: "system", subtype: "sdk_ready", timestamp: Date.now() });
+    await delay(50);
+    onMessage({
+      type: "result",
+      subtype: "success",
+      result: "Mock: unknown agent, skipped",
+      is_error: false,
+      duration_ms: 100,
+      duration_api_ms: 0,
+      num_turns: 0,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
+    return;
+  }
+
+  // 1. Write mock output files to disk
+  await writeMockOutputFiles(stepTemplate, config);
+
+  // 2. Stream JSONL template messages
+  const templatePath = path.join(
+    __dirname,
+    "mock-templates",
+    `${stepTemplate}.jsonl`,
+  );
+
+  if (!fs.existsSync(templatePath)) {
+    // No template file — emit minimal success
+    onMessage({ type: "system", subtype: "init_start", timestamp: Date.now() });
+    await delay(50);
+    onMessage({ type: "system", subtype: "sdk_ready", timestamp: Date.now() });
+    await delay(50);
+    onMessage({
+      type: "result",
+      subtype: "success",
+      result: `Mock: ${stepTemplate} completed (no template file)`,
+      is_error: false,
+      duration_ms: 100,
+      duration_api_ms: 0,
+      num_turns: 0,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
+    return;
+  }
+
+  const content = fs.readFileSync(templatePath, "utf-8");
+  const lines = content.split("\n").filter((line) => line.trim());
+
+  let emittedResult = false;
+  for (const line of lines) {
+    if (externalSignal?.aborted) {
+      onMessage({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: ["Mock agent cancelled"],
+        duration_ms: 0,
+        duration_api_ms: 0,
+        num_turns: 0,
+        total_cost_usd: 0,
+        usage: { input_tokens: 0, output_tokens: 0 },
+      });
+      emittedResult = true;
+      break;
+    }
+
+    try {
+      const message = JSON.parse(line) as Record<string, unknown>;
+      // Update timestamp to current time
+      if (message.timestamp) {
+        message.timestamp = Date.now();
+      }
+      if (message.type === "result") {
+        emittedResult = true;
+      }
+      onMessage(message);
+      // Short delay between messages for realistic UI streaming
+      await delay(100);
+    } catch {
+      process.stderr.write(
+        `[mock-agent] Skipping malformed JSONL line: ${line.substring(0, 100)}\n`,
+      );
+    }
+  }
+
+  // Safety net: always emit a result so the UI doesn't hang
+  if (!emittedResult) {
+    onMessage({
+      type: "result",
+      subtype: "success",
+      result: `Mock: ${stepTemplate} completed`,
+      is_error: false,
+      duration_ms: 100,
+      duration_api_ms: 0,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: { input_tokens: 0, output_tokens: 0 },
+    });
+  }
+}
+
+/**
+ * Copy mock output files from the bundled templates into the workspace
+ * so that `verify_step_output` finds them and the workflow can advance.
+ */
+async function writeMockOutputFiles(
+  stepTemplate: string,
+  config: SidecarConfig,
+): Promise<void> {
+  const outputDir = getOutputDir(stepTemplate);
+  const srcDir = path.join(__dirname, "mock-templates", "outputs", outputDir);
+
+  if (!fs.existsSync(srcDir)) return;
+
+  const paths = parsePromptPaths(config.prompt);
+
+  // Determine the destination root for this step's files.
+  //
+  // Step 5 writes SKILL.md + references/ to the "skill output directory".
+  // All other steps write context/ files relative to the "skill directory"
+  // (or use the context directory's parent, which is the skill directory).
+  let destRoot: string;
+
+  if (stepTemplate === "step5-generate-skill") {
+    // Step 5: files go to skill output dir (may differ from skill dir when skills_path is set)
+    destRoot = paths.skillOutputDir ?? paths.skillDir ?? config.cwd;
+  } else {
+    // Steps 0, 2, 4, 6: context files go under the skill directory.
+    // The mock template has outputs/{stepN}/context/... so we strip the
+    // "context/" prefix by writing to the skill dir (the parent of context/).
+    if (paths.contextDir) {
+      destRoot = path.dirname(paths.contextDir);
+    } else {
+      destRoot = paths.skillDir ?? config.cwd;
+    }
+  }
+
+  copyDirRecursive(srcDir, destRoot);
+}
+
+/** Recursively copy a directory tree, creating parents as needed. */
+function copyDirRecursive(src: string, dest: string): void {
+  if (!fs.existsSync(src)) return;
+
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      fs.mkdirSync(destPath, { recursive: true });
+      copyDirRecursive(srcPath, destPath);
+    } else {
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

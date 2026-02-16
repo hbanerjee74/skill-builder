@@ -28,7 +28,6 @@ export function AppLayout() {
         workspacePath: s.workspace_path,
         skillsPath: s.skills_path,
         preferredModel: s.preferred_model,
-        debugMode: s.debug_mode,
         logLevel: s.log_level,
         extendedContext: s.extended_context,
         githubOauthToken: s.github_oauth_token,

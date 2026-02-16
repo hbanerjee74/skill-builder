@@ -334,7 +334,6 @@ mod tests {
         assert!(settings.workspace_path.is_none());
         assert!(settings.skills_path.is_none());
         assert!(settings.preferred_model.is_none());
-        assert!(!settings.debug_mode);
         assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_context);
         assert!(!settings.extended_thinking);
@@ -388,7 +387,6 @@ mod tests {
         let json = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","extended_context":false,"splash_shown":false}"#;
         let settings: AppSettings = serde_json::from_str(json).unwrap();
         assert!(settings.skills_path.is_none());
-        assert!(!settings.debug_mode);
         assert_eq!(settings.log_level, "info");
         assert!(!settings.extended_thinking);
         assert!(settings.github_oauth_token.is_none());
