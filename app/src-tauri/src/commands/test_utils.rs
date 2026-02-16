@@ -55,20 +55,6 @@ pub fn create_test_db() -> rusqlite::Connection {
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             PRIMARY KEY (skill_name, tag)
         );
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id TEXT PRIMARY KEY,
-            skill_name TEXT NOT NULL,
-            mode TEXT NOT NULL DEFAULT 'conversational',
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
         CREATE TABLE IF NOT EXISTS imported_skills (
             skill_id TEXT PRIMARY KEY,
             skill_name TEXT UNIQUE NOT NULL,

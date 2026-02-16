@@ -67,7 +67,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 120,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1 and 3 are human review steps; step 7 is the refinement step (client-side only).",
+            "Unknown step_id {}. Steps 1 and 3 are human review steps.",
             step_id
         )),
     }
@@ -1016,7 +1016,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 
 /// Check if at least one expected output file exists for a completed step.
 /// Returns `true` if the step produced output, `false` if no files were written.
-/// Human review steps (1, 3) and refinement (7) always return `true` since they
+/// Human review steps (1, 3) always return `true` since they
 /// produce no files by design.
 #[tauri::command]
 pub fn verify_step_output(
@@ -1128,16 +1128,6 @@ fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skill
         }
     }
 
-    // Step 4 (confirm-decisions): also delete the chat session file so reset starts fresh
-    if step_id == 4 {
-        let session = skill_dir.join("logs").join("reasoning-chat.json");
-        if session.exists() {
-            match std::fs::remove_file(&session) {
-                Ok(()) => log::info!("[clean_step_output] deleted {}", session.display()),
-                Err(e) => log::warn!("[clean_step_output] FAILED to delete {}: {}", session.display(), e),
-            }
-        }
-    }
 }
 
 /// Delete output files for the given step and all subsequent steps.
@@ -1146,7 +1136,7 @@ fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id
         "[delete_step_output_files] skill={} from_step={} workspace={} skills_path={:?}",
         skill_name, from_step_id, workspace_path, skills_path
     );
-    for step_id in from_step_id..=7 {
+    for step_id in from_step_id..=6 {
         clean_step_output(workspace_path, skill_name, step_id, skills_path);
     }
 }
@@ -1208,11 +1198,10 @@ pub fn preview_step_reset(
         "Confirm Decisions",
         "Generate Skill",
         "Validate Skill",
-        "Refine",
     ];
 
     let mut result = Vec::new();
-    for step_id in from_step_id..=7 {
+    for step_id in from_step_id..=6 {
         let base_dir = if step_id == 5
             || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6))
         {
@@ -1243,14 +1232,6 @@ pub fn preview_step_reset(
                         }
                     }
                 }
-            }
-        }
-
-        // Step 4: also check reasoning chat session
-        if step_id == 4 {
-            let session = skill_dir.join("logs").join("reasoning-chat.json");
-            if session.exists() {
-                existing_files.push("logs/reasoning-chat.json".to_string());
             }
         }
 
@@ -1289,7 +1270,7 @@ mod tests {
     fn test_get_step_config_invalid_step() {
         assert!(get_step_config(1).is_err());  // Human review
         assert!(get_step_config(3).is_err());  // Human review
-        assert!(get_step_config(7).is_err());  // Refinement step (client-side only)
+        assert!(get_step_config(7).is_err());  // Beyond last step
         assert!(get_step_config(8).is_err());  // Beyond last step
         assert!(get_step_config(9).is_err());
         assert!(get_step_config(99).is_err());
@@ -1298,7 +1279,7 @@ mod tests {
     #[test]
     fn test_get_step_config_step7_error_message() {
         let err = get_step_config(7).unwrap_err();
-        assert!(err.contains("refinement step"), "Error should mention refinement: {}", err);
+        assert!(err.contains("Unknown step_id 7"), "Error should mention unknown step: {}", err);
     }
 
     #[test]
@@ -1627,7 +1608,7 @@ mod tests {
         std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
 
-        // Reset from step 6 onwards should clean up through step 7
+        // Reset from step 6 onwards should clean up step 6 (validate)
         delete_step_output_files(workspace, "my-skill", 6, None);
 
         // Step 6 outputs should be deleted
@@ -1636,13 +1617,12 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_step_output_files_includes_step7() {
-        // Verify the loop range extends to step 7 (refine step)
-        // by confirming delete_step_output_files(from=7) doesn't panic
+    fn test_delete_step_output_files_last_step() {
+        // Verify delete_step_output_files(from=6) doesn't panic
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        delete_step_output_files(workspace, "my-skill", 7, None);
+        delete_step_output_files(workspace, "my-skill", 6, None);
     }
 
     #[test]
