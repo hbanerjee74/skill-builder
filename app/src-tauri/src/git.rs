@@ -29,8 +29,10 @@ Desktop.ini
 /// Open an existing repo or initialize a new one at `path`.
 pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
     if path.join(".git").exists() {
+        log::debug!("[git] Opening existing repo at {}", path.display());
         Repository::open(path).map_err(|e| format!("Failed to open git repo at {}: {}", path.display(), e))
     } else {
+        log::debug!("[git] Initializing new repo at {}", path.display());
         let repo =
             Repository::init(path).map_err(|e| format!("Failed to init git repo at {}: {}", path.display(), e))?;
 
@@ -56,12 +58,14 @@ pub fn ensure_repo(path: &Path) -> Result<Repository, String> {
                 .map_err(|e| format!("Failed to create initial commit: {}", e))?;
         }
 
+        log::debug!("[git] Created initial commit with .gitignore");
         Ok(repo)
     }
 }
 
 /// Stage all changes and commit. Returns the commit SHA, or Ok(None) if nothing to commit.
 pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> {
+    log::debug!("[git] commit_all at {} — \"{}\"", path.display(), message);
     let repo = ensure_repo(path)?;
 
     let mut index = repo
@@ -112,6 +116,7 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
             .diff_tree_to_tree(Some(&parent_tree), Some(&tree), None)
             .map_err(|e| format!("Failed to compute diff: {}", e))?;
         if diff.deltas().count() == 0 {
+            log::debug!("[git] No changes to commit — skipping");
             return Ok(None); // Nothing changed
         }
     }
@@ -122,6 +127,7 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
         .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)
         .map_err(|e| format!("Failed to commit: {}", e))?;
 
+    log::info!("[git] Committed: {} ({})", message, &oid.to_string()[..8]);
     Ok(Some(oid.to_string()))
 }
 
@@ -131,6 +137,7 @@ pub fn get_history(
     skill_name: &str,
     limit: usize,
 ) -> Result<Vec<SkillCommit>, String> {
+    log::debug!("[git] get_history for '{}' (limit {})", skill_name, limit);
     let repo = Repository::open(repo_path)
         .map_err(|e| format!("Failed to open repo: {}", e))?;
 
@@ -168,6 +175,7 @@ pub fn get_history(
         }
     }
 
+    log::debug!("[git] Found {} commits for '{}'", commits.len(), skill_name);
     Ok(commits)
 }
 
@@ -178,6 +186,7 @@ pub fn get_diff(
     sha_b: &str,
     skill_name: &str,
 ) -> Result<SkillDiff, String> {
+    log::debug!("[git] get_diff for '{}': {}..{}", skill_name, &sha_a[..8.min(sha_a.len())], &sha_b[..8.min(sha_b.len())]);
     let repo = Repository::open(repo_path)
         .map_err(|e| format!("Failed to open repo: {}", e))?;
 
@@ -253,6 +262,7 @@ pub fn restore_version(
     sha: &str,
     skill_name: &str,
 ) -> Result<(), String> {
+    log::info!("[git] Restoring '{}' to commit {}", skill_name, &sha[..8.min(sha.len())]);
     let repo = Repository::open(repo_path)
         .map_err(|e| format!("Failed to open repo: {}", e))?;
 
@@ -299,6 +309,7 @@ pub fn restore_version(
     })
     .map_err(|e| format!("Failed to walk tree: {}", e))?;
 
+    log::info!("[git] Restored '{}' to {}", skill_name, &sha[..8.min(sha.len())]);
     Ok(())
 }
 
