@@ -156,6 +156,14 @@ fn create_skill_inner(
         }
     }
 
+    // Auto-commit: skill created
+    if let Some(sp) = skills_path {
+        let msg = format!("{}: created", name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     Ok(())
 }
 
@@ -188,6 +196,15 @@ fn delete_skill_inner(
         "[delete_skill] skill={} workspace={} skills_path={:?}",
         name, workspace_path, skills_path
     );
+
+    // Auto-commit: snapshot before deletion
+    if let Some(sp) = skills_path {
+        let msg = format!("{}: deleted (snapshot before removal)", name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     let base = Path::new(workspace_path).join(name);
 
     // Delete workspace working directory if it exists
