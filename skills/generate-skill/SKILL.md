@@ -212,7 +212,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
-     Write/update: ./<skillname>/context/decisions.md
+     Write: ./<skillname>/context/decisions.md
 
      Return your reasoning summary (key conclusions, assumptions, conflicts, follow-ups)."
    )

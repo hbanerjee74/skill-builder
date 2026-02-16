@@ -21,7 +21,7 @@ Data/analytics engineers who need domain context to model silver and gold layer 
 3. **Guide WHAT and WHY, not HOW** — "Your customer dimension needs X because..." not "Create table dim_account with columns..." Exception: be prescriptive when exactness matters (metric formulas, business rule logic).
 
 ## Output Paths
-The coordinator provides **context directory** and **skill output directory** paths. All directories already exist — never run `mkdir` or create directories. Write files directly to the provided paths. The skill output structure is `SKILL.md` at root + `references/` subfolder.
+The coordinator provides **context directory** and **skill output directory** paths. All directories already exist — never run `mkdir` or create directories. Never run `ls` or list directories. Read only the specific files named in your instructions and write directly to the provided paths. The skill output structure is `SKILL.md` at root + `references/` subfolder.
 
 ## File Formats
 
@@ -47,7 +47,7 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
 
 ### Decisions (`decisions.md`)
-Clean snapshot, not a log. Each update rewrites the file, merging existing + new decisions. Superseded entries are replaced (keep D-number), new entries added at end.
+Clean snapshot, not a log. Write the complete file from scratch each time.
 ```
 ---
 decision_count: 5

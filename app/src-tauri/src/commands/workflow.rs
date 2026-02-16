@@ -491,7 +491,7 @@ fn build_prompt(
          The skill directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
-         All directories already exist — never create directories with mkdir or any other method. Write files directly.",
+         All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
         skill_dir.display(),
@@ -1340,8 +1340,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -1363,8 +1362,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         // skill output directory should use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
@@ -1386,8 +1384,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
@@ -1405,8 +1402,7 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain "Read X and Y and follow the instructions"
-        assert!(!prompt.contains("Read"));
+        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
