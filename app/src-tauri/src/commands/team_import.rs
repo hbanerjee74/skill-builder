@@ -147,7 +147,22 @@ pub async fn import_team_repo_skill(
         )
     };
 
-    // Check for conflicts
+    // Check DB conflict
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if let Some(_existing) = crate::db::get_workflow_run(&conn, &skill_name)? {
+            if !force {
+                return Err(format!(
+                    "Skill '{}' already exists. Delete it first, or import a different skill.",
+                    skill_name
+                ));
+            }
+            // Force: clean up existing DB records
+            crate::db::delete_workflow_run(&conn, &skill_name)?;
+        }
+    }
+
+    // Check for filesystem conflicts
     let workspace_skill_dir = Path::new(&workspace_path).join(&skill_name);
     let skill_output_dir = Path::new(&skills_path).join(&skill_name);
 
@@ -345,15 +360,15 @@ pub async fn import_team_repo_skill(
     }
 
     // Parse frontmatter from SKILL.md
-    let (fm_name, _fm_description, fm_domain) = skill_md_content
+    let (fm_name, _fm_description, fm_domain, fm_type) = skill_md_content
         .as_deref()
         .map(super::imported_skills::parse_frontmatter)
-        .unwrap_or((None, None, None));
+        .unwrap_or((None, None, None, None));
 
     let domain = fm_domain
         .or_else(|| fm_name.clone())
         .unwrap_or_default();
-    let skill_type = "domain"; // Default when not detectable
+    let skill_type = fm_type.as_deref().unwrap_or("domain");
 
     // Fetch manifest for creator info
     let manifest_url = format!(

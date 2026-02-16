@@ -245,7 +245,7 @@ pub(crate) async fn list_github_skills_inner(
             }
         };
 
-        let (fm_name, fm_description, fm_domain) =
+        let (fm_name, fm_description, fm_domain, _fm_type) =
             super::imported_skills::parse_frontmatter(&content);
 
         // Derive skill directory path (parent of SKILL.md)
@@ -474,7 +474,7 @@ pub(crate) async fn import_single_skill(
         .await
         .map_err(|e| format!("Failed to read SKILL.md content: {}", e))?;
 
-    let (fm_name, fm_description, fm_domain) =
+    let (fm_name, fm_description, fm_domain, _fm_type) =
         super::imported_skills::parse_frontmatter(&skill_md_content);
 
     let skill_name = fm_name.unwrap_or_else(|| dir_name.to_string());
@@ -714,12 +714,13 @@ mod tests {
     #[test]
     fn test_parse_frontmatter_accessible() {
         // Verify that the pub(crate) parse_frontmatter is callable from here
-        let (name, desc, domain) = super::super::imported_skills::parse_frontmatter(
+        let (name, desc, domain, skill_type) = super::super::imported_skills::parse_frontmatter(
             "---\nname: test\ndescription: a test\ndomain: analytics\n---\n# Content",
         );
         assert_eq!(name.as_deref(), Some("test"));
         assert_eq!(desc.as_deref(), Some("a test"));
         assert_eq!(domain.as_deref(), Some("analytics"));
+        assert!(skill_type.is_none());
     }
 
     // --- validate_skill_name reuse test ---
