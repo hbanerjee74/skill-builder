@@ -56,6 +56,8 @@ The workflow guides you through building a skill in 8 steps:
 
 Skills are organized by type: **domain** (business knowledge), **platform** (tool-specific), **source** (extraction patterns), and **data-engineering** (technical patterns).
 
+Completed skills are version-controlled locally (auto-commits via git2) and can be pushed to a shared GitHub repository via branch + PR from the desktop app.
+
 ## Architecture
 
 ```
