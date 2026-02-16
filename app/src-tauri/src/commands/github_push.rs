@@ -239,8 +239,9 @@ pub async fn push_skill_to_remote(
         &token,
     )?;
 
-    // 10. Create or update PR
+    // 10. Fetch default branch and create or update PR
     let client = reqwest::Client::new();
+    let default_branch = get_default_branch(&client, &token, &owner, &repo_name).await?;
     let (pr_url, pr_number, is_new_pr) = create_or_update_pr(
         &client,
         &token,
@@ -249,7 +250,7 @@ pub async fn push_skill_to_remote(
         &branch_name,
         &skill_name,
         &changelog,
-        is_first_push,
+        &default_branch,
     )
     .await?;
 
@@ -765,6 +766,35 @@ fn push_branch_to_remote(
     Ok(())
 }
 
+/// Fetch the default branch name for a GitHub repository.
+async fn get_default_branch(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo_name: &str,
+) -> Result<String, String> {
+    let url = format!("https://api.github.com/repos/{}/{}", owner, repo_name);
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "SkillBuilder")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo info: {e}"))?;
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse repo info: {e}"))?;
+
+    body["default_branch"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Could not determine default branch for repository".to_string())
+}
+
 /// Create or update a GitHub PR for the pushed branch.
 /// Returns (pr_url, pr_number, is_new_pr).
 async fn create_or_update_pr(
@@ -775,7 +805,7 @@ async fn create_or_update_pr(
     branch_name: &str,
     skill_name: &str,
     changelog: &str,
-    _is_first_push: bool,
+    default_branch: &str,
 ) -> Result<(String, u64, bool), String> {
     // Check for existing open PR
     let search_url = format!(
@@ -867,7 +897,7 @@ async fn create_or_update_pr(
                 "title": title,
                 "body": changelog,
                 "head": branch_name,
-                "base": "main"
+                "base": default_branch
             }))
             .send()
             .await
