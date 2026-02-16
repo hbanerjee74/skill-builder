@@ -990,6 +990,33 @@ pub fn save_workflow_state(
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
+
+    // Auto-commit when a step is completed
+    let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
+    if has_completed_step {
+        if let Ok(settings) = crate::db::read_settings(&conn) {
+            if let Some(ref sp) = settings.skills_path {
+                let completed_steps: Vec<i32> = step_statuses
+                    .iter()
+                    .filter(|s| s.status == "completed")
+                    .map(|s| s.step_id)
+                    .collect();
+                let msg = format!(
+                    "{}: step {} completed",
+                    skill_name,
+                    completed_steps
+                        .iter()
+                        .map(|id| id.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+                    log::warn!("Git auto-commit failed ({}): {}", msg, e);
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1154,6 +1181,15 @@ pub fn reset_workflow_step(
     );
     let skills_path = read_skills_path(&db);
     log::info!("[reset_workflow_step] skills_path={:?}", skills_path);
+
+    // Auto-commit: checkpoint before artifacts are deleted
+    if let Some(ref sp) = skills_path {
+        let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
+        if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
     delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
 
     // Reset steps in SQLite
