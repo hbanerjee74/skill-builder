@@ -19,7 +19,7 @@ scripts/
 │   │   ├── platform.txt
 │   │   └── source.txt
 │   └── results/                   # Evaluation outputs (gitignored)
-└── tests/                         # Plugin test harness
+└── plugin-tests/                  # Plugin test harness
     ├── lib.sh                     # Shared test utilities
     ├── fixtures.sh                # Test fixtures
     ├── t1-structural.sh           # T1: Structural validation
@@ -133,6 +133,6 @@ scripts/
 ## See Also
 
 - `eval/README.md` - Comprehensive skill evaluation documentation
-- `tests/lib.sh` - Test utilities and helpers
+- `plugin-tests/lib.sh` - Test utilities and helpers
 - `../CLAUDE.md` - Main development guide
 - `../CLAUDE-PLUGIN.md` - Plugin-specific documentation
