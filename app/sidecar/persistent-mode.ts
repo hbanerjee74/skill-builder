@@ -108,6 +108,7 @@ export async function runPersistent(
 ): Promise<void> {
   // Signal readiness
   writeLine({ type: "sidecar_ready" });
+  process.stderr.write("[sidecar] Persistent mode ready\n");
 
   const rl: Interface = createInterface({
     input,
@@ -139,6 +140,7 @@ export async function runPersistent(
     }
 
     if (message.type === "shutdown") {
+      process.stderr.write("[sidecar] Shutdown requested\n");
       // Wait for any in-flight requests to finish
       if (inFlight.size > 0) {
         await Promise.allSettled(inFlight);
@@ -149,6 +151,7 @@ export async function runPersistent(
     }
 
     if (message.type === "cancel") {
+      process.stderr.write(`[sidecar] Cancel request for ${message.request_id}\n`);
       // Rust sends cancel when a request times out.
       // Abort the matching in-flight request so the SDK stops waiting.
       if (currentAbort && currentRequestId === message.request_id) {
@@ -166,6 +169,7 @@ export async function runPersistent(
       }
 
       const { request_id, config } = message;
+      process.stderr.write(`[sidecar] Agent request: ${request_id}\n`);
       const abortController = new AbortController();
       currentAbort = abortController;
       currentRequestId = request_id;
