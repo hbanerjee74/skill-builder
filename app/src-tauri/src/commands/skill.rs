@@ -71,6 +71,15 @@ pub fn create_skill(
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    // Require skills_path to be configured
+    if skills_path.is_none() {
+        return Err(
+            "Skills output path is not configured. Please set it in Settings before creating skills."
+                .to_string(),
+        );
+    }
+
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
     create_skill_inner(
