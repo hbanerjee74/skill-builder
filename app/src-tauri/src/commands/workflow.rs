@@ -1063,96 +1063,6 @@ pub fn verify_step_output(
     Ok(has_output)
 }
 
-/// Delete output files for a single step.
-/// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name or
-/// workspace_path/skill_name). For other steps, files are in workspace_path/skill_name.
-fn clean_step_output(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: Option<&str>) {
-    let skill_dir = Path::new(workspace_path).join(skill_name);
-    log::info!(
-        "[clean_step_output] step={} skill={} workspace={} skills_path={:?}",
-        step_id, skill_name, workspace_path, skills_path
-    );
-
-    if step_id == 5 {
-        // Step 5 output lives in skill_output_dir
-        let skill_output_dir = if let Some(sp) = skills_path {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        };
-        log::info!("[clean_step_output] step=5 output_dir={} exists={}", skill_output_dir.display(), skill_output_dir.exists());
-        if skill_output_dir.exists() {
-            for file in get_step_output_files(5) {
-                let path = skill_output_dir.join(file);
-                if path.exists() {
-                    match std::fs::remove_file(&path) {
-                        Ok(()) => log::info!("[clean_step_output] deleted {}", path.display()),
-                        Err(e) => log::warn!("[clean_step_output] FAILED to delete {}: {}", path.display(), e),
-                    }
-                }
-            }
-            let refs_dir = skill_output_dir.join("references");
-            if refs_dir.is_dir() {
-                match std::fs::remove_dir_all(&refs_dir) {
-                    Ok(()) => log::info!("[clean_step_output] deleted dir {}", refs_dir.display()),
-                    Err(e) => log::warn!("[clean_step_output] FAILED to delete dir {}: {}", refs_dir.display(), e),
-                }
-            }
-            // Clean up .skill zip from skill output dir
-            let skill_file = skill_output_dir.join(format!("{}.skill", skill_name));
-            if skill_file.exists() {
-                match std::fs::remove_file(&skill_file) {
-                    Ok(()) => log::info!("[clean_step_output] deleted {}", skill_file.display()),
-                    Err(e) => log::warn!("[clean_step_output] FAILED to delete {}: {}", skill_file.display(), e),
-                }
-            }
-        }
-        return;
-    }
-
-    // Context files (steps 0, 2, 4, 6) may live in skills_path when configured
-    let context_dir = if let Some(sp) = skills_path {
-        if matches!(step_id, 0 | 2 | 4 | 6) {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        }
-    } else {
-        skill_dir.clone()
-    };
-    log::info!(
-        "[clean_step_output] step={} skill_dir={} context_dir={}",
-        step_id, skill_dir.display(), context_dir.display()
-    );
-
-    for file in get_step_output_files(step_id) {
-        // Check both locations — workspace and skills_path
-        for dir in [&skill_dir, &context_dir] {
-            let path = dir.join(file);
-            if path.exists() {
-                match std::fs::remove_file(&path) {
-                    Ok(()) => log::info!("[clean_step_output] deleted {}", path.display()),
-                    Err(e) => log::warn!("[clean_step_output] FAILED to delete {}: {}", path.display(), e),
-                }
-            } else {
-                log::debug!("[clean_step_output] not found: {}", path.display());
-            }
-        }
-    }
-
-}
-
-/// Delete output files for the given step and all subsequent steps.
-fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
-    log::info!(
-        "[delete_step_output_files] skill={} from_step={} workspace={} skills_path={:?}",
-        skill_name, from_step_id, workspace_path, skills_path
-    );
-    for step_id in from_step_id..=6 {
-        clean_step_output(workspace_path, skill_name, step_id, skills_path);
-    }
-}
-
 #[tauri::command]
 pub fn reset_workflow_step(
     workspace_path: String,
@@ -1165,7 +1075,7 @@ pub fn reset_workflow_step(
         skill_name, from_step_id, workspace_path
     );
     let skills_path = read_skills_path(&db);
-    log::info!("[reset_workflow_step] skills_path={:?}", skills_path);
+    log::debug!("[reset_workflow_step] skills_path={:?}", skills_path);
 
     // Auto-commit: checkpoint before artifacts are deleted
     if let Some(ref sp) = skills_path {
@@ -1175,7 +1085,7 @@ pub fn reset_workflow_step(
         }
     }
 
-    delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
+    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -1573,7 +1483,7 @@ mod tests {
 
         // Reset from step 4 onwards — steps 0, 2 should be preserved
         // No skills_path set, so step 5 files are in workspace_path/skill_name/
-        delete_step_output_files(workspace, "my-skill", 4, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
 
         // Steps 0, 2 outputs should still exist
         assert!(skill_dir.join("context/clarifications.md").exists());
@@ -1597,7 +1507,7 @@ mod tests {
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — step 4 should be untouched
-        clean_step_output(workspace, "my-skill", 2, None);
+        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, None);
 
         assert!(!skill_dir.join("context/clarifications-detailed.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
@@ -1606,7 +1516,7 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_nonexistent_dir_is_ok() {
         // Should not panic on nonexistent directory
-        delete_step_output_files("/tmp/nonexistent", "no-skill", 0, None);
+        crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, None);
     }
 
     #[test]
@@ -1621,7 +1531,7 @@ mod tests {
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
 
         // Reset from step 6 onwards should clean up step 6 (validate)
-        delete_step_output_files(workspace, "my-skill", 6, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
 
         // Step 6 outputs should be deleted
         assert!(!skill_dir.join("context/agent-validation-log.md").exists());
@@ -1634,7 +1544,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        delete_step_output_files(workspace, "my-skill", 6, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
     }
 
     #[test]
@@ -2141,7 +2051,7 @@ mod tests {
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
         // 5. Call delete_step_output_files from step 0 with skills_path
-        delete_step_output_files(workspace, "my-skill", 0, Some(skills_path));
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, Some(skills_path));
 
         // 6. Assert ALL files in skills_path/my-skill/context/ are gone
         let mut remaining: Vec<String> = Vec::new();
