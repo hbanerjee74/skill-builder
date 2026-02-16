@@ -105,6 +105,15 @@
 #   "verdict": {
 #     "winner": "A|B|TIE",
 #     "message": "verdict message"
+#   },
+#   "recommendations": {
+#     "quality": ["..."], "claude_practices": ["..."],
+#     "cost": ["..."], "performance": ["..."]
+#   },
+#   "production_readiness": {
+#     "quality_score": "28.0/35", "quality_pass": bool,
+#     "practices_pass": bool, "cost_pass": bool, "performance_pass": bool,
+#     "status": "READY|NOT READY", "blockers": ["..."]
 #   }
 # }
 
@@ -1250,6 +1259,227 @@ else:
 # Total evaluation cost (both variants combined)
 total_eval_cost=$(python3 -c "print(f'{$TOTAL_COST_A + $TOTAL_COST_B:.6f}')")
 
+# Cost per quality point for recommendations
+cost_per_qp_a=$(python3 -c "
+q = float('$quality_a')
+c = float('$avg_cost_a')
+if q > 0:
+    print(f'{c / q:.6f}')
+else:
+    print('0.0')
+")
+
+# ---------- Recommendations engine ----------
+generate_recommendations() {
+  # Generate recommendations based on thresholds
+  # Output: sets RECS_QUALITY, RECS_PRACTICES, RECS_COST, RECS_PERFORMANCE arrays
+  # Uses Python for all logic to handle floating-point comparisons
+
+  local recs_file="$TMPDIR_BASE/recommendations.txt"
+
+  python3 << RECS_EOF > "$recs_file"
+import json
+
+perspective = "$PERSPECTIVE"
+mode = "$MODE"
+
+# Quality data
+avg_action = float("$avg_a_action")
+avg_specific = float("$avg_a_specific")
+avg_depth = float("$avg_a_depth")
+avg_self = float("$avg_a_self")
+
+# Practices data
+avg_progressive = float("$avg_a_progressive")
+avg_structure = float("$avg_a_structure")
+avg_claude_centric = float("$avg_a_claude_centric")
+
+# Cost data
+cost_per_qp = float("$cost_per_qp_a")
+skill_tokens = int("$SKILL_TOKENS_A")
+token_delta_pct = float("${token_delta_pct}".replace("+", ""))
+
+# Performance data
+avg_latency = float("$avg_a_latency")
+avg_success_rate = float("$avg_a_success_rate")
+avg_tps = float("$avg_a_tps")
+
+recs = {"quality": [], "claude_practices": [], "cost": [], "performance": []}
+
+# Quality recommendations
+if perspective in ("quality", "all"):
+    dims = [
+        ("Actionability", avg_action, "Add clearer implementation steps, code examples, and decision points"),
+        ("Specificity", avg_specific, "Include more concrete details: exact patterns, named strategies, SQL/code examples"),
+        ("Domain Depth", avg_depth, "Add hard-to-find rules, edge cases, and industry-specific pitfalls"),
+        ("Self-Containment", avg_self, "Provide more context: entity definitions, business rules, and trade-offs"),
+    ]
+    all_good = True
+    for name, val, advice in dims:
+        if val < 3:
+            recs["quality"].append(f"CRITICAL: {name} scores are low (avg {val:.1f}/5). {advice}.")
+            all_good = False
+        elif val < 4:
+            recs["quality"].append(f"IMPROVE: {name} could be better (avg {val:.1f}/5). {advice}.")
+            all_good = False
+    if all_good:
+        recs["quality"].append("GOOD: Quality scores are strong across all dimensions.")
+
+# Claude practices recommendations
+if perspective in ("quality", "all"):
+    if avg_progressive < 4:
+        recs["claude_practices"].append(
+            f"Move detailed content to reference files for better progressive disclosure (avg {avg_progressive:.1f}/5)."
+        )
+    if avg_structure < 4:
+        recs["claude_practices"].append(
+            f"Reorganize skill like an onboarding guide: overview then specifics (avg {avg_structure:.1f}/5)."
+        )
+    if avg_claude_centric < 4:
+        recs["claude_practices"].append(
+            f"Add clearer trigger conditions and failure mode handling (avg {avg_claude_centric:.1f}/5)."
+        )
+    if not recs["claude_practices"]:
+        recs["claude_practices"].append("GOOD: Claude best practices compliance is strong across all dimensions.")
+
+# Cost recommendations
+if perspective in ("cost", "all"):
+    if cost_per_qp > 0.003 and cost_per_qp > 0:
+        recs["cost"].append(
+            f"Cost efficiency is low (\${cost_per_qp:.4f}/quality point). Consider trimming skill content."
+        )
+    if skill_tokens > 600:
+        recs["cost"].append(
+            f"Skill is large (~{skill_tokens} tokens). Consider splitting or trimming."
+        )
+    if abs(token_delta_pct) > 50:
+        recs["cost"].append(
+            f"Skill adds significant token overhead ({token_delta_pct:+.1f}%). Ensure quality justifies cost."
+        )
+    if not recs["cost"]:
+        recs["cost"].append("GOOD: Cost metrics are within acceptable ranges.")
+
+# Performance recommendations
+if perspective in ("performance", "all"):
+    if avg_latency > 5000:
+        recs["performance"].append(
+            f"Response time exceeds 5s target (avg {avg_latency:.0f}ms). Optimize skill size."
+        )
+    if avg_success_rate < 95:
+        recs["performance"].append(
+            f"Reliability below 95% (avg {avg_success_rate:.1f}%). Add error handling."
+        )
+    if avg_tps < 10 and avg_tps > 0:
+        recs["performance"].append(
+            f"Output speed is slow (avg {avg_tps:.1f} tok/s). Check model selection."
+        )
+    if not recs["performance"]:
+        recs["performance"].append("GOOD: Performance metrics are within acceptable ranges.")
+
+print(json.dumps(recs))
+RECS_EOF
+
+  cat "$recs_file"
+}
+
+# ---------- Production readiness assessment ----------
+assess_production_readiness() {
+  # Check production readiness criteria
+  # Output: JSON with pass/fail for each category and overall status
+
+  local readiness_file="$TMPDIR_BASE/readiness.txt"
+
+  python3 << READY_EOF > "$readiness_file"
+import json
+
+perspective = "$PERSPECTIVE"
+
+# Quality data
+quality_total = float("$quality_a")
+quality_max = 20.0
+
+# Practices data
+avg_progressive = float("$avg_a_progressive")
+avg_structure = float("$avg_a_structure")
+avg_claude_centric = float("$avg_a_claude_centric")
+practices_total = float("$practices_a")
+
+# Combined total (7 dims, max 35)
+combined_total = float("$total_a")
+
+# Cost data
+cost_per_qp = float("$cost_per_qp_a")
+
+# Performance data
+avg_success_rate = float("$avg_a_success_rate")
+avg_latency = float("$avg_a_latency")
+
+blockers = []
+
+# Quality: total score >= 28/35 (80%)
+quality_pass = combined_total >= 28.0
+quality_score = f"{combined_total:.1f}/35"
+if not quality_pass:
+    blockers.append(f"Quality score {combined_total:.1f}/35 below 28/35 threshold (80%)")
+
+# Claude practices: all 3 dimensions >= 4/5
+practices_pass = (avg_progressive >= 4.0 and avg_structure >= 4.0 and avg_claude_centric >= 4.0)
+if not practices_pass:
+    dims_below = []
+    if avg_progressive < 4.0:
+        dims_below.append(f"progressive_disclosure ({avg_progressive:.1f})")
+    if avg_structure < 4.0:
+        dims_below.append(f"structure_organization ({avg_structure:.1f})")
+    if avg_claude_centric < 4.0:
+        dims_below.append(f"claude_centric_design ({avg_claude_centric:.1f})")
+    blockers.append(f"Claude practices below 4/5: {', '.join(dims_below)}")
+
+# Cost: cost per quality point <= 0.003
+cost_pass = cost_per_qp <= 0.003 if cost_per_qp > 0 else True
+if not cost_pass:
+    blockers.append(f"Cost per quality point \${cost_per_qp:.4f} exceeds \$0.003 threshold")
+
+# Performance: success rate >= 95%, avg latency <= 5000ms
+perf_pass = avg_success_rate >= 95.0 and avg_latency <= 5000.0
+if not perf_pass:
+    if avg_success_rate < 95.0:
+        blockers.append(f"Success rate {avg_success_rate:.1f}% below 95% threshold")
+    if avg_latency > 5000.0:
+        blockers.append(f"Avg latency {avg_latency:.0f}ms exceeds 5000ms threshold")
+
+# Overall status
+all_pass = quality_pass and practices_pass and cost_pass and perf_pass
+
+# For perspective-specific checks, only check relevant criteria
+if perspective == "quality":
+    status = "READY" if (quality_pass and practices_pass) else "NOT READY"
+elif perspective == "cost":
+    status = "READY" if cost_pass else "NOT READY"
+elif perspective == "performance":
+    status = "READY" if perf_pass else "NOT READY"
+else:  # all
+    status = "READY" if all_pass else "NOT READY"
+
+result = {
+    "quality_score": quality_score,
+    "quality_pass": quality_pass,
+    "practices_pass": practices_pass,
+    "cost_pass": cost_pass,
+    "performance_pass": perf_pass,
+    "status": status,
+    "blockers": blockers
+}
+
+print(json.dumps(result))
+READY_EOF
+
+  cat "$readiness_file"
+}
+
+# Run recommendations and readiness assessment
+RECOMMENDATIONS_JSON=$(generate_recommendations)
+READINESS_JSON=$(assess_production_readiness)
+
 # ---------- Generate JSON report ----------
 generate_json_report() {
   local timestamp
@@ -1565,7 +1795,9 @@ result = {
     "verdict": {
         "winner": winner_result,
         "message": verdict_message
-    }
+    },
+    "recommendations": json.loads(os.environ.get('RECOMMENDATIONS_JSON', '{}')),
+    "production_readiness": json.loads(os.environ.get('READINESS_JSON', '{}'))
 }
 
 # Output formatted JSON
@@ -1597,8 +1829,8 @@ echo "- **Response model:** $RESPONSE_MODEL"
 echo "- **Pricing:** \$${INPUT_COST_PER_MTOK}/MTok input, \$${OUTPUT_COST_PER_MTOK}/MTok output"
 echo ""
 
-# Per-Prompt Results (skip for cost-only perspective)
-if [ "$PERSPECTIVE" != "cost" ]; then
+# Per-Prompt Results (skip for cost-only and performance-only perspectives)
+if [ "$PERSPECTIVE" != "cost" ] && [ "$PERSPECTIVE" != "performance" ]; then
 echo "## Per-Prompt Results"
 echo ""
 
@@ -1822,6 +2054,78 @@ fi
 echo ""
 fi  # end performance analysis
 
+# Recommendations section
+echo "## Recommendations"
+echo ""
+python3 << RECS_MD_EOF
+import json, sys
+
+recs = json.loads('''$RECOMMENDATIONS_JSON''')
+perspective = "$PERSPECTIVE"
+
+categories = []
+if perspective in ("quality", "all"):
+    categories.append(("Quality", "quality"))
+    categories.append(("Claude Practices", "claude_practices"))
+if perspective in ("cost", "all"):
+    categories.append(("Cost", "cost"))
+if perspective in ("performance", "all"):
+    categories.append(("Performance", "performance"))
+
+for label, key in categories:
+    items = recs.get(key, [])
+    if items:
+        print(f"### {label}")
+        print()
+        for item in items:
+            print(f"- {item}")
+        print()
+RECS_MD_EOF
+
+# Production Readiness section
+echo "## Production Readiness"
+echo ""
+python3 << READY_MD_EOF
+import json
+
+readiness = json.loads('''$READINESS_JSON''')
+perspective = "$PERSPECTIVE"
+
+status = readiness.get("status", "UNKNOWN")
+blockers = readiness.get("blockers", [])
+
+# Show pass/fail for relevant criteria
+if perspective in ("quality", "all"):
+    qp = "PASS" if readiness.get("quality_pass", False) else "FAIL"
+    pp = "PASS" if readiness.get("practices_pass", False) else "FAIL"
+    print(f"| Check | Status |")
+    print(f"|---|---|")
+    print(f"| Quality score >= 28/35 | **{qp}** ({readiness.get('quality_score', 'N/A')}) |")
+    print(f"| Claude practices >= 4/5 each | **{pp}** |")
+if perspective in ("cost", "all"):
+    cp = "PASS" if readiness.get("cost_pass", False) else "FAIL"
+    if perspective == "cost":
+        print(f"| Check | Status |")
+        print(f"|---|---|")
+    print(f"| Cost per quality point <= \$0.003 | **{cp}** |")
+if perspective in ("performance", "all"):
+    pfp = "PASS" if readiness.get("performance_pass", False) else "FAIL"
+    if perspective == "performance":
+        print(f"| Check | Status |")
+        print(f"|---|---|")
+    print(f"| Success rate >= 95%, latency <= 5000ms | **{pfp}** |")
+
+print()
+if status == "READY":
+    print(f"**Status: READY** -- All checks passed.")
+else:
+    print(f"**Status: NOT READY** -- Blockers:")
+    print()
+    for b in blockers:
+        print(f"- {b}")
+print()
+READY_MD_EOF
+
 echo "## Verdict"
 echo ""
 
@@ -2011,6 +2315,8 @@ else:
       export "PROMPT_COST_B_${i}=${PROMPT_COST_B[$i]}"
     fi
   done
+
+  export RECOMMENDATIONS_JSON READINESS_JSON
 
   generate_json_report
 else

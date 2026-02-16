@@ -308,6 +308,21 @@ Machine-readable format for programmatic analysis, CI/CD integration, or time-se
   "verdict": {
     "winner": "A|B|TIE",
     "message": "verdict message"
+  },
+  "recommendations": {
+    "quality": ["..."],
+    "claude_practices": ["..."],
+    "cost": ["..."],
+    "performance": ["..."]
+  },
+  "production_readiness": {
+    "quality_score": "28.0/35",
+    "quality_pass": bool,
+    "practices_pass": bool,
+    "cost_pass": bool,
+    "performance_pass": bool,
+    "status": "READY|NOT READY",
+    "blockers": ["..."]
   }
 }
 ```
@@ -667,6 +682,143 @@ Each prompt includes per-variant performance data:
 
 The averages section includes aggregate performance data with the same fields.
 
+## Multi-Perspective Evaluation
+
+Use `--perspective` to control which aspects are evaluated and reported.
+
+### Perspective Guide
+
+| Perspective | Judges Run | Report Sections | Cost | Use When |
+|---|---|---|---|---|
+| `quality` (default) | Quality + Practices | Quality scores, cost analysis, verdict | ~$0.70-1.40/prompt | Validating skill effectiveness |
+| `cost` | None | Cost analysis, verdict | ~$0.30-0.60/prompt | Measuring token overhead |
+| `performance` | None | Performance analysis, verdict | ~$0.30-0.60/prompt | Benchmarking response speed |
+| `all` | Quality + Practices | All sections + recommendations + readiness | ~$0.70-1.40/prompt | Pre-deployment comprehensive review |
+
+### Using `--perspective all`
+
+The `all` perspective runs every evaluation and generates a comprehensive report:
+
+```bash
+./scripts/eval/eval-skill-quality.sh \
+  --baseline skill.md \
+  --prompts prompts.txt \
+  --perspective all
+```
+
+This includes:
+- Quality scores (4 dimensions) for both variants
+- Claude best practices scores (3 dimensions) for the skill variant
+- Cost analysis with token usage and efficiency metrics
+- Performance analysis with latency, throughput, and reliability
+- Actionable recommendations based on threshold analysis
+- Production readiness assessment with pass/fail criteria
+
+## Recommendations Engine
+
+When the report is generated, the harness analyzes metrics against thresholds and produces categorized recommendations.
+
+### Quality Recommendations
+
+Based on quality dimension averages (skill A):
+
+| Condition | Level | Example |
+|---|---|---|
+| Any dimension avg < 3 | CRITICAL | "CRITICAL: Domain Depth scores are low (avg 2.4/5). Add hard-to-find rules..." |
+| Any dimension avg < 4 | IMPROVE | "IMPROVE: Specificity could be better (avg 3.6/5). Include more concrete details..." |
+| All dimensions >= 4 | GOOD | "GOOD: Quality scores are strong across all dimensions." |
+
+### Claude Practices Recommendations
+
+Based on practices dimension averages:
+
+| Condition | Recommendation |
+|---|---|
+| progressive_disclosure < 4 | Move detailed content to reference files for better progressive disclosure |
+| structure_organization < 4 | Reorganize skill like an onboarding guide: overview then specifics |
+| claude_centric_design < 4 | Add clearer trigger conditions and failure mode handling |
+
+### Cost Recommendations
+
+| Condition | Recommendation |
+|---|---|
+| cost_per_quality_point > $0.003 | Cost efficiency is low. Consider trimming skill content. |
+| skill_tokens > 600 | Skill is large. Consider splitting or trimming. |
+| token_delta > 50% | Skill adds significant token overhead. Ensure quality justifies cost. |
+
+### Performance Recommendations
+
+| Condition | Recommendation |
+|---|---|
+| avg latency > 5000ms | Response time exceeds 5s target. Optimize skill size. |
+| success_rate < 95% | Reliability below 95%. Add error handling. |
+| tokens_per_second < 10 | Output speed is slow. Check model selection. |
+
+### Recommendations in JSON Output
+
+```json
+"recommendations": {
+  "quality": ["GOOD: Quality scores are strong across all dimensions."],
+  "claude_practices": ["Move detailed content to reference files..."],
+  "cost": ["GOOD: Cost metrics are within acceptable ranges."],
+  "performance": ["GOOD: Performance metrics are within acceptable ranges."]
+}
+```
+
+Only recommendations relevant to the selected perspective are included.
+
+## Production Readiness
+
+The harness includes a production readiness assessment that checks whether a skill meets deployment thresholds.
+
+### Criteria
+
+| Category | Threshold | Description |
+|---|---|---|
+| Quality | Combined score >= 28/35 (80%) | Overall quality + practices score |
+| Claude Practices | All 3 dimensions >= 4/5 | Each practices dimension individually |
+| Cost | Cost per quality point <= $0.003 | Efficiency of token spend |
+| Performance | Success rate >= 95%, latency <= 5000ms | Reliability and speed |
+
+### Output
+
+The assessment produces a READY or NOT READY verdict with specific blockers listed:
+
+**Markdown report:**
+```
+## Production Readiness
+
+| Check | Status |
+|---|---|
+| Quality score >= 28/35 | **PASS** (29.2/35) |
+| Claude practices >= 4/5 each | **PASS** |
+| Cost per quality point <= $0.003 | **PASS** |
+| Success rate >= 95%, latency <= 5000ms | **PASS** |
+
+**Status: READY** -- All checks passed.
+```
+
+**JSON output:**
+```json
+"production_readiness": {
+  "quality_score": "29.2/35",
+  "quality_pass": true,
+  "practices_pass": true,
+  "cost_pass": true,
+  "performance_pass": true,
+  "status": "READY",
+  "blockers": []
+}
+```
+
+### Perspective-Specific Checks
+
+When using a specific perspective, only relevant criteria are checked:
+- `--perspective quality`: Checks quality score and practices compliance
+- `--perspective cost`: Checks cost efficiency only
+- `--perspective performance`: Checks success rate and latency only
+- `--perspective all`: Checks all criteria
+
 ## Future Enhancements
 
 See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
@@ -674,7 +826,7 @@ See `VD-529-EVALUATION-FRAMEWORK.md` for planned improvements:
 - **VD-535:** ~~Claude best practices compliance (7 dimensions instead of 4)~~ (done)
 - **VD-536:** ~~Cost tracking (token usage, API costs, efficiency metrics)~~ (done)
 - **VD-537:** ~~Performance tracking (latency, success rate, skill discovery time)~~ (done)
-- **VD-538:** Multi-perspective reporting and recommendations engine
+- **VD-538:** ~~Multi-perspective reporting and recommendations engine~~ (done)
 
 ## See Also
 
