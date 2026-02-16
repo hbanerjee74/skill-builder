@@ -1,9 +1,9 @@
-Design an incremental model strategy in dbt for a large event fact table that uses the merge incremental strategy, handles late-arriving data with a lookback window, and includes data contracts to enforce schema and freshness requirements.
+Design a comprehensive testing strategy for a dbt incremental model that processes daily transaction data. Include unit tests for transformation logic, data quality tests for output validation, and a data contract that enforces schema expectations. How should the tests handle edge cases like late-arriving data or schema evolution?
 ---
-Create a comprehensive testing strategy for a dbt project that combines unit tests for transformation logic, data tests for quality checks, and data contracts at model boundaries to prevent breaking changes downstream.
+Implement a data contract system in dbt that enforces schema constraints, data type validation, and business rule checks across a multi-layer data pipeline (staging → intermediate → marts). Include contract definitions, validation tests, and a strategy for handling contract violations in production.
 ---
-Build a reusable dbt macro package for standardizing data quality checks across multiple projects, including parameterized tests for null rates, uniqueness thresholds, and referential integrity with proper documentation and versioning.
+Create a unit testing framework for a complex dbt macro that performs custom date windowing logic. Use dbt-unit-testing or similar tools to test the macro with various input scenarios, including edge cases like month boundaries, leap years, and null handling. How would you structure the tests for maintainability?
 ---
-Design a multi-environment deployment strategy for dbt that uses CI/CD pipelines to run slim CI on pull requests, deploy to staging with full refresh capability, and promote to production with blue-green deployment patterns.
+Design a reusable testing package in dbt that provides standardized data quality tests (completeness, uniqueness, timeliness, validity) as custom macros. Include parameterization for different severity levels, documentation generation, and integration with dbt's native test framework. How should teams adopt and extend this package?
 ---
-Implement a documentation strategy in dbt that leverages auto-generated lineage graphs, custom metadata in schema.yml files, and dbt-docs to create a searchable data catalog with business context and ownership information.
+Build a deployment strategy for a dbt project that ensures comprehensive test coverage before promoting models to production. Include pre-deployment validation (unit tests, schema tests, data quality checks), staging environment testing with production-like data volumes, and rollback procedures when tests fail post-deployment.
