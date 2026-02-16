@@ -1,152 +1,127 @@
 # Skill Evaluation Framework - Implementation Summary
 
-## What Was Created
+## Status: All Features Implemented
+
+All child issues of VD-529 have been implemented. Only live end-to-end testing (VD-534) remains to validate the complete framework against real skills.
 
 ### Linear Issues (Following VD-516 Structure)
 
 **Parent Issue: VD-529** - Skill evaluation harness (updated with expanded scope)
 
 **Child Issues:**
-1. ✅ **VD-530** - Complete eval harness script improvements (DONE)
-2. ✅ **VD-531** - Create domain skill test prompts (DONE)
-3. ✅ **VD-532** - Create platform skill test prompts (DONE)
-4. ✅ **VD-533** - Create source skill test prompts (DONE)
-5. ⏳ **VD-534** - Live test and validate eval harness (IN PROGRESS)
-6. 🆕 **VD-535** - Add Claude best practices compliance to quality evaluation
-7. 🆕 **VD-536** - Add cost tracking to evaluation harness
-8. 🆕 **VD-537** - Add performance tracking to evaluation harness
-9. 🆕 **VD-538** - Implement multi-perspective reporting and recommendations engine
+1. **VD-530** - Complete eval harness script improvements (DONE)
+2. **VD-531** - Create domain skill test prompts (DONE)
+3. **VD-532** - Create platform skill test prompts (DONE)
+4. **VD-533** - Create source skill test prompts (DONE)
+5. **VD-534** - Test suite and live validation (IN PROGRESS)
+6. **VD-535** - Add Claude best practices compliance to quality evaluation (DONE)
+7. **VD-536** - Add cost tracking to evaluation harness (DONE)
+8. **VD-537** - Add performance tracking to evaluation harness (DONE)
+9. **VD-538** - Implement multi-perspective reporting and recommendations engine (DONE)
 
 ### Documentation
 
 - `VD-529-EVALUATION-FRAMEWORK.md` - Comprehensive framework specification
 - `EVALUATION-SUMMARY.md` - This file
 
-## Key Findings from Research
+## What Was Built
 
-### You're On The Right Track ✅
+### Evaluation Harness (`scripts/eval/eval-skill-quality.sh`)
 
-Your LLM-as-judge approach with multi-dimensional scoring is industry-standard and validated by:
-- Anthropic (official Agent Skills guidelines)
-- Confident AI (LLM evaluation frameworks)
-- Braintrust (agent evaluation)
-- Azure Databricks (agent metrics)
-- Salesforce (CRM benchmark)
+A comprehensive LLM-as-judge evaluation harness that measures whether a built skill actually improves Claude's output, with multi-perspective analysis.
 
-### Critical Gaps Identified ❌
+### Key Capabilities
 
-1. **Missing Claude Best Practices Compliance**
-   - Anthropic has official guidelines for Agent Skills
-   - Progressive disclosure (name/description → SKILL.md → references)
-   - Structure & organization (like an onboarding guide)
-   - Claude-centric design (clear triggers, unambiguous instructions)
+**7-Dimension Quality Scoring** (35 points total):
+- 4 quality dimensions: actionability, specificity, domain depth, self-containment
+- 3 Claude practices dimensions: progressive disclosure, structure/organization, Claude-centric design
 
-2. **No Cost Tracking**
-   - Can't measure token usage or API costs
-   - Can't calculate cost per quality point
-   - Can't optimize for production deployment
+**Cost Tracking**:
+- Token counting (input, output, skill tokens)
+- API cost estimation per task
+- Cost per quality point efficiency metric
 
-3. **No Performance Metrics**
-   - Can't measure latency or success rates
-   - Can't track skill discovery time
-   - Can't validate production reliability
+**Performance Tracking**:
+- Latency measurement (total time, TTFT)
+- Tokens per second throughput
+- Skill discovery time and progressive disclosure levels
+- Success/retry tracking
 
-4. **Single Perspective**
-   - Can't choose between quality/cost/performance tradeoffs
-   - No recommendations engine
-   - No production readiness assessment
+**Multi-Perspective Reporting**:
+- `--perspective quality` -- quality-focused evaluation
+- `--perspective cost` -- cost-focused evaluation
+- `--perspective performance` -- performance-focused evaluation
+- `--perspective all` -- comprehensive evaluation with all dimensions
 
-## Evaluation Framework
+**Recommendations Engine**:
+- Per-perspective improvement suggestions
+- Production readiness assessment with pass/fail criteria
 
-### 3 Evaluation Perspectives
+**Output Formats**:
+- Markdown reports (default)
+- Structured JSON with full schema
 
-**Quality** (7 dimensions, 35 points):
-- Your existing 4: actionability, specificity, domain depth, self-containment
-- 3 new Claude-specific: progressive disclosure, structure, Claude-centric design
+### Test Prompts
 
-**Cost**:
-- Token usage (input, output, skill size)
-- API costs per task
-- Cost per quality point
-- Cost efficiency ratio
+Test prompts for all 4 skill types in `scripts/eval/prompts/`:
+- `data-engineering.txt` -- SCD Type 2, incremental loads, data quality, medallion architecture
+- `domain.txt` -- Lead scoring, pipeline analytics, conversion funnels, quota attainment, customer health
+- `platform.txt` -- Incremental models, data contracts, unit testing, macro libraries, CI/CD
+- `source.txt` -- Salesforce REST API, custom objects, relationships, incremental extraction, data quality
 
-**Performance**:
-- Latency (TTFT, total time)
-- Success/retry rates
-- Skill discovery time
-- Progressive disclosure efficiency
+### Test Suite (`scripts/eval/test-eval-harness.sh`)
 
-### Usage Modes
-
-```bash
-# Quality-focused (developing skills)
---perspective quality
-
-# Cost-focused (production optimization)
---perspective cost
-
-# Performance-focused (reliability validation)
---perspective performance
-
-# Comprehensive (final validation)
---perspective all
-```
+19 tests covering:
+- Script syntax validation (1)
+- Input validation and error handling (5)
+- Dry-run mode for all perspectives (6)
+- Flag validation for perspectives and formats (2)
+- API-dependent tests for JSON schema, 7-dimension scoring, cost, performance, and all perspectives (5)
 
 ## Production Readiness Criteria
 
 A skill is "production-ready" if:
-- Quality: ≥ 28/35 (80%)
-- Claude Best Practices: All 3 dimensions ≥ 4/5
-- Cost: ≤ $0.003 per quality point
-- Performance: ≥ 95% success rate, ≤ 5s latency
+- Quality: total score >= 28/35 (80%)
+- Claude Best Practices: all 3 dimensions >= 4/5
+- Cost: <= $0.003 per quality point
+- Performance: >= 95% success rate, <= 5s latency
 
-## Implementation Phases
+## Usage
 
-### Phase 1: Foundation (DONE)
-- ✅ Script improvements (retry, JSON, Claude Code loading)
-- ✅ Test prompts for all 4 skill types
-- ⏳ Live testing (VD-534)
+```bash
+# Quality-focused (developing skills)
+./scripts/eval/eval-skill-quality.sh \
+  --baseline agents/data-engineering/generate-skill.md \
+  --prompts scripts/eval/prompts/data-engineering.txt \
+  --perspective quality
 
-### Phase 2: Quality Enhancement (VD-535)
-- Add Claude best practices judge
-- Expand to 7-dimensional scoring
-- Test against all skill types
+# Cost-focused (production optimization)
+./scripts/eval/eval-skill-quality.sh \
+  --baseline agents/data-engineering/generate-skill.md \
+  --prompts scripts/eval/prompts/data-engineering.txt \
+  --perspective cost
 
-### Phase 3: Cost & Performance (VD-536, VD-537)
-- Instrument token counting
-- Track API costs
-- Measure latency and success rates
-- Analyze skill discovery
+# Comprehensive with JSON output
+./scripts/eval/eval-skill-quality.sh \
+  --baseline agents/data-engineering/generate-skill.md \
+  --prompts scripts/eval/prompts/data-engineering.txt \
+  --perspective all --format json --output results.json
 
-### Phase 4: Multi-Perspective (VD-538)
-- Unified reporting
-- Recommendations engine
-- Production readiness assessment
-- Usage documentation
+# Compare two skill versions
+./scripts/eval/eval-skill-quality.sh \
+  --compare skills/v1/SKILL.md skills/v2/SKILL.md \
+  --prompts scripts/eval/prompts/data-engineering.txt
 
-## Data Engineering Context
-
-Your skills target data engineers building silver/gold models:
-
-**Domain Skills**: Business logic (allocation rules, assignment rules, filters)
-- Test prompts: Lead scoring, pipeline analytics, conversion funnels, quota attainment, customer health
-
-**Source Skills**: Extraction patterns (joins, gotchas, API quirks)
-- Test prompts: Salesforce REST API, custom objects, relationships, incremental extraction, data quality
-
-**Platform Skills**: Standards (dbt, Fabric, testing)
-- Test prompts: Incremental models, data contracts, unit testing, macro libraries, CI/CD
-
-**Data Engineering Skills**: DQ, testing, standards
-- Test prompts: SCD Type 2, incremental loads, data quality frameworks, medallion architecture
+# Dry run to validate inputs
+./scripts/eval/eval-skill-quality.sh \
+  --baseline skill.md --prompts prompts.txt --dry-run
+```
 
 ## Next Steps
 
-1. Complete VD-534 (live testing of current harness)
-2. Implement VD-535 (Claude best practices compliance)
-3. Implement VD-536 (cost tracking)
-4. Implement VD-537 (performance tracking)
-5. Implement VD-538 (multi-perspective reporting)
+1. Complete VD-534: Run live end-to-end tests against real skills to validate the full framework
+2. Iterate on judge prompts based on live test results
+3. Calibrate production readiness thresholds with real data
 
 ## Research Sources
 
@@ -157,7 +132,3 @@ Your skills target data engineers building silver/gold models:
 - Salesforce - Generative AI Benchmark for CRM
 - Galileo AI - Agent Evaluation Research
 - CodeAnt - Evaluating LLM Agentic Workflows
-
-## Commits Made
-
-- `8e2e41c` - VD-530: Use Claude Code skill loading instead of --append-system-prompt

@@ -9,10 +9,8 @@ set -euo pipefail
 # ============================================
 # Configuration
 # ============================================
-# Set your Anthropic API key here for API-dependent tests
-# Or set ANTHROPIC_API_KEY environment variable before running
-: "${ANTHROPIC_API_KEY:?Set ANTHROPIC_API_KEY environment variable before running}"
-export ANTHROPIC_API_KEY
+# ANTHROPIC_API_KEY is only required for API-dependent tests (Tests 12+).
+# Non-API tests (1-11) run without it.
 
 # Colors
 if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
@@ -266,16 +264,59 @@ else
 fi
 
 # ============================================
+# Test 12: Dry-run with cost perspective
+# ============================================
+test_start "Dry-run with cost perspective"
+
+output=$("$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/skill.md" \
+         --prompts "$TMPDIR_TEST/test-prompts.txt" \
+         --perspective cost --dry-run 2>&1)
+
+if echo "$output" | grep -q "All validations passed"; then
+  pass "Cost perspective dry-run completes successfully"
+else
+  fail "Cost perspective dry-run failed" "$output"
+fi
+
+# ============================================
+# Test 13: Dry-run with all perspective
+# ============================================
+test_start "Dry-run with all perspective"
+
+output=$("$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/skill.md" \
+         --prompts "$TMPDIR_TEST/test-prompts.txt" \
+         --perspective all --dry-run 2>&1)
+
+if echo "$output" | grep -q "All validations passed"; then
+  pass "All perspective dry-run completes successfully"
+else
+  fail "All perspective dry-run failed" "$output"
+fi
+
+# ============================================
+# Test 14: Dry-run with compare mode and all perspective
+# ============================================
+test_start "Dry-run with compare mode and all perspective"
+
+output=$("$EVAL_SCRIPT" --compare "$TMPDIR_TEST/skill-a.md" "$TMPDIR_TEST/skill-b.md" \
+         --prompts "$TMPDIR_TEST/prompts.txt" \
+         --perspective all --dry-run 2>&1)
+
+if echo "$output" | grep -q "Mode: compare" && \
+   echo "$output" | grep -q "All validations passed"; then
+  pass "Compare mode + all perspective dry-run validates correctly"
+else
+  fail "Compare mode + all perspective dry-run failed" "$output"
+fi
+
+# ============================================
 # API-dependent tests (require ANTHROPIC_API_KEY and claude CLI)
 # ============================================
 if [ -n "${ANTHROPIC_API_KEY:-}" ] && command -v claude >/dev/null 2>&1; then
   echo ""
   echo "${YELLOW}Running API-dependent tests...${RESET}"
-  
-  # Test 12: Baseline mode with real skill
-  test_start "Baseline mode with real skill (requires API)"
-  
-  # Use a minimal test skill
+
+  # Create shared test fixtures for API tests
   cat > "$TMPDIR_TEST/test-skill.md" <<'EOF'
 # Test Skill
 
@@ -293,13 +334,16 @@ EOF
 Explain how to set up a simple data pipeline
 EOF
 
+  # Test 15: Baseline mode with real skill
+  test_start "Baseline mode with real skill (requires API)"
+
   output=$("$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/test-skill.md" \
      --prompts "$TMPDIR_TEST/api-prompts.txt" \
      --output "$TMPDIR_TEST/baseline-result.md" 2>&1 || true)
 
   if echo "$output" | grep -q "Evaluation Report"; then
     pass "Baseline mode completes successfully"
-    
+
     # Check output file exists
     if [ -f "$TMPDIR_TEST/baseline-result.md" ]; then
       pass "Output file created"
@@ -314,33 +358,90 @@ EOF
       fail "Baseline mode failed" "$output"
     fi
   fi
-  
-  # Test 13: JSON output format
-  test_start "JSON output format (requires API)"
-  
+
+  # Test 16: JSON output format with full schema validation
+  test_start "JSON output format with 7-dimension schema (requires API)"
+
   if "$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/test-skill.md" \
      --prompts "$TMPDIR_TEST/api-prompts.txt" \
+     --perspective all \
      --format json \
      --output "$TMPDIR_TEST/result.json" >/dev/null 2>&1; then
-    
+
     # Validate JSON
     if python3 -c "import json; json.load(open('$TMPDIR_TEST/result.json'))" 2>/dev/null; then
       pass "JSON output is valid"
-      
-      # Check for required fields
+
+      # Check for core required fields
       if python3 -c "
 import json
 data = json.load(open('$TMPDIR_TEST/result.json'))
-assert 'metadata' in data
-assert 'prompts' in data
-assert 'averages' in data
-assert 'verdict' in data
-assert 'perspective' in data['metadata']
+assert 'metadata' in data, 'missing metadata'
+assert 'prompts' in data, 'missing prompts'
+assert 'averages' in data, 'missing averages'
+assert 'verdict' in data, 'missing verdict'
+assert 'perspective' in data['metadata'], 'missing perspective in metadata'
 print('OK')
 " 2>/dev/null | grep -q "OK"; then
-        pass "JSON schema is correct"
+        pass "JSON core schema is correct"
       else
-        fail "JSON schema is incomplete"
+        fail "JSON core schema is incomplete"
+      fi
+
+      # Check for 7-dimension quality scores in variant_a
+      if python3 -c "
+import json
+data = json.load(open('$TMPDIR_TEST/result.json'))
+prompt = data['prompts'][0]
+va = prompt['variant_a']
+# 4 quality dimensions
+assert 'actionability' in va, 'missing actionability'
+assert 'specificity' in va, 'missing specificity'
+assert 'domain_depth' in va, 'missing domain_depth'
+assert 'self_containment' in va, 'missing self_containment'
+# 3 Claude practices dimensions
+assert 'progressive_disclosure' in va, 'missing progressive_disclosure'
+assert 'structure_organization' in va, 'missing structure_organization'
+assert 'claude_centric_design' in va, 'missing claude_centric_design'
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+        pass "7-dimension quality scores present"
+      else
+        fail "7-dimension quality scores missing"
+      fi
+
+      # Check for recommendations and production_readiness
+      if python3 -c "
+import json
+data = json.load(open('$TMPDIR_TEST/result.json'))
+assert 'recommendations' in data, 'missing recommendations'
+assert 'production_readiness' in data, 'missing production_readiness'
+pr = data['production_readiness']
+assert 'status' in pr, 'missing status in production_readiness'
+assert 'quality_pass' in pr, 'missing quality_pass'
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+        pass "Recommendations and production readiness present"
+      else
+        fail "Recommendations or production readiness missing"
+      fi
+
+      # Check for cost metrics
+      if python3 -c "
+import json
+data = json.load(open('$TMPDIR_TEST/result.json'))
+prompt = data['prompts'][0]
+va = prompt['variant_a']
+assert 'cost' in va, 'missing cost in variant_a'
+cost = va['cost']
+assert 'input_tokens' in cost, 'missing input_tokens'
+assert 'output_tokens' in cost, 'missing output_tokens'
+assert 'estimated_cost_usd' in cost, 'missing estimated_cost_usd'
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+        pass "Cost metrics present in per-prompt output"
+      else
+        fail "Cost metrics missing from per-prompt output"
       fi
     else
       fail "JSON output is invalid"
@@ -348,24 +449,26 @@ print('OK')
   else
     fail "JSON output generation failed"
   fi
-  
-  # Test 14: Performance perspective
+
+  # Test 17: Performance perspective
   test_start "Performance perspective (requires API)"
-  
+
   if "$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/test-skill.md" \
      --prompts "$TMPDIR_TEST/api-prompts.txt" \
      --perspective performance \
      --format json \
      --output "$TMPDIR_TEST/perf-result.json" >/dev/null 2>&1; then
-    
+
     # Check for performance metrics
     if python3 -c "
 import json
 data = json.load(open('$TMPDIR_TEST/perf-result.json'))
 prompt = data['prompts'][0]
 assert 'performance' in prompt['variant_a']
-assert 'latency_ms' in prompt['variant_a']['performance']
-assert 'success' in prompt['variant_a']['performance']
+perf = prompt['variant_a']['performance']
+assert 'latency_ms' in perf, 'missing latency_ms'
+assert 'success' in perf, 'missing success'
+assert 'tokens_per_second' in perf, 'missing tokens_per_second'
 print('OK')
 " 2>/dev/null | grep -q "OK"; then
       pass "Performance metrics present in output"
@@ -375,7 +478,67 @@ print('OK')
   else
     fail "Performance perspective failed"
   fi
-  
+
+  # Test 18: Cost perspective
+  test_start "Cost perspective (requires API)"
+
+  if "$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/test-skill.md" \
+     --prompts "$TMPDIR_TEST/api-prompts.txt" \
+     --perspective cost \
+     --format json \
+     --output "$TMPDIR_TEST/cost-result.json" >/dev/null 2>&1; then
+
+    # Check for cost-specific metrics in averages
+    if python3 -c "
+import json
+data = json.load(open('$TMPDIR_TEST/cost-result.json'))
+avg_a = data['averages']['variant_a']
+assert 'cost' in avg_a, 'missing cost in averages'
+cost = avg_a['cost']
+assert 'avg_total_tokens' in cost, 'missing avg_total_tokens'
+assert 'total_cost_usd' in cost, 'missing total_cost_usd'
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+      pass "Cost perspective metrics present"
+    else
+      fail "Cost perspective metrics missing"
+    fi
+  else
+    fail "Cost perspective failed"
+  fi
+
+  # Test 19: All perspective includes all sections
+  test_start "All perspective comprehensive output (requires API)"
+
+  if "$EVAL_SCRIPT" --baseline "$TMPDIR_TEST/test-skill.md" \
+     --prompts "$TMPDIR_TEST/api-prompts.txt" \
+     --perspective all \
+     --format json \
+     --output "$TMPDIR_TEST/all-result.json" >/dev/null 2>&1; then
+
+    if python3 -c "
+import json
+data = json.load(open('$TMPDIR_TEST/all-result.json'))
+assert data['metadata']['perspective'] == 'all', 'perspective not all'
+# All perspective should include quality, cost, and performance data
+prompt = data['prompts'][0]
+va = prompt['variant_a']
+assert 'cost' in va, 'missing cost'
+assert 'performance' in va, 'missing performance'
+assert 'actionability' in va, 'missing quality scores'
+assert 'progressive_disclosure' in va, 'missing practices scores'
+assert 'recommendations' in data, 'missing recommendations'
+assert 'production_readiness' in data, 'missing production_readiness'
+print('OK')
+" 2>/dev/null | grep -q "OK"; then
+      pass "All perspective includes quality, cost, performance, recommendations, and production readiness"
+    else
+      fail "All perspective is missing some sections"
+    fi
+  else
+    fail "All perspective failed"
+  fi
+
 else
   echo ""
   echo "${YELLOW}Skipping API-dependent tests${RESET}"
