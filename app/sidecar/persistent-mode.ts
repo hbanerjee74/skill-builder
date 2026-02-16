@@ -3,30 +3,30 @@ import { type SidecarConfig } from "./config.js";
 import { runAgentRequest } from "./run-agent.js";
 
 /** Incoming request envelope: run an agent. */
-export interface AgentRequest {
+interface AgentRequest {
   type: "agent_request";
   request_id: string;
   config: SidecarConfig;
 }
 
 /** Incoming shutdown envelope. */
-export interface ShutdownRequest {
+interface ShutdownRequest {
   type: "shutdown";
 }
 
 /** Incoming ping envelope for heartbeat health checks. */
-export interface PingRequest {
+interface PingRequest {
   type: "ping";
 }
 
 /** Incoming cancel envelope: abort a specific in-flight request. */
-export interface CancelRequest {
+interface CancelRequest {
   type: "cancel";
   request_id: string;
 }
 
 /** Union of all valid incoming messages. */
-export type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest | CancelRequest;
+type IncomingMessage = AgentRequest | ShutdownRequest | PingRequest | CancelRequest;
 
 /**
  * Write a single JSON line to stdout.
