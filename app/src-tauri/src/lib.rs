@@ -4,6 +4,7 @@ mod commands;
 mod db;
 mod fs_validation;
 pub mod git;
+pub mod keychain;
 mod logging;
 mod reconciliation;
 mod types;
@@ -21,7 +22,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(logging::build_log_plugin().build())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             use tauri::Manager;
@@ -105,6 +105,7 @@ pub fn run() {
             app.manage(instance_info);
 
             // Apply persisted log level setting (fall back to info if DB read fails)
+            // and migrate plaintext secrets from SQLite to OS keychain.
             {
                 let db_state = app.state::<db::Db>();
                 let conn = db_state.0.lock().expect("failed to lock db for settings");
@@ -113,6 +114,24 @@ pub fn run() {
                         logging::set_log_level(&settings.log_level);
                         log::info!("Log level: {}", settings.log_level);
                         log::info!("Skills path: {}", settings.skills_path.as_deref().unwrap_or("(not configured)"));
+
+                        // SAFETY: Migration is safe under concurrent execution. Multiple instances
+                        // will all read settings with secrets, migrate them (idempotent keychain ops),
+                        // and write back cleared settings. The "already in keychain" check ensures we
+                        // clear from SQLite even if another instance migrated first. SQLite busy_timeout
+                        // prevents corruption.
+                        let (updated, migrated) = keychain::migrate_secrets_from_db(&settings);
+                        if migrated {
+                            if let Err(e) = db::write_settings(&conn, &updated) {
+                                log::warn!("Failed to persist secret migration: {}", e);
+                            } else {
+                                log::info!("Secrets migrated from SQLite to OS keychain");
+                                // Force WAL checkpoint to physically remove plaintext secrets from journal files
+                                if let Err(e) = conn.pragma_update(None, "wal_checkpoint", "TRUNCATE") {
+                                    log::warn!("Failed to checkpoint WAL after secret migration: {}", e);
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         logging::set_log_level("info");

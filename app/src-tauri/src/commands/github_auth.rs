@@ -114,14 +114,29 @@ pub async fn github_poll_for_token(
     // Fetch user profile
     let user = fetch_github_user(&client, &access_token).await?;
 
-    // Save token and user profile to DB
+    // Save token to OS keychain (or fall back to SQLite) and user profile to DB
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let mut settings = crate::db::read_settings(&conn)?;
-        settings.github_oauth_token = Some(access_token);
         settings.github_user_login = Some(user.login.clone());
         settings.github_user_avatar = Some(user.avatar_url.clone());
         settings.github_user_email = user.email.clone();
+
+        // Try keychain first; fall back to SQLite
+        match crate::keychain::store_secret(
+            crate::keychain::KEY_GITHUB_OAUTH_TOKEN,
+            &access_token,
+        ) {
+            Ok(true) => {
+                // Stored in keychain — don't persist in SQLite
+                settings.github_oauth_token = None;
+            }
+            _ => {
+                // Keychain unavailable — keep in SQLite as fallback
+                settings.github_oauth_token = Some(access_token);
+            }
+        }
+
         crate::db::write_settings(&conn, &settings)?;
     }
 
@@ -137,7 +152,7 @@ pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, S
         log::error!("[github_get_user] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = crate::db::read_settings(&conn)?;
+    let settings = crate::db::read_settings_hydrated(&conn)?;
 
     if settings.github_oauth_token.is_some() {
         let login = settings.github_user_login.unwrap_or_default();
@@ -153,10 +168,16 @@ pub fn github_get_user(db: tauri::State<'_, Db>) -> Result<Option<GitHubUser>, S
     }
 }
 
-/// Sign out of GitHub by clearing all OAuth fields from the database.
+/// Sign out of GitHub by clearing all OAuth fields from the database and keychain.
 #[tauri::command]
 pub fn github_logout(db: tauri::State<'_, Db>) -> Result<(), String> {
     log::info!("[github_logout]");
+
+    // Delete token from OS keychain
+    if let Err(e) = crate::keychain::delete_secret(crate::keychain::KEY_GITHUB_OAUTH_TOKEN) {
+        log::warn!("[github_logout] Failed to delete token from keychain: {}", e);
+    }
+
     let conn = db.0.lock().map_err(|e| {
         log::error!("[github_logout] Failed to acquire DB lock: {}", e);
         e.to_string()

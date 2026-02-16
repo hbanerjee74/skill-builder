@@ -31,7 +31,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         log::error!("[get_settings] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::read_settings(&conn)
+    crate::db::read_settings_hydrated(&conn)
 }
 
 /// Normalize a path: strip trailing separators and deduplicate the last
@@ -68,7 +68,9 @@ pub fn save_settings(
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
 
-    crate::db::write_settings(&conn, &settings)?;
+    // Store secrets in the OS keychain, keep non-secret data in SQLite
+    let cleaned = crate::keychain::extract_and_store_secrets(&settings);
+    crate::db::write_settings(&conn, &cleaned)?;
     Ok(())
 }
 

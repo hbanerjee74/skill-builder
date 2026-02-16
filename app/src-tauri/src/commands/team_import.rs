@@ -17,7 +17,7 @@ pub async fn list_team_repo_skills(
 
     let (owner, repo, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let owner = settings.remote_repo_owner.ok_or_else(|| {
             "Remote repository not configured. Set it in Settings.".to_string()
         })?;
@@ -107,7 +107,7 @@ pub async fn import_team_repo_skill(
 
     let (owner, repo, token, workspace_path, skills_path, github_user_login, github_user_avatar) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings(&conn)?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
         let owner = settings.remote_repo_owner.ok_or_else(|| {
             "Remote repository not configured. Set it in Settings.".to_string()
         })?;
