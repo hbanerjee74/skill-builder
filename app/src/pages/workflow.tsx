@@ -32,7 +32,6 @@ import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningReview } from "@/components/reasoning-review";
 import ResetStepDialog from "@/components/reset-step-dialog";
-import { ReviewModeToggle } from "@/components/review-mode-toggle";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
@@ -916,7 +915,6 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <ReviewModeToggle />
               {canStart && !reviewMode && (
                 <Button onClick={() => {
                   handleStartStep(hasPartialOutput);

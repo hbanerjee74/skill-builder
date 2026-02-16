@@ -55,12 +55,16 @@ export function WorkflowStepComplete({
     const loadPromises = outputFiles
       .filter((f) => !f.endsWith("/"))
       .map(async (relativePath) => {
-        // Try skills path first, then workspace path
+        // Try skills path first (strip "skill/" prefix since skill output dir
+        // already nests under skillName), then workspace path (uses path as-is)
         let content: string | null = null;
+        const skillsRelative = relativePath.startsWith("skill/")
+          ? relativePath.slice("skill/".length)
+          : relativePath;
 
         if (skillsPath) {
           try {
-            content = await readFile(`${skillsPath}/${skillName}/${relativePath}`);
+            content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
           } catch {
             // not found in skills path
           }
