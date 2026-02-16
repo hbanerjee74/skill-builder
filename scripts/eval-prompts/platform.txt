@@ -1,0 +1,9 @@
+Design a dbt incremental model for an orders fact table that handles late-arriving data using merge strategy, implements deduplication based on event timestamps, and includes a full-refresh fallback for schema changes.
+---
+Create a dbt testing framework for a dimensional model that includes custom generic tests for referential integrity, data freshness checks with severity levels (warn vs error), and a macro to validate SCD Type 2 logic across all dimension tables.
+---
+Build a dbt macro library for common date transformations that includes fiscal calendar conversions, business day calculations excluding holidays, and period-over-period comparison helpers, with proper documentation and unit tests using dbt-utils.
+---
+Design a Microsoft Fabric lakehouse medallion architecture for streaming IoT sensor data that uses delta tables with liquid clustering, implements incremental processing with checkpoints in notebooks, and exposes curated metrics through a semantic model with row-level security.
+---
+Create a Microsoft Fabric data pipeline that orchestrates notebook execution for a multi-stage ETL process, implements retry logic with exponential backoff for transient failures, sends alerts to Teams on errors, and logs execution metrics to a monitoring delta table.
