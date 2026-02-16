@@ -1,5 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research.md + agents/types/domain/config.conf
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/research.md + agent-sources/types/domain/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: domain-research
 description: Orchestrates all research phases by spawning concepts, practices, and implementation sub-agents, then consolidating results into a cohesive questionnaire. Called during Step 1.

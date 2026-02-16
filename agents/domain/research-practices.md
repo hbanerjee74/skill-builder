@@ -1,5 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research-practices.md + agents/types/domain/config.conf
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/research-practices.md + agent-sources/types/domain/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: domain-research-practices
 description: Researches real-world practices, edge cases, and variations for the skill domain. Called during Step 3 to generate practice-focused clarification questions.

@@ -1,5 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/generate-skill.md + agents/types/domain/config.conf
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/generate-skill.md + agent-sources/types/domain/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: domain-generate-skill
 description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.

@@ -120,7 +120,7 @@ done
 
 # Check for unique names across all agents (frontmatter only)
 echo "=== Name Uniqueness ==="
-all_names=$(find agents/ -name "*.md" ! -path "agents/templates/*" ! -path "agents/types/*" -exec \
+all_names=$(find agents/ -name "*.md" -exec \
   awk 'BEGIN{n=0} /^---$/{n++; next} n==1 && /^name:/{sub(/^name: */, ""); print}' {} \; | sort)
 dupes=$(echo "$all_names" | uniq -d)
 if [ -z "$dupes" ]; then
@@ -143,10 +143,10 @@ fi
 
 # ---------- T1.5: Workspace CLAUDE.md ----------
 echo "=== Workspace CLAUDE.md ==="
-if [ -f "workspace/CLAUDE.md" ]; then
-  pass "workspace/CLAUDE.md exists"
+if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
+  pass "agent-sources/workspace/CLAUDE.md exists"
 else
-  fail "workspace/CLAUDE.md not found"
+  fail "agent-sources/workspace/CLAUDE.md not found"
 fi
 
 # ---------- T1.6: Old files removed ----------
@@ -207,13 +207,13 @@ fi
 
 # ---------- Generate-skill agent: best practices in workspace/CLAUDE.md + references/ in generate-skill agents ----------
 echo "=== Generate-Skill Agent ==="
-# Progressive disclosure and output structure are in workspace/CLAUDE.md (auto-loaded into all agents)
-if [ -f "workspace/CLAUDE.md" ]; then
-  ws_content=$(cat "workspace/CLAUDE.md")
+# Progressive disclosure and output structure are in agent-sources/workspace/CLAUDE.md (auto-loaded into all agents)
+if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
+  ws_content=$(cat "agent-sources/workspace/CLAUDE.md")
   if echo "$ws_content" | grep -q "progressive disclosure"; then
-    pass "workspace/CLAUDE.md contains progressive disclosure guidance"
+    pass "agent-sources/workspace/CLAUDE.md contains progressive disclosure guidance"
   else
-    fail "workspace/CLAUDE.md missing progressive disclosure guidance"
+    fail "agent-sources/workspace/CLAUDE.md missing progressive disclosure guidance"
   fi
 fi
 build_checked=0

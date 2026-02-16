@@ -1,5 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research-concepts.md + agents/types/platform/config.conf
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/research-concepts.md + agent-sources/types/platform/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: platform-research-concepts
 description: Orchestrates parallel research into domain concepts by spawning entity and metrics sub-agents. Called during Step 1 to research and generate domain concept clarification questions.
