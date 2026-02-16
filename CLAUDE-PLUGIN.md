@@ -13,8 +13,10 @@ skill-builder/
 │   └── settings.json                # Dev hooks (runs validate.sh after Edit/Write)
 ├── scripts/
 │   ├── validate.sh                  # Automated structural validation (T1 checks)
-│   ├── eval-skill-quality.sh        # LLM-as-judge skill evaluation harness
-│   ├── eval-prompts/                # Test prompts for eval harness (per skill type)
+│   ├── eval/                        # Skill evaluation harness
+│   │   ├── eval-skill-quality.sh    # LLM-as-judge evaluation script
+│   │   ├── prompts/                 # Test prompts for eval harness (per skill type)
+│   │   └── results/                 # Evaluation outputs (gitignored)
 │   └── tests/                       # Test harness scripts (T1-T5)
 ├── skills/
 │   └── generate-skill/

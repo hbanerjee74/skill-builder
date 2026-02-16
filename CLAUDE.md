@@ -63,11 +63,11 @@ cd src-tauri && cargo test               # Rust tests
 claude --plugin-dir .                    # Load plugin locally
 
 # Skill evaluation (LLM-as-judge)
-./scripts/eval-skill-quality.sh --help                        # Usage info
-./scripts/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
-  --prompts scripts/eval-prompts/data-engineering.txt
-./scripts/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
-  --prompts scripts/eval-prompts/data-engineering.txt
+./scripts/eval/eval-skill-quality.sh --help                        # Usage info
+./scripts/eval/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
+  --prompts scripts/eval/prompts/data-engineering.txt
+./scripts/eval/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
+  --prompts scripts/eval/prompts/data-engineering.txt
 ```
 
 ## Testing
@@ -133,7 +133,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 ### Skill evaluation harness (LLM-as-judge)
 
-`scripts/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
+`scripts/eval/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
 
 **Modes:**
 - `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
@@ -141,7 +141,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 **Rubric** (each 1-5, same dimensions as validate agents): actionability, specificity, domain depth, self-containment.
 
-**Test prompts** live in `scripts/eval-prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
+**Test prompts** live in `scripts/eval/prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
 
 **Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`.
 
