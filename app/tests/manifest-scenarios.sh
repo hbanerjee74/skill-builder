@@ -175,9 +175,9 @@ assert_row_contains "SKILL.md → tier t3"              "skills/generate-skill/S
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ Cross-cutting: Agent Instructions ━━━${RESET}"
-assert_row_contains "workspace/CLAUDE.md → plugin tag"     "workspace/CLAUDE.md" "@agents"
-assert_row_contains "workspace/CLAUDE.md → tier t1"        "workspace/CLAUDE.md" "t1"
-assert_row_contains "workspace/CLAUDE.md → tier t4"        "workspace/CLAUDE.md" "t4"
+assert_row_contains "agent-sources/workspace/CLAUDE.md → plugin tag"     "agent-sources/workspace/CLAUDE.md" "@agents"
+assert_row_contains "agent-sources/workspace/CLAUDE.md → tier t1"        "agent-sources/workspace/CLAUDE.md" "t1"
+assert_row_contains "agent-sources/workspace/CLAUDE.md → tier t4"        "agent-sources/workspace/CLAUDE.md" "t4"
 
 # ===== Cross-cutting: Plugin Manifest =====
 

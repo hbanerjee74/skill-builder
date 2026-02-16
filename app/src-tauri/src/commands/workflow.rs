@@ -94,7 +94,7 @@ fn resolve_prompt_source_dirs(app_handle: &tauri::AppHandle) -> (PathBuf, PathBu
         .map(|p| p.to_path_buf());
 
     let agents_src = repo_root.as_ref().map(|r| r.join("agents"));
-    let claude_md_src = repo_root.as_ref().map(|r| r.join("workspace").join("CLAUDE.md"));
+    let claude_md_src = repo_root.as_ref().map(|r| r.join("agent-sources").join("workspace").join("CLAUDE.md"));
 
     let agents_dir = match agents_src {
         Some(ref p) if p.is_dir() => p.clone(),

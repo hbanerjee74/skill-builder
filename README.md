@@ -55,11 +55,12 @@ Skills are organized by type: **domain** (business knowledge), **platform** (too
 skill-builder/
 ├── agents/                  # Agent prompts (shared by both frontends)
 │   ├── {type}/              # 5 agents per skill type (4 types = 20 generated)
+│   └── shared/              # 4 shared sub-agents
+├── agent-sources/           # Build inputs for agent generation
 │   ├── templates/           # 5 phase templates (source of truth)
 │   ├── types/               # 4 type configs (focus, examples)
-│   └── shared/              # 3 shared sub-agents
-├── workspace/               # Agent instructions (auto-loaded CLAUDE.md)
-├── skills/generate-skill/SKILL.md    # Plugin coordinator (entry point)
+│   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
+├── skills/generate-skill/SKILL.md    # Plugin coordinator (self-contained entry point)
 ├── app/                     # Desktop application
 │   ├── src/                 # React 19 + Tailwind 4 + shadcn/ui
 │   ├── src-tauri/           # Rust backend (Tauri 2 + SQLite)

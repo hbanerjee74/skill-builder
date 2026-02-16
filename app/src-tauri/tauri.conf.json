@@ -29,7 +29,7 @@
     "resources": {
       "../sidecar/dist/": "sidecar/dist",
       "../../agents/": "agents",
-      "../../workspace/": "workspace",
+      "../../agent-sources/workspace/": "workspace",
       "resources/node/": "node"
     },
     "icon": [

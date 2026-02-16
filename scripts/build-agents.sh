@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-TEMPLATES_DIR="$ROOT_DIR/agents/templates"
-TYPES_DIR="$ROOT_DIR/agents/types"
+TEMPLATES_DIR="$ROOT_DIR/agent-sources/templates"
+TYPES_DIR="$ROOT_DIR/agent-sources/types"
 
 # --check mode: verify generated files are fresh (exit 1 if stale)
 CHECK_MODE=false
@@ -80,7 +80,7 @@ for type_dir in "$TYPES_DIR"/*/; do
         # Add auto-generated comment in frontmatter
         # Insert after opening --- line
         final_content=$(echo "$content" | sed '1 a\
-# AUTO-GENERATED — do not edit. Source: agents/templates/'"$phase"'.md + agents/types/'"$type_name"'/config.conf\
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/'"$phase"'.md + agent-sources/types/'"$type_name"'/config.conf\
 # Regenerate with: scripts/build-agents.sh')
 
         # Target path

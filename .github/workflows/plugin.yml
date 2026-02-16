@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'agents/**'
+      - 'agent-sources/**'
       - 'references/**'
       - 'scripts/build-agents.sh'
       - 'scripts/validate.sh'
@@ -16,6 +17,7 @@ on:
       - main
     paths:
       - 'agents/**'
+      - 'agent-sources/**'
       - 'references/**'
       - 'scripts/build-agents.sh'
       - 'scripts/validate.sh'

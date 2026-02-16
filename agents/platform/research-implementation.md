@@ -1,5 +1,5 @@
 ---
-# AUTO-GENERATED — do not edit. Source: agents/templates/research-implementation.md + agents/types/platform/config.conf
+# AUTO-GENERATED — do not edit. Source: agent-sources/templates/research-implementation.md + agent-sources/types/platform/config.conf
 # Regenerate with: scripts/build-agents.sh
 name: platform-research-implementation
 description: Researches technical implementation decisions and system considerations for the skill domain. Called during Step 3 to generate implementation-focused clarification questions.
