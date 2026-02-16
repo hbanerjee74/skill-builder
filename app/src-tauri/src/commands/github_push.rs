@@ -99,7 +99,7 @@ pub async fn validate_remote_repo(
 /// Push a skill to the configured remote repo via branch + PR.
 #[tauri::command]
 pub async fn push_skill_to_remote(
-    _app: tauri::AppHandle,
+    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     skill_name: String,
 ) -> Result<PushResult, String> {
@@ -212,7 +212,8 @@ pub async fn push_skill_to_remote(
     };
 
     // 7. Write/update .skill-builder manifest
-    write_manifest_file(&skill_dir, Some(github_login.as_str()))?;
+    let app_version = app.config().version.clone().unwrap_or_default();
+    write_manifest_file(&skill_dir, Some(github_login.as_str()), &app_version)?;
 
     // 8. Commit all changes
     let commit_msg = if is_first_push {
@@ -275,16 +276,19 @@ pub async fn push_skill_to_remote(
 /// Returns the count of updated manifests.
 #[tauri::command]
 pub fn reconcile_manifests(
+    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
 ) -> Result<u32, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    reconcile_manifests_inner(&conn)
+    let app_version = app.config().version.clone().unwrap_or_default();
+    reconcile_manifests_inner(&conn, &app_version)
 }
 
 /// Inner implementation of manifest reconciliation. Takes a raw Connection
 /// so it can be called from both the Tauri command and startup reconciliation.
 pub fn reconcile_manifests_inner(
     conn: &rusqlite::Connection,
+    app_version: &str,
 ) -> Result<u32, String> {
     info!("reconcile_manifests: starting");
 
@@ -319,7 +323,7 @@ pub fn reconcile_manifests_inner(
         let manifest_path = path.join(".skill-builder");
         if !manifest_path.exists() {
             // Create manifest for pre-existing skill directories that don't have one
-            write_manifest_file(&path, github_login.as_deref())?;
+            write_manifest_file(&path, github_login.as_deref(), app_version)?;
             updated_count += 1;
             debug!("reconcile_manifests: created manifest for '{}'", name);
             continue;
@@ -358,6 +362,7 @@ pub fn reconcile_manifests_inner(
 /// Write a .skill-builder manifest for a skill. Does NOT commit.
 #[tauri::command]
 pub fn write_skill_manifest(
+    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     skill_name: String,
 ) -> Result<(), String> {
@@ -379,7 +384,8 @@ pub fn write_skill_manifest(
         ));
     }
 
-    write_manifest_file(&skill_dir, github_login.as_deref())?;
+    let app_version = app.config().version.clone().unwrap_or_default();
+    write_manifest_file(&skill_dir, github_login.as_deref(), &app_version)?;
 
     info!("write_skill_manifest: manifest written for '{}'", skill_name);
     Ok(())
@@ -481,8 +487,9 @@ pub async fn list_user_repos(
 pub fn write_manifest_to_dir(
     skill_dir: &Path,
     creator: Option<&str>,
+    app_version: &str,
 ) -> Result<(), String> {
-    write_manifest_file(skill_dir, creator)
+    write_manifest_file(skill_dir, creator, app_version)
 }
 
 // --- Internal Helpers ---
@@ -491,12 +498,13 @@ pub fn write_manifest_to_dir(
 fn write_manifest_file(
     skill_dir: &Path,
     creator: Option<&str>,
+    app_version: &str,
 ) -> Result<(), String> {
     let manifest = SkillBuilderManifest {
         version: "1.0".to_string(),
         creator: creator.map(|s| s.to_string()),
         created_at: chrono::Utc::now().to_rfc3339(),
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        app_version: app_version.to_string(),
     };
 
     let json = serde_json::to_string_pretty(&manifest)
@@ -1118,20 +1126,20 @@ mod tests {
     #[test]
     fn test_write_manifest_with_creator() {
         let dir = tempfile::tempdir().unwrap();
-        write_manifest_file(dir.path(), Some("octocat")).unwrap();
+        write_manifest_file(dir.path(), Some("octocat"), "0.1.0").unwrap();
 
         let content = std::fs::read_to_string(dir.path().join(".skill-builder")).unwrap();
         let manifest: SkillBuilderManifest = serde_json::from_str(&content).unwrap();
         assert_eq!(manifest.version, "1.0");
         assert_eq!(manifest.creator.as_deref(), Some("octocat"));
         assert!(!manifest.created_at.is_empty());
-        assert!(!manifest.app_version.is_empty());
+        assert_eq!(manifest.app_version, "0.1.0");
     }
 
     #[test]
     fn test_write_manifest_without_creator() {
         let dir = tempfile::tempdir().unwrap();
-        write_manifest_file(dir.path(), None).unwrap();
+        write_manifest_file(dir.path(), None, "0.1.0").unwrap();
 
         let content = std::fs::read_to_string(dir.path().join(".skill-builder")).unwrap();
         let manifest: SkillBuilderManifest = serde_json::from_str(&content).unwrap();
@@ -1142,7 +1150,7 @@ mod tests {
     fn test_write_manifest_nonexistent_dir() {
         let dir = tempfile::tempdir().unwrap();
         let bad_path = dir.path().join("nonexistent");
-        let err = write_manifest_file(&bad_path, None).unwrap_err();
+        let err = write_manifest_file(&bad_path, None, "0.1.0").unwrap_err();
         assert!(err.contains("Failed to write manifest"));
     }
 
@@ -1221,7 +1229,7 @@ mod tests {
     #[test]
     fn test_write_manifest_to_dir_delegates() {
         let dir = tempfile::tempdir().unwrap();
-        write_manifest_to_dir(dir.path(), Some("user")).unwrap();
+        write_manifest_to_dir(dir.path(), Some("user"), "0.1.0").unwrap();
         assert!(dir.path().join(".skill-builder").exists());
     }
 
@@ -1239,7 +1247,7 @@ mod tests {
         assert!(!skill_dir.join(".skill-builder").exists());
 
         // Call write_manifest_file (what reconcile now does for missing manifests)
-        write_manifest_file(&skill_dir, Some("octocat")).unwrap();
+        write_manifest_file(&skill_dir, Some("octocat"), "0.1.0").unwrap();
 
         // Manifest should now exist with correct creator
         let content = std::fs::read_to_string(skill_dir.join(".skill-builder")).unwrap();

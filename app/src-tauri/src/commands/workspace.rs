@@ -161,7 +161,7 @@ pub fn clear_workspace(
 }
 
 #[tauri::command]
-pub fn reconcile_startup(db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
+pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
     log::info!("[reconcile_startup]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
@@ -188,7 +188,8 @@ pub fn reconcile_startup(db: tauri::State<'_, Db>) -> Result<ReconciliationResul
 
     // Reconcile .skill-builder manifests (update creator field if GitHub user changed)
     // This is non-fatal: log warnings but don't block startup.
-    if let Err(e) = super::github_push::reconcile_manifests_inner(&conn) {
+    let app_version = app.config().version.clone().unwrap_or_default();
+    if let Err(e) = super::github_push::reconcile_manifests_inner(&conn, &app_version) {
         log::warn!("Failed to reconcile .skill-builder manifests on startup: {}", e);
     }
 

@@ -64,6 +64,7 @@ fn list_skills_inner(
 
 #[tauri::command]
 pub fn create_skill(
+    app: tauri::AppHandle,
     workspace_path: String,
     name: String,
     domain: String,
@@ -87,6 +88,7 @@ pub fn create_skill(
 
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
+    let app_version = app.config().version.clone().unwrap_or_default();
     create_skill_inner(
         &workspace_path,
         &name,
@@ -97,6 +99,7 @@ pub fn create_skill(
         skills_path.as_deref(),
         author_login.as_deref(),
         author_avatar.as_deref(),
+        &app_version,
     )
 }
 
@@ -111,6 +114,7 @@ fn create_skill_inner(
     skills_path: Option<&str>,
     author_login: Option<&str>,
     author_avatar: Option<&str>,
+    app_version: &str,
 ) -> Result<(), String> {
     // Check for collision in workspace_path (working directory)
     let base = Path::new(workspace_path).join(name);
@@ -165,7 +169,7 @@ fn create_skill_inner(
     if let Some(sp) = skills_path {
         let skill_output = Path::new(sp).join(name);
         if skill_output.exists() {
-            if let Err(e) = super::github_push::write_manifest_to_dir(&skill_output, author_login) {
+            if let Err(e) = super::github_push::write_manifest_to_dir(&skill_output, author_login, &app_version) {
                 log::warn!("Failed to write .skill-builder manifest for '{}': {}", name, e);
             }
         }
@@ -472,7 +476,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None)
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0")
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -487,8 +491,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None).unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None);
+        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0").unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -501,7 +505,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None)
+        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0")
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -536,6 +540,7 @@ mod tests {
             Some(skills_path),
             None,
             None,
+            "0.1.0",
         )
         .unwrap();
 
@@ -573,6 +578,7 @@ mod tests {
             None,
             None,
             None,
+            "0.1.0",
         )
         .unwrap();
 
@@ -685,7 +691,7 @@ mod tests {
         // Create a symlink or sibling that the ".." traversal would resolve to
         // The workspace has a dir that resolves outside via ".."
         // workspace/legit is a real skill
-        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None).unwrap();
+        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0").unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         // This creates workspace/../outside-target which resolves to outside_dir
@@ -731,6 +737,7 @@ mod tests {
             Some(skills_path),
             None,
             None,
+            "0.1.0",
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -758,6 +765,7 @@ mod tests {
             Some(skills_path),
             None,
             None,
+            "0.1.0",
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -783,6 +791,7 @@ mod tests {
             Some(skills_path),
             None,
             None,
+            "0.1.0",
         );
         assert!(result.is_ok());
 
@@ -801,7 +810,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None).unwrap();
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0").unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");
