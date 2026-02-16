@@ -957,9 +957,11 @@ def extract_json(text):
         pass
     
     # Strategy 4: Look for JSON between common delimiters
+    # Note: backticks must be escaped for bash double-quote context
+    fence = chr(96) * 3  # three backticks without triggering bash
     patterns = [
-        r'```json\s*(\{.*?\})\s*```',
-        r'```\s*(\{.*?\})\s*```',
+        fence + r'json\s*(\{.*?\})\s*' + fence,
+        fence + r'\s*(\{.*?\})\s*' + fence,
         r'(\{[^{}]*\"variant_a\"[^{}]*\"variant_b\"[^{}]*\})',
     ]
     for pattern in patterns:
