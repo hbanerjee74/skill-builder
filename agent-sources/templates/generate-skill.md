@@ -23,13 +23,6 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
   - The **domain name**
 - Read `decisions.md` (primary input) and `clarifications.md`
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
-
-## Before You Start
-
-Follow the Before You Start protocol.
 
 </context>
 

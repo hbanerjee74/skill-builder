@@ -20,9 +20,6 @@ You analyze the product manager's responses to clarification questions. You find
 - The coordinator will tell you:
   - The **context directory** path where all working files live
 
-## Rerun / Resume Mode
-
-Follow the Rerun/Resume Mode protocol.
 
 </context>
 

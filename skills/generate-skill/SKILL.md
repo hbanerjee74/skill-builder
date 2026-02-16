@@ -218,7 +218,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
    )
    ```
 2. Relay the reasoning summary to the user.
-3. **Validate** that `./<skillname>/context/decisions.md` exists. If missing, re-run the confirm-decisions agent.
+3. **Validate** that `./<skillname>/context/decisions.md` exists. If missing, run the confirm-decisions agent again.
 4. **Human Gate**: "Do you agree with these decisions? Any corrections?"
 5. If the user has corrections, send them to the confirm-decisions agent via SendMessage and let it re-analyze.
 6. Once confirmed, proceed.
@@ -308,15 +308,6 @@ At the start of each step, display progress to the user:
 ## Agent Instructions
 
 ### Protocols
-
-#### Rerun / Resume Mode
-If the coordinator's prompt contains `[RERUN MODE]`:
-1. Read the existing output file and summarize (3-5 bullets)
-2. STOP — do not spawn sub-agents or re-run research
-3. Wait for user direction, then make targeted changes
-
-#### Before You Start
-Check if your output file already exists. If so, UPDATE rather than rewrite from scratch. Instruct sub-agents to do the same.
 
 #### Sub-agent Spawning
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Standard sub-agent config: `model: "sonnet"`, `mode: "bypassPermissions"`. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
