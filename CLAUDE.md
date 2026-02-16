@@ -45,29 +45,30 @@ cd app && npm install && npm run sidecar:build
 npm run dev                              # Dev mode (hot reload)
 
 # Testing (all from app/)
-./tests/run.sh                           # All levels (unit + integration + e2e)
+./tests/run.sh                           # All levels (unit + integration + e2e + plugin + eval)
 ./tests/run.sh unit                      # Level 1: stores, utils, hooks, rust, sidecar
 ./tests/run.sh integration               # Level 2: component + page tests
 ./tests/run.sh e2e                       # Level 3: Playwright
 ./tests/run.sh e2e --tag @workflow       # Level 3, filtered by tag
+./tests/run.sh eval                      # Eval harness tests
 npm run test:unit                        # Unit tests only (frontend)
 npm run test:integration                 # Integration tests only (frontend)
 npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
-./scripts/build-agents.sh               # Regenerate 20 agent files from templates
+./scripts/build-agents.sh               # Regenerate 20 type-specific agent files from templates
 ./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
 
 # Skill evaluation (LLM-as-judge)
-./scripts/eval-skill-quality.sh --help                        # Usage info
-./scripts/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
-  --prompts scripts/eval-prompts/data-engineering.txt
-./scripts/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
-  --prompts scripts/eval-prompts/data-engineering.txt
+./scripts/eval/eval-skill-quality.sh --help                        # Usage info
+./scripts/eval/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
+  --prompts scripts/eval/prompts/data-engineering.txt
+./scripts/eval/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
+  --prompts scripts/eval/prompts/data-engineering.txt
 ```
 
 ## Testing
@@ -112,6 +113,10 @@ Consult `app/tests/TEST_MANIFEST.md` to determine which tests cover the files yo
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
 - Unsure? → `./scripts/test-plugin.sh` runs all tiers
 
+**Eval quick rules:**
+- Changed `scripts/eval/eval-skill-quality.sh` or `scripts/eval/test-eval-harness.sh`? → `./tests/run.sh eval`
+- Changed `scripts/eval/prompts/`? → no tests needed (prompts are data files)
+
 **Cross-cutting** (shared files affect both app and plugin):
 - Changed `agents/`, `references/`, or `.claude-plugin/`? → run both `./tests/run.sh plugin --tag <tag>` and `./scripts/test-plugin.sh t1`
 
@@ -133,23 +138,26 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 ### Skill evaluation harness (LLM-as-judge)
 
-`scripts/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
+`scripts/eval/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score on a 7-dimension rubric.
 
 **Modes:**
 - `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
 - `--compare <skill-a> <skill-b>` — two skill versions head-to-head (is v2 better?)
 
-**Rubric** (each 1-5, same dimensions as validate agents): actionability, specificity, domain depth, self-containment.
+**Perspectives** (`--perspective`): `quality` (default), `cost`, `performance`, `all` (includes recommendations and production readiness).
 
-**Test prompts** live in `scripts/eval-prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
+**Rubric** (each 1-5): Quality — actionability, specificity, domain depth, self-containment. Claude Practices — progressive disclosure, structure/organization, Claude-centric design.
 
-**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`.
+**Test prompts** live in `scripts/eval/prompts/` (one file per skill type, prompts separated by `---`). Available: `data-engineering.txt`, `domain.txt`, `platform.txt`, `source.txt` (5 prompts each).
 
-**Cost:** ~$0.50-1.00 per prompt (2 response generations + 1 judge call). A full 5-prompt DE evaluation run costs ~$3-5.
+**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`, `INPUT_COST_PER_MTOK`, `OUTPUT_COST_PER_MTOK`.
+
+**Cost:** ~$0.50-1.00 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$3-5.
 
 **When to use:**
 - After changing focus lines, entity examples, or output examples in `agent-sources/types/` — run baseline mode to verify the skill type still beats no-skill
 - When iterating on prompt content — run compare mode with before/after versions to measure improvement
+- Use `--perspective all` for a comprehensive assessment including cost efficiency and production readiness
 
 ### Updating the test manifest
 

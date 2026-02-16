@@ -20,7 +20,7 @@ set -o pipefail
 # ---------- Resolve paths ----------
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="${PLUGIN_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-TESTS_DIR="$SCRIPT_DIR/tests"
+TESTS_DIR="$SCRIPT_DIR/plugin-tests"
 
 # ---------- Source shared library ----------
 source "$TESTS_DIR/lib.sh"

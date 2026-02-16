@@ -4,7 +4,7 @@ set -euo pipefail
 # Unified test runner for the Skill Builder desktop app.
 #
 # Usage: ./tests/run.sh [level] [--tag TAG]
-# Levels: unit, integration, e2e, plugin, all (default: all)
+# Levels: unit, integration, e2e, plugin, eval, all (default: all)
 # Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
 # Tags (plugin): @structure, @agents, @coordinator, @workflow, @all
 
@@ -31,7 +31,7 @@ TAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    unit|integration|e2e|plugin|all)
+    unit|integration|e2e|plugin|eval|all)
       LEVEL="$1"
       shift
       ;;
@@ -51,6 +51,7 @@ while [[ $# -gt 0 ]]; do
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
       echo "  plugin        CLI plugin tests (scripts/test-plugin.sh)"
+      echo "  eval          Eval harness tests (API tests run if ANTHROPIC_API_KEY set)"
       echo "  all           Run all levels sequentially (default)"
       echo ""
       echo "Options:"
@@ -63,6 +64,7 @@ while [[ $# -gt 0 ]]; do
       echo "  ./tests/run.sh unit                    # Unit tests only"
       echo "  ./tests/run.sh e2e --tag @dashboard    # Dashboard E2E tests"
       echo "  ./tests/run.sh plugin --tag @agents    # Plugin agent tests"
+      echo "  ./tests/run.sh eval                    # Eval harness tests"
       exit 0
       ;;
     *)
@@ -171,6 +173,23 @@ run_plugin() {
 }
 
 # ---------------------------------------------------------------------------
+# Level: eval
+# ---------------------------------------------------------------------------
+run_eval() {
+  header "Eval Harness Tests"
+  EVAL_SCRIPT="$APP_DIR/../scripts/eval/test-eval-harness.sh"
+  if [[ ! -x "$EVAL_SCRIPT" ]]; then
+    fail "Eval harness tests (scripts/eval/test-eval-harness.sh not found)"
+    return
+  fi
+  if ("$EVAL_SCRIPT"); then
+    pass "Eval harness tests"
+  else
+    fail "Eval harness tests"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Run the requested level(s)
 # ---------------------------------------------------------------------------
 case "$LEVEL" in
@@ -186,11 +205,15 @@ case "$LEVEL" in
   plugin)
     run_plugin
     ;;
+  eval)
+    run_eval
+    ;;
   all)
     run_unit
     run_integration
     run_e2e
     run_plugin
+    run_eval
     ;;
 esac
 

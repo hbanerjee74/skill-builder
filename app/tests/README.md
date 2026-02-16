@@ -15,6 +15,7 @@ cd app
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
 ./tests/run.sh plugin          # CLI plugin tests (structural + smoke)
+./tests/run.sh eval            # Eval harness tests
 
 # Run E2E tests by feature area
 ./tests/run.sh e2e --tag @dashboard
@@ -75,7 +76,15 @@ CLI plugin structural validation and agent smoke tests. Uses the 5-tier harness 
 
 | Runtime | Command | Location |
 |---|---|---|
-| Bash + Claude | `./tests/run.sh plugin` | `scripts/tests/t1-*.sh` through `t5-*.sh` |
+| Bash + Claude | `./tests/run.sh plugin` | `scripts/plugin-tests/t1-*.sh` through `t5-*.sh` |
+
+### Level 5: Eval Harness Tests
+
+Structural and live API tests for the skill evaluation harness. Structural tests run without API keys; live tests require `ANTHROPIC_API_KEY`.
+
+| Runtime | Command | Location |
+|---|---|---|
+| Bash + Claude | `./tests/run.sh eval` | `scripts/eval/test-eval-harness.sh` |
 
 ### Self-Tests
 
@@ -101,12 +110,13 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 
 | Layer | Files | Test Cases | Location |
 |---|---|---|---|
-| Frontend unit | 9 | ~113 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
-| Frontend integration | 21 | ~413 | `src/__tests__/components/`, `src/__tests__/pages/` |
+| Frontend unit | 9 | ~154 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
+| Frontend integration | 26 | ~490 | `src/__tests__/components/`, `src/__tests__/pages/` |
 | E2E (Playwright) | 6 | ~25 | `e2e/` subdirectories |
-| Rust (cargo) | 13 | ~216 | `src-tauri/src/` inline modules |
-| Sidecar | 6 | ~82 | `sidecar/__tests__/` |
-| **Total** | **55** | **~849** | |
+| Rust (cargo) | 13 | ~260 | `src-tauri/src/` inline modules |
+| Sidecar | 6 | ~91 | `sidecar/__tests__/` |
+| Eval harness | 1 | 19 | `scripts/eval/test-eval-harness.sh` |
+| **Total** | **61** | **~1039** | |
 
 ## Adding Tests
 
