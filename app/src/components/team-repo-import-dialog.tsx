@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { toast } from "sonner"
-import { Download, Loader2, AlertCircle } from "lucide-react"
+import { Download, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -10,6 +10,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { listTeamRepoSkills, importTeamRepoSkill } from "@/lib/tauri"
@@ -34,13 +44,13 @@ export default function TeamRepoImportDialog({
   const [step, setStep] = useState<Step>("loading")
   const [skills, setSkills] = useState<TeamRepoSkill[]>([])
   const [selected, setSelected] = useState<TeamRepoSkill | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [conflictSkill, setConflictSkill] = useState<TeamRepoSkill | null>(null)
 
   useEffect(() => {
     if (!open) return
     setStep("loading")
     setSelected(null)
-    setError(null)
+    setConflictSkill(null)
     listTeamRepoSkills()
       .then(result => {
         setSkills(result)
@@ -55,7 +65,6 @@ export default function TeamRepoImportDialog({
   const handleImport = async () => {
     if (!selected) return
     setStep("importing")
-    setError(null)
     try {
       await importTeamRepoSkill(selected.path, selected.name)
       toast.success(`Skill "${selected.name}" imported successfully`)
@@ -64,12 +73,28 @@ export default function TeamRepoImportDialog({
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (message.includes("already exists")) {
-        setError(message)
+        setConflictSkill(selected)
         setStep("select")
       } else {
         toast.error(`Import failed: ${message}`)
         setStep("select")
       }
+    }
+  }
+
+  const handleForceImport = async () => {
+    if (!conflictSkill) return
+    setConflictSkill(null)
+    setStep("importing")
+    try {
+      await importTeamRepoSkill(conflictSkill.path, conflictSkill.name, true)
+      toast.success(`Skill "${conflictSkill.name}" imported successfully`)
+      onOpenChange(false)
+      await onImported()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      toast.error(`Import failed: ${message}`)
+      setStep("select")
     }
   }
 
@@ -80,6 +105,7 @@ export default function TeamRepoImportDialog({
       : "Import skills from team repository"
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button
@@ -155,12 +181,6 @@ export default function TeamRepoImportDialog({
                 ))}
               </div>
             </ScrollArea>
-            {error && (
-              <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
               <Button onClick={handleImport} disabled={!selected}>
@@ -183,5 +203,20 @@ export default function TeamRepoImportDialog({
         )}
       </DialogContent>
     </Dialog>
+    <AlertDialog open={!!conflictSkill} onOpenChange={(open) => { if (!open) setConflictSkill(null) }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Skill Already Exists</AlertDialogTitle>
+          <AlertDialogDescription>
+            A skill named &quot;{conflictSkill?.name}&quot; already exists locally. Overwriting will replace all local files and reset workflow progress.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleForceImport}>Overwrite</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }
