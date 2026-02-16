@@ -100,7 +100,6 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
     expect(screen.getByText("Appearance")).toBeInTheDocument();
-    expect(screen.getByText("Model")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
   });
 

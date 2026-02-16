@@ -187,6 +187,21 @@ pub fn reconcile_on_startup(
 
     // Process DB runs against filesystem state
     for run in &db_runs {
+        // Skip skills that have an active session with a live PID — another
+        // instance owns this skill's workflow state. Dead PIDs were already
+        // cleaned up by reconcile_orphaned_sessions() which runs before us.
+        if crate::db::has_active_session_with_live_pid(conn, &run.skill_name) {
+            log::info!(
+                "Skipping reconciliation for '{}' — active session with live PID",
+                run.skill_name
+            );
+            notifications.push(format!(
+                "'{}' skipped — active session running in another instance",
+                run.skill_name
+            ));
+            continue;
+        }
+
         let working_dir_exists = disk_dirs.contains(&run.skill_name);
         let skill_output_exists = has_skill_output(&run.skill_name, skills_path);
 
@@ -1088,6 +1103,72 @@ mod tests {
         assert!(result.orphans.is_empty());
         assert!(result.notifications.is_empty());
         assert_eq!(result.auto_cleaned, 0);
+    }
+
+    // --- active session guard tests ---
+
+    #[test]
+    fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
+        // Simulates another instance owning a skill. We use the current PID
+        // (guaranteed alive) to represent the "other" running instance.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Skill at step 5 in DB
+        create_skill_dir(tmp.path(), "active-skill", "test");
+        crate::db::save_workflow_run(&conn, "active-skill", "test", 5, "pending", "domain")
+            .unwrap();
+        // Only step 0 output on disk — normally this would trigger a reset
+        create_step_output(tmp.path(), "active-skill", 0);
+
+        // Create an active session with the current PID (alive)
+        let current_pid = std::process::id();
+        crate::db::create_workflow_session(&conn, "sess-active", "active-skill", current_pid)
+            .unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // Should NOT reset — active session with live PID protects it
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("skipped"));
+        assert!(result.notifications[0].contains("active session"));
+        let run = crate::db::get_workflow_run(&conn, "active-skill")
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.current_step, 5, "Step should remain at 5 (untouched)");
+    }
+
+    #[test]
+    fn test_reconcile_processes_skill_with_dead_session() {
+        // Session exists but PID is dead (crashed) — should reconcile normally.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Skill at step 5 in DB
+        create_skill_dir(tmp.path(), "crashed-skill", "test");
+        crate::db::save_workflow_run(&conn, "crashed-skill", "test", 5, "pending", "domain")
+            .unwrap();
+        // Only step 0 output on disk — should trigger reset
+        create_step_output(tmp.path(), "crashed-skill", 0);
+
+        // Create an active session with a PID that's definitely dead (PID 1 is
+        // init/launchd and won't match our user, or use a very high unlikely PID)
+        // We use reconcile_orphaned_sessions to close it first (mimicking real startup)
+        crate::db::create_workflow_session(&conn, "sess-dead", "crashed-skill", 999999).unwrap();
+        // Close the dead session (this is what happens in real startup flow)
+        crate::db::reconcile_orphaned_sessions(&conn).unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        // Should reset to step 0 since the session was from a dead PID (now closed)
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("reset from step 5 to step 0"));
+        let run = crate::db::get_workflow_run(&conn, "crashed-skill")
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.current_step, 0);
     }
 
     // --- detect_furthest_step tests ---

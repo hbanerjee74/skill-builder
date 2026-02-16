@@ -68,22 +68,6 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             completed_at TEXT
         );
 
-        CREATE TABLE IF NOT EXISTS chat_sessions (
-            id TEXT PRIMARY KEY,
-            skill_name TEXT NOT NULL,
-            mode TEXT NOT NULL DEFAULT 'conversational',
-            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
-        );
-
-        CREATE TABLE IF NOT EXISTS chat_messages (
-            id TEXT PRIMARY KEY,
-            session_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
-        );
-
         CREATE TABLE IF NOT EXISTS workflow_artifacts (
             skill_name TEXT NOT NULL,
             step_id INTEGER NOT NULL,
@@ -266,8 +250,6 @@ fn step_name(step_id: i32) -> String {
         5 => "Confirm Decisions".to_string(),
         6 => "Generate Skill".to_string(),
         7 => "Validate Skill".to_string(),
-        8 => "Refine".to_string(),
-        -1 => "Chat".to_string(),
         _ => format!("Step {}", step_id),
     }
 }
@@ -733,20 +715,6 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
 }
 
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
-    // Delete chat messages via subquery (child of chat_sessions)
-    conn.execute(
-        "DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE skill_name = ?1)",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Delete chat sessions
-    conn.execute(
-        "DELETE FROM chat_sessions WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-
     // Delete workflow artifacts
     conn.execute(
         "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
@@ -1314,6 +1282,27 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
         )
         .map_err(|e| e.to_string())?;
     Ok(count as u32)
+}
+
+/// Returns true if the given skill has an active workflow session (ended_at IS NULL)
+/// whose PID is still alive. Used by startup reconciliation to skip skills owned by
+/// another running instance.
+pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> bool {
+    let mut stmt = match conn.prepare(
+        "SELECT pid FROM workflow_sessions WHERE skill_name = ?1 AND ended_at IS NULL",
+    ) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let pids: Vec<u32> = match stmt.query_map([skill_name], |row| {
+        Ok(row.get::<_, i64>(0)? as u32)
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => return false,
+    };
+
+    pids.iter().any(|&pid| check_pid_alive(pid))
 }
 
 pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
@@ -2206,8 +2195,8 @@ mod tests {
         assert_eq!(step_name(5), "Confirm Decisions");
         assert_eq!(step_name(6), "Generate Skill");
         assert_eq!(step_name(7), "Validate Skill");
-        assert_eq!(step_name(8), "Refine");
-        assert_eq!(step_name(-1), "Chat");
+        assert_eq!(step_name(8), "Step 8");
+        assert_eq!(step_name(-1), "Step -1");
         assert_eq!(step_name(99), "Step 99");
     }
 

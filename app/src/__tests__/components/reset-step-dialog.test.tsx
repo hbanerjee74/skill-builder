@@ -55,7 +55,7 @@ describe("ResetStepDialog", () => {
     );
     await waitFor(() => {
       expect(screen.getByText("Detailed Research")).toBeInTheDocument();
-      expect(screen.getByText("context/clarifications.md")).toBeInTheDocument();
+      expect(screen.getByText("context/clarifications-detailed.md")).toBeInTheDocument();
       expect(screen.getByText("Confirm Decisions")).toBeInTheDocument();
       expect(screen.getByText("context/decisions.md")).toBeInTheDocument();
     });

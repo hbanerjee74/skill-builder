@@ -32,8 +32,6 @@ import { AgentInitializingIndicator } from "@/components/agent-initializing-indi
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 import { ReasoningReview } from "@/components/reasoning-review";
-import { RefinementChat } from "@/components/refinement-chat";
-import { StepRerunChat, type StepRerunChatHandle } from "@/components/step-rerun-chat";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -56,7 +54,7 @@ import {
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "reasoning" | "refinement";
+  type: "agent" | "human" | "reasoning";
   outputFiles?: string[];
   /** Default model shorthand for display (actual model comes from backend settings) */
   model?: string;
@@ -70,7 +68,6 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
   6: { type: "agent", outputFiles: ["context/agent-validation-log.md", "context/test-skill.md"], model: "sonnet" },
-  7: { type: "refinement" },
 };
 
 // Human review steps: step id -> relative artifact path
@@ -79,16 +76,6 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   3: { relativePath: "context/clarifications-detailed.md" },
 };
 
-// Agent step IDs eligible for rerun chat (not reasoning or refinement — those have their own chat)
-const RERUN_CHAT_STEPS = new Set([0, 2, 5, 6]);
-
-// Map step IDs to human-readable labels for the rerun chat header
-const STEP_LABELS: Record<number, string> = {
-  0: "research",
-  2: "detailed-research",
-  5: "generate-skill",
-  6: "validate-skill",
-};
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -209,13 +196,8 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  const rerunRef = useRef<StepRerunChatHandle>(null);
-
   // Track whether current step has partial output from an interrupted run
   const [hasPartialOutput, setHasPartialOutput] = useState(false);
-
-  // Track which step is in rerun chat mode (null = no rerun active)
-  const [rerunStepId, setRerunStepId] = useState<number | null>(null);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -303,7 +285,6 @@ export default function WorkflowPage() {
   // Reset state when moving to a new step
   useEffect(() => {
     setHasPartialOutput(false);
-    setRerunStepId(null);
     setErrorHasArtifacts(false);
   }, [currentStep]);
 
@@ -411,8 +392,8 @@ export default function WorkflowPage() {
   const isDebugAutoCompleteStep = useCallback((stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
     if (!cfg) return false;
-    // Auto-complete: human review and refinement steps
-    return cfg.type === "human" || cfg.type === "refinement";
+    // Auto-complete: human review steps
+    return cfg.type === "human";
   }, []);
 
   // Advance to next step helper
@@ -551,34 +532,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleRerunStep = async () => {
-    if (!workspacePath) return;
-
-    // For agent steps eligible for rerun chat, enter interactive rerun mode
-    // instead of destructively resetting.
-    // Steps 4 (reasoning) and 7 (refinement) have their own chat components.
-    if (RERUN_CHAT_STEPS.has(currentStep)) {
-      clearRuns();
-      setRerunStepId(currentStep);
-      return;
-    }
-
-    // For steps not in RERUN_CHAT_STEPS (human review, reasoning, refinement),
-    // use destructive reset. Step 4 (reasoning) intentionally uses this path
-    // to clear the chat session file and start fresh.
-    try {
-      await resetWorkflowStep(workspacePath, skillName, currentStep);
-      clearRuns();
-      rerunFromStep(currentStep);
-      toast.success(`Reset to step ${currentStep + 1}`);
-    } catch (err) {
-      toast.error(
-        `Failed to reset: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      );
-    }
-  };
-
   const handleReviewContinue = async () => {
     // Save the content to workspace filesystem
     const config = HUMAN_REVIEW_STEPS[currentStep];
@@ -592,26 +545,6 @@ export default function WorkflowPage() {
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
-
-  // Handle completion from the rerun chat
-  const handleRerunComplete = useCallback(async () => {
-    setRerunStepId(null);
-    // Verify output before marking as completed
-    if (workspacePath && skillName) {
-      try {
-        const hasOutput = await verifyStepOutput(workspacePath, skillName, currentStep);
-        if (!hasOutput) {
-          updateStepStatus(currentStep, "error");
-          toast.error(`Step ${currentStep + 1} rerun produced no output files`, { duration: Infinity });
-          return;
-        }
-      } catch {
-        // Verification failed — proceed optimistically
-      }
-    }
-    updateStepStatus(currentStep, "completed");
-    toast.success(`Step ${currentStep + 1} rerun completed`);
-  }, [currentStep, updateStepStatus, workspacePath, skillName]);
 
   // Reload the file content (after user edits externally).
   // Same priority as initial load: skill context dir > workspace.
@@ -648,7 +581,7 @@ export default function WorkflowPage() {
     if (stepStatus !== "pending") return;
 
     const cfg = STEP_CONFIGS[currentStep];
-    if (!cfg || cfg.type === "human" || cfg.type === "refinement") return;
+    if (!cfg || cfg.type === "human") return;
 
     // Prevent re-triggering for the same step (guards against re-renders)
     if (debugAutoStartedRef.current === currentStep) return;
@@ -674,31 +607,13 @@ export default function WorkflowPage() {
     stepConfig &&
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
-    stepConfig.type !== "refinement" &&
     !isRunning &&
     workspacePath &&
-    currentStepDef?.status !== "completed" &&
-    rerunStepId === null;
+    currentStepDef?.status !== "completed";
 
   // --- Render content ---
 
   const renderContent = () => {
-    // Rerun chat mode — interactive rerun for agent steps
-    if (rerunStepId !== null && rerunStepId === currentStep && RERUN_CHAT_STEPS.has(currentStep)) {
-      return (
-        <StepRerunChat
-          ref={rerunRef}
-          skillName={skillName}
-          domain={domain ?? ""}
-          workspacePath={workspacePath ?? ""}
-          skillType={skillType ?? "domain"}
-          stepId={currentStep}
-          stepLabel={STEP_LABELS[currentStep] ?? `step${currentStep}`}
-          onComplete={handleRerunComplete}
-        />
-      );
-    }
-
     // Completed step with output files.
     if (
       currentStepDef?.status === "completed" &&
@@ -710,7 +625,6 @@ export default function WorkflowPage() {
           <WorkflowStepComplete
             stepName={currentStepDef.name}
             outputFiles={stepConfig.outputFiles}
-            onRerun={handleRerunStep}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
           />
@@ -721,7 +635,6 @@ export default function WorkflowPage() {
         <WorkflowStepComplete
           stepName={currentStepDef.name}
           outputFiles={[]}
-          onRerun={handleRerunStep}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}
         />
@@ -808,17 +721,6 @@ export default function WorkflowPage() {
       );
     }
 
-    // Refinement step (Step 7) — open-ended chat for skill polish
-    if (stepConfig?.type === "refinement") {
-      return (
-        <RefinementChat
-          skillName={skillName}
-          domain={domain ?? ""}
-          workspacePath={workspacePath ?? ""}
-        />
-      );
-    }
-
     // Initializing state — show spinner before first agent message arrives.
     if (isInitializing) {
       if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
@@ -833,32 +735,16 @@ export default function WorkflowPage() {
 
     // Error state with retry
     if (currentStepDef?.status === "error" && !activeAgentId) {
-      const canContinueInChat = errorHasArtifacts && RERUN_CHAT_STEPS.has(currentStep);
-
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
           <div className="text-center">
             <p className="font-medium text-destructive">Step {currentStep + 1} failed</p>
             <p className="mt-1 text-sm">
-              {canContinueInChat
-                ? "This step has partial output. You can continue in chat or reset."
-                : "An error occurred. You can retry this step."}
+              An error occurred. You can retry this step.
             </p>
           </div>
           <div className="flex gap-2">
-            {canContinueInChat && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  clearRuns();
-                  setRerunStepId(currentStep);
-                }}
-              >
-                <MessageSquare className="size-3.5" />
-                Continue in Chat
-              </Button>
-            )}
             <Button
               variant="outline"
               size="sm"
@@ -886,12 +772,10 @@ export default function WorkflowPage() {
               <RotateCcw className="size-3.5" />
               Reset Step
             </Button>
-            {!canContinueInChat && (
-              <Button size="sm" onClick={() => handleStartStep()}>
-                <Play className="size-3.5" />
-                Retry
-              </Button>
-            )}
+            <Button size="sm" onClick={() => handleStartStep()}>
+              <Play className="size-3.5" />
+              Retry
+            </Button>
           </div>
         </div>
       );
@@ -1073,13 +957,7 @@ export default function WorkflowPage() {
               )}
               {canStart && (
                 <Button onClick={() => {
-                  // For agent steps with partial output, enter rerun chat mode for interactive resume
-                  if (hasPartialOutput && RERUN_CHAT_STEPS.has(currentStep)) {
-                    clearRuns();
-                    setRerunStepId(currentStep);
-                  } else {
-                    handleStartStep(hasPartialOutput);
-                  }
+                  handleStartStep(hasPartialOutput);
                 }} size="sm">
                   {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
                   {hasPartialOutput ? "Resume" : getStartButtonLabel()}
@@ -1091,46 +969,12 @@ export default function WorkflowPage() {
                   Q&A Review
                 </Badge>
               )}
-              {rerunStepId !== null && !isRunning && (
-                <Button
-                  size="sm"
-                  onClick={() => rerunRef.current?.completeStep()}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
-              )}
-              {stepConfig?.type === "refinement" && currentStepDef?.status !== "completed" && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      updateStepStatus(currentStep, "completed");
-                      toast.success(`Step ${currentStep + 1} skipped`);
-                    }}
-                  >
-                    <SkipForward className="size-3.5" />
-                    Skip
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      updateStepStatus(currentStep, "completed");
-                      toast.success(`Step ${currentStep + 1} marked complete`);
-                    }}
-                  >
-                    <CheckCircle2 className="size-3.5" />
-                    Mark Complete
-                  </Button>
-                </>
-              )}
             </div>
           </div>
 
-          {/* Content area — reasoning/refinement/rerun/agent panels manage their own padding */}
+          {/* Content area — reasoning/agent panels manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            stepConfig?.type === "reasoning" || stepConfig?.type === "refinement" || rerunStepId !== null || activeAgentId
+            stepConfig?.type === "reasoning" || activeAgentId
               ? ""
               : "p-4"
           }`}>
