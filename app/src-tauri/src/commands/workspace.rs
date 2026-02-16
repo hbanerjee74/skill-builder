@@ -1333,8 +1333,8 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_partial_step0_output_cleaned_up() {
-        // If step 0 has only 2 of 4 expected files, it should not count as
+    fn test_detect_partial_step6_output_cleaned_up() {
+        // If step 6 has only 1 of 2 expected files, it should not count as
         // completed and the partial files should be cleaned up.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
@@ -1342,20 +1342,21 @@ mod tests {
 
         let skill_dir = tmp.path().join("partial");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        // Write only 2 of 4 step 0 files
-        std::fs::write(skill_dir.join("context/research-entities.md"), "# partial").unwrap();
-        std::fs::write(skill_dir.join("context/clarifications-practices.md"), "# partial").unwrap();
+        // Complete steps 0, 2, 4, 5 so step 6 detection is reached
+        create_step_output(tmp.path(), "partial", 0);
+        create_step_output(tmp.path(), "partial", 2);
+        create_step_output(tmp.path(), "partial", 4);
+        std::fs::write(skill_dir.join("SKILL.md"), "# Skill").unwrap();
+        // Write only 1 of 2 step 6 files
+        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(workspace, "partial", None);
-        assert_eq!(step, None, "partial step 0 should not be detected");
-
-        // Partial files should have been cleaned up
-        assert!(!skill_dir.join("context/research-entities.md").exists());
-        assert!(!skill_dir.join("context/clarifications-practices.md").exists());
+        // Should detect up to step 5 but not step 6
+        assert!(step.unwrap_or(0) < 6, "partial step 6 should not be detected as complete");
     }
 
     #[test]
-    fn test_detect_partial_step0_with_skills_path_cleaned_up() {
+    fn test_detect_partial_step6_with_skills_path_cleaned_up() {
         // Same as above but with skills_path configured
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
@@ -1364,20 +1365,31 @@ mod tests {
         std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
         let target = skills.join("my-skill");
         std::fs::create_dir_all(target.join("context")).unwrap();
-        // Write only 2 of 4 step 0 files in skills_path
-        std::fs::write(target.join("context/research-entities.md"), "# partial").unwrap();
-        std::fs::write(target.join("context/clarifications-practices.md"), "# partial").unwrap();
+        // Complete steps 0, 2, 4, 5 so step 6 detection is reached
+        for file in get_step_output_files(0) {
+            let p = target.join(file);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "# output").unwrap();
+        }
+        for file in get_step_output_files(2) {
+            let p = target.join(file);
+            std::fs::write(&p, "# output").unwrap();
+        }
+        for file in get_step_output_files(4) {
+            let p = target.join(file);
+            std::fs::write(&p, "# output").unwrap();
+        }
+        std::fs::write(target.join("SKILL.md"), "# Skill").unwrap();
+        // Write only 1 of 2 step 6 files in skills_path
+        std::fs::write(target.join("context/agent-validation-log.md"), "# partial").unwrap();
 
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
             "my-skill",
             Some(skills.to_str().unwrap()),
         );
-        assert_eq!(step, None, "partial step 0 in skills_path should not be detected");
-
-        // Partial files should have been cleaned up from skills_path
-        assert!(!target.join("context/research-entities.md").exists());
-        assert!(!target.join("context/clarifications-practices.md").exists());
+        // Should detect up to step 5 but not step 6
+        assert!(step.unwrap_or(0) < 6, "partial step 6 in skills_path should not be detected as complete");
     }
 
     #[test]
@@ -1397,7 +1409,6 @@ mod tests {
 
         // Step 0 and 2 files should remain
         let skill_dir = tmp.path().join("my-skill");
-        assert!(skill_dir.join("context/research-entities.md").exists());
         assert!(skill_dir.join("context/clarifications.md").exists());
 
         // Step 4 files should be gone

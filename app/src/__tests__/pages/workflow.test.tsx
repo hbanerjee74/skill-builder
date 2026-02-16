@@ -416,7 +416,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("shows Resume when partial output exists on disk", async () => {
     // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-entities.md")) {
+      if (path.includes("clarifications.md")) {
         return Promise.resolve("# Partial research output");
       }
       return Promise.reject("not found");
@@ -1090,7 +1090,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     // readFile returns content for the step's output file -> errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-entities.md")) {
+      if (path.includes("clarifications.md")) {
         return Promise.resolve("partial content");
       }
       return Promise.reject("not found");

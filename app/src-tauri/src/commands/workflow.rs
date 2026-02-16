@@ -1020,9 +1020,6 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
-            "context/research-entities.md",
-            "context/clarifications-practices.md",
-            "context/clarifications-implementation.md",
             "context/clarifications.md",
         ],
         1 => vec![],  // Human review
@@ -1569,11 +1566,6 @@ mod tests {
 
         // Create output files for steps 0, 2, 4, 5
         std::fs::write(
-            skill_dir.join("context/research-entities.md"),
-            "step0",
-        )
-        .unwrap();
-        std::fs::write(
             skill_dir.join("context/clarifications.md"),
             "step0",
         )
@@ -1592,7 +1584,7 @@ mod tests {
         delete_step_output_files(workspace, "my-skill", 4, None);
 
         // Steps 0, 2 outputs should still exist
-        assert!(skill_dir.join("context/research-entities.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
@@ -1844,8 +1836,8 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("research-entities.md"),
-            "# Concepts",
+            source_dir.join("context").join("clarifications-detailed.md"),
+            "# Detailed",
         ).unwrap();
         std::fs::write(
             source_dir.join("context").join("clarifications.md"),
@@ -2053,7 +2045,7 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(
-            skill_dir.join("context/research-entities.md"),
+            skill_dir.join("context/clarifications.md"),
             "# Will be wiped",
         ).unwrap();
 
@@ -2067,7 +2059,7 @@ mod tests {
         }
 
         // Context directory should have been wiped
-        assert!(!skill_dir.join("context/research-entities.md").exists());
+        assert!(!skill_dir.join("context/clarifications.md").exists());
     }
 
     #[test]
@@ -2164,9 +2156,6 @@ mod tests {
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = [
-            "research-entities.md",
-            "clarifications-practices.md",
-            "clarifications-implementation.md",
             "clarifications.md",
             "clarifications-detailed.md",
             "decisions.md",
