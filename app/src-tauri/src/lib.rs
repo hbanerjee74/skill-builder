@@ -4,6 +4,7 @@ mod commands;
 mod db;
 mod fs_validation;
 pub mod git;
+pub mod keychain;
 mod logging;
 mod reconciliation;
 mod types;
