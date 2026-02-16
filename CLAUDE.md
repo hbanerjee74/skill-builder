@@ -133,23 +133,26 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 ### Skill evaluation harness (LLM-as-judge)
 
-`scripts/eval/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score both on a 4-dimension rubric.
+`scripts/eval/eval-skill-quality.sh` measures whether a built skill actually improves Claude's output. It generates responses with and without a skill loaded, then uses an LLM judge to score on a 7-dimension rubric.
 
 **Modes:**
 - `--baseline <skill-path>` — skill-loaded vs no-skill (does the skill help?)
 - `--compare <skill-a> <skill-b>` — two skill versions head-to-head (is v2 better?)
 
-**Rubric** (each 1-5, same dimensions as validate agents): actionability, specificity, domain depth, self-containment.
+**Perspectives** (`--perspective`): `quality` (default), `cost`, `performance`, `all` (includes recommendations and production readiness).
 
-**Test prompts** live in `scripts/eval/prompts/` (one file per skill type, prompts separated by `---`). Currently available: `data-engineering.txt` (5 prompts).
+**Rubric** (each 1-5): Quality — actionability, specificity, domain depth, self-containment. Claude Practices — progressive disclosure, structure/organization, Claude-centric design.
 
-**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`.
+**Test prompts** live in `scripts/eval/prompts/` (one file per skill type, prompts separated by `---`). Available: `data-engineering.txt`, `domain.txt`, `platform.txt`, `source.txt` (5 prompts each).
 
-**Cost:** ~$0.50-1.00 per prompt (2 response generations + 1 judge call). A full 5-prompt DE evaluation run costs ~$3-5.
+**Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`, `INPUT_COST_PER_MTOK`, `OUTPUT_COST_PER_MTOK`.
+
+**Cost:** ~$0.50-1.00 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$3-5.
 
 **When to use:**
 - After changing focus lines, entity examples, or output examples in `agent-sources/types/` — run baseline mode to verify the skill type still beats no-skill
 - When iterating on prompt content — run compare mode with before/after versions to measure improvement
+- Use `--perspective all` for a comprehensive assessment including cost efficiency and production readiness
 
 ### Updating the test manifest
 
