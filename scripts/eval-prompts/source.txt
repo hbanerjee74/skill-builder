@@ -1,9 +1,9 @@
-Extract Salesforce Sales Cloud opportunity data for revenue analytics, including the Account → Opportunity → OpportunityLineItem hierarchy with proper handling of deleted records, record type filtering, and stage history tracking for conversion funnel analysis.
+Design an incremental extraction strategy for Salesforce Opportunity data using REST API that captures all field changes, handles deleted records, and maintains referential integrity with Account and Contact lookups.
 ---
-Design a data extraction strategy for Salesforce custom fields and record types in a PS/MS sales process, addressing field-level security, picklist value changes over time, and maintaining referential integrity when custom lookup relationships span standard and custom objects.
+Extract Salesforce Account hierarchy data including parent-child relationships and custom fields for a cloud services company, ensuring proper handling of lookup fields and maintaining the organizational structure in the target analytics system.
 ---
-Implement historical tracking for Salesforce opportunity changes using Field History Tracking and/or Change Data Capture, explaining the tradeoffs between approaches, retention limits, and how to reconstruct point-in-time snapshots for trend analysis in a services business.
+Build a REST API extraction pattern for Salesforce Case object that handles record types, picklist values, and custom fields while implementing change data capture using SystemModstamp for incremental loads.
 ---
-Extract Salesforce opportunity data with multi-currency enabled and opportunity splits for team-based services deals, handling currency conversion for historical rates, split ownership percentages, and ensuring revenue attribution sums correctly across split types.
+Design a data extraction approach for Salesforce custom objects with master-detail relationships that preserves referential integrity, handles required field validation rules, and supports full and incremental load patterns.
 ---
-Build an extraction pipeline for Salesforce activity data (Tasks, Events) linked to opportunities and accounts for services engagement analytics, addressing the polymorphic WhoId/WhatId relationships, completed vs. planned activities, and recurring event expansion for accurate touch-point tracking.
+Create an extraction strategy for Salesforce Lead and Contact objects that handles field-level changes using LastModifiedDate, manages data quality issues from picklist dependencies, and tracks conversion relationships between Leads and Opportunities.
