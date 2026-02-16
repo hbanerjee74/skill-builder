@@ -169,7 +169,7 @@ fn create_skill_inner(
     if let Some(sp) = skills_path {
         let skill_output = Path::new(sp).join(name);
         if skill_output.exists() {
-            if let Err(e) = super::github_push::write_manifest_to_dir(&skill_output, author_login, &app_version) {
+            if let Err(e) = super::github_push::write_manifest_to_dir(&skill_output, author_login, app_version) {
                 log::warn!("Failed to write .skill-builder manifest for '{}': {}", name, e);
             }
         }

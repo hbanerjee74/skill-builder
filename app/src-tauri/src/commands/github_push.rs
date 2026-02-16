@@ -203,12 +203,10 @@ pub async fn push_skill_to_remote(
                 }
             }
         }
+    } else if is_first_push {
+        format!("Initial push of skill `{}`.", skill_name)
     } else {
-        if is_first_push {
-            format!("Initial push of skill `{}`.", skill_name)
-        } else {
-            format!("Updated skill `{}` to v{}.", skill_name, version)
-        }
+        format!("Updated skill `{}` to v{}.", skill_name, version)
     };
 
     // 7. Write/update .skill-builder manifest
@@ -705,6 +703,7 @@ async fn generate_changelog(
 /// The branch is based on the remote's default branch (fetched first) so that
 /// the PR will have a common ancestor. Skill files are added to a tree built
 /// on top of the remote's tip commit.
+#[allow(clippy::too_many_arguments)]
 fn push_branch_to_remote(
     repo: &git2::Repository,
     branch_name: &str,
@@ -910,6 +909,7 @@ async fn get_default_branch(
 
 /// Create or update a GitHub PR for the pushed branch.
 /// Returns (pr_url, pr_number, is_new_pr).
+#[allow(clippy::too_many_arguments)]
 async fn create_or_update_pr(
     client: &reqwest::Client,
     token: &str,
