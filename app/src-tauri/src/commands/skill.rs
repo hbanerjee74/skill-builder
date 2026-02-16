@@ -161,6 +161,16 @@ fn create_skill_inner(
         }
     }
 
+    // Write .skill-builder manifest into the skill output directory
+    if let Some(sp) = skills_path {
+        let skill_output = Path::new(sp).join(name);
+        if skill_output.exists() {
+            if let Err(e) = super::github_push::write_manifest_to_dir(&skill_output, author_login) {
+                log::warn!("Failed to write .skill-builder manifest for '{}': {}", name, e);
+            }
+        }
+    }
+
     // Auto-commit: skill created
     if let Some(sp) = skills_path {
         let msg = format!("{}: created", name);

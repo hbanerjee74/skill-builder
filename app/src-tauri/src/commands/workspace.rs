@@ -184,7 +184,15 @@ pub fn reconcile_startup(db: tauri::State<'_, Db>) -> Result<ReconciliationResul
         _ => {}
     }
 
-    crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, skills_path.as_deref())
+    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, skills_path.as_deref())?;
+
+    // Reconcile .skill-builder manifests (update creator field if GitHub user changed)
+    // This is non-fatal: log warnings but don't block startup.
+    if let Err(e) = super::github_push::reconcile_manifests_inner(&conn) {
+        log::warn!("Failed to reconcile .skill-builder manifests on startup: {}", e);
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]

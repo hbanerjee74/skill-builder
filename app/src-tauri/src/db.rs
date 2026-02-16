@@ -1407,7 +1407,8 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-
+            remote_repo_owner: None,
+            remote_repo_name: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1436,7 +1437,8 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-
+            remote_repo_owner: None,
+            remote_repo_name: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1461,7 +1463,8 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-
+            remote_repo_owner: None,
+            remote_repo_name: None,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -1479,7 +1482,8 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-
+            remote_repo_owner: None,
+            remote_repo_name: None,
         };
         write_settings(&conn, &v2).unwrap();
 
