@@ -110,12 +110,13 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 
 | Layer | Files | Test Cases | Location |
 |---|---|---|---|
-| Frontend unit | 9 | ~113 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
-| Frontend integration | 21 | ~413 | `src/__tests__/components/`, `src/__tests__/pages/` |
+| Frontend unit | 9 | ~154 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
+| Frontend integration | 26 | ~490 | `src/__tests__/components/`, `src/__tests__/pages/` |
 | E2E (Playwright) | 6 | ~25 | `e2e/` subdirectories |
-| Rust (cargo) | 13 | ~216 | `src-tauri/src/` inline modules |
-| Sidecar | 6 | ~82 | `sidecar/__tests__/` |
-| **Total** | **55** | **~849** | |
+| Rust (cargo) | 13 | ~260 | `src-tauri/src/` inline modules |
+| Sidecar | 6 | ~91 | `sidecar/__tests__/` |
+| Eval harness | 1 | 19 | `scripts/eval/test-eval-harness.sh` |
+| **Total** | **61** | **~1039** | |
 
 ## Adding Tests
 

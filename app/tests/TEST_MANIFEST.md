@@ -8,7 +8,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (40) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
+| `src/stores/agent-store.ts` | `stores/agent-store.test.ts` (45) | `components/agent-output-panel.test.tsx`, `components/agent-status-header.test.tsx`, `components/feedback-dialog.test.tsx`, `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow-agent` |
 | `src/stores/workflow-store.ts` | `stores/workflow-store.test.ts` (26) | `components/agent-initializing-indicator.test.tsx`, `components/agent-status-header.test.tsx`, `components/reasoning-review.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/workflow.test.tsx` | `@workflow`, `@workflow-agent` |
 | `src/stores/skill-store.ts` | `stores/skill-store.test.ts` (2) | `pages/dashboard.test.tsx` | `@dashboard` |
 | `src/stores/settings-store.ts` | `stores/settings-store.test.ts` (5) | `components/reasoning-review.test.tsx`, `components/refinement-chat.test.tsx`, `components/step-rerun-chat.test.tsx`, `pages/dashboard.test.tsx`, `pages/settings.test.tsx`, `pages/workflow.test.tsx` | `@settings` |
@@ -48,7 +48,7 @@ Maps every source file to its tests across all layers. Use this to determine whi
 
 | Source | Unit Tests | Integration Tests | E2E Tag |
 |---|---|---|---|
-| `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (105) | `@workflow-agent` |
+| `src/components/agent-output-panel.tsx` | -- | `components/agent-output-panel.test.tsx` (114) | `@workflow-agent` |
 | `src/components/agent-initializing-indicator.tsx` | -- | `components/agent-initializing-indicator.test.tsx` (10) | `@workflow-agent` |
 | `src/components/agent-status-header.tsx` | -- | `components/agent-status-header.test.tsx` (20) | `@workflow-agent` |
 | `src/components/about-dialog.tsx` | -- | `components/about-dialog.test.tsx` (9) | `@settings` |
@@ -58,19 +58,28 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src/components/reset-step-dialog.tsx` | -- | `components/reset-step-dialog.test.tsx` (7) | `@workflow` |
 | `src/components/edit-tags-dialog.tsx` | -- | `components/edit-tags-dialog.test.tsx` (9) | `@dashboard` |
 | `src/components/feedback-dialog.tsx` | -- | `components/feedback-dialog.test.tsx` (18) | `@workflow` |
-| `src/components/reasoning-review.tsx` | -- | `components/reasoning-review.test.tsx` (11) | `@workflow` |
-| `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (11) | `@workflow` |
-| `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (13) | `@workflow` |
+| `src/components/reasoning-review.tsx` | -- | `components/reasoning-review.test.tsx` (9) | `@workflow` |
+| `src/components/refinement-chat.tsx` | -- | `components/refinement-chat.test.tsx` (10) | `@workflow` |
+| `src/components/step-rerun-chat.tsx` | -- | `components/step-rerun-chat.test.tsx` (12) | `@workflow` |
 | `src/components/close-guard.tsx` | -- | `components/close-guard.test.tsx` (4) | `@navigation` |
 | `src/components/imported-skill-card.tsx` | -- | `components/imported-skill-card.test.tsx` (14) | -- |
 | `src/components/orphan-resolution-dialog.tsx` | -- | `components/orphan-resolution-dialog.test.tsx` (11) | -- |
 | `src/components/tag-filter.tsx` | -- | `components/tag-filter.test.tsx` (6) | -- |
 | `src/components/tag-input.tsx` | -- | `components/tag-input.test.tsx` (17) | -- |
+| `src/components/error-boundary.tsx` | -- | -- | -- |
 | `src/components/github-import-dialog.tsx` | -- | -- | -- |
-| `src/components/trigger-text-editor.tsx` | -- | -- | -- |
+| `src/components/onboarding-dialog.tsx` | -- | -- | -- |
+| `src/components/runtime-error-dialog.tsx` | -- | -- | -- |
 | `src/components/skill-preview-dialog.tsx` | -- | -- | -- |
+| `src/components/splash-screen.tsx` | -- | -- | -- |
+| `src/components/theme-provider.tsx` | -- | -- | -- |
+| `src/components/trigger-text-editor.tsx` | -- | -- | -- |
+| `src/components/workflow-sidebar.tsx` | -- | -- | `@workflow` |
+| `src/components/workflow-step-complete.tsx` | -- | -- | `@workflow` |
 | `src/components/github-login-dialog.tsx` | -- | `components/github-login-dialog.test.tsx` (7) | `@settings` |
 | `src/components/layout/app-layout.tsx` | -- | `components/app-layout.test.tsx` (8) | `@navigation` |
+| `src/components/layout/header.tsx` | -- | -- | `@navigation` |
+| `src/components/layout/sidebar.tsx` | -- | -- | `@navigation` |
 
 ### Rust Backend
 
@@ -88,17 +97,17 @@ Maps every source file to its tests across all layers. Use this to determine whi
 | `src-tauri/src/commands/clarification.rs` | `cargo test commands::clarification` (1) | `@workflow` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
 | `src-tauri/src/agents/sidecar.rs` | `cargo test agents::sidecar` (2) | `@workflow-agent` |
-| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (23) | `@workflow-agent` |
+| `src-tauri/src/agents/sidecar_pool.rs` | `cargo test agents::sidecar_pool` (8) | `@workflow-agent` |
 
 ### Sidecar (Node.js Agent Runner)
 
 | Source | Unit Tests | E2E Tag |
 |---|---|---|
-| `sidecar/run-agent.ts` | `sidecar/__tests__/run-agent.test.ts` (10) | -- |
+| `sidecar/run-agent.ts` | `sidecar/__tests__/run-agent.test.ts` (14) | -- |
 | `sidecar/agent-runner.ts` | `sidecar/__tests__/agent-runner.test.ts` (13) | -- |
 | `sidecar/config.ts` | `sidecar/__tests__/config.test.ts` (5) | -- |
-| `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (19) | -- |
-| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (33) | -- |
+| `sidecar/options.ts` | `sidecar/__tests__/options.test.ts` (20) | -- |
+| `sidecar/persistent-mode.ts` | `sidecar/__tests__/persistent-mode.test.ts` (34) | -- |
 | `sidecar/shutdown.ts` | `sidecar/__tests__/shutdown.test.ts` (5) | -- |
 
 ### E2E Test Files
@@ -121,7 +130,7 @@ Agents and references are shared between the desktop app and the CLI plugin. Cha
 | `agent-sources/templates/*.md` (5 files) | `@agents` | t1, t4 | Run `build-agents.sh` first |
 | `agent-sources/types/*/config.conf` (4 files) | `@agents` | t1, t4 | Run `build-agents.sh` first |
 | `agents/{type}/*.md` (20 generated files) | `@agents` | t1, t4 | -- |
-| `agents/shared/*.md` (3 files) | `@agents` | t1, t4 | -- |
+| `agents/shared/*.md` (4 files) | `@agents` | t1, t4 | -- |
 | `scripts/build-agents.sh` | `@agents` | t1 | Run to regenerate agents |
 | `skills/generate-skill/SKILL.md` | `@coordinator` | t1, t2, t3 | -- |
 | `agent-sources/workspace/CLAUDE.md` (agent instructions) | `@agents` | t1, t4 | -- |
@@ -178,8 +187,8 @@ These scripts validate the test infrastructure itself. Run after modifying `run.
 
 | Script | Tests | What it validates |
 |---|---|---|
-| `tests/harness-test.sh` | 21 | Arg parsing, level/tier routing, tag mapping, error handling |
-| `tests/manifest-scenarios.sh` | 68 | Source-to-test mapping for app, plugin, and cross-cutting changes |
+| `tests/harness-test.sh` | 23 | Arg parsing, level/tier routing, tag mapping, error handling |
+| `tests/manifest-scenarios.sh` | 70 | Source-to-test mapping for app, plugin, and cross-cutting changes |
 
 ## Quick Reference Commands
 
