@@ -100,7 +100,8 @@ pub fn run() {
                 match db::read_settings(&conn) {
                     Ok(settings) => {
                         logging::set_log_level(&settings.log_level);
-                        log::debug!("Log level initialized from settings: {}", settings.log_level);
+                        log::info!("Log level: {}", settings.log_level);
+                        log::info!("Skills path: {}", settings.skills_path.as_deref().unwrap_or("(not configured)"));
                     }
                     Err(e) => {
                         logging::set_log_level("info");
