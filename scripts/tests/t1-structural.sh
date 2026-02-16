@@ -31,8 +31,7 @@ run_t1() {
 
   # ---- T1.3: Agent file count (24 = 5 per type × 4 types + 4 shared) ----
   local agent_count
-  agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f \
-    -not -path "*/templates/*" -not -path "*/types/*" 2>/dev/null | wc -l | tr -d ' ')
+  agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
   assert_count_eq "$tier" "agent_file_count_is_24" "24" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in correct subdirectory ----
@@ -136,7 +135,7 @@ run_t1() {
   fi
 
   # ---- T1.8: Workspace CLAUDE.md exists (auto-loaded agent instructions + protocols) ----
-  assert_file_exists "$tier" "workspace_claude_md_exists" "$PLUGIN_DIR/workspace/CLAUDE.md"
+  assert_file_exists "$tier" "workspace_claude_md_exists" "$PLUGIN_DIR/agent-sources/workspace/CLAUDE.md"
 
   # ---- T1.9: plugin.json required fields ----
   local pj="$PLUGIN_DIR/.claude-plugin/plugin.json"
