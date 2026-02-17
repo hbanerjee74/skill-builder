@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
-import importedSkillsFixture from "../fixtures/imported-skills.json";
+import importedSkillsFixture from "../fixtures/imported-skills.json" with { type: "json" };
 
 test.describe("Skills Library", { tag: "@skills" }, () => {
   test("shows empty state when no skills exist", async ({ page }) => {
