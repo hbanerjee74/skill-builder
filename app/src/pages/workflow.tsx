@@ -455,12 +455,10 @@ export default function WorkflowPage() {
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
 
-        // Auto-advance for agent steps that don't precede human review.
-        // Steps 0 and 2 (research) pause on the completion screen so the
-        // user can review output before moving to the human review step.
+        // Auto-advance all agent steps so the user lands directly on
+        // the next step (human review steps show the editor immediately).
         const cfg = STEP_CONFIGS[step];
-        const nextIsHuman = STEP_CONFIGS[step + 1]?.type === "human";
-        if (cfg?.type === "agent" && !nextIsHuman) {
+        if (cfg?.type === "agent") {
           advanceToNextStep();
         }
       };
