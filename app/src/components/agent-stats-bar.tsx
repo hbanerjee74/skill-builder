@@ -70,8 +70,8 @@ export function AgentStatsBar({ runs }: AgentStatsBarProps) {
       >
         <span><span className="text-muted-foreground">Duration </span>{formatDuration(totals.duration)}</span>
         <span><span className="text-muted-foreground">Cost </span>{formatCost(totals.cost)}</span>
-        <span><span className="text-muted-foreground">In </span>{formatTokenCount(totals.input)}</span>
-        <span><span className="text-muted-foreground">Out </span>{formatTokenCount(totals.output)}</span>
+        <span><span className="text-muted-foreground">Input </span>{formatTokenCount(totals.input)} tokens</span>
+        <span><span className="text-muted-foreground">Output </span>{formatTokenCount(totals.output)} tokens</span>
         <span className="ml-auto text-muted-foreground">{models.join(", ")}</span>
         {isExpanded ? (
           <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
