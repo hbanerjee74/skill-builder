@@ -437,7 +437,7 @@ fn build_prompt(
     domain: &str,
     workspace_path: &str,
     skills_path: Option<&str>,
-    _skill_type: &str,
+    skill_type: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
 ) -> String {
@@ -455,12 +455,14 @@ fn build_prompt(
     };
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
+         The skill type is: {}. \
          The skill directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
+        skill_type,
         skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -512,23 +514,16 @@ pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, Str
         .ok_or("Could not resolve repo root")?
         .to_path_buf();
 
-    let primary = repo_root
+    let agent_path = repo_root
         .join("agents")
-        .join(&skill_type)
-        .join(format!("{}.md", phase));
-    let fallback = repo_root
-        .join("agents")
-        .join("shared")
         .join(format!("{}.md", phase));
 
-    if primary.exists() {
-        std::fs::read_to_string(&primary).map_err(|e| e.to_string())
-    } else if fallback.exists() {
-        std::fs::read_to_string(&fallback).map_err(|e| e.to_string())
+    if agent_path.exists() {
+        std::fs::read_to_string(&agent_path).map_err(|e| e.to_string())
     } else {
         Err(format!(
-            "Prompt not found for type '{}', phase '{}'",
-            skill_type, phase
+            "Prompt not found for phase '{}'",
+            phase
         ))
     }
 }
@@ -1278,7 +1273,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_with_skill_type() {
-        // Simplified prompt no longer references agents path
+        // Prompt should include the skill type
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
@@ -1292,6 +1287,7 @@ mod tests {
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
+        assert!(prompt.contains("The skill type is: platform."));
     }
 
     #[test]
