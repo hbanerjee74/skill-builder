@@ -418,6 +418,7 @@ pub fn update_skill_metadata(
 mod tests {
     use super::*;
     use crate::commands::test_utils::create_test_db;
+    use rusqlite::Connection;
     use tempfile::tempdir;
 
     // ===== list_skills_inner tests =====
@@ -894,5 +895,96 @@ mod tests {
         // Verify the entire skill directory (including logs/) is gone
         assert!(!skill_dir.exists(), "skill directory should be removed");
         assert!(!logs_dir.exists(), "logs directory should be removed");
+    }
+
+    // ===== update_skill_metadata tests =====
+
+    /// Helper: create a skill in the DB for metadata update tests.
+    fn setup_skill_for_metadata(conn: &Connection, name: &str) {
+        crate::db::save_workflow_run(conn, name, "analytics", 0, "pending", "domain").unwrap();
+    }
+
+    #[test]
+    fn test_update_metadata_display_name() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "meta-skill");
+
+        crate::db::set_skill_display_name(&conn, "meta-skill", Some("Pretty Name")).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "meta-skill").unwrap().unwrap();
+        assert_eq!(row.display_name.as_deref(), Some("Pretty Name"));
+    }
+
+    #[test]
+    fn test_update_metadata_skill_type() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "type-skill");
+
+        conn.execute(
+            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params!["type-skill", "platform"],
+        ).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "type-skill").unwrap().unwrap();
+        assert_eq!(row.skill_type, "platform");
+    }
+
+    #[test]
+    fn test_update_metadata_tags() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "tag-skill");
+
+        crate::db::set_skill_tags(&conn, "tag-skill", &["rust".into(), "wasm".into()]).unwrap();
+
+        let tags = crate::db::get_tags_for_skills(&conn, &["tag-skill".into()]).unwrap();
+        assert_eq!(tags.get("tag-skill").unwrap(), &["rust", "wasm"]);
+    }
+
+    #[test]
+    fn test_update_metadata_intake_json() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "intake-skill");
+
+        let json = r#"{"audience":"Engineers","challenges":"Scale","scope":"Backend"}"#;
+        crate::db::set_skill_intake(&conn, "intake-skill", Some(json)).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "intake-skill").unwrap().unwrap();
+        assert_eq!(row.intake_json.as_deref(), Some(json));
+    }
+
+    #[test]
+    fn test_update_metadata_all_fields() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "full-meta");
+
+        // Update all four fields as update_skill_metadata would
+        crate::db::set_skill_display_name(&conn, "full-meta", Some("Full Metadata")).unwrap();
+        conn.execute(
+            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params!["full-meta", "source"],
+        ).unwrap();
+        crate::db::set_skill_tags(&conn, "full-meta", &["api".into(), "rest".into()]).unwrap();
+        crate::db::set_skill_intake(&conn, "full-meta", Some(r#"{"audience":"Devs"}"#)).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "full-meta").unwrap().unwrap();
+        assert_eq!(row.display_name.as_deref(), Some("Full Metadata"));
+        assert_eq!(row.skill_type, "source");
+        assert_eq!(row.intake_json.as_deref(), Some(r#"{"audience":"Devs"}"#));
+
+        let tags = crate::db::get_tags_for_skills(&conn, &["full-meta".into()]).unwrap();
+        assert_eq!(tags.get("full-meta").unwrap(), &["api", "rest"]);
+    }
+
+    #[test]
+    fn test_update_metadata_nonexistent_skill_is_noop() {
+        let conn = create_test_db();
+
+        // These should succeed (UPDATE affects 0 rows, no error)
+        crate::db::set_skill_display_name(&conn, "ghost", Some("Name")).unwrap();
+        crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]).unwrap();
+        crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
+
+        // No row should exist
+        assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
     }
 }

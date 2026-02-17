@@ -21,7 +21,7 @@ skill-builder/
 ├── skills/
 │   └── generate-skill/
 │       └── SKILL.md                 # Coordinator skill (entry point, self-contained)
-├── agents/                          # 25 agent prompts (flat directory, see CLAUDE.md for layout)
+├── agents/                          # 26 agent prompts (flat directory, see CLAUDE.md for layout)
 └── agent-sources/
     └── workspace/
         └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
@@ -41,7 +41,7 @@ Three layers:
 
 ### Adding/modifying an agent
 
-Agent files live in `agents/` (flat directory, 25 agents). Edit them directly.
+Agent files live in `agents/` (flat directory, 26 agents). Edit them directly.
 
 ### Modifying the workflow
 
@@ -51,7 +51,7 @@ Edit `skills/generate-skill/SKILL.md`. This contains the full coordinator logic:
 
 **Automated validation** runs after every Edit/Write via a Claude Code hook (`.claude/settings.json`). It checks:
 - Manifest validity (JSON, required fields)
-- All 25 agent files exist with valid frontmatter
+- All 26 agent files exist with valid frontmatter
 - Model tiers match the spec (sonnet/opus)
 - Coordinator skill exists with required keywords
 
