@@ -78,49 +78,49 @@ domain-specific, data-engineering-specific, platform-specific, and source-specif
 
 ### Cross-Type Dimensions
 
-| Slug | Name | Default Focus | Types |
-|------|------|---------------|-------|
-| `entities` | Entity & Relationship | Identify domain entities, relationships, cardinality constraints, and cross-entity analysis patterns. Focus on what differs from the standard model. | all 4 |
-| `data-quality` | Data Quality | Identify pattern-specific quality checks (DE) and org-specific known quality issues (source) beyond generic data quality concepts. | DE, source |
+| Slug | Name | Agent | Default Focus | Types |
+|------|------|-------|---------------|-------|
+| `entities` | Entity & Relationship | [`research-entities.md`](../../agents/research-entities.md) | Identify domain entities, relationships, cardinality constraints, and cross-entity analysis patterns. Focus on what differs from the standard model. | all 4 |
+| `data-quality` | Data Quality | [`research-data-quality.md`](../../agents/research-data-quality.md) | Identify pattern-specific quality checks (DE) and org-specific known quality issues (source) beyond generic data quality concepts. | DE, source |
 
 Note: `data-quality` is called `quality-gates` in data-engineering context and
 `data-quality` in source context. Same agent, different focus overrides.
 
 ### Domain-Specific Dimensions
 
-| Slug | Name | Default Focus | Types |
-|------|------|---------------|-------|
-| `metrics` | Metrics & KPI | Identify key business metrics, exact calculation formulas, parameter definitions, and where "approximately correct" defaults produce wrong analysis. | domain |
-| `business-rules` | Business Rules | Identify business rules affecting data modeling, industry-specific variations, regulatory constraints, and rules engineers commonly implement incorrectly. | domain |
-| `segmentation-and-periods` | Segmentation & Periods | Identify specific segmentation breakpoints, fiscal calendar structure, snapshot timing, and cross-period rules constraining metric calculations. | domain |
-| `modeling-patterns` | Modeling Patterns | Identify domain-specific modeling decisions: grain choices, field coverage, and interactions between grain choices and downstream query patterns. | domain |
+| Slug | Name | Agent | Default Focus | Types |
+|------|------|-------|---------------|-------|
+| `metrics` | Metrics & KPI | [`research-metrics.md`](../../agents/research-metrics.md) | Identify key business metrics, exact calculation formulas, parameter definitions, and where "approximately correct" defaults produce wrong analysis. | domain |
+| `business-rules` | Business Rules | [`research-business-rules.md`](../../agents/research-business-rules.md) | Identify business rules affecting data modeling, industry-specific variations, regulatory constraints, and rules engineers commonly implement incorrectly. | domain |
+| `segmentation-and-periods` | Segmentation & Periods | [`research-segmentation-and-periods.md`](../../agents/research-segmentation-and-periods.md) | Identify specific segmentation breakpoints, fiscal calendar structure, snapshot timing, and cross-period rules constraining metric calculations. | domain |
+| `modeling-patterns` | Modeling Patterns | [`research-modeling-patterns.md`](../../agents/research-modeling-patterns.md) | Identify domain-specific modeling decisions: grain choices, field coverage, and interactions between grain choices and downstream query patterns. | domain |
 
 ### Data-Engineering-Specific Dimensions
 
-| Slug | Name | Default Focus | Types |
-|------|------|---------------|-------|
-| `pattern-interactions` | Pattern Interaction & Selection | Identify constraint chains between patterns: how SCD type constrains merge strategy, how merge strategy constrains key design, how historization constrains materialization. | DE |
-| `load-merge-patterns` | Load & Merge Strategy | Identify high-water mark column selection, change detection approaches, merge predicate design, idempotency guarantees, failure recovery, backfill strategies, and schema evolution. | DE |
-| `historization` | Historization & Temporal Design | Identify when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required vs. overkill, and retention policies. | DE |
-| `layer-design` | Silver/Gold Layer Design | Identify where to draw the silver/gold boundary, physical vs. logical dimension conformance, materialization trade-offs specific to pattern choices, and aggregate table design. | DE |
+| Slug | Name | Agent | Default Focus | Types |
+|------|------|-------|---------------|-------|
+| `pattern-interactions` | Pattern Interaction & Selection | [`research-pattern-interactions.md`](../../agents/research-pattern-interactions.md) | Identify constraint chains between patterns: how SCD type constrains merge strategy, how merge strategy constrains key design, how historization constrains materialization. | DE |
+| `load-merge-patterns` | Load & Merge Strategy | [`research-load-merge-patterns.md`](../../agents/research-load-merge-patterns.md) | Identify high-water mark column selection, change detection approaches, merge predicate design, idempotency guarantees, failure recovery, backfill strategies, and schema evolution. | DE |
+| `historization` | Historization & Temporal Design | [`research-historization.md`](../../agents/research-historization.md) | Identify when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required vs. overkill, and retention policies. | DE |
+| `layer-design` | Silver/Gold Layer Design | [`research-layer-design.md`](../../agents/research-layer-design.md) | Identify where to draw the silver/gold boundary, physical vs. logical dimension conformance, materialization trade-offs specific to pattern choices, and aggregate table design. | DE |
 
 ### Platform-Specific Dimensions
 
-| Slug | Name | Default Focus | Types |
-|------|------|---------------|-------|
-| `platform-behavioral-overrides` | Platform Behavioral Overrides | Identify behavioral deviations from official documentation -- cases where following the docs produces wrong results. | platform |
-| `config-patterns` | Configuration Patterns | Identify configuration combinations that fail in practice, version-dependent configuration requirements, adapter version pinning, and breaking changes across version boundaries. | platform |
-| `integration-orchestration` | Integration & Orchestration | Identify CI/CD pipeline configuration, authentication handoffs between tools, and multi-tool orchestration workflows specific to the deployment. | platform |
-| `operational-failure-modes` | Operational Failure Modes | Identify production failure patterns, undocumented timeout behaviors, concurrency issues, environment-specific error behaviors, and debugging procedures. | platform |
+| Slug | Name | Agent | Default Focus | Types |
+|------|------|-------|---------------|-------|
+| `platform-behavioral-overrides` | Platform Behavioral Overrides | [`research-platform-behavioral-overrides.md`](../../agents/research-platform-behavioral-overrides.md) | Identify behavioral deviations from official documentation -- cases where following the docs produces wrong results. | platform |
+| `config-patterns` | Configuration Patterns | [`research-config-patterns.md`](../../agents/research-config-patterns.md) | Identify configuration combinations that fail in practice, version-dependent configuration requirements, adapter version pinning, and breaking changes across version boundaries. | platform |
+| `integration-orchestration` | Integration & Orchestration | [`research-integration-orchestration.md`](../../agents/research-integration-orchestration.md) | Identify CI/CD pipeline configuration, authentication handoffs between tools, and multi-tool orchestration workflows specific to the deployment. | platform |
+| `operational-failure-modes` | Operational Failure Modes | [`research-operational-failure-modes.md`](../../agents/research-operational-failure-modes.md) | Identify production failure patterns, undocumented timeout behaviors, concurrency issues, environment-specific error behaviors, and debugging procedures. | platform |
 
 ### Source-Specific Dimensions
 
-| Slug | Name | Default Focus | Types |
-|------|------|---------------|-------|
-| `extraction` | Data Extraction | Identify platform-specific extraction traps, CDC field selection, soft delete detection mechanisms, and parent-child change propagation gaps. | source |
-| `field-semantics` | Field Semantic Overrides | Identify fields whose standard meaning is overridden or misleading: managed package field overrides, independently editable field pairs, ISV field interactions. | source |
-| `lifecycle-and-state` | Record Lifecycle & State | Identify state machine behaviors, custom stage progressions, lifecycle boundary conditions, record type-specific lifecycle variations. | source |
-| `reconciliation` | Cross-System Reconciliation | Identify which numbers should agree between systems but don't, source-of-truth resolution for conflicting data, tolerance levels. | source |
+| Slug | Name | Agent | Default Focus | Types |
+|------|------|-------|---------------|-------|
+| `extraction` | Data Extraction | [`research-extraction.md`](../../agents/research-extraction.md) | Identify platform-specific extraction traps, CDC field selection, soft delete detection mechanisms, and parent-child change propagation gaps. | source |
+| `field-semantics` | Field Semantic Overrides | [`research-field-semantics.md`](../../agents/research-field-semantics.md) | Identify fields whose standard meaning is overridden or misleading: managed package field overrides, independently editable field pairs, ISV field interactions. | source |
+| `lifecycle-and-state` | Record Lifecycle & State | [`research-lifecycle-and-state.md`](../../agents/research-lifecycle-and-state.md) | Identify state machine behaviors, custom stage progressions, lifecycle boundary conditions, record type-specific lifecycle variations. | source |
+| `reconciliation` | Cross-System Reconciliation | [`research-reconciliation.md`](../../agents/research-reconciliation.md) | Identify which numbers should agree between systems but don't, source-of-truth resolution for conflicting data, tolerance levels. | source |
 
 ---
 

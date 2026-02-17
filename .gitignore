@@ -17,6 +17,9 @@ app/src-tauri/test-results/
 app/playwright-report/
 app/playwright-artifacts/
 
+# Research design working documents (kept locally, not committed)
+docs/design/research-design/
+
 # Evaluation results
 scripts/eval/results/
 
