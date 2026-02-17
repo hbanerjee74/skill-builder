@@ -8,7 +8,6 @@ on:
       - 'agents/**'
       - 'agent-sources/**'
       - 'references/**'
-      - 'scripts/build-agents.sh'
       - 'scripts/validate.sh'
       - 'skills/**'
       - '.claude-plugin/**'
@@ -19,7 +18,6 @@ on:
       - 'agents/**'
       - 'agent-sources/**'
       - 'references/**'
-      - 'scripts/build-agents.sh'
       - 'scripts/validate.sh'
       - 'skills/**'
       - '.claude-plugin/**'
@@ -30,9 +28,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Check generated agents are fresh
-        run: ./scripts/build-agents.sh --check
 
       - name: Structural validation
         run: ./scripts/validate.sh

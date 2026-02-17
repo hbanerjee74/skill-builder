@@ -107,17 +107,9 @@ assert_row_contains "db.rs → cargo filter"          "db.rs"                   
 echo ""
 echo -e "${CYAN}${BOLD}━━━ Plugin: Agent Prompts ━━━${RESET}"
 assert_in_manifest  "CLI Plugin section exists"       "CLI Plugin"
-assert_row_contains "agent files → plugin tag"        "agents/{type}/*.md"      "@agents"
-assert_row_contains "agent files → tier t1"           "agents/{type}/*.md"      "t1"
-assert_row_contains "agent files → tier t4"           "agents/{type}/*.md"      "t4"
-
-# ===== Plugin: Shared Agents =====
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ Plugin: Shared Agents ━━━${RESET}"
-assert_row_contains "shared agents → plugin tag"      "agents/shared/*.md"      "@agents"
-assert_row_contains "shared agents → tier t1"         "agents/shared/*.md"      "t1"
-assert_row_contains "shared agents → tier t4"         "agents/shared/*.md"      "t4"
+assert_row_contains "agent files → plugin tag"        "agents/*.md"             "@agents"
+assert_row_contains "agent files → tier t1"           "agents/*.md"             "t1"
+assert_row_contains "agent files → tier t4"           "agents/*.md"             "t4"
 
 # ===== Plugin: Coordinator =====
 

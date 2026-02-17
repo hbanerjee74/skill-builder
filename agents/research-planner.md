@@ -116,9 +116,10 @@ CHOSEN_DIMENSIONS:
 
 1. **Reason from the domain, not from type labels.** The skill type is a starting hint, not a boundary. Evaluate every dimension against what this domain actually needs.
 2. **Tailor focus lines to the domain.** "Identify sales pipeline metrics like coverage ratio, win rate, velocity, and where standard formulas diverge from company-specific definitions" is better than "Identify key business metrics."
-3. **Always include `entities`.** Every skill needs entity research.
-4. **Cover all 18 dimensions in the plan file.** Every dimension must appear in either Included or Excluded with a domain-specific reason.
-5. **Keep reasoning concise.** One sentence per dimension.
+3. **Always include `entities`.** Every skill needs entity research. Include domain-specific entity examples in the focus line (e.g., "Identify Salesforce entities — accounts, opportunities, contacts, custom objects — their relationships...")
+4. **Focus lines are the only input dimension agents receive.** Include enough domain context in each focus line for the agent to start researching immediately — entity examples, metric names, pattern types, platform specifics. The agent has no other source of domain context.
+5. **Cover all 18 dimensions in the plan file.** Every dimension must appear in either Included or Excluded with a domain-specific reason.
+6. **Keep reasoning concise.** One sentence per dimension.
 
 </instructions>
 

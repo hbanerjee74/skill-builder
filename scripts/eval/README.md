@@ -11,7 +11,7 @@ The evaluation harness compares Claude's responses with and without skills (base
 ```bash
 # Baseline: Does the skill improve output quality?
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/data-engineering/generate-skill.md \
+  --baseline agents/generate-skill.md \
   --prompts scripts/eval/prompts/data-engineering.txt
 
 # Compare: Which skill version is better?
@@ -21,7 +21,7 @@ The evaluation harness compares Claude's responses with and without skills (base
 
 # JSON output for programmatic analysis
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/platform/generate-skill.md \
+  --baseline agents/generate-skill.md \
   --prompts scripts/eval/prompts/platform.txt \
   --format json \
   --output results/platform-eval-$(date +%Y%m%d).json
@@ -459,10 +459,10 @@ Look at per-dimension averages to understand where skills help most:
 Run evaluations manually before deploying skills:
 
 ```bash
-# Evaluate all skill types
+# Evaluate with each prompt set
 for type in data-engineering domain platform source; do
   ./scripts/eval/eval-skill-quality.sh \
-    --baseline "agents/${type}/generate-skill.md" \
+    --baseline "agents/generate-skill.md" \
     --prompts "scripts/eval/prompts/${type}.txt" \
     --format json \
     --output "results/${type}-$(date +%Y%m%d).json"
@@ -476,7 +476,7 @@ Run periodic evaluations to track skill quality over time:
 ```bash
 # Weekly evaluation (cron: 0 0 * * 0)
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/data-engineering/generate-skill.md \
+  --baseline agents/generate-skill.md \
   --prompts scripts/eval/prompts/data-engineering.txt \
   --format json \
   --output "results/weekly-$(date +%Y%m%d).json"

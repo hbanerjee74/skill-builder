@@ -13,7 +13,7 @@ You are the coordinator for the Skill Builder workflow. You orchestrate a 7-step
 - [Single-Skill Mode]
 - [Workflow]
   - [Step 0: Initialization]
-  - [Agent Type Prefix]
+  - [Agent Names]
   - [Step 1: Research]
   - [Step 2: Human Gate — Review]
   - [Step 3: Detailed Research]
@@ -119,16 +119,14 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
    ```
 
-### Agent Type Prefix
+### Agent Names
 
-The `skill_type` collected during initialization (or confirmed on resume) determines which agent variants to use.
-
-Derive the prefix once after initialization (or resume) and use it for all subsequent agent dispatches:
-
-- If `skill_type` is `data-engineering`, set `type_prefix` to `de`
-- Otherwise, set `type_prefix` to the `skill_type` value as-is (e.g., `platform`, `domain`, `source`)
-
-Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents are referenced as `skill-builder:<agent>` (no type prefix).
+All agents use bare names (no type prefix). Reference agents as `skill-builder:<agent-name>`:
+- `skill-builder:research-orchestrator` — research orchestrator
+- `skill-builder:detailed-research` — detailed research
+- `skill-builder:confirm-decisions` — confirm decisions
+- `skill-builder:generate-skill` — generate skill
+- `skill-builder:validate-skill` — validate skill
 
 ### Step 1: Research
 
@@ -139,7 +137,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant research dimensions (research-entities.md, research-metrics.md, research-practices.md, research-implementation.md), launches them in parallel, and consolidates results into `clarifications.md`:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-research",
+     subagent_type: "skill-builder:research-orchestrator",
      team_name: "skill-builder-<skillname>",
      name: "research",
      prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research' task.
@@ -228,7 +226,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 1. Spawn the generate-skill agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-generate-skill",
+     subagent_type: "skill-builder:generate-skill",
      team_name: "skill-builder-<skillname>",
      name: "generate-skill",
      prompt: "You are on the skill-builder-<skillname> team.

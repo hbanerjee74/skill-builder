@@ -58,8 +58,6 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
-./scripts/build-agents.sh               # Regenerate 24 type-specific agent files from templates
-./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
 claude --plugin-dir .                    # Load plugin locally
@@ -112,8 +110,7 @@ Before writing any test code, read existing tests for the files you changed:
 - Unsure? → `./tests/run.sh` runs everything
 
 **Plugin quick rules:**
-- Changed a template (`agent-sources/templates/`) or type config (`agent-sources/types/`)? → `./scripts/build-agents.sh && ./scripts/test-plugin.sh t1`
-- Changed a shared agent (`agents/shared/`)? → `./scripts/test-plugin.sh t1`
+- Changed an agent (`agents/`)? → `./scripts/test-plugin.sh t1`
 - Changed the coordinator (`skills/generate-skill/SKILL.md`)? → `./scripts/test-plugin.sh t1 t2 t3`
 - Changed `agent-sources/workspace/CLAUDE.md` (agent instructions)? → `./scripts/test-plugin.sh t1`
 - Changed `.claude-plugin/plugin.json`? → `./scripts/test-plugin.sh t1 t2`
@@ -130,7 +127,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (28), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (25), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
@@ -161,7 +158,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 **Cost:** ~$0.50-1.00 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$3-5.
 
 **When to use:**
-- After changing focus lines, entity examples, or output examples in `agent-sources/types/` — run baseline mode to verify the skill type still beats no-skill
+- After changing agent prompts in `agents/` — run baseline mode to verify the skill type still beats no-skill
 - When iterating on prompt content — run compare mode with before/after versions to measure improvement
 - Use `--perspective all` for a comprehensive assessment including cost efficiency and production readiness
 
@@ -177,18 +174,12 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Parallel worktrees**: `npm run dev` auto-assigns a free port.
-- **Generated agents**: Files in `agents/{domain,platform,source,data-engineering}/` are generated — edit `agent-sources/templates/` or `agent-sources/types/` instead, then run `./scripts/build-agents.sh`. Shared agents in `agents/shared/` are edited directly.
 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/{type}/` -- 6 agents per type (4 types = 24 files), **generated** by `scripts/build-agents.sh`
-- `agent-sources/templates/` -- 6 phase templates (research-entities, research-metrics, research-practices, research-implementation, research, generate-skill)
-- `agent-sources/types/` -- 4 type configs with output examples (focus lines, entity examples)
-- `agents/shared/` -- 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
+- `agents/` -- 25 agents (18 research dimensions + planner + orchestrator + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill)
 - `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin embeds it in SKILL.md
-
-**Adding a new skill type:** Create `agent-sources/types/<name>/config.conf` + `output-examples/`, run `./scripts/build-agents.sh`.
 
 ## Skill Configuration
 

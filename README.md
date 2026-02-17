@@ -62,12 +62,8 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 
 ```
 skill-builder/
-├── agents/                  # Agent prompts (shared by both frontends)
-│   ├── {type}/              # 5 agents per skill type (4 types = 20 generated)
-│   └── shared/              # 4 shared sub-agents
-├── agent-sources/           # Build inputs for agent generation
-│   ├── templates/           # 5 phase templates (source of truth)
-│   ├── types/               # 4 type configs (focus, examples)
+├── agents/                  # 25 agent prompts (shared by both frontends)
+├── agent-sources/
 │   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
 ├── skills/generate-skill/SKILL.md    # Plugin coordinator (self-contained entry point)
 ├── app/                     # Desktop application

@@ -41,32 +41,13 @@ fi
 # ---------- T1.2 + T1.3: Agent files + frontmatter ----------
 echo "=== Agents ==="
 
-# Shared agents (no type prefix)
-SHARED_AGENTS="shared/consolidate-research:consolidate-research:opus shared/confirm-decisions:confirm-decisions:opus shared/validate-skill:validate-skill:sonnet shared/detailed-research:detailed-research:sonnet"
-
-# Type-specific agents: each type dir has 6 agents
-TYPE_DIRS="domain platform source data-engineering"
-TYPE_AGENTS="research-entities:sonnet research-metrics:sonnet research-practices:sonnet research-implementation:sonnet research:sonnet generate-skill:sonnet"
-
-# Build full list: path:expected_name:expected_model
-ALL_AGENTS="$SHARED_AGENTS"
-for dir in $TYPE_DIRS; do
-  case "$dir" in
-    data-engineering) prefix="de" ;;
-    *) prefix="$dir" ;;
-  esac
-  for entry in $TYPE_AGENTS; do
-    agent="${entry%%:*}"
-    model="${entry##*:}"
-    ALL_AGENTS="$ALL_AGENTS ${dir}/${agent}:${prefix}-${agent}:${model}"
-  done
-done
+# All 25 agents — flat in agents/ (name:expected_model)
+ALL_AGENTS="confirm-decisions:opus consolidate-research:opus detailed-research:sonnet generate-skill:sonnet research-business-rules:sonnet research-config-patterns:sonnet research-data-quality:sonnet research-entities:sonnet research-extraction:sonnet research-field-semantics:sonnet research-historization:sonnet research-integration-orchestration:sonnet research-layer-design:sonnet research-lifecycle-and-state:sonnet research-load-merge-patterns:sonnet research-metrics:sonnet research-modeling-patterns:sonnet research-operational-failure-modes:sonnet research-orchestrator:sonnet research-pattern-interactions:sonnet research-planner:opus research-platform-behavioral-overrides:sonnet research-reconciliation:sonnet research-segmentation-and-periods:sonnet validate-skill:sonnet"
 
 for entry in $ALL_AGENTS; do
-  path=$(echo "$entry" | cut -d: -f1)
-  expected_name=$(echo "$entry" | cut -d: -f2)
-  expected_model=$(echo "$entry" | cut -d: -f3)
-  file="agents/${path}.md"
+  name="${entry%%:*}"
+  expected_model="${entry##*:}"
+  file="agents/${name}.md"
 
   if [ ! -f "$file" ]; then
     fail "$file missing"
@@ -75,7 +56,7 @@ for entry in $ALL_AGENTS; do
 
   # Check frontmatter delimiters
   if ! head -1 "$file" | grep -q "^---"; then
-    fail "$path — no YAML frontmatter"
+    fail "$name — no YAML frontmatter"
     continue
   fi
 
@@ -87,34 +68,34 @@ for entry in $ALL_AGENTS; do
     if echo "$fm" | grep -q "^${field}:"; then
       :
     else
-      fail "$path — missing '$field' in frontmatter"
+      fail "$name — missing '$field' in frontmatter"
     fi
   done
 
-  # Check name matches expected prefix
+  # Check name matches
   actual_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
-  if [ "$actual_name" = "$expected_name" ]; then
-    pass "$path — name=$actual_name"
+  if [ "$actual_name" = "$name" ]; then
+    pass "$name — name=$actual_name"
   else
-    fail "$path — name=$actual_name, expected=$expected_name"
+    fail "$name — name=$actual_name, expected=$name"
   fi
 
   # Tools must be comma-separated string, not YAML list
   tools_line=$(echo "$fm" | grep "^tools:" || true)
   if [ -z "$tools_line" ]; then
-    fail "$path — missing 'tools' in frontmatter"
+    fail "$name — missing 'tools' in frontmatter"
   elif echo "$fm" | grep -q "^  - "; then
-    fail "$path — tools must be comma-separated string, not YAML list"
+    fail "$name — tools must be comma-separated string, not YAML list"
   else
-    pass "$path — frontmatter valid"
+    pass "$name — frontmatter valid"
   fi
 
   # Model check
   actual_model=$(echo "$fm" | grep "^model:" | sed 's/model: *//')
   if [ "$actual_model" = "$expected_model" ]; then
-    pass "$path — model=$actual_model"
+    pass "$name — model=$actual_model"
   else
-    fail "$path — model=$actual_model, expected=$expected_model"
+    fail "$name — model=$actual_model, expected=$expected_model"
   fi
 done
 
@@ -216,20 +197,15 @@ if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
     fail "agent-sources/workspace/CLAUDE.md missing progressive disclosure guidance"
   fi
 fi
-build_checked=0
-for dir in $TYPE_DIRS; do
-  if [ -f "agents/${dir}/generate-skill.md" ]; then
-    build_content=$(cat "agents/${dir}/generate-skill.md")
-    if echo "$build_content" | grep -q "references/"; then
-      pass "${dir}/generate-skill agent references references/ subfolder"
-    else
-      fail "${dir}/generate-skill agent missing references/ subfolder structure"
-    fi
-    build_checked=$((build_checked + 1))
+if [ -f "agents/generate-skill.md" ]; then
+  build_content=$(cat "agents/generate-skill.md")
+  if echo "$build_content" | grep -q "references/"; then
+    pass "generate-skill agent references references/ subfolder"
+  else
+    fail "generate-skill agent missing references/ subfolder structure"
   fi
-done
-if [ $build_checked -eq 0 ]; then
-  fail "no generate-skill agent files found in any type directory"
+else
+  fail "agents/generate-skill.md not found"
 fi
 
 # ---------- Summary ----------

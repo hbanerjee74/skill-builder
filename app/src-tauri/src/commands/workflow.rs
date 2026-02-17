@@ -369,52 +369,24 @@ pub fn update_skills_section(
     Ok(())
 }
 
-/// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
-/// For skill type directories: agents/{type}/{file}.md → .claude/agents/{type}-{file}.md
-/// For shared directory: agents/shared/{file}.md → .claude/agents/shared-{file}.md
+/// Copy agent .md files from flat agents/ directory to <workspace>/.claude/agents/.
+/// agents/{name}.md → .claude/agents/{name}.md
 fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
     std::fs::create_dir_all(&claude_agents_dir)
         .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
 
-    // Skill type directories
-    for skill_type in &["domain", "platform", "source", "data-engineering"] {
-        let type_dir = agents_src.join(skill_type);
-        if type_dir.is_dir() {
-            let entries = std::fs::read_dir(&type_dir)
-                .map_err(|e| format!("Failed to read {} dir: {}", skill_type, e))?;
-            for entry in entries {
-                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    let flattened_name = format!("{}-{}", skill_type, file_name);
-                    let dest = claude_agents_dir.join(&flattened_name);
-                    std::fs::copy(&path, &dest)
-                        .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
-                }
-            }
+    let entries = std::fs::read_dir(agents_src)
+        .map_err(|e| format!("Failed to read agents dir: {}", e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let dest = claude_agents_dir.join(entry.file_name());
+            std::fs::copy(&path, &dest)
+                .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
         }
     }
-
-    // Shared directory
-    let shared_dir = agents_src.join("shared");
-    if shared_dir.is_dir() {
-        let entries = std::fs::read_dir(&shared_dir)
-            .map_err(|e| format!("Failed to read shared dir: {}", e))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                let file_name = entry.file_name().to_string_lossy().to_string();
-                let flattened_name = format!("shared-{}", file_name);
-                let dest = claude_agents_dir.join(&flattened_name);
-                std::fs::copy(&path, &dest)
-                    .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -422,13 +394,13 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
 // agents tree to workspace root (only .claude/agents/ is used).
 
 /// Read the `name:` field from an agent file's YAML frontmatter.
-/// Agent files live at `{workspace}/.claude/agents/{skill_type}-{phase}.md`.
+/// Agent files live at `{workspace}/.claude/agents/{phase}.md`.
 /// Returns `None` if the file doesn't exist or has no `name:` field.
-fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &str) -> Option<String> {
+fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<String> {
     let agent_file = Path::new(workspace_path)
         .join(".claude")
         .join("agents")
-        .join(format!("{}-{}.md", skill_type, phase));
+        .join(format!("{}.md", phase));
     let content = std::fs::read_to_string(&agent_file).ok()?;
     if !content.starts_with("---") {
         return None;
@@ -448,21 +420,16 @@ fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &s
     None
 }
 
-/// Derive agent name from skill type and prompt template.
+/// Derive agent name from prompt template.
 /// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
-/// this to register the agent). Falls back to `{skill_type}-{phase}` if the
+/// this to register the agent). Falls back to the phase name if the
 /// file is missing or has no name field.
-fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &str) -> String {
+fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &str) -> String {
     let phase = prompt_template.trim_end_matches(".md");
-    // Try type-specific first
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, skill_type, phase) {
+    if let Some(name) = read_agent_frontmatter_name(workspace_path, phase) {
         return name;
     }
-    // Fallback to shared
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, "shared", phase) {
-        return name;
-    }
-    format!("{}-{}", skill_type, phase)
+    phase.to_string()
 }
 
 fn build_prompt(
@@ -1464,12 +1431,9 @@ mod tests {
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
         assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
-        // Verify subdirectories exist
-        assert!(agents_dir.join("domain").is_dir(), "agents/domain/ should exist");
-        assert!(agents_dir.join("platform").is_dir(), "agents/platform/ should exist");
-        assert!(agents_dir.join("source").is_dir(), "agents/source/ should exist");
-        assert!(agents_dir.join("data-engineering").is_dir(), "agents/data-engineering/ should exist");
-        assert!(agents_dir.join("shared").is_dir(), "agents/shared/ should exist");
+        // Verify flat agent files exist (no subdirectories)
+        assert!(agents_dir.join("research-entities.md").exists(), "agents/research-entities.md should exist");
+        assert!(agents_dir.join("consolidate-research.md").exists(), "agents/consolidate-research.md should exist");
     }
 
     #[test]
@@ -1650,16 +1614,16 @@ mod tests {
 
     #[test]
     fn test_derive_agent_name_fallback() {
-        // Without deployed agent files, falls back to {skill_type}-{phase}
+        // Without deployed agent files, falls back to phase name
         let tmp = tempfile::tempdir().unwrap();
         let ws = tmp.path().to_str().unwrap();
         assert_eq!(
-            derive_agent_name(ws, "domain", "research.md"),
-            "domain-research"
+            derive_agent_name(ws, "domain", "research-orchestrator.md"),
+            "research-orchestrator"
         );
         assert_eq!(
             derive_agent_name(ws, "platform", "generate-skill.md"),
-            "platform-generate-skill"
+            "generate-skill"
         );
     }
 
@@ -1670,15 +1634,14 @@ mod tests {
         let agents_dir = tmp.path().join(".claude").join("agents");
         std::fs::create_dir_all(&agents_dir).unwrap();
 
-        // Write an agent file with a frontmatter name that differs from the filename
         std::fs::write(
-            agents_dir.join("data-engineering-research.md"),
-            "---\nname: de-research\nmodel: sonnet\n---\n# Agent\n",
+            agents_dir.join("research-orchestrator.md"),
+            "---\nname: research-orchestrator\nmodel: sonnet\n---\n# Agent\n",
         ).unwrap();
 
         assert_eq!(
-            derive_agent_name(ws, "data-engineering", "research.md"),
-            "de-research"
+            derive_agent_name(ws, "data-engineering", "research-orchestrator.md"),
+            "research-orchestrator"
         );
     }
 
@@ -1687,30 +1650,21 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
 
-        // Create skill type directories with agent files
-        std::fs::create_dir_all(src.path().join("domain")).unwrap();
-        std::fs::create_dir_all(src.path().join("platform")).unwrap();
-        std::fs::create_dir_all(src.path().join("shared")).unwrap();
-
+        // Create flat agent files
         std::fs::write(
-            src.path().join("domain").join("research-entities.md"),
-            "# Domain Research",
+            src.path().join("research-entities.md"),
+            "# Research Entities",
         )
         .unwrap();
         std::fs::write(
-            src.path().join("platform").join("build.md"),
-            "# Platform Build",
-        )
-        .unwrap();
-        std::fs::write(
-            src.path().join("shared").join("consolidate-research.md"),
-            "# Shared Consolidate Research",
+            src.path().join("consolidate-research.md"),
+            "# Consolidate Research",
         )
         .unwrap();
 
         // Non-.md file should be ignored
         std::fs::write(
-            src.path().join("domain").join("README.txt"),
+            src.path().join("README.txt"),
             "ignore me",
         )
         .unwrap();
@@ -1721,20 +1675,19 @@ mod tests {
         let claude_agents_dir = workspace.path().join(".claude").join("agents");
         assert!(claude_agents_dir.is_dir());
 
-        // Verify flattened names
-        assert!(claude_agents_dir.join("domain-research-entities.md").exists());
-        assert!(claude_agents_dir.join("platform-build.md").exists());
-        assert!(claude_agents_dir.join("shared-consolidate-research.md").exists());
+        // Verify flat names (no prefix)
+        assert!(claude_agents_dir.join("research-entities.md").exists());
+        assert!(claude_agents_dir.join("consolidate-research.md").exists());
 
         // Non-.md file should NOT be copied
-        assert!(!claude_agents_dir.join("domain-README.txt").exists());
+        assert!(!claude_agents_dir.join("README.txt").exists());
 
         // Verify content
         let content = std::fs::read_to_string(
-            claude_agents_dir.join("domain-research-entities.md"),
+            claude_agents_dir.join("research-entities.md"),
         )
         .unwrap();
-        assert_eq!(content, "# Domain Research");
+        assert_eq!(content, "# Research Entities");
     }
 
     // --- Task 5: create_skill_zip excludes context/ ---
