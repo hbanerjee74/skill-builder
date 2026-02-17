@@ -58,15 +58,19 @@ The orchestrator passes you:
 
 **Goal**: Decide which dimensions to research for this skill, tailor focus lines to the domain, write the plan file, and return your decisions.
 
+### What Skills Are For
+
+Skills are loaded into Claude Code to help engineers build silver and gold tables for data engineering use cases. Claude already knows standard methodologies (Kimball, SCD types, star schemas, standard object models) from its training data. A skill must encode the **delta** -- the customer-specific and domain-specific knowledge that Claude gets wrong or misses when working without the skill.
+
+For every dimension you evaluate, ask: "If an engineer uses Claude Code to build silver/gold tables for this domain without this knowledge, what will Claude get wrong?" If the answer is "nothing significant," exclude the dimension. If Claude would produce silently wrong outputs -- wrong formulas, wrong entity classifications, wrong extraction patterns -- include it.
+
 ### Step 1: Reason About Every Dimension
 
 Evaluate all 18 dimensions against this specific domain. Do not shortcut based on the skill type -- consider each dimension on its own merits:
 
 1. **Start with the obvious fits.** Some dimensions clearly apply to this domain. Include them with tailored focus lines.
 2. **Then scan every remaining dimension.** For each one, ask: "Does this domain have aspects that this dimension would surface useful knowledge about?" A data-engineering skill about CDC pipelines might benefit from `extraction` (source traps affect pipeline design). A source skill for Salesforce might benefit from `business-rules` (CPQ business logic affects field semantics). Include any that add genuine value.
-3. **Exclude with clear reasoning.** For each dimension you exclude, state specifically why it doesn't apply to this domain -- not just "wrong type." Say why the knowledge this dimension surfaces isn't relevant.
-
-The goal is to surface the **delta** -- knowledge gaps where Claude's parametric knowledge falls short for this specific domain.
+3. **Exclude with clear reasoning.** For each dimension you exclude, state specifically why it doesn't apply to this domain -- not just "wrong type." Say what Claude would already get right without this dimension's research.
 
 ### Step 2: Write the Plan File
 
@@ -120,8 +124,8 @@ CHOSEN_DIMENSIONS:
 
 ## Success Criteria
 - Plan file covers all 18 dimensions with clear include/exclude reasoning
-- Exclusion reasons are domain-specific, not just "wrong skill type"
-- Chosen dimensions include obvious fits plus any cross-type dimensions that add genuine value
+- Exclusion reasons explain what Claude already handles correctly without this dimension
+- Chosen dimensions include obvious fits plus any cross-type dimensions where Claude would produce wrong silver/gold tables without the knowledge
 - Focus lines are tailored to the domain, not generic copies of defaults
 - Return text uses the exact `CHOSEN_DIMENSIONS:` format so the orchestrator can parse it
 - `context/research-plan.md` is written for auditability
