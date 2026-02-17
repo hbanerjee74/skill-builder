@@ -54,6 +54,7 @@ fn list_skills_inner(
                 author_login: run.author_login,
                 author_avatar: run.author_avatar,
                 display_name: run.display_name,
+                intake_json: run.intake_json,
             }
         })
         .collect();

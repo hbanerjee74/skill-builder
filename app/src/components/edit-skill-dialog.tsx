@@ -13,10 +13,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import type { SkillSummary } from "@/lib/types"
-import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
+import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
 interface EditSkillDialogProps {
   skill: SkillSummary | null
@@ -24,6 +25,20 @@ interface EditSkillDialogProps {
   onOpenChange: (open: boolean) => void
   onSaved: () => void
   availableTags: string[]
+}
+
+function parseIntake(json: string | null | undefined): { audience: string; challenges: string; scope: string } {
+  if (!json) return { audience: "", challenges: "", scope: "" }
+  try {
+    const obj = JSON.parse(json)
+    return {
+      audience: obj.audience || "",
+      challenges: obj.challenges || "",
+      scope: obj.scope || "",
+    }
+  } catch {
+    return { audience: "", challenges: "", scope: "" }
+  }
 }
 
 export default function EditSkillDialog({
@@ -36,6 +51,9 @@ export default function EditSkillDialog({
   const [displayName, setDisplayName] = useState("")
   const [skillType, setSkillType] = useState("")
   const [tags, setTags] = useState<string[]>([])
+  const [audience, setAudience] = useState("")
+  const [challenges, setChallenges] = useState("")
+  const [scope, setScope] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -43,24 +61,38 @@ export default function EditSkillDialog({
       setDisplayName(skill.display_name || "")
       setSkillType(skill.skill_type || "domain")
       setTags([...skill.tags])
+      const intake = parseIntake(skill.intake_json)
+      setAudience(intake.audience)
+      setChallenges(intake.challenges)
+      setScope(intake.scope)
     } else if (!open) {
       setDisplayName("")
       setSkillType("")
       setTags([])
+      setAudience("")
+      setChallenges("")
+      setScope("")
       setSaving(false)
     }
   }, [open, skill])
+
+  const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
   const handleSave = async () => {
     if (!skill) return
     setSaving(true)
     try {
+      const intakeData: Record<string, string> = {}
+      if (audience.trim()) intakeData.audience = audience.trim()
+      if (challenges.trim()) intakeData.challenges = challenges.trim()
+      if (scope.trim()) intakeData.scope = scope.trim()
+
       await invoke("update_skill_metadata", {
         skillName: skill.name,
         displayName: displayName.trim() || null,
         skillType: skillType || null,
         tags,
-        intakeJson: null, // intake not editable from here yet
+        intakeJson: Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
       })
       toast.success("Skill updated")
       onOpenChange(false)
@@ -128,6 +160,42 @@ export default function EditSkillDialog({
               suggestions={availableTags}
               disabled={saving}
             />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-audience">Target Audience</Label>
+            <Textarea
+              id="edit-audience"
+              placeholder={placeholders.audience}
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              disabled={saving}
+              rows={2}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-challenges">Key Challenges</Label>
+            <Textarea
+              id="edit-challenges"
+              placeholder={placeholders.challenges}
+              value={challenges}
+              onChange={(e) => setChallenges(e.target.value)}
+              disabled={saving}
+              rows={2}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-scope">Scope</Label>
+            <Textarea
+              id="edit-scope"
+              placeholder={placeholders.scope}
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+              disabled={saving}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">
+              Optional — helps agents focus research on what matters most
+            </p>
           </div>
         </div>
         <DialogFooter>

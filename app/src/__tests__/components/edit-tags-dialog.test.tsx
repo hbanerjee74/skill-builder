@@ -23,6 +23,7 @@ const sampleSkill: SkillSummary = {
   author_login: null,
   author_avatar: null,
   display_name: null,
+  intake_json: null,
 };
 
 describe("EditSkillDialog", () => {
@@ -231,5 +232,76 @@ describe("EditSkillDialog", () => {
       />
     );
     expect(screen.getByLabelText("Display Name")).toHaveValue("Sales Pipeline Analytics");
+  });
+
+  it("shows intake textarea fields", () => {
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scope")).toBeInTheDocument();
+  });
+
+  it("pre-fills intake fields from intake_json", () => {
+    const skillWithIntake: SkillSummary = {
+      ...sampleSkill,
+      intake_json: JSON.stringify({
+        audience: "Revenue analysts",
+        challenges: "ASC 606 issues",
+        scope: "B2B SaaS only",
+      }),
+    };
+    render(
+      <EditSkillDialog
+        skill={skillWithIntake}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    expect(screen.getByLabelText("Target Audience")).toHaveValue("Revenue analysts");
+    expect(screen.getByLabelText("Key Challenges")).toHaveValue("ASC 606 issues");
+    expect(screen.getByLabelText("Scope")).toHaveValue("B2B SaaS only");
+  });
+
+  it("sends intake_json on save when intake fields are filled", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    mockInvoke.mockResolvedValue(undefined);
+
+    const skillWithIntake: SkillSummary = {
+      ...sampleSkill,
+      intake_json: JSON.stringify({ audience: "Analysts" }),
+    };
+
+    render(
+      <EditSkillDialog
+        skill={skillWithIntake}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={onSaved}
+        availableTags={[]}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: /Save/i }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
+        skillName: "sales-pipeline",
+        displayName: null,
+        skillType: "domain",
+        tags: ["analytics", "crm"],
+        intakeJson: JSON.stringify({ audience: "Analysts" }),
+      });
+    });
   });
 });

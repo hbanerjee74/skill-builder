@@ -129,6 +129,8 @@ pub struct SkillSummary {
     pub author_avatar: Option<String>,
     #[serde(default)]
     pub display_name: Option<String>,
+    #[serde(default)]
+    pub intake_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
