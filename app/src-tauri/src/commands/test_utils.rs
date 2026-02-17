@@ -29,7 +29,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             PRIMARY KEY (skill_name, step_id)
         );
         CREATE TABLE IF NOT EXISTS agent_runs (
-            agent_id TEXT PRIMARY KEY,
+            agent_id TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             step_id INTEGER NOT NULL,
             model TEXT NOT NULL,
@@ -39,7 +39,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             total_cost REAL,
             session_id TEXT,
             started_at TEXT NOT NULL DEFAULT (datetime('now')),
-            completed_at TEXT
+            completed_at TEXT,
+            PRIMARY KEY (agent_id, model)
         );
         CREATE TABLE IF NOT EXISTS workflow_artifacts (
             skill_name TEXT NOT NULL,

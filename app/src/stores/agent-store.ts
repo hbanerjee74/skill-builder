@@ -103,6 +103,15 @@ type StopReason =
   | "refusal"
   | "model_context_window_exceeded";
 
+export interface ModelUsageBreakdown {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+}
+
 interface AgentRun {
   agentId: string;
   model: string;
@@ -123,6 +132,7 @@ interface AgentRun {
   stopReason?: StopReason;
   numTurns?: number;
   durationApiMs?: number | null;
+  modelUsageBreakdown?: ModelUsageBreakdown[];
 }
 
 interface AgentState {
@@ -247,19 +257,8 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist agent run to SQLite (fire-and-forget)
     if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
       const workflow = useWorkflowStore.getState();
-
-      // Extract cache tokens from the last assistant message's raw usage
-      let cacheRead = 0;
-      let cacheWrite = 0;
-      const assistantMessages = runBeforeUpdate.messages.filter((m) => m.type === "assistant");
-      if (assistantMessages.length > 0) {
-        const lastMsg = assistantMessages[assistantMessages.length - 1];
-        const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
-          | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-          | undefined;
-        cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
-        cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
-      }
+      const status = success ? "completed" : "error";
+      const durationMs = Date.now() - runBeforeUpdate.startTime;
 
       // Count tool uses across all assistant messages
       let toolUseCount = 0;
@@ -274,18 +273,12 @@ export const useAgentStore = create<AgentState>((set) => ({
         }
       }
 
-      persistAgentRun({
+      const sharedParams = {
         agentId,
         skillName: workflow.skillName ?? "unknown",
         stepId: workflow.currentStep,
-        model: runBeforeUpdate.model,
-        status: success ? "completed" : "error",
-        inputTokens: runBeforeUpdate.tokenUsage.input,
-        outputTokens: runBeforeUpdate.tokenUsage.output,
-        cacheReadTokens: cacheRead,
-        cacheWriteTokens: cacheWrite,
-        totalCost: runBeforeUpdate.totalCost,
-        durationMs: Date.now() - runBeforeUpdate.startTime,
+        status,
+        durationMs,
         numTurns: runBeforeUpdate.numTurns ?? 0,
         stopReason: runBeforeUpdate.stopReason ?? null,
         durationApiMs: runBeforeUpdate.durationApiMs ?? null,
@@ -293,7 +286,47 @@ export const useAgentStore = create<AgentState>((set) => ({
         compactionCount: runBeforeUpdate.compactionEvents.length,
         sessionId: runBeforeUpdate.sessionId,
         workflowSessionId: workflow.workflowSessionId ?? undefined,
-      }).catch((err) => console.error("Failed to persist agent run:", err));
+      };
+
+      const breakdown = runBeforeUpdate.modelUsageBreakdown;
+      if (breakdown && breakdown.length > 0) {
+        // Persist one row per model from the SDK's per-model breakdown
+        for (const mu of breakdown) {
+          persistAgentRun({
+            ...sharedParams,
+            model: mu.model,
+            inputTokens: mu.inputTokens,
+            outputTokens: mu.outputTokens,
+            cacheReadTokens: mu.cacheReadTokens,
+            cacheWriteTokens: mu.cacheWriteTokens,
+            totalCost: mu.cost,
+          }).catch((err) => console.error("Failed to persist agent run:", err));
+        }
+      } else {
+        // Fallback: single-model persistence using aggregate totals
+        // Extract cache tokens from the last assistant message's raw usage
+        let cacheRead = 0;
+        let cacheWrite = 0;
+        const assistantMessages = runBeforeUpdate.messages.filter((m) => m.type === "assistant");
+        if (assistantMessages.length > 0) {
+          const lastMsg = assistantMessages[assistantMessages.length - 1];
+          const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
+            | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+            | undefined;
+          cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
+          cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
+        }
+
+        persistAgentRun({
+          ...sharedParams,
+          model: runBeforeUpdate.model,
+          inputTokens: runBeforeUpdate.tokenUsage.input,
+          outputTokens: runBeforeUpdate.tokenUsage.output,
+          cacheReadTokens: cacheRead,
+          cacheWriteTokens: cacheWrite,
+          totalCost: runBeforeUpdate.totalCost,
+        }).catch((err) => console.error("Failed to persist agent run:", err));
+      }
     }
   },
 
@@ -382,6 +415,7 @@ export const useAgentStore = create<AgentState>((set) => ({
         let stopReason = run.stopReason;
         let numTurns = run.numTurns;
         let durationApiMs = run.durationApiMs;
+        let modelUsageBreakdown = run.modelUsageBreakdown;
 
         if (message.type === "result") {
           const usage = raw.usage as
@@ -397,16 +431,34 @@ export const useAgentStore = create<AgentState>((set) => ({
           if (cost !== undefined) {
             totalCost = cost;
           }
-          // Extract contextWindow from modelUsage in result messages
+          // Extract contextWindow and per-model usage breakdown from modelUsage
           const modelUsage = raw.modelUsage as
-            | Record<string, { contextWindow?: number }>
+            | Record<string, {
+                inputTokens?: number;
+                outputTokens?: number;
+                cacheReadInputTokens?: number;
+                cacheCreationInputTokens?: number;
+                cost?: number;
+                contextWindow?: number;
+              }>
             | undefined;
           if (modelUsage) {
-            for (const mu of Object.values(modelUsage)) {
+            const breakdown: ModelUsageBreakdown[] = [];
+            for (const [modelId, mu] of Object.entries(modelUsage)) {
               if (mu.contextWindow && mu.contextWindow > 0) {
                 contextWindow = Math.max(contextWindow, mu.contextWindow);
-                break;
               }
+              breakdown.push({
+                model: modelId,
+                inputTokens: mu.inputTokens ?? 0,
+                outputTokens: mu.outputTokens ?? 0,
+                cacheReadTokens: mu.cacheReadInputTokens ?? 0,
+                cacheWriteTokens: mu.cacheCreationInputTokens ?? 0,
+                cost: mu.cost ?? 0,
+              });
+            }
+            if (breakdown.length > 0) {
+              modelUsageBreakdown = breakdown;
             }
           }
           // Extract result subtype, errors, and stop_reason
@@ -514,6 +566,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           stopReason,
           numTurns,
           durationApiMs,
+          modelUsageBreakdown,
         };
       }
 
