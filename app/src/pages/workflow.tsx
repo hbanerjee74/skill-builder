@@ -614,6 +614,7 @@ export default function WorkflowPage() {
         return (
           <WorkflowStepComplete
             stepName={currentStepDef.name}
+            stepId={currentStep}
             outputFiles={stepConfig.outputFiles}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
@@ -628,6 +629,7 @@ export default function WorkflowPage() {
       return (
         <WorkflowStepComplete
           stepName={currentStepDef.name}
+          stepId={currentStep}
           outputFiles={[]}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}

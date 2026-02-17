@@ -111,6 +111,11 @@ export interface AgentRunRecord {
   cache_write_tokens: number
   total_cost: number
   duration_ms: number
+  num_turns: number
+  stop_reason: string | null
+  duration_api_ms: number | null
+  tool_use_count: number
+  compaction_count: number
   session_id: string | null
   started_at: string
   completed_at: string | null
