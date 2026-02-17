@@ -1091,13 +1091,11 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     setupHumanReviewStep("# Test Content");
     render(<WorkflowPage />);
 
+    // Wait for editor to appear AND editorContent to sync from reviewContent
     await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
+      const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+      expect(textarea.value).toBe("# Test Content");
     });
-
-    // The textarea should have the loaded content
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    expect(textarea.value).toBe("# Test Content");
   });
 
   it("Save button is disabled when there are no unsaved changes", async () => {
@@ -1252,15 +1250,15 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       screen.getByText("Save & Continue").click();
     });
 
-    // writeFile should be called twice: once from handleSave, once from handleReviewContinue
+    // writeFile should be called exactly once (from handleSave only — handleAdvanceStep skips write)
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
     // The save handler writes the editor content
-    const firstSaveCall = vi.mocked(writeFile).mock.calls[0];
-    expect(firstSaveCall[0]).toBe("/test/workspace/test-skill/context/clarifications.md");
-    expect(firstSaveCall[1]).toBe("# Save and continue");
+    const saveCall = vi.mocked(writeFile).mock.calls[0];
+    expect(saveCall[0]).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(saveCall[1]).toBe("# Save and continue");
 
     // Step should be completed and advanced
     await waitFor(() => {
@@ -1305,8 +1303,10 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       screen.getByText("Discard & Continue").click();
     });
 
-    // handleReviewContinue saves editorContent (which is the edited version)
-    // but the important thing is the step completes
+    // Discard path uses handleAdvanceStep — no writeFile call
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+
+    // Step should be completed and advanced
     await waitFor(() => {
       expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
       expect(useWorkflowStore.getState().currentStep).toBe(2);

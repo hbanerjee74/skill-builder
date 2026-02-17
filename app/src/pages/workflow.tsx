@@ -193,6 +193,9 @@ export default function WorkflowPage() {
     };
   }, [skillName]);
 
+  const stepConfig = STEP_CONFIGS[currentStep];
+  const isHumanReviewStep = stepConfig?.type === "human";
+
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
@@ -203,19 +206,23 @@ export default function WorkflowPage() {
   // Markdown editor state
   const [editorContent, setEditorContent] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
-  const hasUnsavedChanges = reviewContent !== null && editorContent !== reviewContent;
+  // Explicit dirty flag — set on user edits, cleared on save/reload/load
+  const [editorDirty, setEditorDirty] = useState(false);
+  const hasUnsavedChanges = editorDirty;
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
-  // Ref for navigation guard (shouldBlockFn runs outside React render cycle)
+  // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
+  // Scoped to human review steps so it doesn't block on non-review steps.
   const hasUnsavedChangesRef = useRef(false);
   useEffect(() => {
-    hasUnsavedChangesRef.current = hasUnsavedChanges;
-  }, [hasUnsavedChanges]);
+    hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
+  }, [isHumanReviewStep, hasUnsavedChanges]);
 
-  // Sync editorContent when reviewContent loads or reloads
+  // Sync editorContent when reviewContent loads or reloads (clears dirty flag)
   useEffect(() => {
     if (reviewContent !== null) {
       setEditorContent(reviewContent);
+      setEditorDirty(false);
     }
   }, [reviewContent]);
 
@@ -230,9 +237,6 @@ export default function WorkflowPage() {
 
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
-
-  const stepConfig = STEP_CONFIGS[currentStep];
-  const isHumanReviewStep = stepConfig?.type === "human";
 
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
@@ -306,6 +310,7 @@ export default function WorkflowPage() {
   useEffect(() => {
     setHasPartialOutput(false);
     setErrorHasArtifacts(false);
+    hasUnsavedChangesRef.current = false;
   }, [currentStep]);
 
   // Consolidated step-artifact detection: partial output + error artifacts.
@@ -536,12 +541,20 @@ export default function WorkflowPage() {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (config && reviewContent !== null && workspacePath) {
       try {
-        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, editorContent);
-        setReviewContent(editorContent);
-      } catch {
-        // best-effort
+        const content = editorDirty ? editorContent : (reviewContent ?? "");
+        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, content);
+        setReviewContent(content);
+      } catch (err) {
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+        return;
       }
     }
+    updateStepStatus(currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  /** Advance without writing — used after handleSave() already persisted. */
+  const handleAdvanceStep = () => {
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
@@ -677,7 +690,7 @@ export default function WorkflowPage() {
             <div className="min-h-0 flex-1" data-color-mode="dark">
               <MDEditor
                 value={editorContent}
-                onChange={(val) => setEditorContent(val ?? "")}
+                onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
                 height="100%"
                 visibleDragbar={false}
               />
@@ -978,14 +991,14 @@ export default function WorkflowPage() {
               </Button>
               <Button variant="outline" onClick={() => {
                 setShowUnsavedDialog(false);
-                handleReviewContinue();
+                handleAdvanceStep();
               }}>
                 Discard & Continue
               </Button>
               <Button onClick={async () => {
                 setShowUnsavedDialog(false);
                 await handleSave();
-                handleReviewContinue();
+                handleAdvanceStep();
               }}>
                 Save & Continue
               </Button>
