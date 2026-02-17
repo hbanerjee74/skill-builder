@@ -31,6 +31,14 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 
 <instructions>
 
+### Scope Recommendation Guard
+
+Before doing any research, read `clarifications.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+
+1. Do NOT spawn any sub-agents
+2. Do NOT modify `clarifications.md`
+3. Return immediately with: "Scope recommendation detected. Detailed research skipped — no refinements needed."
+
 ## Phase 1: Analyze First-Round Answers
 
 Read `clarifications.md` from the context directory. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:

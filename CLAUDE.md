@@ -8,7 +8,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 ## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
-1. **Research** -- research orchestrator spawns opus planner to select relevant dimensions from 18 available research agents, launches selected agents in parallel, opus consolidation produces `clarifications.md` and `research-plan.md`
+1. **Research** -- research orchestrator uses opus planner to select relevant research dimensions, launches all in parallel, opus consolidation produces `clarifications.md`. If planner selects more dimensions than the configured threshold, spawns scope-advisor instead (produces scope recommendation in `clarifications.md`, downstream steps no-op)
 2. **Review** -- user answers `clarifications.md`
 3. **Detailed Research** -- detailed-research orchestrator reads answered `clarifications.md`, spawns per-section sub-agents, consolidation inserts `#### Refinements` subsections back into `clarifications.md`
 4. **Review** -- user answers the refinement questions in `clarifications.md`
@@ -127,7 +127,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (25), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (26), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
@@ -178,7 +178,7 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/` -- 25 agents (18 research dimensions + planner + orchestrator + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill)
+- `agents/` -- 26 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill)
 - `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin embeds it in SKILL.md
 
 ## Skill Configuration

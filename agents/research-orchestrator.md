@@ -51,6 +51,10 @@ There are 18 research dimension agents, each named `research-{slug}`:
 | 17 | Lifecycle & State Research | `lifecycle-and-state` |
 | 18 | Reconciliation Research | `reconciliation` |
 
+## Scope Advisor
+
+When the planner selects more dimensions than the configured threshold (passed as "maximum research dimensions" in the coordinator prompt), the orchestrator skips dimension agents entirely and spawns a **scope-advisor** agent instead. This writes a "Scope Recommendation" section into `clarifications.md` with suggestions for narrower skills.
+
 </context>
 
 ---
@@ -73,6 +77,26 @@ The planner evaluates every dimension against this specific domain, writes `cont
 - `entities` (with default focus)
 - `metrics` (with default focus)
 - `data-quality` (with default focus)
+
+## Phase 0.5: Scope Check
+
+After the planner returns, count the number of chosen dimensions. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
+
+**If dimensions_chosen > max_dimensions:**
+
+1. **Skip Phase 1 and Phase 2 entirely.** Do not launch any dimension agents or consolidation.
+2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Pass it:
+   - The **domain name**
+   - The **skill name**
+   - The **skill type**
+   - The **context directory** path
+   - The full text of `research-plan.md` (the planner's output)
+   - The **dimension threshold** (max_dimensions from the coordinator prompt)
+   - The **number of dimensions chosen** by the planner
+3. The scope-advisor writes `clarifications.md` with a `## Scope Recommendation` section.
+4. **Return immediately** after the scope-advisor completes. Do not proceed to Phase 1 or Phase 2.
+
+**If dimensions_chosen <= max_dimensions:** Proceed to Phase 1 as normal.
 
 ## Phase 1: Parallel Research
 
@@ -109,3 +133,4 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 - Each launched agent returns 5+ clarification questions as text
 - Consolidation produces cohesive `clarifications.md` with logical section flow
 - Cross-cutting questions that span multiple research dimensions are identified and grouped
+- When dimensions exceed threshold, scope-advisor is spawned and no dimension agents run

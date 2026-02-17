@@ -41,6 +41,21 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
 
 <instructions>
 
+### Scope Recommendation Guard
+
+Before running any validation, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+
+1. Write a minimal validation log to the context directory:
+   ```
+   ---
+   scope_recommendation: true
+   ---
+   ## Validation Skipped
+
+   Scope recommendation is active. No skill was generated, so no validation was performed.
+   ```
+2. Return immediately. Do NOT run any validation or test generation.
+
 ## Phase 1: Inventory and Prepare
 
 1. Read `decisions.md` and `clarifications.md` from the context directory.

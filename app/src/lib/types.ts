@@ -30,6 +30,7 @@ export interface AppSettings {
   github_user_email: string | null
   remote_repo_owner: string | null
   remote_repo_name: string | null
+  max_dimensions: number
 }
 
 export interface DeviceFlowResponse {

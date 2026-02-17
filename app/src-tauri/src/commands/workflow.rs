@@ -440,6 +440,7 @@ fn build_prompt(
     skill_type: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
+    max_dimensions: u32,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
@@ -480,6 +481,8 @@ fn build_prompt(
         }
     }
 
+    prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
+
     prompt
 }
 
@@ -507,6 +510,7 @@ const VALID_PHASES: &[&str] = &[
     "research-planner",
     "confirm-decisions",
     "generate-skill",
+    "scope-advisor",
     "validate-skill",
     "detailed-research",
     "consolidate-research",
@@ -635,6 +639,7 @@ struct WorkflowSettings {
     skill_type: String,
     author_login: Option<String>,
     created_at: Option<String>,
+    max_dimensions: u32,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -653,6 +658,7 @@ fn read_workflow_settings(
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
     let extended_context = settings.extended_context;
     let extended_thinking = settings.extended_thinking;
+    let max_dimensions = settings.max_dimensions;
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
@@ -677,6 +683,7 @@ fn read_workflow_settings(
         skill_type,
         author_login,
         created_at,
+        max_dimensions,
     })
 }
 
@@ -708,6 +715,7 @@ async fn run_workflow_step_inner(
         &settings.skill_type,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
+        settings.max_dimensions,
     );
 
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
@@ -1233,6 +1241,7 @@ mod tests {
             "domain",
             None,
             None,
+            5,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1255,6 +1264,7 @@ mod tests {
             "domain",
             None,
             None,
+            5,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1277,6 +1287,7 @@ mod tests {
             "domain",
             None,
             None,
+            5,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1295,6 +1306,7 @@ mod tests {
             "platform",
             None,
             None,
+            5,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1313,6 +1325,7 @@ mod tests {
             "domain",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
+            5,
         );
         assert!(prompt.contains("The author of this skill is: octocat."));
         assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -1329,6 +1342,7 @@ mod tests {
             "domain",
             None,
             None,
+            5,
         );
         assert!(!prompt.contains("The author of this skill is:"));
         assert!(!prompt.contains("The skill was created on:"));

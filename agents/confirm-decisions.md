@@ -31,6 +31,21 @@ You analyze the product manager's responses to clarification questions. You find
 
 <instructions>
 
+### Scope Recommendation Guard
+
+Before analyzing any clarifications, read `clarifications.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+
+1. Write a minimal `decisions.md` to the context directory with this content:
+   ```
+   ---
+   scope_recommendation: true
+   ---
+   ## Scope Recommendation Active
+
+   The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
+   ```
+2. Return immediately. Do NOT analyze clarifications or produce normal decisions.
+
 ## Instructions
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.

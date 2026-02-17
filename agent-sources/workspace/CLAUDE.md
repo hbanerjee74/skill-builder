@@ -83,6 +83,15 @@ Rationale...
 
 Each refinement question ID uses the parent question number as a prefix (e.g., R3.1 is the first refinement under Q3). Refinements follow the same `**Answer**:` convention -- blank line after for the user to fill in.
 
+### Scope Recommendation (clarifications.md -- scope mode)
+
+When the research planner selects more dimensions than the configured threshold, the scope-advisor agent writes a scope recommendation instead of normal clarifications. This file has `scope_recommendation: true` in its YAML frontmatter and contains:
+- Explanation of why the scope is too broad
+- 2-4 suggested narrower skill alternatives
+- Instructions for the user to restart with a narrower focus
+
+Downstream agents (detailed research, confirm decisions, generate skill, validate skill) detect `scope_recommendation: true` and gracefully no-op.
+
 ### Decisions (`decisions.md`)
 Clean snapshot, not a log. Write the complete file from scratch each time.
 ```

@@ -34,6 +34,13 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
 
 <instructions>
 
+### Scope Recommendation Guard
+
+Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+
+1. Do NOT generate SKILL.md or any reference files
+2. Return immediately with: "Scope recommendation active. Skill generation skipped — see clarifications.md for recommended narrower skills."
+
 ## Phase 1: Plan the Skill Structure
 
 **Goal**: Design the skill's file layout following the Skill Best Practices from your system prompt (structure, naming, line limits).

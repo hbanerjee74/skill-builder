@@ -81,9 +81,9 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
    | Step | Output File | Meaning |
    |------|------------|---------|
-   | 1 | `./<skillname>/context/clarifications.md` | Research complete |
+   | 1 | `./<skillname>/context/clarifications.md` (without Refinements) | Research complete |
    | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
-   | 3 | `./<skillname>/context/clarifications.md` contains `#### Refinements` subsections | Detailed Research complete |
+   | 3 | `./<skillname>/context/clarifications.md` (with `#### Refinements` subsections) | Detailed Research complete |
    | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
    | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
    | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
@@ -134,7 +134,7 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
    ```
    TaskCreate(subject: "Research <domain>", description: "Research relevant dimensions for this domain. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`:
+2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`. If the planner selects more dimensions than the configured threshold, the orchestrator spawns the scope-advisor agent instead, which writes a scope recommendation to `clarifications.md` (with `scope_recommendation: true` in frontmatter). When this happens, downstream steps (detailed research, confirm decisions, generate skill, validate skill) detect the flag and gracefully no-op.
    ```
    Task(
      subagent_type: "skill-builder:research-orchestrator",
@@ -163,9 +163,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Insert refinement subsections into ./<skillname>/context/clarifications.md")
+   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Read answered clarifications.md and insert #### Refinements subsections in-place")
    ```
-2. Spawn the detailed-research shared agent as a teammate. It reads the answered `clarifications.md` and inserts `#### Refinements` subsections back into the same file:
+2. Spawn the detailed-research shared agent as a teammate. It reads the answered `clarifications.md` (containing user's answers from step 2) and inserts `#### Refinements` subsections under each question that warrants follow-up:
    ```
    Task(
      subagent_type: "skill-builder:detailed-research",
@@ -177,6 +177,8 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Domain: <domain>
      Context directory: ./<skillname>/context/
 
+     Read the answered clarifications.md and insert #### Refinements subsections for questions that need deeper exploration based on the user's answers.
+
      Return a 5-10 bullet summary of the refinement questions you generated."
    )
    ```
@@ -187,7 +189,7 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 1. Tell the user:
    "Please review and answer the refinement questions in `./<skillname>/context/clarifications.md`.
 
-   Look for the `#### Refinements` subsections under each answered question, fill in the **Answer:** field for each refinement, then tell me when you're done."
+   Look for the `#### Refinements` subsections under answered questions, fill in the **Answer:** field for each refinement, then tell me when you're done."
 2. Wait for the user to confirm.
 
 ### Step 5: Confirm Decisions

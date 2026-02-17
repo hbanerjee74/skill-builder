@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const [logLevel, setLogLevel] = useState("info")
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
+  const [maxDimensions, setMaxDimensions] = useState(5)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -73,6 +74,7 @@ export default function SettingsPage() {
             setLogLevel(result.log_level ?? "info")
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
+            setMaxDimensions(result.max_dimensions ?? 5)
             if (result.remote_repo_owner && result.remote_repo_name) {
               setRemoteRepo(`${result.remote_repo_owner}/${result.remote_repo_name}`)
               setValidationStatus("valid") // Assume valid if previously saved
@@ -117,6 +119,7 @@ export default function SettingsPage() {
     logLevel: string;
     extendedContext: boolean;
     extendedThinking: boolean;
+    maxDimensions: number;
     remoteRepoOwner: string | null;
     remoteRepoName: string | null;
   }>) => {
@@ -128,6 +131,7 @@ export default function SettingsPage() {
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
+      max_dimensions: overrides.maxDimensions !== undefined ? overrides.maxDimensions : maxDimensions,
       splash_shown: false,
       // Preserve OAuth fields — these are managed by the auth flow, not settings
       github_oauth_token: useSettingsStore.getState().githubOauthToken ?? null,
@@ -148,6 +152,7 @@ export default function SettingsPage() {
         logLevel: settings.log_level,
         extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
+        maxDimensions: settings.max_dimensions,
         remoteRepoOwner: settings.remote_repo_owner,
         remoteRepoName: settings.remote_repo_name,
       })
@@ -371,6 +376,36 @@ export default function SettingsPage() {
               checked={extendedThinking}
               onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Research Scope Limit</CardTitle>
+          <CardDescription>
+            Maximum number of research dimensions before suggesting narrower skills. Lower values produce more focused skills.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <Label htmlFor="max-dimensions">Max dimensions</Label>
+            <Input
+              id="max-dimensions"
+              type="number"
+              min={1}
+              max={18}
+              value={maxDimensions}
+              onChange={(e) => {
+                const val = Math.max(1, Math.min(18, parseInt(e.target.value) || 5))
+                setMaxDimensions(val)
+              }}
+              onBlur={() => autoSave({ maxDimensions })}
+              className="w-20"
+            />
+            <span className="text-sm text-muted-foreground">
+              {maxDimensions <= 3 ? "Narrow focus" : maxDimensions <= 5 ? "Balanced (default)" : maxDimensions <= 8 ? "Broad research" : "Very broad"}
+            </span>
           </div>
         </CardContent>
       </Card>

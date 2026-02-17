@@ -30,6 +30,8 @@ pub struct AppSettings {
     pub remote_repo_owner: Option<String>,
     #[serde(default)]
     pub remote_repo_name: Option<String>,
+    #[serde(default = "default_max_dimensions")]
+    pub max_dimensions: u32,
 }
 
 impl Default for AppSettings {
@@ -50,6 +52,7 @@ impl Default for AppSettings {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
         }
     }
 }
@@ -148,6 +151,10 @@ pub struct SkillFileEntry {
 
 fn default_log_level() -> String {
     "info".to_string()
+}
+
+fn default_max_dimensions() -> u32 {
+    5
 }
 
 fn default_skill_type() -> String {
@@ -411,6 +418,7 @@ mod tests {
             github_user_email: Some("test@example.com".to_string()),
             remote_repo_owner: Some("my-org".to_string()),
             remote_repo_name: Some("shared-skills".to_string()),
+            max_dimensions: 5,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();

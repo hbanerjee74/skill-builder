@@ -14,6 +14,7 @@ interface SettingsState {
   githubUserEmail: string | null;
   remoteRepoOwner: string | null;
   remoteRepoName: string | null;
+  maxDimensions: number;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -33,6 +34,7 @@ const initialState = {
   githubUserEmail: null,
   remoteRepoOwner: null,
   remoteRepoName: null,
+  maxDimensions: 5,
   isConfigured: false,
 };
 
