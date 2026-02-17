@@ -248,8 +248,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Fetch all tags to ensure we have the full history
-          git fetch --tags
+          # Tags are already available from checkout (fetch-depth: 0)
 
           # Determine the previous tag (most recent tag before the current one)
           PREVIOUS_TAG=$(git tag --sort=-creatordate | grep '^v' | head -2 | tail -1)
