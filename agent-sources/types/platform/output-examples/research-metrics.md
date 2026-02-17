@@ -1,5 +1,5 @@
 ```markdown
-## Domain Concepts & Metrics
+## Platform Metrics & KPIs
 
 ### Q1: How should API rate limiting be represented?
 The platform enforces rate limits that affect how integrations consume data. How should the skill represent rate limit handling?

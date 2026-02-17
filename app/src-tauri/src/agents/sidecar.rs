@@ -134,7 +134,7 @@ mod tests {
         assert_eq!(parsed["maxTurns"], 25);
         assert_eq!(parsed["permissionMode"], "bypassPermissions");
         assert_eq!(parsed["model"], "sonnet");
-        assert_eq!(parsed["agentName"], "domain-research-concepts");
+        assert_eq!(parsed["agentName"], "domain-research-entities");
         // session_id is None + skip_serializing_if — should be absent
         assert!(parsed.get("sessionId").is_none());
         // betas is None + skip_serializing_if — should be absent

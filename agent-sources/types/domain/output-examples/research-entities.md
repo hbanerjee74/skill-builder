@@ -1,5 +1,5 @@
 ```markdown
-## Domain Concepts & Metrics
+## Domain Entities & Relationships
 
 ### Q1: How should customer hierarchy be modeled?
 The domain involves multiple levels of customer relationships. How should the skill represent these?
@@ -11,19 +11,6 @@ c) **Unlimited hierarchy depth** — Full recursive tree. Required for complex o
 d) **Other (please specify)**
 
 **Recommendation:** Option (b) — two-level hierarchy covers 80% of real-world needs without recursive complexity.
-
-**Answer:**
-
-### Q2: Which revenue metrics should the skill prioritize?
-Multiple revenue calculations exist for this domain. Which should the skill emphasize?
-
-**Choices:**
-a) **Gross revenue only** — Simplest, most universally applicable.
-b) **Gross + net revenue** — Accounts for discounts and returns.
-c) **Gross + net + recurring/one-time split** — Critical for subscription businesses.
-d) **Other (please specify)**
-
-**Recommendation:** Option (c) — the recurring/one-time split is essential for most modern business models.
 
 **Answer:**
 ```
