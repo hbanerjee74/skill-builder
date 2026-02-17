@@ -26,6 +26,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_workflow_session_migration(&conn)?;
     run_sessions_table_migration(&conn)?;
     run_trigger_text_migration(&conn)?;
+    run_agent_stats_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -238,6 +239,35 @@ fn run_workflow_session_migration(conn: &Connection) -> Result<(), rusqlite::Err
     Ok(())
 }
 
+fn run_agent_stats_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(agent_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "num_turns") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN num_turns INTEGER DEFAULT 0;")?;
+    }
+    if !columns.iter().any(|name| name == "stop_reason") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN stop_reason TEXT;")?;
+    }
+    if !columns.iter().any(|name| name == "duration_api_ms") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN duration_api_ms INTEGER;")?;
+    }
+    if !columns.iter().any(|name| name == "tool_use_count") {
+        conn.execute_batch("ALTER TABLE agent_runs ADD COLUMN tool_use_count INTEGER DEFAULT 0;")?;
+    }
+    if !columns.iter().any(|name| name == "compaction_count") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN compaction_count INTEGER DEFAULT 0;",
+        )?;
+    }
+    Ok(())
+}
+
 // --- Usage Tracking ---
 
 fn step_name(step_id: i32) -> String {
@@ -268,6 +298,11 @@ pub fn persist_agent_run(
     cache_write_tokens: i32,
     total_cost: f64,
     duration_ms: i64,
+    num_turns: i32,
+    stop_reason: Option<&str>,
+    duration_api_ms: Option<i64>,
+    tool_use_count: i32,
+    compaction_count: i32,
     session_id: Option<&str>,
     workflow_session_id: Option<&str>,
 ) -> Result<(), String> {
@@ -289,9 +324,12 @@ pub fn persist_agent_run(
     conn.execute(
         "INSERT OR REPLACE INTO agent_runs
          (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens,
-          cache_read_tokens, cache_write_tokens, total_cost, duration_ms, session_id,
-          workflow_session_id, started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+          cache_read_tokens, cache_write_tokens, total_cost, duration_ms,
+          num_turns, stop_reason, duration_api_ms, tool_use_count, compaction_count,
+          session_id, workflow_session_id, started_at, completed_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                 ?12, ?13, ?14, ?15, ?16,
+                 ?17, ?18,
                  COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
@@ -306,6 +344,11 @@ pub fn persist_agent_run(
             cache_write_tokens,
             total_cost,
             duration_ms,
+            num_turns,
+            stop_reason,
+            duration_api_ms,
+            tool_use_count,
+            compaction_count,
             session_id,
             workflow_session_id,
         ],
@@ -354,6 +397,8 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
                     COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                     COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                    COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
              WHERE reset_marker IS NULL
@@ -376,9 +421,14 @@ pub fn get_recent_runs(conn: &Connection, limit: usize) -> Result<Vec<AgentRunRe
                 cache_write_tokens: row.get(8)?,
                 total_cost: row.get(9)?,
                 duration_ms: row.get(10)?,
-                session_id: row.get(11)?,
-                started_at: row.get(12)?,
-                completed_at: row.get(13)?,
+                num_turns: row.get(11)?,
+                stop_reason: row.get(12)?,
+                duration_api_ms: row.get(13)?,
+                tool_use_count: row.get(14)?,
+                compaction_count: row.get(15)?,
+                session_id: row.get(16)?,
+                started_at: row.get(17)?,
+                completed_at: row.get(18)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -470,6 +520,8 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
                     COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
                     COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
                     COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                    COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
              WHERE workflow_session_id = ?1
@@ -491,9 +543,66 @@ pub fn get_session_agent_runs(conn: &Connection, session_id: &str) -> Result<Vec
                 cache_write_tokens: row.get(8)?,
                 total_cost: row.get(9)?,
                 duration_ms: row.get(10)?,
-                session_id: row.get(11)?,
-                started_at: row.get(12)?,
-                completed_at: row.get(13)?,
+                num_turns: row.get(11)?,
+                stop_reason: row.get(12)?,
+                duration_api_ms: row.get(13)?,
+                tool_use_count: row.get(14)?,
+                compaction_count: row.get(15)?,
+                session_id: row.get(16)?,
+                started_at: row.get(17)?,
+                completed_at: row.get(18)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn get_step_agent_runs(
+    conn: &Connection,
+    skill_name: &str,
+    step_id: i32,
+) -> Result<Vec<AgentRunRecord>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT agent_id, skill_name, step_id, model, status,
+                    COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+                    COALESCE(cache_read_tokens, 0), COALESCE(cache_write_tokens, 0),
+                    COALESCE(total_cost, 0.0), COALESCE(duration_ms, 0),
+                    COALESCE(num_turns, 0), stop_reason, duration_api_ms,
+                    COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
+                    session_id, started_at, completed_at
+             FROM agent_runs
+             WHERE skill_name = ?1 AND step_id = ?2
+               AND status IN ('completed', 'error')
+               AND reset_marker IS NULL
+             ORDER BY completed_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![skill_name, step_id], |row| {
+            Ok(AgentRunRecord {
+                agent_id: row.get(0)?,
+                skill_name: row.get(1)?,
+                step_id: row.get(2)?,
+                model: row.get(3)?,
+                status: row.get(4)?,
+                input_tokens: row.get(5)?,
+                output_tokens: row.get(6)?,
+                cache_read_tokens: row.get(7)?,
+                cache_write_tokens: row.get(8)?,
+                total_cost: row.get(9)?,
+                duration_ms: row.get(10)?,
+                num_turns: row.get(11)?,
+                stop_reason: row.get(12)?,
+                duration_api_ms: row.get(13)?,
+                tool_use_count: row.get(14)?,
+                compaction_count: row.get(15)?,
+                session_id: row.get(16)?,
+                started_at: row.get(17)?,
+                completed_at: row.get(18)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1386,6 +1495,7 @@ mod tests {
         run_workflow_session_migration(&conn).unwrap();
         run_sessions_table_migration(&conn).unwrap();
         run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
         conn
     }
 
@@ -1911,6 +2021,7 @@ mod tests {
             100,
             0.05,
             12345,
+            0, None, None, 0, 0,
             Some("session-abc"),
             Some("wf-test-session"),
         )
@@ -1933,6 +2044,11 @@ mod tests {
         assert_eq!(run.session_id.as_deref(), Some("session-abc"));
         assert!(run.started_at.len() > 0);
         assert!(run.completed_at.is_some());
+        assert_eq!(run.num_turns, 0);
+        assert_eq!(run.stop_reason, None);
+        assert_eq!(run.duration_api_ms, None);
+        assert_eq!(run.tool_use_count, 0);
+        assert_eq!(run.compaction_count, 0);
     }
 
     #[test]
@@ -1940,7 +2056,9 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-2", "my-skill", 1, "haiku", "completed",
-            500, 200, 0, 0, 0.01, 5000, None, None,
+            500, 200, 0, 0, 0.01, 5000,
+            0, None, None, 0, 0,
+            None, None,
         )
         .unwrap();
 
@@ -1957,14 +2075,18 @@ mod tests {
         // First persist as completed with real data
         persist_agent_run(
             &conn, "agent-1", "my-skill", 0, "sonnet", "completed",
-            1000, 500, 200, 100, 0.15, 8000, None, ws,
+            1000, 500, 200, 100, 0.15, 8000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
         // Then attempt to overwrite with shutdown (partial/zero data)
         persist_agent_run(
             &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0, None, ws,
+            0, 0, 0, 0, 0.0, 0,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -1984,14 +2106,18 @@ mod tests {
         // First persist as running (agent start)
         persist_agent_run(
             &conn, "agent-1", "my-skill", 0, "sonnet", "running",
-            0, 0, 0, 0, 0.0, 0, None, ws,
+            0, 0, 0, 0, 0.0, 0,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
         // Then shutdown with partial data — should succeed
         persist_agent_run(
             &conn, "agent-1", "my-skill", 0, "sonnet", "shutdown",
-            500, 200, 0, 0, 0.05, 3000, None, ws,
+            500, 200, 0, 0, 0.05, 3000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -2008,18 +2134,24 @@ mod tests {
         create_workflow_session(&conn, "wf-session-1", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, ws,
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None, ws,
+            2000, 1000, 0, 0, 0.30, 10000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         // Running agents are included (toggle hides zero-cost sessions, not individual statuses)
         persist_agent_run(
             &conn, "agent-3", "skill-a", 5, "sonnet", "running",
-            100, 50, 0, 0, 0.01, 0, None, ws,
+            100, 50, 0, 0, 0.01, 0,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -2046,12 +2178,16 @@ mod tests {
         create_workflow_session(&conn, "wf-session-r", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, ws,
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None, ws,
+            2000, 1000, 0, 0, 0.30, 10000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -2074,7 +2210,9 @@ mod tests {
         create_workflow_session(&conn, "wf-session-r2", "skill-b", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-b", 6, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None, Some("wf-session-r2"),
+            500, 200, 0, 0, 0.05, 3000,
+            0, None, None, 0, 0,
+            None, Some("wf-session-r2"),
         )
         .unwrap();
 
@@ -2090,17 +2228,23 @@ mod tests {
         create_workflow_session(&conn, "wf-session-s", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, ws,
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000, None, ws,
+            800, 400, 0, 0, 0.08, 4000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 6, "sonnet", "completed",
-            2000, 1000, 0, 0, 0.25, 8000, None, ws,
+            2000, 1000, 0, 0, 0.25, 8000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -2126,17 +2270,23 @@ mod tests {
         create_workflow_session(&conn, "wf-session-m", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, ws,
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-a", 5, "opus", "completed",
-            2000, 1000, 0, 0, 0.50, 10000, None, ws,
+            2000, 1000, 0, 0, 0.50, 10000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3", "skill-a", 3, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None, ws,
+            500, 200, 0, 0, 0.05, 3000,
+            0, None, None, 0, 0,
+            None, ws,
         )
         .unwrap();
 
@@ -2158,7 +2308,9 @@ mod tests {
         let conn = create_test_db();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, None,
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, None,
         )
         .unwrap();
 
@@ -2359,7 +2511,9 @@ mod tests {
         create_workflow_session(&conn, "sess-cost", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 200, 100, 0.15, 8000, None, Some("sess-cost"),
+            1000, 500, 200, 100, 0.15, 8000,
+            0, None, None, 0, 0,
+            None, Some("sess-cost"),
         )
         .unwrap();
 
@@ -2367,7 +2521,9 @@ mod tests {
         create_workflow_session(&conn, "sess-zero", "skill-b", 2000).unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0, None, Some("sess-zero"),
+            0, 0, 0, 0, 0.0, 0,
+            0, None, None, 0, 0,
+            None, Some("sess-zero"),
         )
         .unwrap();
 
@@ -2384,7 +2540,9 @@ mod tests {
         create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 200, 100, 0.10, 5000, None, Some("sess-1"),
+            1000, 500, 200, 100, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, Some("sess-1"),
         )
         .unwrap();
 
@@ -2392,7 +2550,9 @@ mod tests {
         create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-b", 3, "opus", "completed",
-            2000, 1000, 400, 200, 0.30, 10000, None, Some("sess-2"),
+            2000, 1000, 400, 200, 0.30, 10000,
+            0, None, None, 0, 0,
+            None, Some("sess-2"),
         )
         .unwrap();
 
@@ -2421,7 +2581,9 @@ mod tests {
         create_workflow_session(&conn, "sess-good", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-good"),
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, Some("sess-good"),
         )
         .unwrap();
 
@@ -2429,7 +2591,9 @@ mod tests {
         create_workflow_session(&conn, "sess-cancelled", "skill-b", 2000).unwrap();
         persist_agent_run(
             &conn, "agent-2", "skill-b", 0, "sonnet", "shutdown",
-            0, 0, 0, 0, 0.0, 0, None, Some("sess-cancelled"),
+            0, 0, 0, 0, 0.0, 0,
+            0, None, None, 0, 0,
+            None, Some("sess-cancelled"),
         )
         .unwrap();
 
@@ -2446,12 +2610,16 @@ mod tests {
         create_workflow_session(&conn, "sess-1", "skill-a", 1000).unwrap();
         persist_agent_run(
             &conn, "agent-1a", "skill-a", 1, "sonnet", "completed",
-            1000, 500, 0, 0, 0.10, 5000, None, Some("sess-1"),
+            1000, 500, 0, 0, 0.10, 5000,
+            0, None, None, 0, 0,
+            None, Some("sess-1"),
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-1b", "skill-a", 3, "opus", "completed",
-            2000, 1000, 0, 0, 0.30, 10000, None, Some("sess-1"),
+            2000, 1000, 0, 0, 0.30, 10000,
+            0, None, None, 0, 0,
+            None, Some("sess-1"),
         )
         .unwrap();
 
@@ -2459,7 +2627,9 @@ mod tests {
         create_workflow_session(&conn, "sess-2", "skill-b", 2000).unwrap();
         persist_agent_run(
             &conn, "agent-2a", "skill-b", 1, "sonnet", "completed",
-            500, 200, 0, 0, 0.05, 3000, None, Some("sess-2"),
+            500, 200, 0, 0, 0.05, 3000,
+            0, None, None, 0, 0,
+            None, Some("sess-2"),
         )
         .unwrap();
 
@@ -2467,12 +2637,16 @@ mod tests {
         create_workflow_session(&conn, "sess-3", "skill-c", 3000).unwrap();
         persist_agent_run(
             &conn, "agent-3a", "skill-c", 5, "opus", "completed",
-            3000, 1500, 0, 0, 0.50, 15000, None, Some("sess-3"),
+            3000, 1500, 0, 0, 0.50, 15000,
+            0, None, None, 0, 0,
+            None, Some("sess-3"),
         )
         .unwrap();
         persist_agent_run(
             &conn, "agent-3b", "skill-c", 6, "sonnet", "completed",
-            800, 400, 0, 0, 0.08, 4000, None, Some("sess-3"),
+            800, 400, 0, 0, 0.08, 4000,
+            0, None, None, 0, 0,
+            None, Some("sess-3"),
         )
         .unwrap();
 

@@ -4,10 +4,13 @@ import remarkGfm from "remark-gfm";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile } from "@/lib/tauri";
+import { readFile, getStepAgentRuns } from "@/lib/tauri";
+import { AgentStatsBar } from "@/components/agent-stats-bar";
+import type { AgentRunRecord } from "@/lib/types";
 
 interface WorkflowStepCompleteProps {
   stepName: string;
+  stepId?: number;
   outputFiles: string[];
   duration?: number;
   cost?: number;
@@ -29,6 +32,7 @@ function formatDuration(ms: number): string {
 
 export function WorkflowStepComplete({
   stepName,
+  stepId,
   outputFiles,
   duration,
   cost,
@@ -41,6 +45,18 @@ export function WorkflowStepComplete({
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
   const [loadingFiles, setLoadingFiles] = useState(false);
+  const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
+
+  useEffect(() => {
+    if (!reviewMode || !skillName || stepId == null) {
+      setAgentRuns([]);
+      return;
+    }
+
+    getStepAgentRuns(skillName, stepId)
+      .then((runs) => setAgentRuns(runs))
+      .catch((err) => console.error("Failed to load agent stats:", err));
+  }, [reviewMode, skillName, stepId]);
 
   useEffect(() => {
     if (!reviewMode || !skillName || outputFiles.length === 0) {
@@ -107,6 +123,11 @@ export function WorkflowStepComplete({
 
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
         <ScrollArea className="min-h-0 flex-1">
           <div className="flex flex-col gap-6 pr-4">
             {outputFiles

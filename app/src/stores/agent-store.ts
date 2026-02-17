@@ -121,6 +121,8 @@ interface AgentRun {
   resultSubtype?: ResultSubtype;
   resultErrors?: string[];
   stopReason?: StopReason;
+  numTurns?: number;
+  durationApiMs?: number | null;
 }
 
 interface AgentState {
@@ -259,6 +261,19 @@ export const useAgentStore = create<AgentState>((set) => ({
         cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
       }
 
+      // Count tool uses across all assistant messages
+      let toolUseCount = 0;
+      for (const msg of runBeforeUpdate.messages) {
+        if (msg.type === "assistant") {
+          const content = (msg.raw as Record<string, unknown>)?.message as
+            | { content?: Array<{ type: string }> }
+            | undefined;
+          if (Array.isArray(content?.content)) {
+            toolUseCount += content.content.filter((b) => b.type === "tool_use").length;
+          }
+        }
+      }
+
       persistAgentRun({
         agentId,
         skillName: workflow.skillName ?? "unknown",
@@ -271,6 +286,11 @@ export const useAgentStore = create<AgentState>((set) => ({
         cacheWriteTokens: cacheWrite,
         totalCost: runBeforeUpdate.totalCost,
         durationMs: Date.now() - runBeforeUpdate.startTime,
+        numTurns: runBeforeUpdate.numTurns ?? 0,
+        stopReason: runBeforeUpdate.stopReason ?? null,
+        durationApiMs: runBeforeUpdate.durationApiMs ?? null,
+        toolUseCount,
+        compactionCount: runBeforeUpdate.compactionEvents.length,
         sessionId: runBeforeUpdate.sessionId,
         workflowSessionId: workflow.workflowSessionId ?? undefined,
       }).catch((err) => console.error("Failed to persist agent run:", err));
@@ -360,6 +380,8 @@ export const useAgentStore = create<AgentState>((set) => ({
         let resultSubtype = run.resultSubtype;
         let resultErrors = run.resultErrors;
         let stopReason = run.stopReason;
+        let numTurns = run.numTurns;
+        let durationApiMs = run.durationApiMs;
 
         if (message.type === "result") {
           const usage = raw.usage as
@@ -396,6 +418,12 @@ export const useAgentStore = create<AgentState>((set) => ({
           }
           if (typeof raw.stop_reason === "string") {
             stopReason = raw.stop_reason as StopReason;
+          }
+          if (typeof raw.num_turns === "number") {
+            numTurns = raw.num_turns;
+          }
+          if (typeof raw.duration_api_ms === "number") {
+            durationApiMs = raw.duration_api_ms;
           }
         }
 
@@ -484,6 +512,8 @@ export const useAgentStore = create<AgentState>((set) => ({
           resultSubtype,
           resultErrors,
           stopReason,
+          numTurns,
+          durationApiMs,
         };
       }
 

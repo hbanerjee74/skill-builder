@@ -221,6 +221,11 @@ export const persistAgentRun = (params: {
   cacheWriteTokens: number;
   totalCost: number;
   durationMs: number;
+  numTurns?: number;
+  stopReason?: string | null;
+  durationApiMs?: number | null;
+  toolUseCount?: number;
+  compactionCount?: number;
   sessionId?: string;
   workflowSessionId?: string;
 }) => invoke<void>("persist_agent_run", {
@@ -235,6 +240,11 @@ export const persistAgentRun = (params: {
   cacheWriteTokens: params.cacheWriteTokens,
   totalCost: params.totalCost,
   durationMs: params.durationMs,
+  numTurns: params.numTurns ?? 0,
+  stopReason: params.stopReason ?? null,
+  durationApiMs: params.durationApiMs ?? null,
+  toolUseCount: params.toolUseCount ?? 0,
+  compactionCount: params.compactionCount ?? 0,
   sessionId: params.sessionId ?? null,
   workflowSessionId: params.workflowSessionId ?? null,
 });
@@ -247,6 +257,9 @@ export const getRecentWorkflowSessions = (limit: number = 50, hideCancelled: boo
 
 export const getSessionAgentRuns = (sessionId: string) =>
   invoke<AgentRunRecord[]>("get_session_agent_runs", { sessionId });
+
+export const getStepAgentRuns = (skillName: string, stepId: number) =>
+  invoke<AgentRunRecord[]>("get_step_agent_runs", { skillName, stepId });
 
 export const getUsageByStep = (hideCancelled: boolean = false) =>
   invoke<UsageByStep[]>("get_usage_by_step", { hideCancelled });

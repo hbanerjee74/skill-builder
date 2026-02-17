@@ -614,6 +614,7 @@ export default function WorkflowPage() {
         return (
           <WorkflowStepComplete
             stepName={currentStepDef.name}
+            stepId={currentStep}
             outputFiles={stepConfig.outputFiles}
             onNextStep={advanceToNextStep}
             isLastStep={isLastStep}
@@ -628,6 +629,7 @@ export default function WorkflowPage() {
       return (
         <WorkflowStepComplete
           stepName={currentStepDef.name}
+          stepId={currentStep}
           outputFiles={[]}
           onNextStep={advanceToNextStep}
           isLastStep={isLastStep}
@@ -1042,7 +1044,7 @@ export default function WorkflowPage() {
 
           {/* Content area — reasoning/agent panels manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            stepConfig?.type === "reasoning" || activeAgentId
+            (stepConfig?.type === "reasoning" && currentStepDef?.status !== "completed") || activeAgentId
               ? ""
               : "p-4"
           }`}>
