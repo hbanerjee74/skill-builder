@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, X, Loader2 } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
@@ -182,9 +182,9 @@ export function WorkflowStepComplete({
           <div className="flex items-center justify-end border-t pt-4">
             {isLastStep ? (
               onClose && (
-                <Button size="sm" variant="outline" onClick={onClose}>
-                  <X className="size-3.5" />
-                  Close
+                <Button size="sm" onClick={onClose}>
+                  <CheckCircle2 className="size-3.5" />
+                  Done
                 </Button>
               )
             ) : (
