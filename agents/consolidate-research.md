@@ -24,7 +24,7 @@ When called during **detailed research** (Step 3), you instead take refinement q
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (where to write or update the output file)
+  - The **context directory** path (where to write or update the output file; may also contain `user-context.md` with the user's industry, role, and intake responses)
   - The **skill output directory** path (containing SKILL.md and reference files)
 - The coordinator also provides:
   - The **source content** to consolidate (passed as inline text in the prompt)

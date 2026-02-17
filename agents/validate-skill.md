@@ -31,8 +31,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
+  - The **context directory** path (containing `decisions.md`, `clarifications.md`, `user-context.md`, and where to write output files)
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
+- **User context file**: If `user-context.md` exists in the context directory, read it for the user's industry, role, and requirements. Use this to verify the skill addresses the user's stated audience and challenges.
 
 
 </context>

@@ -432,10 +432,79 @@ fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &
     phase.to_string()
 }
 
+/// Write `user-context.md` to the context directory so that sub-agents
+/// spawned by orchestrator agents can read it from disk.
+/// This file captures industry, function/role, and intake responses
+/// (audience, challenges, scope) provided by the user.
+/// Non-fatal: logs a warning on failure rather than blocking the workflow.
+fn write_user_context_file(
+    skills_path: &str,
+    skill_name: &str,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
+) {
+    let mut parts: Vec<String> = Vec::new();
+
+    if let Some(ind) = industry {
+        if !ind.is_empty() {
+            parts.push(format!("- **Industry**: {}", ind));
+        }
+    }
+    if let Some(fr) = function_role {
+        if !fr.is_empty() {
+            parts.push(format!("- **Function**: {}", fr));
+        }
+    }
+    if let Some(ij) = intake_json {
+        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
+            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
+                if !a.is_empty() {
+                    parts.push(format!("- **Target Audience**: {}", a));
+                }
+            }
+            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
+                if !c.is_empty() {
+                    parts.push(format!("- **Key Challenges**: {}", c));
+                }
+            }
+            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
+                if !s.is_empty() {
+                    parts.push(format!("- **Scope**: {}", s));
+                }
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return;
+    }
+
+    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let file_path = context_dir.join("user-context.md");
+    let content = format!("# User Context\n\n{}\n", parts.join("\n"));
+
+    match std::fs::write(&file_path, &content) {
+        Ok(()) => {
+            log::info!(
+                "[write_user_context_file] Wrote user-context.md ({} bytes) to {}",
+                content.len(),
+                file_path.display()
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "[write_user_context_file] Failed to write {}: {}",
+                file_path.display(),
+                e
+            );
+        }
+    }
+}
+
 fn build_prompt(
     skill_name: &str,
     domain: &str,
-    _workspace_path: &str,
     skills_path: &str,
     skill_type: &str,
     author_login: Option<&str>,
@@ -445,21 +514,17 @@ fn build_prompt(
     function_role: Option<&str>,
     intake_json: Option<&str>,
 ) -> String {
-    let base = Path::new(_workspace_path);
-    let skill_dir = base.join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
          The skill type is: {}. \
-         The skill directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
         skill_type,
-        skill_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
     );
@@ -735,10 +800,18 @@ async fn run_workflow_step_inner(
     } else {
         None
     };
+    // Write user-context.md to context directory so sub-agents can read it
+    write_user_context_file(
+        &settings.skills_path,
+        skill_name,
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
+    );
+
     let prompt = build_prompt(
         skill_name,
         domain,
-        workspace_path,
         &settings.skills_path,
         &settings.skill_type,
         settings.author_login.as_deref(),
@@ -798,16 +871,19 @@ pub async fn run_workflow_step(
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
+    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
+    // Context lives in skills_path (not workspace_path).
     if step_id == 0 {
-        let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
+        let context_dir = Path::new(&settings.skills_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);
+            // Re-create the empty directory so agents can write to it
+            let _ = std::fs::create_dir_all(&context_dir);
         }
     }
-
-    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
 
     run_workflow_step_inner(
         &app,
@@ -1244,7 +1320,6 @@ mod tests {
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
-            "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
             None,
@@ -1258,7 +1333,8 @@ mod tests {
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
-        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
+        // Workspace path should NOT appear in prompt
+        assert!(!prompt.contains(".vibedata"));
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
 
@@ -1267,7 +1343,6 @@ mod tests {
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
-            "/home/user/.vibedata",
             "/home/user/my-skills",
             "platform",
             None,
@@ -1288,7 +1363,6 @@ mod tests {
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
-            "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
             Some("octocat"),
@@ -1308,7 +1382,6 @@ mod tests {
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
-            "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
             None,
@@ -1834,9 +1907,9 @@ mod tests {
 
     #[test]
     fn test_step0_always_wipes_context() {
-        // Step 0 always wipes the context directory (no resume support)
+        // Step 0 always wipes the context directory in skills_path (not workspace)
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
@@ -1847,14 +1920,77 @@ mod tests {
 
         let step_id: u32 = 0;
         if step_id == 0 {
-            let context_dir = Path::new(workspace).join("my-skill").join("context");
+            let context_dir = Path::new(skills_path).join("my-skill").join("context");
             if context_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&context_dir);
+                let _ = std::fs::create_dir_all(&context_dir);
             }
         }
 
-        // Context directory should have been wiped
+        // Context files should have been wiped
         assert!(!skill_dir.join("context/clarifications.md").exists());
+        // But context directory itself should be recreated
+        assert!(skill_dir.join("context").exists());
+    }
+
+    #[test]
+    fn test_write_user_context_file_all_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let context_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
+        write_user_context_file(skills_path, "my-skill", Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+
+        let content = std::fs::read_to_string(context_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("# User Context"));
+        assert!(content.contains("**Industry**: Healthcare"));
+        assert!(content.contains("**Function**: Analytics Lead"));
+        assert!(content.contains("**Target Audience**: Data engineers"));
+        assert!(content.contains("**Key Challenges**: Legacy systems"));
+        assert!(content.contains("**Scope**: ETL pipelines"));
+    }
+
+    #[test]
+    fn test_write_user_context_file_partial_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let context_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+
+        write_user_context_file(skills_path, "my-skill", Some("Fintech"), None, None);
+
+        let content = std::fs::read_to_string(context_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("**Industry**: Fintech"));
+        assert!(!content.contains("**Function**"));
+        assert!(!content.contains("**Target Audience**"));
+    }
+
+    #[test]
+    fn test_write_user_context_file_empty_fields_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let context_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+
+        write_user_context_file(skills_path, "my-skill", Some(""), None, None);
+
+        // Empty industry should not produce a file
+        assert!(!context_dir.join("user-context.md").exists());
+    }
+
+    #[test]
+    fn test_write_user_context_file_no_fields_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let context_dir = tmp.path().join("my-skill").join("context");
+        std::fs::create_dir_all(&context_dir).unwrap();
+
+        write_user_context_file(skills_path, "my-skill", None, None, None);
+
+        // No fields → no file
+        assert!(!context_dir.join("user-context.md").exists());
     }
 
     #[test]
