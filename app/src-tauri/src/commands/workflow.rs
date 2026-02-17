@@ -887,6 +887,12 @@ pub async fn run_workflow_step(
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+    log::info!(
+        "[run_workflow_step] settings: skills_path={} skill_type={} intake={} industry={:?} function={:?}",
+        settings.skills_path, settings.skill_type,
+        settings.intake_json.is_some(),
+        settings.industry, settings.function_role,
+    );
 
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.

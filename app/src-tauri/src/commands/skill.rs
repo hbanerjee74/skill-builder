@@ -76,7 +76,7 @@ pub fn create_skill(
     intake_json: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[create_skill] name={} domain={} skill_type={:?}", name, domain, skill_type);
+    log::info!("[create_skill] name={} domain={} skill_type={:?} display_name={:?} tags={:?} intake={}", name, domain, skill_type, display_name, tags, intake_json.is_some());
     let conn = db.0.lock().ok();
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
@@ -389,7 +389,7 @@ pub fn update_skill_metadata(
     intake_json: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[update_skill_metadata] skill={}", skill_name);
+    log::info!("[update_skill_metadata] skill={} display_name={:?} skill_type={:?} tags={:?} intake={}", skill_name, display_name, skill_type, tags, intake_json.is_some());
     let conn = db.0.lock().map_err(|e| {
         log::error!("[update_skill_metadata] Failed to acquire DB lock: {}", e);
         e.to_string()
