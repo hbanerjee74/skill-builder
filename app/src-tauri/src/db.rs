@@ -1618,6 +1618,7 @@ mod tests {
         run_trigger_text_migration(&conn).unwrap();
         run_agent_stats_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
         conn
     }
 
