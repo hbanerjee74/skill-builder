@@ -94,6 +94,7 @@ After the planner returns, count the number of chosen dimensions. Extract the **
    - The **domain name**, **skill name**, **skill type**
    - The full text of `research-plan.md` (the planner's output)
    - The **dimension threshold** and **number of dimensions chosen**
+   - The **workspace directory** path (so it can read `user-context.md`)
 3. The scope-advisor returns the full `clarifications.md` content as text. **You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool.
 4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
 
@@ -109,6 +110,7 @@ Include this directive in each prompt:
 Pass each agent:
 - The **domain** name
 - The planner's **tailored focus line** for that dimension (this is the agent's only source of domain context — the planner embeds entity examples, metric names, and other specifics directly in the focus line)
+- The **workspace directory** path (so the agent can read `user-context.md` for the user's industry, role, and requirements)
 
 Wait for all agents to return their research text.
 
@@ -120,6 +122,7 @@ After all dimension agents return, spawn a fresh **consolidate-research** sub-ag
 Pass it:
 - The returned text from ALL dimension agents that ran, each labeled with its dimension name (e.g., "Entities Research:", "Data Quality Research:", "Metrics Research:")
 - The **domain name** and **skill type**
+- The **workspace directory** path (so the agent can read `user-context.md`)
 
 The consolidation agent uses extended thinking to deeply reason about the full question set — identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow — then returns the complete `clarifications.md` content as text.
 

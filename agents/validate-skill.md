@@ -241,7 +241,7 @@ Returns findings as text:
 
 After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
-Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), the companion recommender (E), and the prescriptiveness checker (F) directly in the prompt. Also pass the skill output directory and context directory paths.
+Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), the companion recommender (E), and the prescriptiveness checker (F) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
 
 Prompt it to:
 1. Review all validation and test results (passed in the prompt)

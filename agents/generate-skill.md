@@ -164,6 +164,7 @@ Each prompt must include:
 - The full output path for the reference file
 - The topic description and which decisions this file should address
 - The **skill type** and **content tier rules**: for Source/Domain, writers produce guided prompts only; for Platform/DE, writers use the three content tiers (decision structure, resolution criteria, context factors) and respect the annotation budget
+- The **workspace directory** path (so the sub-agent can read `user-context.md` for the user's industry, role, and requirements)
 
 Each sub-agent writes its reference file directly to the skill output directory.
 

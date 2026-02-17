@@ -54,6 +54,7 @@ Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section (`
 
 - The PM's answered `clarifications.md` content (pass the text in the prompt)
 - Which section to drill into
+- The **workspace directory** path (so the agent can read `user-context.md` for the user's industry, role, and requirements)
 
 Each sub-agent's task:
 - Review the `clarifications.md` content and focus on the assigned section's answered questions
@@ -96,6 +97,7 @@ Rationale...
 After all sub-agents return their text, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned refinement text from all sub-agents directly in the prompt
 - The context directory path
+- The **workspace directory** path (so the agent can read `user-context.md`)
 - Explicit instruction: **use the Edit tool to insert `#### Refinements` subsections into the existing `clarifications.md`** — do NOT write a new file
 - The target filename `clarifications.md` (update mode, not create mode)
 
