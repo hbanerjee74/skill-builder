@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows Kimball methodology and star schemas. The delta is domain-specific modeling decisions: stage-transition grain vs. daily-snapshot grain for pipeline, field coverage (which source fields to silver, which to gold), and the interaction between grain choices and downstream query patterns.
 
+**Template sections**: Metric Definitions (secondary), Business Logic Decisions (secondary), Output Standards (secondary)
+
 **Research approach**: Investigate the modeling patterns relevant to this business domain by focusing on grain choices and their downstream consequences. Determine whether the domain's primary analysis patterns favor event-level grain, periodic snapshots, or accumulating snapshots, and how that choice affects query performance and complexity. Probe for field coverage decisions -- which source fields are important enough to surface at each layer -- and identify where the standard Kimball approach needs domain-specific adaptation.
 
 **Constraints**:

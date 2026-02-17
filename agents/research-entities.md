@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows standard entity models (Salesforce objects, Kimball star schema, dbt resources). The delta is the customer's specific entity landscape: custom objects, managed package extensions, entity classifications (dimension vs. fact), grain decisions, and non-obvious relationships.
 
+**Template sections**: Varies by type — Domain: Segmentation Standards (secondary), Business Logic Decisions (secondary). Data-engineering: Entity & Grain Design (primary). Platform: Platform Behavioral Overrides (secondary), Configuration Patterns (secondary), Environment-Specific Constraints (secondary). Source: Field Semantics and Overrides (secondary).
+
 **Research approach**: Start from the topic examples in the focus line and map out the full entity landscape for the domain. Probe for custom objects, managed package extensions, and non-obvious relationships that deviate from the standard model. Investigate entity classification decisions (dimension vs. fact, reference vs. transactional), grain choices at each entity level, and cross-entity join patterns that the skill must understand to produce correct output.
 
 **Constraints**:

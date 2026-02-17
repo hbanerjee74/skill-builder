@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows generic segmentation patterns and standard fiscal calendars. The delta is specific breakpoints (enterprise = 500+ employees AND $1M+ ACV), the customer's fiscal calendar (4-4-5? non-January fiscal year?), snapshot timing, and cross-period rules. Without knowing the segmentation, even correct formulas produce wrong answers.
 
+**Template sections**: Segmentation Standards (primary), Period Handling (primary), Materiality Thresholds (secondary), Output Standards (secondary)
+
 **Research approach**: Investigate the concrete segmentation dimensions and breakpoints the organization uses -- not just that segmentation exists, but the exact thresholds and compound criteria that define each segment. For period handling, determine the fiscal calendar structure (standard, 4-4-5, non-January start), how periods map to natural calendar boundaries, snapshot cadence and timing, and rules for records that span period boundaries (prorating, point-in-time attribution, period-end snapshotting).
 
 **Constraints**:

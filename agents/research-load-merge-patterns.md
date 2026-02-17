@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows generic MERGE INTO syntax and high-water marks. The delta is: watermark boundary duplicate handling (overlap window + dedup), MERGE failure recovery for Type 2 (duplicate current records), platform-specific merge characteristics, and day-2 operational concerns (backfilling Type 2 requires historical source snapshots).
 
+**Template sections**: Load & Merge Patterns (primary), Quality Gates & Testing (secondary — monitoring)
+
 **Research approach**: Trace the full lifecycle of each load pattern in this domain -- initial load, steady-state incremental, failure recovery, and backfill -- to find where edge cases hide. Investigate what happens when a merge fails midway through a Type 2 update, how to backfill Type 2 history from current-state-only source data, and how schema evolution interacts with versioned tables. Focus on the operational concerns that only surface after the pipeline has been running for months.
 
 **Constraints**:

@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows textbook formulas (coverage = open/quota, win rate = won/(won+lost)). The delta is every parameter: coverage denominator (quota vs. forecast vs. target), segmented targets (4.5x/2x), win rate exclusions ($25K floor, 14-day minimum), custom modifiers (discount impact factor).
 
+**Template sections**: Metric Definitions (primary), Materiality Thresholds (co-primary), Output Standards (secondary)
+
 **Research approach**: Identify the key business metrics for the domain and drill into the precise calculation logic for each. For every metric, investigate what the denominator is, which records are included or excluded, whether thresholds vary by segment, and whether custom modifiers or adjustments apply. Focus on where "approximately correct" becomes "meaningfully wrong" -- the parameters and edge cases that distinguish a useful skill from a misleading one.
 
 **Constraints**:

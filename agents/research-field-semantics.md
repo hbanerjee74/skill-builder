@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: High-delta content (CPQ overriding Amount, ForecastCategory/StageName independence, Clari overwriting forecast fields nightly) requires explicit research. Claude knows standard field semantics but cannot know which fields have been overridden in the customer's org.
 
+**Template sections**: Field Semantics and Overrides (primary), Reconciliation Rules (secondary), System Workarounds (secondary)
+
 **Research approach**: Investigate the domain's field landscape by identifying installed managed packages and automation that override standard field values. Look for field pairs that appear correlated but can be independently edited, fields whose picklist values or meanings have been customized beyond the platform default, and ISV integrations that write to standard fields on a schedule. Ask about which fields are trusted as the canonical value versus which are stale or overwritten by external processes.
 
 **Constraints**:

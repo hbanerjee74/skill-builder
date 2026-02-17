@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows reconciliation as a concept but cannot know which specific tables/objects in a customer's system should agree but don't, or which system is the source of truth. For Customer Beta: SFDC pipeline numbers disagree with Clari and finance.
 
+**Template sections**: Reconciliation Rules (primary), Data Extraction Gotchas (secondary)
+
 **Research approach**: Investigate the domain's reconciliation landscape by identifying data that flows between multiple systems or modules and should match but diverges in practice. Look for known discrepancies between source systems, conflicting definitions of the same metric across teams, and accepted workarounds for data that never fully reconciles. Ask about which system wins when numbers disagree, what tolerance thresholds are acceptable, and whether reconciliation is automated or manual.
 
 **Constraints**:

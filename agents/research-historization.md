@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows SCD Types 1/2/3/4/6. The delta is threshold decisions: when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required.
 
+**Template sections**: Historization & Temporal Design (primary), Pattern Selection & Interaction Rules (secondary)
+
 **Research approach**: For each major entity in the domain, assess three factors: which columns change and how frequently, expected row volume growth over time, and whether regulatory or audit requirements demand bitemporal modeling. Use these factors to identify where the standard Type 2 recommendation breaks down -- for example, high-change-rate entities where snapshot-based approaches are more practical, or wide tables where row-versioning creates storage and query performance problems.
 
 **Constraints**:

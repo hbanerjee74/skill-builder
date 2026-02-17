@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude describes happy paths; this dimension surfaces failure paths. Production-incident knowledge (Fabric's unconfigurable 30-minute query timeout, metadata lock contention from concurrent dbt runs, environment-specific test error format differences) comes exclusively from operational experience.
 
+**Template sections**: Operational Gotchas and Failure Modes (primary), Environment-Specific Constraints (co-primary)
+
 **Research approach**: Investigate failure modes that engineers discover only after deploying to production, focusing on what breaks under load, during concurrent operations, and at scale boundaries. Look for undocumented timeout behaviors, metadata lock contention patterns, error message formats that differ across environments, and the debugging procedures that experienced operators use for rapid incident resolution but that are never written down in official documentation.
 
 **Constraints**:

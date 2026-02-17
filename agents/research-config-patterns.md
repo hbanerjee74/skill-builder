@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude generates syntactically valid configurations from documentation. It cannot reason about which configurations produce unexpected runtime behavior. The expanded scope includes version-dependent configuration interactions (e.g., adapter v1.6+ required for incremental materialization, which changes available config options).
 
+**Template sections**: Configuration Patterns, Anti-Patterns & Version Compatibility (primary)
+
 **Research approach**: Investigate configuration options that are syntactically valid but produce wrong runtime behavior, focusing on multi-axis compatibility (core version x adapter version x runtime version). Look for settings with non-obvious defaults that cause silent failures, version boundaries where configuration options change meaning or become invalid, and configuration combinations where individually correct settings interact to produce unexpected behavior.
 
 **Constraints**:

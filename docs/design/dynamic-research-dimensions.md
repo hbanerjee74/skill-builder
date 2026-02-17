@@ -160,7 +160,57 @@ pipelines might benefit from `extraction`).
 
 ---
 
-## 5. Agent Structure
+## 5. Per-Type Template Structures
+
+Each skill type has a set of template sections that dimensions populate. Primary dimensions
+drive the section's content; secondary dimensions contribute supplementary questions.
+
+### Domain Skills (6 sections)
+
+| # | Section | Primary | Secondary |
+|---|---------|---------|-----------|
+| 1 | Metric Definitions | `metrics` | `modeling-patterns` |
+| 2 | Materiality Thresholds | `metrics`, `business-rules` | `segmentation-and-periods` |
+| 3 | Segmentation Standards | `segmentation-and-periods` | `business-rules`, `entities` |
+| 4 | Period Handling | `segmentation-and-periods` | — |
+| 5 | Business Logic Decisions | `business-rules` | `entities`, `modeling-patterns` |
+| 6 | Output Standards | *consolidation-synthesized* | `metrics`, `segmentation-and-periods`, `modeling-patterns` |
+
+### Data-Engineering Skills (6 sections)
+
+| # | Section | Primary | Secondary |
+|---|---------|---------|-----------|
+| 1 | Pattern Selection & Interaction Rules | `pattern-interactions` | `historization` |
+| 2 | Entity & Grain Design | `entities` | `pattern-interactions` |
+| 3 | Load & Merge Patterns | `load-merge-patterns` | `pattern-interactions` |
+| 4 | Historization & Temporal Design | `historization` | `pattern-interactions` |
+| 5 | Layer Design & Materialization | `layer-design` | — |
+| 6 | Quality Gates & Testing | `data-quality` | `load-merge-patterns` |
+
+### Platform Skills (5 sections)
+
+| # | Section | Primary | Secondary |
+|---|---------|---------|-----------|
+| 1 | Platform Behavioral Overrides | `platform-behavioral-overrides` | `entities` |
+| 2 | Configuration Patterns, Anti-Patterns & Version Compatibility | `config-patterns` | `entities` |
+| 3 | Integration and Orchestration | `integration-orchestration` | — |
+| 4 | Operational Gotchas and Failure Modes | `operational-failure-modes` | — |
+| 5 | Environment-Specific Constraints | `platform-behavioral-overrides`, `operational-failure-modes` | `entities` |
+
+### Source Skills (6 sections)
+
+| # | Section | Primary | Secondary |
+|---|---------|---------|-----------|
+| 1 | Field Semantics and Overrides | `field-semantics` | `entities`, `lifecycle-and-state` |
+| 2 | Data Extraction Gotchas | `extraction` | `data-quality`, `reconciliation` |
+| 3 | Reconciliation Rules | `reconciliation` | `field-semantics` |
+| 4 | State Machine and Lifecycle | `lifecycle-and-state` | — |
+| 5 | System Workarounds | `data-quality` | `field-semantics` |
+| 6 | API/Integration Behaviors | `extraction` | — |
+
+---
+
+## 6. Agent Structure
 
 All agents are flat `.md` files in a single `agents/` directory. No subdirectories,
 no generated files, no build system. 25 files total:
@@ -203,7 +253,7 @@ Each dimension agent follows the same structure:
 
 ---
 
-## 6. Planner Design
+## 7. Planner Design
 
 The planner (`research-planner.md`) is an opus agent that decides which dimensions to
 research and how to focus them for the specific domain.
@@ -251,31 +301,32 @@ better than "Identify key business metrics."
 
 ---
 
-## 7. Per-Type Focus Overrides
+## 8. Focus Line Tailoring
 
-Two cross-type dimensions (`entities` and `data-quality`) receive different focus
-lines depending on the skill type. Four expanded dimensions carry additional focus
-content beyond their defaults.
+The planner tailors focus lines for each selected dimension based on the skill type
+and domain. Two cross-type dimensions (`entities` and `data-quality`) have type-specific
+focus patterns the planner follows. Four expanded dimensions include additional scope
+beyond their catalog defaults.
 
-### `entities` by Type
+### `entities` — focus varies by skill type
 
-| Type | Focus Override |
-|------|---------------|
+| Type | Planner focuses on |
+|------|-------------------|
 | **domain** | Business entities, customer hierarchies, organizational relationships, and cross-entity analysis patterns |
 | **data-engineering** | Entity classification (dimension vs. fact vs. bridge vs. reference), grain decisions per entity, surrogate key strategy, natural key composition, conformed dimension identification |
 | **platform** | Platform resources, environment-specific resource distinctions, configuration objects, and dependency relationships |
 | **source** | Custom objects, managed package objects, record type subdivisions, and non-standard relationships. Do NOT enumerate standard objects Claude already knows. Include installed managed packages, schema extensions, and standard field overrides. |
 
-### `data-quality` by Type
+### `data-quality` — focus varies by skill type
 
-| Type | Focus Override |
-|------|---------------|
+| Type | Planner focuses on |
+|------|-------------------|
 | **data-engineering** (as `quality-gates`) | Pattern-specific quality checks: per-layer validation rules, cross-layer reconciliation accounting for row multiplication, quality gate thresholds, pipeline failure response (halt vs. quarantine vs. continue) |
 | **source** (as `data-quality`) | Known data quality issues in the source system: fields commonly null or unreliable, validation rules forcing incorrect data entry, data cleanup jobs, quality expectations for downstream consumers |
 
-### Expanded Dimensions
+### Expanded dimensions — additional scope in focus lines
 
-| Dimension | Additional Focus |
+| Dimension | Planner includes |
 |-----------|-----------------|
 | **`extraction`** (source) | CDC field selection (which timestamp captures all changes including system-initiated), soft delete detection mechanisms, parent-child change propagation gaps |
 | **`field-semantics`** (source) | Which managed packages modify which fields and on what schedule, ISV field interactions, package update impact on field semantics |
@@ -284,7 +335,7 @@ content beyond their defaults.
 
 ---
 
-## 8. Consolidation
+## 9. Consolidation
 
 A single opus agent with extended thinking (`effort: high`) consolidates all dimension
 outputs into the final `clarifications.md`.

@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows individual tool documentation but not how tools interact in real deployments. The integration layer (CI/CD pipelines, auth flows across tool boundaries, artifact passing) lives in team-specific runbooks, not documentation.
 
+**Template sections**: Integration and Orchestration (primary)
+
 **Research approach**: Investigate how the platform connects to version control, CI/CD systems, orchestrators, monitoring tools, and data catalogs in the customer's actual deployment. Look for authentication token handoffs between tools, artifact format compatibility requirements, and orchestration timing dependencies where the order and coordination of operations across tool boundaries matters.
 
 **Constraints**:

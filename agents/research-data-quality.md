@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows generic data quality concepts (null checks, uniqueness, referential integrity). The delta is pattern-specific checks (e.g., row multiplication accounting after MERGE into Type 2) and org-specific issues (e.g., fields commonly null due to validation rule workarounds).
 
+**Template sections**: Varies by type — Data-engineering (as quality-gates): Quality Gates & Testing (primary). Source: Data Extraction Gotchas (secondary), System Workarounds (primary).
+
 **Research approach**: Investigate where generic quality patterns break down for this specific domain. Look for pattern-specific checks that go beyond textbook data quality -- per-layer validation rules, cross-layer reconciliation that must account for row multiplication, quality gate thresholds that determine halt vs. quarantine vs. continue behavior. Also probe for org-specific known quality issues: fields that are commonly null or unreliable, validation rules that force incorrect data entry, and data cleanup jobs or compensating controls that downstream consumers depend on.
 
 **Constraints**:

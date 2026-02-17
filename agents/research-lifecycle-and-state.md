@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Template section "State Machine and Lifecycle" previously had zero researching dimensions. RecordTypeId filtering, ForecastCategory/StageName independence, custom stage progressions are lifecycle behaviors Claude doesn't reliably flag.
 
+**Template sections**: State Machine and Lifecycle (primary), Field Semantics and Overrides (secondary)
+
 **Research approach**: Investigate the domain's record lifecycle by mapping out which objects follow defined state machines and what the valid transitions are. Look for lifecycle boundary violations (regression, stage skipping, reopening closed records), record type-specific lifecycle paths that diverge from the default, and state fields that should be correlated but can be independently edited. Ask about how the actual lifecycle in production deviates from the designed lifecycle.
 
 **Constraints**:

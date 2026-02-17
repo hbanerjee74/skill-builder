@@ -38,6 +38,8 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: The synthesis identified multiple failure modes: ORG_ID filtering (~4/10 Claude responses miss), SystemModstamp vs. LastModifiedDate (Claude inconsistently recommends the correct one), queryAll() for soft deletes, WHO column CDC limitation. These are platform-specific traps within each extraction pattern.
 
+**Template sections**: Data Extraction Gotchas (primary), API/Integration Behaviors (primary)
+
 **Research approach**: Investigate the platform's extraction surface by probing each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms that require special API calls, multi-tenant filtering gaps, and parent-child relationships where changes to the parent do not propagate to child timestamps. Ask about scale-specific failures like governor limits and rate throttling that only appear in production volumes.
 
 **Constraints**:
