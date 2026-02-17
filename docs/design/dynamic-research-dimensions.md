@@ -34,14 +34,14 @@ Three phases execute sequentially within the research orchestrator:
  │                                                         │
  │  Phase 0: Planning (opus)                               │
  │      Receives: skill type, domain, user context,        │
- │                full 18-dimension catalog                 │
+ │                full 18-dimension catalog                │
  │      Writes: context/research-plan.md                   │
  │      Returns: CHOSEN_DIMENSIONS with tailored focus     │
  │                                                         │
  │  Phase 1: Parallel Research (sonnet x N)                │
- │      ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐     │
- │      │dim 1 │ │dim 2 │ │dim 3 │ │dim 4 │ │dim N │     │
- │      └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘     │
+ │      ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐       │
+ │      │dim 1 │ │dim 2 │ │dim 3 │ │dim 4 │ │dim N │       │
+ │      └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘       │
  │         └────────┴────────┴────────┴────────┘           │
  │                        │ all text                       │
  │                        ▼                                │
@@ -78,89 +78,241 @@ domain-specific, data-engineering-specific, platform-specific, and source-specif
 
 ### Cross-Type Dimensions
 
-| Slug | Name | Agent | Default Focus | Types |
-|------|------|-------|---------------|-------|
-| `entities` | Entity & Relationship | [`research-entities.md`](../../agents/research-entities.md) | Identify domain entities, relationships, cardinality constraints, and cross-entity analysis patterns. Focus on what differs from the standard model. | all 4 |
-| `data-quality` | Data Quality | [`research-data-quality.md`](../../agents/research-data-quality.md) | Identify pattern-specific quality checks (DE) and org-specific known quality issues (source) beyond generic data quality concepts. | DE, source |
+#### `entities` — Entity & Relationship Research
 
-Note: `data-quality` is called `quality-gates` in data-engineering context and
-`data-quality` in source context. Same agent, different focus overrides.
+| Field | Value |
+|-------|-------|
+| Agent | [`research-entities.md`](../../agents/research-entities.md) |
+| Used by | **all 4 types** (domain, data-engineering, platform, source) |
+| Role | Surface core entities, relationships, cardinality patterns, and entity classification decisions specific to the customer's environment |
+| Default focus | Identify domain entities, their relationships, cardinality constraints, and cross-entity analysis patterns. Focus on what differs from the standard model Claude already knows. |
+| Output | Questions about which entities to model, relationship depth, key cardinality decisions, and departures from textbook models |
+| Delta justification | Claude knows standard entity models (Salesforce objects, Kimball star schema, dbt resources). The delta is the customer's specific entity landscape: custom objects, managed package extensions, entity classifications (dimension vs. fact), grain decisions, and non-obvious relationships. |
+| Template sections | Varies by type — see per-type mapping |
+
+#### `data-quality` — Data Quality Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-data-quality.md`](../../agents/research-data-quality.md) |
+| Used by | **data-engineering** (as `quality-gates`), **source** (as `data-quality`) |
+| Role | Surface quality checks, validation patterns, and known quality issues specific to the skill's domain |
+| Default focus | Identify pattern-specific quality checks (DE) and org-specific known quality issues (source) that go beyond generic data quality concepts |
+| Output | Questions about validation rules, quality gate thresholds, known quality issues, pipeline failure response |
+| Delta justification | Claude knows generic data quality concepts (null checks, uniqueness, referential integrity). The delta is pattern-specific checks (e.g., row multiplication accounting after MERGE into Type 2) and org-specific issues (e.g., fields commonly null due to validation rule workarounds). |
+| Template sections | DE: Quality Gates & Testing. Source: Data Extraction Gotchas, System Workarounds |
+
+---
 
 ### Domain-Specific Dimensions
 
-| Slug | Name | Agent | Default Focus | Types |
-|------|------|-------|---------------|-------|
-| `metrics` | Metrics & KPI | [`research-metrics.md`](../../agents/research-metrics.md) | Identify key business metrics, exact calculation formulas, parameter definitions, and where "approximately correct" defaults produce wrong analysis. | domain |
-| `business-rules` | Business Rules | [`research-business-rules.md`](../../agents/research-business-rules.md) | Identify business rules affecting data modeling, industry-specific variations, regulatory constraints, and rules engineers commonly implement incorrectly. | domain |
-| `segmentation-and-periods` | Segmentation & Periods | [`research-segmentation-and-periods.md`](../../agents/research-segmentation-and-periods.md) | Identify specific segmentation breakpoints, fiscal calendar structure, snapshot timing, and cross-period rules constraining metric calculations. | domain |
-| `modeling-patterns` | Modeling Patterns | [`research-modeling-patterns.md`](../../agents/research-modeling-patterns.md) | Identify domain-specific modeling decisions: grain choices, field coverage, and interactions between grain choices and downstream query patterns. | domain |
+#### `metrics` — Metrics & KPI Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-metrics.md`](../../agents/research-metrics.md) |
+| Used by | **domain** only |
+| Role | Surface specific metrics and KPIs with emphasis on where calculation definitions diverge from industry standards — exact formula parameters, inclusion/exclusion rules, calculation nuances |
+| Default focus | Identify key business metrics, their exact calculation formulas, parameter definitions (denominators, exclusions, modifiers), and where "approximately correct" defaults would produce wrong analysis |
+| Output | Questions about which metrics to support, formula parameters, aggregation granularity, and metric presentation |
+| Delta justification | Claude knows textbook formulas (coverage = open/quota, win rate = won/(won+lost)). The delta is every parameter: coverage denominator (quota vs. forecast vs. target), segmented targets (4.5x/2x), win rate exclusions ($25K floor, 14-day minimum), custom modifiers (discount impact factor). |
+| Template sections | Metric Definitions (primary), Materiality Thresholds, Output Standards |
+
+#### `business-rules` — Business Rules Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-business-rules.md`](../../agents/research-business-rules.md) |
+| Used by | **domain** only |
+| Role | Surface business rules that constrain data modeling — conditional logic, regulatory requirements, organizational policies that override textbook logic |
+| Default focus | Identify business rules that affect data modeling, industry-specific variations, regulatory constraints, and rules that engineers without domain expertise commonly implement incorrectly |
+| Output | Questions about conditional business logic, regulatory requirements, exception handling rules |
+| Delta justification | Claude knows standard business rules at textbook level. The delta is the customer's actual rule logic: pushed deals treated differently by deal type, maverick spend with a $5K threshold plus sole-source exception, co-sold deal attribution models. |
+| Template sections | Business Logic Decisions (primary), Materiality Thresholds, Segmentation Standards |
+
+#### `segmentation-and-periods` — Segmentation & Period Handling Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-segmentation-and-periods.md`](../../agents/research-segmentation-and-periods.md) |
+| Used by | **domain** only |
+| Role | Surface how the organization segments business data for analysis and handles time-based logic: segmentation breakpoints, fiscal calendars, snapshot cadence, cross-period rules |
+| Default focus | Identify specific segmentation breakpoints (not just "segmentation exists"), fiscal calendar structure, snapshot timing, and cross-period rules that constrain metric calculations |
+| Output | Questions about segment definitions, fiscal calendar, period handling, snapshot cadence |
+| Delta justification | Claude knows generic segmentation patterns and standard fiscal calendars. The delta is specific breakpoints (enterprise = 500+ employees AND $1M+ ACV), the customer's fiscal calendar (4-4-5? non-January fiscal year?), snapshot timing, and cross-period rules. Without knowing the segmentation, even correct formulas produce wrong answers. |
+| Template sections | Segmentation Standards (primary), Period Handling (primary), Materiality Thresholds |
+
+#### `modeling-patterns` — Modeling Patterns Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-modeling-patterns.md`](../../agents/research-modeling-patterns.md) |
+| Used by | **domain** only |
+| Role | Surface silver/gold layer modeling patterns for the business domain: fact table granularity, snapshot strategies, source field coverage decisions |
+| Default focus | Identify domain-specific modeling decisions: grain choices (stage-transition vs. daily-snapshot), field coverage (which source fields to silver vs. gold), and interactions between grain choices and downstream query patterns |
+| Output | Questions about modeling approach, grain decisions, snapshot strategy, field coverage |
+| Delta justification | Claude knows Kimball methodology and star schemas. The delta is domain-specific modeling decisions: stage-transition grain vs. daily-snapshot grain for pipeline, field coverage (which source fields to silver, which to gold), and the interaction between grain choices and downstream query patterns. |
+| Template sections | Metric Definitions (secondary), Business Logic Decisions (secondary) |
+
+---
 
 ### Data-Engineering-Specific Dimensions
 
-| Slug | Name | Agent | Default Focus | Types |
-|------|------|-------|---------------|-------|
-| `pattern-interactions` | Pattern Interaction & Selection | [`research-pattern-interactions.md`](../../agents/research-pattern-interactions.md) | Identify constraint chains between patterns: how SCD type constrains merge strategy, how merge strategy constrains key design, how historization constrains materialization. | DE |
-| `load-merge-patterns` | Load & Merge Strategy | [`research-load-merge-patterns.md`](../../agents/research-load-merge-patterns.md) | Identify high-water mark column selection, change detection approaches, merge predicate design, idempotency guarantees, failure recovery, backfill strategies, and schema evolution. | DE |
-| `historization` | Historization & Temporal Design | [`research-historization.md`](../../agents/research-historization.md) | Identify when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required vs. overkill, and retention policies. | DE |
-| `layer-design` | Silver/Gold Layer Design | [`research-layer-design.md`](../../agents/research-layer-design.md) | Identify where to draw the silver/gold boundary, physical vs. logical dimension conformance, materialization trade-offs specific to pattern choices, and aggregate table design. | DE |
+#### `pattern-interactions` — Pattern Interaction & Selection Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-pattern-interactions.md`](../../agents/research-pattern-interactions.md) |
+| Used by | **data-engineering** only |
+| Role | Surface non-obvious interactions between pattern choices (load strategy, merge approach, historization type, materialization) that constrain each other. Decision trees for pattern selection based on entity characteristics. |
+| Default focus | Identify constraint chains between patterns: how SCD type selection constrains merge strategy, how merge strategy constrains key design, how historization choice constrains materialization. Focus on where choosing pattern A forces or precludes pattern B. |
+| Output | Questions about pattern interactions, constraint chains, selection criteria |
+| Delta justification | Claude knows each pattern individually. The delta is the interactions: SCD Type 2 forces hash-based surrogate keys, which forces MERGE INTO, which requires reliable change timestamps. Late-arriving fact handling depends on whether the joined dimension uses Type 1 (safe) or Type 2 (requires point-in-time lookup). |
+| Template sections | Pattern Selection & Interaction Rules (primary), Load & Merge Patterns (secondary) |
+
+#### `load-merge-patterns` — Load & Merge Strategy Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-load-merge-patterns.md`](../../agents/research-load-merge-patterns.md) |
+| Used by | **data-engineering** only |
+| Role | Surface specific load strategy and merge implementation decisions, including failure recovery, backfill strategies, and schema evolution handling |
+| Default focus | Identify high-water mark column selection, change detection approaches, merge predicate design, idempotency guarantees, failure recovery patterns, backfill strategies for historized data, schema evolution in versioned tables, and orchestration monitoring for pattern-specific drift |
+| Output | Questions about merge predicates, watermark handling, failure recovery, backfill approach, schema evolution |
+| Delta justification | Claude knows generic MERGE INTO syntax and high-water marks. The delta is: watermark boundary duplicate handling (overlap window + dedup), MERGE failure recovery for Type 2 (duplicate current records), platform-specific merge characteristics, and day-2 operational concerns (backfilling Type 2 requires historical source snapshots). |
+| Template sections | Load & Merge Patterns (primary), Quality Gates & Testing (secondary — monitoring) |
+
+#### `historization` — Historization & Temporal Design Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-historization.md`](../../agents/research-historization.md) |
+| Used by | **data-engineering** only |
+| Role | Surface SCD type selection rationale per entity, effective date conventions, snapshot vs. row-versioning trade-offs, bitemporal modeling triggers, history retention policies |
+| Default focus | Identify when Type 2 breaks down (>10M rows with 10% daily changes), when snapshots outperform row-versioning (wide tables with many changing columns), when bitemporal modeling is required vs. overkill, and retention policies |
+| Output | Questions about SCD type selection per entity, snapshot strategy, bitemporal triggers, retention |
+| Delta justification | Claude knows SCD Types 1/2/3/4/6. The delta is threshold decisions: when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required. |
+| Template sections | Historization & Temporal Design (primary), Pattern Selection & Interaction Rules (secondary) |
+
+#### `layer-design` — Silver/Gold Layer Design Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-layer-design.md`](../../agents/research-layer-design.md) |
+| Used by | **data-engineering** only |
+| Role | Surface layer boundary decisions, conformed dimension governance, fact table granularity, materialization strategy, aggregate table design |
+| Default focus | Identify where to draw the silver/gold boundary (source-conformed vs. business-conformed silver), physical vs. logical dimension conformance, materialization trade-offs specific to pattern choices (Type 2 dimensions make views expensive), and aggregate table design |
+| Output | Questions about layer boundaries, conformed dimensions, materialization approach, aggregate patterns |
+| Delta justification | Claude knows medallion architecture and star schema. The delta is where to draw the silver/gold boundary, physical vs. logical conformance, and materialization trade-offs specific to pattern choices. |
+| Template sections | Layer Design & Materialization (primary) |
+
+---
 
 ### Platform-Specific Dimensions
 
-| Slug | Name | Agent | Default Focus | Types |
-|------|------|-------|---------------|-------|
-| `platform-behavioral-overrides` | Platform Behavioral Overrides | [`research-platform-behavioral-overrides.md`](../../agents/research-platform-behavioral-overrides.md) | Identify behavioral deviations from official documentation -- cases where following the docs produces wrong results. | platform |
-| `config-patterns` | Configuration Patterns | [`research-config-patterns.md`](../../agents/research-config-patterns.md) | Identify configuration combinations that fail in practice, version-dependent configuration requirements, adapter version pinning, and breaking changes across version boundaries. | platform |
-| `integration-orchestration` | Integration & Orchestration | [`research-integration-orchestration.md`](../../agents/research-integration-orchestration.md) | Identify CI/CD pipeline configuration, authentication handoffs between tools, and multi-tool orchestration workflows specific to the deployment. | platform |
-| `operational-failure-modes` | Operational Failure Modes | [`research-operational-failure-modes.md`](../../agents/research-operational-failure-modes.md) | Identify production failure patterns, undocumented timeout behaviors, concurrency issues, environment-specific error behaviors, and debugging procedures. | platform |
+#### `platform-behavioral-overrides` — Platform Behavioral Override Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-platform-behavioral-overrides.md`](../../agents/research-platform-behavioral-overrides.md) |
+| Used by | **platform** only |
+| Role | Surface cases where the platform behaves differently than its documentation states — the "docs say X, reality is Y" items |
+| Default focus | Identify behavioral deviations from official documentation in the customer's specific environment. Focus on cases where following the docs produces wrong results. |
+| Output | Questions about known behavioral deviations, undocumented limitations, environment-specific behaviors |
+| Delta justification | Claude's parametric knowledge comes from official documentation. When reality diverges from docs, Claude is confidently wrong. For dbt on Fabric: `merge` silently degrades on Lakehouse, datetime2 precision causes snapshot failures, warehouse vs. Lakehouse endpoints change available SQL features. |
+| Template sections | Platform Behavioral Overrides (primary), Environment-Specific Constraints (co-primary) |
+
+#### `config-patterns` — Configuration Pattern Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-config-patterns.md`](../../agents/research-config-patterns.md) |
+| Used by | **platform** only |
+| Role | Surface dangerous configuration combinations (valid syntax, wrong semantics), required settings with non-obvious defaults, version-dependent configuration constraints, and multi-axis compatibility requirements |
+| Default focus | Identify configuration combinations that fail in practice, including version-dependent configuration requirements (which adapter/runtime versions change which configurations are valid), adapter version pinning, and breaking changes across version boundaries. Focus on configurations that look correct but produce unexpected behavior. |
+| Output | Questions about dangerous configs, version-dependent configuration constraints, multi-axis compatibility |
+| Delta justification | Claude generates syntactically valid configurations from documentation. It cannot reason about which configurations produce unexpected runtime behavior. The expanded scope includes version-dependent configuration interactions (e.g., adapter v1.6+ required for incremental materialization, which changes available config options). |
+| Template sections | Configuration Patterns, Anti-Patterns & Version Compatibility (primary) |
+
+#### `integration-orchestration` — Integration and Orchestration Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-integration-orchestration.md`](../../agents/research-integration-orchestration.md) |
+| Used by | **platform** only |
+| Role | Surface how the platform connects to other tools, CI/CD pipeline patterns, authentication handoffs between tools, orchestration workflows |
+| Default focus | Identify integration patterns, CI/CD pipeline configuration, authentication handoffs between tools, and multi-tool orchestration workflows specific to the customer's deployment |
+| Output | Questions about CI/CD patterns, cross-tool integration, orchestration workflows |
+| Delta justification | Claude knows individual tool documentation but not how tools interact in real deployments. The integration layer (CI/CD pipelines, auth flows across tool boundaries, artifact passing) lives in team-specific runbooks, not documentation. |
+| Template sections | Integration and Orchestration (primary) |
+
+#### `operational-failure-modes` — Operational Failure Mode Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-operational-failure-modes.md`](../../agents/research-operational-failure-modes.md) |
+| Used by | **platform** only |
+| Role | Surface production failure patterns, debugging procedures, performance pitfalls — the "things that break at 2am" items |
+| Default focus | Identify production failure patterns, undocumented timeout behaviors, concurrency issues, environment-specific error behaviors, and debugging procedures that come exclusively from operational experience |
+| Output | Questions about production failure patterns, timeout behaviors, concurrency issues, debugging procedures |
+| Delta justification | Claude describes happy paths; this dimension surfaces failure paths. Production-incident knowledge (Fabric's unconfigurable 30-minute query timeout, metadata lock contention from concurrent dbt runs, environment-specific test error format differences) comes exclusively from operational experience. |
+| Template sections | Operational Gotchas and Failure Modes (primary), Environment-Specific Constraints (co-primary) |
+
+---
 
 ### Source-Specific Dimensions
 
-| Slug | Name | Agent | Default Focus | Types |
-|------|------|-------|---------------|-------|
-| `extraction` | Data Extraction | [`research-extraction.md`](../../agents/research-extraction.md) | Identify platform-specific extraction traps, CDC field selection, soft delete detection mechanisms, and parent-child change propagation gaps. | source |
-| `field-semantics` | Field Semantic Overrides | [`research-field-semantics.md`](../../agents/research-field-semantics.md) | Identify fields whose standard meaning is overridden or misleading: managed package field overrides, independently editable field pairs, ISV field interactions. | source |
-| `lifecycle-and-state` | Record Lifecycle & State | [`research-lifecycle-and-state.md`](../../agents/research-lifecycle-and-state.md) | Identify state machine behaviors, custom stage progressions, lifecycle boundary conditions, record type-specific lifecycle variations. | source |
-| `reconciliation` | Cross-System Reconciliation | [`research-reconciliation.md`](../../agents/research-reconciliation.md) | Identify which numbers should agree between systems but don't, source-of-truth resolution for conflicting data, tolerance levels. | source |
+#### `extraction` — Data Extraction Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-extraction.md`](../../agents/research-extraction.md) |
+| Used by | **source** only |
+| Role | Surface platform-specific extraction traps that produce silently wrong data, including CDC mechanism selection and change detection gotchas |
+| Default focus | Identify platform-specific extraction traps (multi-tenant filtering, governor limits at scale, permission/scope affecting completeness), CDC field selection (which timestamp field captures all changes), soft delete detection mechanisms, and parent-child change propagation gaps. Focus on where the obvious approach silently misses data. |
+| Output | Questions about extraction traps, CDC mechanisms, soft delete handling, completeness guarantees |
+| Delta justification | The synthesis identified multiple failure modes: ORG_ID filtering (~4/10 Claude responses miss), SystemModstamp vs. LastModifiedDate (Claude inconsistently recommends the correct one), queryAll() for soft deletes, WHO column CDC limitation. These are platform-specific traps within each extraction pattern. |
+| Template sections | Data Extraction Gotchas (primary), API/Integration Behaviors (primary) |
+
+#### `field-semantics` — Field Semantic Override Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-field-semantics.md`](../../agents/research-field-semantics.md) |
+| Used by | **source** only |
+| Role | Surface fields whose standard meaning is overridden or misleading, including managed package field overrides and their modification schedules |
+| Default focus | Identify fields whose standard meaning is overridden or misleading: managed package field overrides (which packages modify which fields and on what schedule), independently editable field pairs, multi-valued fields with org-specific meanings, ISV field interactions |
+| Output | Questions about field semantic overrides, managed package modifications, field independence |
+| Delta justification | High-delta content (CPQ overriding Amount, ForecastCategory/StageName independence, Clari overwriting forecast fields nightly) requires explicit research. Claude knows standard field semantics but cannot know which fields have been overridden in the customer's org. |
+| Template sections | Field Semantics and Overrides (primary), Reconciliation Rules (secondary), System Workarounds (secondary) |
+
+#### `lifecycle-and-state` — Record Lifecycle & State Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-lifecycle-and-state.md`](../../agents/research-lifecycle-and-state.md) |
+| Used by | **source** only |
+| Role | Surface record lifecycle patterns: state machines, custom stage progressions, lifecycle boundary behaviors, record type-specific lifecycle variations |
+| Default focus | Identify state machine behaviors, custom stage progressions, lifecycle boundary conditions (can records regress? skip stages?), record type-specific lifecycle variations, and independently editable state fields |
+| Output | Questions about state progressions, lifecycle variations, record type behaviors |
+| Delta justification | Template section "State Machine and Lifecycle" previously had zero researching dimensions. RecordTypeId filtering, ForecastCategory/StageName independence, custom stage progressions are lifecycle behaviors Claude doesn't reliably flag. |
+| Template sections | State Machine and Lifecycle (primary), Field Semantics and Overrides (secondary) |
+
+#### `reconciliation` — Cross-System Reconciliation Research
+
+| Field | Value |
+|-------|-------|
+| Agent | [`research-reconciliation.md`](../../agents/research-reconciliation.md) |
+| Used by | **source** only |
+| Role | Surface cross-table, cross-module, and cross-system reconciliation points where data should agree but often doesn't |
+| Default focus | Identify which numbers should agree between systems but don't, source-of-truth resolution for conflicting data, tolerance levels for discrepancies, and reconciliation procedures |
+| Output | Questions about reconciliation points, source-of-truth resolution, tolerance levels |
+| Delta justification | Claude knows reconciliation as a concept but cannot know which specific tables/objects in a customer's system should agree but don't, or which system is the source of truth. For Customer Beta: SFDC pipeline numbers disagree with Clari and finance. |
+| Template sections | Reconciliation Rules (primary), Data Extraction Gotchas (secondary) |
 
 ---
 
-## 4. Assignment Matrix
-
-| Dimension | domain | data-eng | platform | source |
-|-----------|:------:|:--------:|:--------:|:------:|
-| **Cross-type** | | | | |
-| `entities` | x | x | x | x |
-| `data-quality` | - | x | - | x |
-| **Domain** | | | | |
-| `metrics` | x | - | - | - |
-| `business-rules` | x | - | - | - |
-| `segmentation-and-periods` | x | - | - | - |
-| `modeling-patterns` | x | - | - | - |
-| **Data-engineering** | | | | |
-| `pattern-interactions` | - | x | - | - |
-| `load-merge-patterns` | - | x | - | - |
-| `historization` | - | x | - | - |
-| `layer-design` | - | x | - | - |
-| **Platform** | | | | |
-| `platform-behavioral-overrides` | - | - | x | - |
-| `config-patterns` | - | - | x | - |
-| `integration-orchestration` | - | - | x | - |
-| `operational-failure-modes` | - | - | x | - |
-| **Source** | | | | |
-| `extraction` | - | - | - | x |
-| `field-semantics` | - | - | - | x |
-| `lifecycle-and-state` | - | - | - | x |
-| `reconciliation` | - | - | - | x |
-| | | | | |
-| **Dimension count** | **5** | **6** | **5** | **6** |
-
-The matrix represents defaults. The planner can add cross-type dimensions when the
-domain genuinely crosses type boundaries (e.g., a data-engineering skill about CDC
-pipelines might benefit from `extraction`).
-
----
-
-## 5. Per-Type Template Structures
+## 4. Per-Type Template Structures
 
 Each skill type has a set of template sections that dimensions populate. Primary dimensions
 drive the section's content; secondary dimensions contribute supplementary questions.
@@ -210,7 +362,7 @@ drive the section's content; secondary dimensions contribute supplementary quest
 
 ---
 
-## 6. Agent Structure
+## 5. Agent Structure
 
 All agents are flat `.md` files in a single `agents/` directory. No subdirectories,
 no generated files, no build system. 25 files total:
@@ -253,55 +405,7 @@ Each dimension agent follows the same structure:
 
 ---
 
-## 7. Planner Design
-
-The planner (`research-planner.md`) is an opus agent that decides which dimensions to
-research and how to focus them for the specific domain.
-
-### Inputs
-
-The orchestrator passes:
-- **Skill type** -- `domain`, `data-engineering`, `platform`, or `source`
-- **Domain name** -- e.g., "sales pipeline", "Salesforce", "dbt on Fabric"
-- **User context** -- any additional context provided during init (may be empty)
-- **Dimension catalog** -- all 18 dimensions with names and default focus lines
-
-### Process
-
-The planner evaluates every dimension against the domain:
-
-1. **Start with obvious fits.** Dimensions clearly relevant to this domain get included
-   with tailored focus lines.
-2. **Scan every remaining dimension.** For each, ask: "If an engineer uses Claude Code
-   to build silver/gold tables for this domain without this knowledge, what will Claude
-   get wrong?" Include any that surface genuine delta.
-3. **Exclude with reasoning.** Each excluded dimension gets a specific explanation of
-   what Claude already handles correctly without it.
-
-### Outputs
-
-1. **`context/research-plan.md`** -- decision table covering all 18 dimensions
-   (included and excluded) with reasoning, for auditability.
-2. **`CHOSEN_DIMENSIONS:` text** -- returned to the orchestrator with the slug and
-   tailored focus line for each selected dimension.
-
-### Focus Line Tailoring
-
-Focus lines are the **sole source of domain context** for dimension agents. The planner
-embeds entity examples, metric names, pattern types, and platform specifics directly
-into each focus line. "Identify sales pipeline metrics like coverage ratio, win rate,
-velocity, and where standard formulas diverge from company-specific definitions" is
-better than "Identify key business metrics."
-
-### Constraints
-
-- `entities` is always included.
-- The plan file covers all 18 dimensions -- no omissions.
-- One sentence of reasoning per dimension.
-
----
-
-## 8. Focus Line Tailoring
+## 6. Focus Line Tailoring
 
 The planner tailors focus lines for each selected dimension based on the skill type
 and domain. Two cross-type dimensions (`entities` and `data-quality`) have type-specific
@@ -333,24 +437,3 @@ beyond their catalog defaults.
 | **`config-patterns`** (platform) | Version-dependent configuration requirements, adapter version pinning, multi-axis compatibility (core x adapter x runtime), breaking changes across version boundaries |
 | **`load-merge-patterns`** (DE) | Failure recovery patterns, backfill strategies for historized data (Type 2 backfill requires historical source snapshots), schema evolution in versioned tables, orchestration monitoring for drift |
 
----
-
-## 9. Consolidation
-
-A single opus agent with extended thinking (`effort: high`) consolidates all dimension
-outputs into the final `clarifications.md`.
-
-The consolidation agent receives the returned text from every dimension agent that ran,
-each labeled with its dimension name (e.g., "Entities Research:", "Metrics Research:").
-It performs deep reasoning to:
-
-- **Cross-reference** findings across dimensions (e.g., entity decisions that affect
-  pipeline pattern choices, metrics that constrain layer design)
-- **Resolve overlaps** where multiple dimensions surface similar questions from
-  different angles
-- **Identify gaps** where template sections lack coverage from any dimension
-- **Order questions** so earlier answers inform later choices
-- **Produce a cohesive file** with logical section flow that a PM can answer efficiently
-
-If the consolidation agent fails, the orchestrator performs consolidation directly as
-a fallback.
