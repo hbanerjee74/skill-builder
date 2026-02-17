@@ -25,6 +25,8 @@ interface WorkflowState {
   /** Granular progress message shown during initialization (e.g. "Loading SDK modules..."). */
   initProgressMessage: string | null;
   hydrated: boolean;
+  /** Step IDs that are disabled due to scope recommendation (too broad). */
+  disabledSteps: number[];
 
   /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
@@ -38,6 +40,7 @@ interface WorkflowState {
   setInitializing: () => void;
   clearInitializing: () => void;
   setInitProgressMessage: (message: string) => void;
+  setDisabledSteps: (steps: number[]) => void;
   resetToStep: (stepId: number) => void;
   loadWorkflowState: (completedStepIds: number[], savedCurrentStep?: number) => void;
   setHydrated: (hydrated: boolean) => void;
@@ -107,6 +110,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initProgressMessage: null,
   runtimeError: null,
   hydrated: false,
+  disabledSteps: [],
 
   initWorkflow: (skillName, domain, skillType) =>
     set({
@@ -123,6 +127,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       hydrated: false,
+      disabledSteps: [],
     }),
 
   setSkillType: (skillType) => set({ skillType }),
@@ -167,6 +172,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 
   setInitProgressMessage: (message) => set({ initProgressMessage: message }),
 
+  setDisabledSteps: (steps) => set({ disabledSteps: steps }),
+
   setRuntimeError: (error) => set({ runtimeError: error }),
 
   clearRuntimeError: () => set({ runtimeError: null }),
@@ -178,6 +185,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       steps: state.steps.map((s) =>
         s.id >= stepId ? { ...s, status: "pending" as const } : s
       ),
+      // Clear disabled steps when resetting to the beginning (scope may change)
+      ...(stepId === 0 ? { disabledSteps: [] } : {}),
     })),
 
   loadWorkflowState: (completedStepIds, savedCurrentStep) =>
@@ -225,5 +234,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       hydrated: false,
+      disabledSteps: [],
     }),
 }));

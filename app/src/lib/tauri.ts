@@ -79,6 +79,9 @@ export const verifyStepOutput = (
   stepId: number,
 ) => invoke<boolean>("verify_step_output", { workspacePath, skillName, stepId });
 
+export const getDisabledSteps = (skillName: string) =>
+  invoke<number[]>("get_disabled_steps", { skillName });
+
 // --- Workflow State (SQLite) ---
 
 interface WorkflowRunRow {

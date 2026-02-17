@@ -4,11 +4,15 @@ import {
   Clock,
   Loader2,
   AlertCircle,
+  SkipForward,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WorkflowStep } from "@/stores/workflow-store";
 
-function StepStatusIcon({ status }: { status: WorkflowStep["status"] }) {
+function StepStatusIcon({ status, isDisabled }: { status: WorkflowStep["status"]; isDisabled?: boolean }) {
+  if (isDisabled) {
+    return <SkipForward className="size-4 text-muted-foreground/50" />;
+  }
   switch (status) {
     case "completed":
       return <CheckCircle2 className="size-4 text-green-500" />;
@@ -27,12 +31,14 @@ interface WorkflowSidebarProps {
   steps: WorkflowStep[];
   currentStep: number;
   onStepClick?: (stepId: number) => void;
+  disabledSteps?: number[];
 }
 
 export function WorkflowSidebar({
   steps,
   currentStep,
   onStepClick,
+  disabledSteps,
 }: WorkflowSidebarProps) {
   return (
     <nav className="flex w-64 shrink-0 flex-col border-r bg-muted/30 p-4">
@@ -42,8 +48,9 @@ export function WorkflowSidebar({
       <ol className="flex flex-col gap-1">
         {steps.map((step) => {
           const isCurrent = step.id === currentStep;
+          const isDisabled = disabledSteps?.includes(step.id) ?? false;
           const isClickable =
-            step.status === "completed" && onStepClick !== undefined;
+            !isDisabled && step.status === "completed" && onStepClick !== undefined;
 
           return (
             <li key={step.id}>
@@ -53,24 +60,28 @@ export function WorkflowSidebar({
                 onClick={() => isClickable && onStepClick?.(step.id)}
                 className={cn(
                   "flex w-full items-start gap-3 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                  isCurrent && "bg-accent text-accent-foreground",
-                  !isCurrent && "text-muted-foreground hover:text-foreground",
-                  isClickable && "cursor-pointer",
-                  !isClickable && "cursor-default"
+                  isDisabled && "opacity-40 cursor-not-allowed",
+                  !isDisabled && isCurrent && "bg-accent text-accent-foreground",
+                  !isDisabled && !isCurrent && "text-muted-foreground hover:text-foreground",
+                  !isDisabled && isClickable && "cursor-pointer",
+                  !isDisabled && !isClickable && "cursor-default"
                 )}
               >
                 <span className="mt-0.5 shrink-0">
-                  <StepStatusIcon status={step.status} />
+                  <StepStatusIcon status={step.status} isDisabled={isDisabled} />
                 </span>
                 <span className="flex flex-col gap-0.5">
                   <span
                     className={cn(
                       "font-medium leading-tight",
-                      isCurrent && "text-foreground"
+                      !isDisabled && isCurrent && "text-foreground"
                     )}
                   >
                     {step.id + 1}. {step.name}
                   </span>
+                  {isDisabled && (
+                    <span className="text-xs text-muted-foreground/60">Skipped</span>
+                  )}
                 </span>
               </button>
             </li>

@@ -11,6 +11,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Save,
+  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   releaseLock,
   verifyStepOutput,
   endWorkflowSession,
+  getDisabledSteps,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -89,6 +91,7 @@ export default function WorkflowPage() {
     isInitializing,
     hydrated,
     reviewMode,
+    disabledSteps,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
@@ -271,6 +274,15 @@ export default function WorkflowPage() {
         } else {
           setHydrated(true);
         }
+
+        // Restore disabled steps (scope recommendation) after hydration
+        getDisabledSteps(skillName)
+          .then((disabled) => {
+            if (!cancelled) {
+              useWorkflowStore.getState().setDisabledSteps(disabled);
+            }
+          })
+          .catch(() => {}); // Non-fatal
       })
       .catch(() => {
         // No saved state — fresh skill
@@ -382,7 +394,12 @@ export default function WorkflowPage() {
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
+    const { disabledSteps: disabled } = useWorkflowStore.getState();
     const nextStep = currentStep + 1;
+
+    // Don't advance if the next step is disabled (scope too broad)
+    if (disabled.includes(nextStep)) return;
+
     setCurrentStep(nextStep);
 
     const nextConfig = STEP_CONFIGS[nextStep];
@@ -423,6 +440,16 @@ export default function WorkflowPage() {
         updateStepStatus(step, "completed");
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
+
+        // After step 0 completes, check for disabled steps (scope recommendation)
+        if (step === 0 && skillName) {
+          try {
+            const disabled = await getDisabledSteps(skillName);
+            useWorkflowStore.getState().setDisabledSteps(disabled);
+          } catch {
+            // Non-fatal: proceed normally
+          }
+        }
 
         // Agent steps always pause on the completion screen so the user can
         // review output files before proceeding. The user clicks "Next Step"
@@ -568,8 +595,29 @@ export default function WorkflowPage() {
       currentStepDef?.status === "completed" &&
       !activeAgentId
     ) {
-      const isLastStep = currentStep >= steps.length - 1;
+      // Check if workflow is halted: next step (or all subsequent steps) are disabled
+      const nextStep = currentStep + 1;
+      const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
+      const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
       const handleClose = () => navigate({ to: "/" });
+
+      // When halted, show a scope-too-broad message instead of normal completion
+      if (isWorkflowHalted && !reviewMode) {
+        const outputFiles = stepConfig?.outputFiles ?? [];
+        return (
+          <WorkflowStepComplete
+            stepName={currentStepDef.name}
+            outputFiles={outputFiles}
+            onClose={handleClose}
+            isLastStep={true}
+            reviewMode={reviewMode}
+            skillName={skillName}
+            workspacePath={workspacePath ?? undefined}
+            skillsPath={skillsPath}
+          />
+        );
+      }
+
       if (stepConfig?.outputFiles) {
         return (
           <WorkflowStepComplete
@@ -634,6 +682,10 @@ export default function WorkflowPage() {
           );
         }
 
+        // Check if the workflow is halted at this review step
+        const nextStepAfterReview = currentStep + 1;
+        const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
+
         // Active editing mode: MDEditor
         return (
           <div className="flex h-full flex-col">
@@ -650,46 +702,69 @@ export default function WorkflowPage() {
                 visibleDragbar={false}
               />
             </div>
-            <div className="flex items-center justify-between border-t pt-4">
-              <p className="text-sm text-muted-foreground">
-                Edit the markdown above, then save and continue.
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={!hasUnsavedChanges || isSaving}
-                >
-                  {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                  Save
-                  {hasUnsavedChanges && (
-                    <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReviewReload}
-                >
-                  <RotateCcw className="size-3.5" />
-                  Reload
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (hasUnsavedChanges) {
-                      setShowUnsavedDialog(true);
-                    } else {
-                      handleReviewContinue();
-                    }
-                  }}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
+            {isReviewHalted ? (
+              <div className="border-t pt-4">
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <CheckCircle2 className="size-8 text-green-500" />
+                  <div className="text-center max-w-md">
+                    <p className="text-base font-medium">Scope Too Broad</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      The research phase determined this skill topic is too broad for a single skill.
+                      Review the scope recommendations above, then start a new workflow with a narrower focus.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate({ to: "/" })}
+                  >
+                    <Home className="size-3.5" />
+                    Return to Dashboard
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-between border-t pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Edit the markdown above, then save and continue.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={!hasUnsavedChanges || isSaving}
+                  >
+                    {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    Save
+                    {hasUnsavedChanges && (
+                      <span className="ml-1 size-2 rounded-full bg-orange-500" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReviewReload}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Reload
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (hasUnsavedChanges) {
+                        setShowUnsavedDialog(true);
+                      } else {
+                        handleReviewContinue();
+                      }
+                    }}
+                  >
+                    <CheckCircle2 className="size-3.5" />
+                    Complete Step
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         );
       }
@@ -954,6 +1029,7 @@ export default function WorkflowPage() {
         <WorkflowSidebar
           steps={steps}
           currentStep={currentStep}
+          disabledSteps={disabledSteps}
           onStepClick={(id) => {
             if (steps[id]?.status !== "completed") return;
             if (isRunning) {
