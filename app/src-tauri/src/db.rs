@@ -27,6 +27,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_sessions_table_migration(&conn)?;
     run_trigger_text_migration(&conn)?;
     run_agent_stats_migration(&conn)?;
+    run_intake_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -172,6 +173,28 @@ fn run_trigger_text_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
     if !has_trigger_text {
         conn.execute_batch(
             "ALTER TABLE imported_skills ADD COLUMN trigger_text TEXT;",
+        )?;
+    }
+    Ok(())
+}
+
+fn run_intake_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(workflow_runs)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|name| name == "display_name") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN display_name TEXT;",
+        )?;
+    }
+    if !columns.iter().any(|name| name == "intake_json") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN intake_json TEXT;",
         )?;
     }
     Ok(())
@@ -763,13 +786,39 @@ pub fn set_skill_author(
     Ok(())
 }
 
+pub fn set_skill_display_name(
+    conn: &Connection,
+    skill_name: &str,
+    display_name: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workflow_runs SET display_name = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+        rusqlite::params![skill_name, display_name],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn set_skill_intake(
+    conn: &Connection,
+    skill_name: &str,
+    intake_json: Option<&str>,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workflow_runs SET intake_json = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+        rusqlite::params![skill_name, intake_json],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn get_workflow_run(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -785,6 +834,8 @@ pub fn get_workflow_run(
             updated_at: row.get(6)?,
             author_login: row.get(7)?,
             author_avatar: row.get(8)?,
+            display_name: row.get(9)?,
+            intake_json: row.get(10)?,
         })
     });
 
@@ -805,7 +856,7 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -822,6 +873,8 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
                 updated_at: row.get(6)?,
                 author_login: row.get(7)?,
                 author_avatar: row.get(8)?,
+                display_name: row.get(9)?,
+                intake_json: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1496,6 +1549,7 @@ mod tests {
         run_sessions_table_migration(&conn).unwrap();
         run_trigger_text_migration(&conn).unwrap();
         run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
         conn
     }
 
@@ -1526,6 +1580,9 @@ mod tests {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
+            industry: None,
+            function_role: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1556,6 +1613,9 @@ mod tests {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
+            industry: None,
+            function_role: None,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -1582,6 +1642,9 @@ mod tests {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
+            industry: None,
+            function_role: None,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -1601,6 +1664,9 @@ mod tests {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
+            industry: None,
+            function_role: None,
         };
         write_settings(&conn, &v2).unwrap();
 
@@ -1813,6 +1879,7 @@ mod tests {
         run_migrations(&conn).unwrap();
         run_add_skill_type_migration(&conn).unwrap();
         run_author_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();

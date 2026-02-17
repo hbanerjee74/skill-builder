@@ -30,6 +30,9 @@ export interface AppSettings {
   github_user_email: string | null
   remote_repo_owner: string | null
   remote_repo_name: string | null
+  max_dimensions: number
+  industry: string | null
+  function_role: string | null
 }
 
 export interface DeviceFlowResponse {
@@ -53,6 +56,7 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
+  display_name: string | null
   domain: string | null
   current_step: string | null
   status: string | null
@@ -61,6 +65,30 @@ export interface SkillSummary {
   skill_type: string | null
   author_login: string | null
   author_avatar: string | null
+  intake_json: string | null
+}
+
+export const INTAKE_PLACEHOLDERS: Record<string, { audience: string; challenges: string; scope: string }> = {
+  platform: {
+    audience: "e.g., Data engineers building ELT pipelines, platform admins managing environments",
+    challenges: "e.g., Complex dependency management, environment promotion, cost optimization",
+    scope: "e.g., Focus on development workflow and CI/CD, exclude administration and security",
+  },
+  domain: {
+    audience: "e.g., Business analysts in finance, data scientists building forecasting models",
+    challenges: "e.g., Data quality issues in revenue recognition, reconciliation across systems",
+    scope: "e.g., Focus on revenue analytics and reporting, exclude operational finance",
+  },
+  source: {
+    audience: "e.g., Integration engineers connecting Salesforce to data warehouse",
+    challenges: "e.g., API rate limits, incremental extraction, schema drift handling",
+    scope: "e.g., Focus on Sales Cloud objects and custom objects, exclude Marketing Cloud",
+  },
+  "data-engineering": {
+    audience: "e.g., Analytics engineers implementing SCD patterns, data platform teams",
+    challenges: "e.g., Late-arriving dimensions, retroactive corrections, audit trail requirements",
+    scope: "e.g., Focus on Type 2 SCD with effectivity dates, exclude Type 6 hybrid patterns",
+  },
 }
 
 export interface NodeStatus {

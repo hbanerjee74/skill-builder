@@ -8,31 +8,29 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Map agent names to step template files.
  *
- * Agent names follow the pattern `{type}-{phase}` (e.g., `domain-research`,
- * `de-generate-skill`). Shared agents use bare names (`detailed-research`,
- * `confirm-decisions`, `validate-skill`).
+ * Agents use bare names (e.g., `research-orchestrator`, `generate-skill`,
+ * `research-entities`). Shared agents like `detailed-research` and
+ * `confirm-decisions` use the same bare names.
  */
 function resolveStepTemplate(agentName: string | undefined): string | null {
   if (!agentName) return null;
 
-  // Research sub-agents: {type}-research-{entities|metrics|practices|implementation}
-  if (/-research-(entities|metrics|practices|implementation)$/.test(agentName)) {
-    return "step0-research";
-  }
-  // Research orchestrator: {type}-research (but NOT detailed-research or consolidate-research)
+  // Exact matches first
+  if (agentName === "detailed-research") return "step2-detailed-research";
+  if (agentName === "confirm-decisions") return "step4-confirm-decisions";
+  if (agentName === "generate-skill") return "step5-generate-skill";
+  if (agentName === "validate-skill") return "step6-validate-skill";
+
+  // All research-related agents (orchestrator, planner, dimension agents, consolidate, scope-advisor)
   if (
-    agentName.endsWith("-research") &&
-    !agentName.startsWith("detailed") &&
-    !agentName.startsWith("consolidate")
+    agentName === "research-orchestrator" ||
+    agentName === "research-planner" ||
+    agentName === "consolidate-research" ||
+    agentName === "scope-advisor" ||
+    agentName.startsWith("research-")
   ) {
     return "step0-research";
   }
-  // Consolidate-research is spawned as a sub-agent during steps 0 and 2
-  if (agentName === "consolidate-research") return "step0-research";
-  if (agentName === "detailed-research") return "step2-detailed-research";
-  if (agentName === "confirm-decisions") return "step4-confirm-decisions";
-  if (agentName.endsWith("-generate-skill")) return "step5-generate-skill";
-  if (agentName === "validate-skill") return "step6-validate-skill";
 
   return null;
 }

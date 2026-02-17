@@ -7,7 +7,6 @@ Automation scripts for the Skill Builder project.
 ```
 scripts/
 ├── README.md                      # This file
-├── build-agents.sh                # Generate type-specific agents from templates
 ├── validate.sh                    # Structural validation (T1 checks)
 ├── test-plugin.sh                 # Full plugin test harness (T1-T5)
 ├── eval/                          # Skill evaluation harness
@@ -31,15 +30,6 @@ scripts/
 ```
 
 ## Scripts Overview
-
-### Agent Generation
-
-**`build-agents.sh`**
-- Generates 20 type-specific agent files from 5 templates × 4 types
-- Source of truth: `agents/templates/` and `agents/types/`
-- Output: `agents/{type}/*.md` (do not edit directly)
-- Usage: `./scripts/build-agents.sh`
-- Validation: `./scripts/build-agents.sh --check`
 
 ### Plugin Validation
 
@@ -66,26 +56,19 @@ scripts/
 ## Quick Commands
 
 ```bash
-# Agent generation
-./scripts/build-agents.sh                    # Generate all agents
-./scripts/build-agents.sh --check            # Verify generated files match templates
-
 # Plugin validation
 ./scripts/validate.sh                        # Structural validation (free)
 ./scripts/test-plugin.sh                     # Full test harness (requires API key)
 
 # Skill evaluation
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/data-engineering/generate-skill.md \
+  --baseline agents/generate-skill.md \
   --prompts scripts/eval/prompts/data-engineering.txt
 
 # See eval/README.md for comprehensive evaluation documentation
 ```
 
 ## Environment Variables
-
-**Agent Generation:**
-- None required
 
 **Plugin Testing:**
 - `ANTHROPIC_API_KEY` - Required for test harness
@@ -104,7 +87,6 @@ scripts/
 **Validation (runs on every PR):**
 ```bash
 ./scripts/validate.sh
-./scripts/build-agents.sh --check
 ```
 
 **Full Testing (runs on main branch):**
@@ -115,7 +97,7 @@ scripts/
 **Skill Evaluation (manual/scheduled):**
 ```bash
 ./scripts/eval/eval-skill-quality.sh \
-  --baseline agents/data-engineering/generate-skill.md \
+  --baseline agents/generate-skill.md \
   --prompts scripts/eval/prompts/data-engineering.txt \
   --perspective all \
   --format json \
@@ -124,11 +106,10 @@ scripts/
 
 ## Development Workflow
 
-1. **Modify agent templates** in `agents/templates/`
-2. **Regenerate agents**: `./scripts/build-agents.sh`
-3. **Validate changes**: `./scripts/validate.sh`
-4. **Test locally**: `./scripts/test-plugin.sh`
-5. **Evaluate skills**: `./scripts/eval/eval-skill-quality.sh` (see eval/README.md)
+1. **Modify agents** in `agents/`
+2. **Validate changes**: `./scripts/validate.sh`
+3. **Test locally**: `./scripts/test-plugin.sh`
+4. **Evaluate skills**: `./scripts/eval/eval-skill-quality.sh` (see eval/README.md)
 
 ## See Also
 

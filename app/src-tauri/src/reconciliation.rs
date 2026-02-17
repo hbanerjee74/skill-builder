@@ -90,8 +90,10 @@ pub fn reconcile_on_startup(
                     // plus non-detectable steps, the DB state is valid.
                     if run.current_step > disk_step {
                         let gap = run.current_step - disk_step;
+                        // Step 2 (detailed research) edits clarifications.md in-place,
+                        // producing no unique artifact — treat it as non-detectable.
                         let non_detectable_in_gap = ((disk_step + 1)..run.current_step)
-                            .filter(|s| matches!(s, 1 | 3 | 7))
+                            .filter(|s| matches!(s, 1 | 2 | 3 | 7))
                             .count() as i32;
                         // gap of 1 is always normal (step completed -> advanced to next).
                         // Each non-detectable step in the range accounts for one more.
@@ -140,9 +142,10 @@ pub fn reconcile_on_startup(
                     }
                     // If current_step > disk_step and we didn't reset, the steps between
                     // disk_step+1 and current_step-1 are non-detectable — mark them too.
+                    // Step 2 is non-detectable (edits clarifications.md in-place, no unique artifact).
                     if run.current_step > disk_step + 1 {
                         for s in (disk_step + 1)..run.current_step {
-                            if matches!(s, 1 | 3 | 7) {
+                            if matches!(s, 1 | 2 | 3 | 7) {
                                 crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
                             }
                         }
@@ -309,10 +312,10 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // Create a skill on disk with step 0 and step 2 output
+        // Create a skill on disk with step 0 output
+        // (Step 2 is non-detectable — it edits clarifications.md in-place)
         create_skill_dir(tmp.path(), "orphan-skill", "e-commerce");
         create_step_output(tmp.path(), "orphan-skill", 0);
-        create_step_output(tmp.path(), "orphan-skill", 2);
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
@@ -320,13 +323,13 @@ mod tests {
         assert_eq!(result.auto_cleaned, 0);
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("orphan-skill"));
-        assert!(result.notifications[0].contains("step 2"));
+        assert!(result.notifications[0].contains("step 0"));
 
         // Verify DB record was created (domain defaults to "unknown" for disk-only discoveries)
         let run = crate::db::get_workflow_run(&conn, "orphan-skill")
             .unwrap()
             .unwrap();
-        assert_eq!(run.current_step, 2);
+        assert_eq!(run.current_step, 0);
         assert_eq!(run.status, "pending");
         assert_eq!(run.domain, "unknown");
     }
@@ -339,25 +342,25 @@ mod tests {
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // DB says step 5, but disk only has step 0 and 2 output
+        // DB says step 5, but disk only has step 0 output
+        // (Step 2 is non-detectable — it edits clarifications.md in-place)
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 2);
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
         assert_eq!(result.notifications.len(), 1);
-        assert!(result.notifications[0].contains("reset from step 5 to step 2"));
+        assert!(result.notifications[0].contains("reset from step 5 to step 0"));
 
         // Verify DB was corrected
         let run = crate::db::get_workflow_run(&conn, "my-skill")
             .unwrap()
             .unwrap();
-        assert_eq!(run.current_step, 2);
+        assert_eq!(run.current_step, 0);
         assert_eq!(run.status, "pending");
     }
 
@@ -833,29 +836,33 @@ mod tests {
 
     #[test]
     fn test_reconcile_cleans_future_step_files() {
-        // Scenario: DB at step 5, disk has step 0 output + stale step 4 file.
-        // Reconciler should reset to step 0 and clean up the step 4 file.
+        // Scenario: DB at step 6, disk has step 0 + step 4 output but missing step 5.
+        // detect_furthest_step stops at step 4 (step 5 SKILL.md missing).
+        // Reconciler should reset to step 4 and clean up stale step 6 files.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
         create_step_output(tmp.path(), "my-skill", 0);
-        // Stale step 4 file from a previous run
         create_step_output(tmp.path(), "my-skill", 4);
+        // Stale step 6 file from a previous run
+        let skill_dir = tmp.path().join("my-skill");
+        std::fs::write(skill_dir.join("context/agent-validation-log.md"), "stale").unwrap();
+        std::fs::write(skill_dir.join("context/test-skill.md"), "stale").unwrap();
 
-        // DB thinks we're at step 5
-        crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "pending", "domain").unwrap();
+        // DB thinks we're at step 6
+        crate::db::save_workflow_run(&conn, "my-skill", "test", 6, "pending", "domain").unwrap();
 
         let result = reconcile_on_startup(&conn, workspace, None).unwrap();
 
-        // Should reset to step 0 (disk has step 0 complete, but step 2 is missing)
+        // Should reset to step 4 (disk has steps 0, 4 complete, but step 5 missing)
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 0, "should reconcile to step 0");
+        assert_eq!(run.current_step, 4, "should reconcile to step 4");
 
-        // Step 4 file should be cleaned up (future step)
-        let skill_dir = tmp.path().join("my-skill");
-        assert!(!skill_dir.join("context/decisions.md").exists(), "step 4 file should be cleaned up");
+        // Step 6 files should be cleaned up (future step)
+        assert!(!skill_dir.join("context/agent-validation-log.md").exists(), "step 6 files should be cleaned up");
+        assert!(!skill_dir.join("context/test-skill.md").exists(), "step 6 files should be cleaned up");
 
         assert!(!result.notifications.is_empty());
     }

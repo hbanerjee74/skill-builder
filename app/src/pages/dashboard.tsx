@@ -26,7 +26,7 @@ import {
 import SkillCard from "@/components/skill-card"
 import NewSkillDialog from "@/components/new-skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
-import EditTagsDialog from "@/components/edit-tags-dialog"
+import EditSkillDialog from "@/components/edit-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
 import { OnboardingDialog } from "@/components/onboarding-dialog"
@@ -42,7 +42,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
-  const [editTagsTarget, setEditTagsTarget] = useState<SkillSummary | null>(null)
+  const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
@@ -129,6 +129,7 @@ export default function DashboardPage() {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
+          (s.display_name && s.display_name.toLowerCase().includes(q)) ||
           (s.domain && s.domain.toLowerCase().includes(q)) ||
           (s.skill_type && (SKILL_TYPE_LABELS[s.skill_type as keyof typeof SKILL_TYPE_LABELS] || s.skill_type).toLowerCase().includes(q))
       )
@@ -361,7 +362,7 @@ export default function DashboardPage() {
               onContinue={handleContinue}
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
-              onEditTags={setEditTagsTarget}
+              onEdit={setEditTarget}
               onPushToRemote={handlePushToRemote}
               remoteConfigured={remoteConfigured}
               isGitHubLoggedIn={isLoggedIn}
@@ -370,11 +371,11 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <EditTagsDialog
-        skill={editTagsTarget}
-        open={editTagsTarget !== null}
+      <EditSkillDialog
+        skill={editTarget}
+        open={editTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setEditTagsTarget(null)
+          if (!open) setEditTarget(null)
         }}
         onSaved={() => { loadSkills(); loadTags(); }}
         availableTags={availableTags}

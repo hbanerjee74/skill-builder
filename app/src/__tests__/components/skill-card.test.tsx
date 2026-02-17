@@ -14,6 +14,8 @@ const baseSkill: SkillSummary = {
   skill_type: null,
   author_login: null,
   author_avatar: null,
+  display_name: null,
+  intake_json: null,
 };
 
 describe("SkillCard", () => {
@@ -90,8 +92,8 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Step 3 => Math.round((3/7)*100) = 43%
-    expect(screen.getByText("43%")).toBeInTheDocument();
+    // Step 3 => Math.round(((3+1)/7)*100) = 57%
+    expect(screen.getByText("57%")).toBeInTheDocument();
   });
 
   it("shows 100% for completed step", () => {
@@ -281,12 +283,12 @@ describe("parseStepProgress boundary tests", () => {
     expect(screen.getByText("0%")).toBeInTheDocument();
   });
 
-  it("Step 4 shows 57%", () => {
+  it("Step 4 shows 71%", () => {
     const skill = { ...baseSkill, current_step: "Step 4" };
     render(
       <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    expect(screen.getByText("57%")).toBeInTheDocument();
+    expect(screen.getByText("71%")).toBeInTheDocument();
   });
 
   it("completed shows 100%", () => {

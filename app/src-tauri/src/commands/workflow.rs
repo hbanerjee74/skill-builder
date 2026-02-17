@@ -29,7 +29,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
         0 => Ok(StepConfig {
             step_id: 0,
             name: "Research".to_string(),
-            prompt_template: "research.md".to_string(),
+            prompt_template: "research-orchestrator.md".to_string(),
             output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
@@ -38,7 +38,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 2,
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
-            output_file: "context/clarifications-detailed.md".to_string(),
+            output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
@@ -369,52 +369,24 @@ pub fn update_skills_section(
     Ok(())
 }
 
-/// Copy agent .md files to <workspace>/.claude/agents/ with flattened names.
-/// For skill type directories: agents/{type}/{file}.md → .claude/agents/{type}-{file}.md
-/// For shared directory: agents/shared/{file}.md → .claude/agents/shared-{file}.md
+/// Copy agent .md files from flat agents/ directory to <workspace>/.claude/agents/.
+/// agents/{name}.md → .claude/agents/{name}.md
 fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<(), String> {
     let claude_agents_dir = Path::new(workspace_path).join(".claude").join("agents");
     std::fs::create_dir_all(&claude_agents_dir)
         .map_err(|e| format!("Failed to create .claude/agents dir: {}", e))?;
 
-    // Skill type directories
-    for skill_type in &["domain", "platform", "source", "data-engineering"] {
-        let type_dir = agents_src.join(skill_type);
-        if type_dir.is_dir() {
-            let entries = std::fs::read_dir(&type_dir)
-                .map_err(|e| format!("Failed to read {} dir: {}", skill_type, e))?;
-            for entry in entries {
-                let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                    let file_name = entry.file_name().to_string_lossy().to_string();
-                    let flattened_name = format!("{}-{}", skill_type, file_name);
-                    let dest = claude_agents_dir.join(&flattened_name);
-                    std::fs::copy(&path, &dest)
-                        .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
-                }
-            }
+    let entries = std::fs::read_dir(agents_src)
+        .map_err(|e| format!("Failed to read agents dir: {}", e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            let dest = claude_agents_dir.join(entry.file_name());
+            std::fs::copy(&path, &dest)
+                .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
         }
     }
-
-    // Shared directory
-    let shared_dir = agents_src.join("shared");
-    if shared_dir.is_dir() {
-        let entries = std::fs::read_dir(&shared_dir)
-            .map_err(|e| format!("Failed to read shared dir: {}", e))?;
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                let file_name = entry.file_name().to_string_lossy().to_string();
-                let flattened_name = format!("shared-{}", file_name);
-                let dest = claude_agents_dir.join(&flattened_name);
-                std::fs::copy(&path, &dest)
-                    .map_err(|e| format!("Failed to copy {} to .claude/agents: {}", path.display(), e))?;
-            }
-        }
-    }
-
     Ok(())
 }
 
@@ -422,13 +394,13 @@ fn copy_agents_to_claude_dir(agents_src: &Path, workspace_path: &str) -> Result<
 // agents tree to workspace root (only .claude/agents/ is used).
 
 /// Read the `name:` field from an agent file's YAML frontmatter.
-/// Agent files live at `{workspace}/.claude/agents/{skill_type}-{phase}.md`.
+/// Agent files live at `{workspace}/.claude/agents/{phase}.md`.
 /// Returns `None` if the file doesn't exist or has no `name:` field.
-fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &str) -> Option<String> {
+fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<String> {
     let agent_file = Path::new(workspace_path)
         .join(".claude")
         .join("agents")
-        .join(format!("{}-{}.md", skill_type, phase));
+        .join(format!("{}.md", phase));
     let content = std::fs::read_to_string(&agent_file).ok()?;
     if !content.starts_with("---") {
         return None;
@@ -448,53 +420,149 @@ fn read_agent_frontmatter_name(workspace_path: &str, skill_type: &str, phase: &s
     None
 }
 
-/// Derive agent name from skill type and prompt template.
-/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
-/// this to register the agent). Falls back to `{skill_type}-{phase}` if the
-/// file is missing or has no name field.
-fn derive_agent_name(workspace_path: &str, skill_type: &str, prompt_template: &str) -> String {
-    let phase = prompt_template.trim_end_matches(".md");
-    // Try type-specific first
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, skill_type, phase) {
-        return name;
+/// Check if clarifications.md has `scope_recommendation: true` in its YAML frontmatter.
+fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
+    let content = match std::fs::read_to_string(clarifications_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if !content.starts_with("---") {
+        return false;
     }
-    // Fallback to shared
-    if let Some(name) = read_agent_frontmatter_name(workspace_path, "shared", phase) {
-        return name;
+    let after_start = &content[3..];
+    let end = match after_start.find("---") {
+        Some(pos) => pos,
+        None => return false,
+    };
+    let frontmatter = &after_start[..end];
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if trimmed == "scope_recommendation: true" {
+            return true;
+        }
     }
-    format!("{}-{}", skill_type, phase)
+    false
 }
 
+/// Derive agent name from prompt template.
+/// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
+/// this to register the agent). Falls back to the phase name if the
+/// file is missing or has no name field.
+fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &str) -> String {
+    let phase = prompt_template.trim_end_matches(".md");
+    if let Some(name) = read_agent_frontmatter_name(workspace_path, phase) {
+        return name;
+    }
+    phase.to_string()
+}
+
+/// Write `user-context.md` to the context directory so that sub-agents
+/// spawned by orchestrator agents can read it from disk.
+/// This file captures industry, function/role, and intake responses
+/// (audience, challenges, scope) provided by the user.
+/// Non-fatal: logs a warning on failure rather than blocking the workflow.
+fn write_user_context_file(
+    workspace_path: &str,
+    skill_name: &str,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
+) {
+    let mut parts: Vec<String> = Vec::new();
+
+    if let Some(ind) = industry {
+        if !ind.is_empty() {
+            parts.push(format!("- **Industry**: {}", ind));
+        }
+    }
+    if let Some(fr) = function_role {
+        if !fr.is_empty() {
+            parts.push(format!("- **Function**: {}", fr));
+        }
+    }
+    if let Some(ij) = intake_json {
+        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
+            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
+                if !a.is_empty() {
+                    parts.push(format!("- **Target Audience**: {}", a));
+                }
+            }
+            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
+                if !c.is_empty() {
+                    parts.push(format!("- **Key Challenges**: {}", c));
+                }
+            }
+            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
+                if !s.is_empty() {
+                    parts.push(format!("- **Scope**: {}", s));
+                }
+            }
+        }
+    }
+
+    if parts.is_empty() {
+        return;
+    }
+
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    // Safety net: create directory if missing
+    if let Err(e) = std::fs::create_dir_all(&workspace_dir) {
+        log::warn!(
+            "[write_user_context_file] Failed to create dir {}: {}",
+            workspace_dir.display(),
+            e
+        );
+        return;
+    }
+    let file_path = workspace_dir.join("user-context.md");
+    let content = format!("# User Context\n\n{}\n", parts.join("\n"));
+
+    match std::fs::write(&file_path, &content) {
+        Ok(()) => {
+            log::info!(
+                "[write_user_context_file] Wrote user-context.md ({} bytes) to {}",
+                content.len(),
+                file_path.display()
+            );
+        }
+        Err(e) => {
+            log::warn!(
+                "[write_user_context_file] Failed to write {}: {}",
+                file_path.display(),
+                e
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     skill_name: &str,
     domain: &str,
     workspace_path: &str,
-    skills_path: Option<&str>,
-    _skill_type: &str,
+    skills_path: &str,
+    skill_type: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
+    max_dimensions: u32,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
 ) -> String {
-    let base = Path::new(workspace_path);
-    let skill_dir = base.join(skill_name);
-    let context_dir = if let Some(sp) = skills_path {
-        Path::new(sp).join(skill_name).join("context")
-    } else {
-        skill_dir.join("context")
-    };
-    let skill_output_dir = if let Some(sp) = skills_path {
-        Path::new(sp).join(skill_name)
-    } else {
-        skill_dir.clone() // fallback: workspace_path/skill_name
-    };
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let skill_output_dir = Path::new(skills_path).join(skill_name);
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
-         The skill directory is: {}. \
+         The skill type is: {}. \
+         The workspace directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
-        skill_dir.display(),
+        skill_type,
+        workspace_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
     );
@@ -511,18 +579,73 @@ fn build_prompt(
         }
     }
 
+    prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
+
+    // Inject user context if any fields are present
+    let mut ctx_parts: Vec<String> = Vec::new();
+    if let Some(ind) = industry {
+        if !ind.is_empty() {
+            ctx_parts.push(format!("- **Industry**: {}", ind));
+        }
+    }
+    if let Some(fr) = function_role {
+        if !fr.is_empty() {
+            ctx_parts.push(format!("- **Function**: {}", fr));
+        }
+    }
+    // Parse intake_json and add audience/challenges/scope
+    if let Some(ij) = intake_json {
+        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
+            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
+                if !a.is_empty() {
+                    ctx_parts.push(format!("- **Target Audience**: {}", a));
+                }
+            }
+            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
+                if !c.is_empty() {
+                    ctx_parts.push(format!("- **Key Challenges**: {}", c));
+                }
+            }
+            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
+                if !s.is_empty() {
+                    ctx_parts.push(format!("- **Scope**: {}", s));
+                }
+            }
+        }
+    }
+    if !ctx_parts.is_empty() {
+        prompt.push_str("\n\n## User Context\n");
+        prompt.push_str(&ctx_parts.join("\n"));
+    }
+
     prompt
 }
 
 const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
 const VALID_PHASES: &[&str] = &[
+    "research-orchestrator",
     "research-entities",
     "research-metrics",
-    "research",
-    "research-practices",
-    "research-implementation",
+    "research-data-quality",
+    "research-business-rules",
+    "research-segmentation-and-periods",
+    "research-modeling-patterns",
+    "research-pattern-interactions",
+    "research-load-merge-patterns",
+    "research-historization",
+    "research-layer-design",
+    "research-platform-behavioral-overrides",
+    "research-config-patterns",
+    "research-integration-orchestration",
+    "research-operational-failure-modes",
+    "research-extraction",
+    "research-field-semantics",
+    "research-lifecycle-and-state",
+    "research-reconciliation",
+    "research-planner",
     "confirm-decisions",
     "generate-skill",
+    "scope-advisor",
     "validate-skill",
     "detailed-research",
     "consolidate-research",
@@ -545,23 +668,16 @@ pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, Str
         .ok_or("Could not resolve repo root")?
         .to_path_buf();
 
-    let primary = repo_root
+    let agent_path = repo_root
         .join("agents")
-        .join(&skill_type)
-        .join(format!("{}.md", phase));
-    let fallback = repo_root
-        .join("agents")
-        .join("shared")
         .join(format!("{}.md", phase));
 
-    if primary.exists() {
-        std::fs::read_to_string(&primary).map_err(|e| e.to_string())
-    } else if fallback.exists() {
-        std::fs::read_to_string(&fallback).map_err(|e| e.to_string())
+    if agent_path.exists() {
+        std::fs::read_to_string(&agent_path).map_err(|e| e.to_string())
     } else {
         Err(format!(
-            "Prompt not found for type '{}', phase '{}'",
-            skill_type, phase
+            "Prompt not found for phase '{}'",
+            phase
         ))
     }
 }
@@ -615,27 +731,13 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
     skill_name: &str,
-    workspace_path: &str,
-    skills_path: Option<&str>,
+    _workspace_path: &str,
+    skills_path: &str,
 ) -> Result<(), String> {
-    // 1. Check skill output directory (primary per VD-405)
-    if let Some(sp) = skills_path {
-        let path = Path::new(sp).join(skill_name).join("context").join("decisions.md");
-        if path.exists() {
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            if !content.trim().is_empty() {
-                return Ok(());
-            }
-        }
-    }
-
-    // 2. Check workspace directory (fallback)
-    let workspace_decisions = Path::new(workspace_path)
-        .join(skill_name)
-        .join("context")
-        .join("decisions.md");
-    if workspace_decisions.exists() {
-        let content = std::fs::read_to_string(&workspace_decisions).unwrap_or_default();
+    // skills_path is required — no workspace fallback
+    let path = Path::new(skills_path).join(skill_name).join("context").join("decisions.md");
+    if path.exists() {
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
         if !content.trim().is_empty() {
             return Ok(());
         }
@@ -651,13 +753,17 @@ fn validate_decisions_exist_inner(
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 struct WorkflowSettings {
-    skills_path: Option<String>,
+    skills_path: String,
     api_key: String,
     extended_context: bool,
     extended_thinking: bool,
     skill_type: String,
     author_login: Option<String>,
     created_at: Option<String>,
+    max_dimensions: u32,
+    industry: Option<String>,
+    function_role: Option<String>,
+    intake_json: Option<String>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -671,26 +777,31 @@ fn read_workflow_settings(
 
     // Read all settings in one pass
     let settings = crate::db::read_settings_hydrated(&conn)?;
-    let skills_path = settings.skills_path;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
     let extended_context = settings.extended_context;
     let extended_thinking = settings.extended_thinking;
+    let max_dimensions = settings.max_dimensions;
+    let industry = settings.industry;
+    let function_role = settings.function_role;
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
-        validate_decisions_exist_inner(skill_name, workspace_path, skills_path.as_deref())?;
+        validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
 
     // Get skill type
     let skill_type = crate::db::get_skill_type(&conn, skill_name)?;
 
-    // Read author info from workflow run
+    // Read author info and intake data from workflow run
     let run_row = crate::db::get_workflow_run(&conn, skill_name)
         .ok()
         .flatten();
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
+    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
 
     Ok(WorkflowSettings {
         skills_path,
@@ -700,6 +811,10 @@ fn read_workflow_settings(
         skill_type,
         author_login,
         created_at,
+        max_dimensions,
+        industry,
+        function_role,
+        intake_json,
     })
 }
 
@@ -723,15 +838,30 @@ async fn run_workflow_step_inner(
     } else {
         None
     };
+    // Write user-context.md to workspace directory so sub-agents can read it.
+    // Refreshed before every step to pick up mid-workflow settings edits.
+    write_user_context_file(
+        workspace_path,
+        skill_name,
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
+    );
+
     let prompt = build_prompt(
         skill_name,
         domain,
         workspace_path,
-        settings.skills_path.as_deref(),
+        &settings.skills_path,
         &settings.skill_type,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
+        settings.max_dimensions,
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
     );
+    log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
@@ -776,23 +906,46 @@ pub async fn run_workflow_step(
     step_id: u32,
     domain: String,
     workspace_path: String,
-    resume: bool,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={} domain={} resume={}", skill_name, step_id, domain, resume);
+    log::info!("[run_workflow_step] skill={} step={} domain={}", skill_name, step_id, domain);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Step 0 fresh start — wipe the context directory and all artifacts so
-    // the agent doesn't see stale files from a previous workflow run.
-    // Skip this when resuming a paused step to preserve partial progress.
-    if step_id == 0 && !resume {
-        let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
-        if context_dir.is_dir() {
-            let _ = std::fs::remove_dir_all(&context_dir);
+    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+    log::info!(
+        "[run_workflow_step] settings: skills_path={} skill_type={} intake={} industry={:?} function={:?}",
+        settings.skills_path, settings.skill_type,
+        settings.intake_json.is_some(),
+        settings.industry, settings.function_role,
+    );
+
+    // Gate: reject disabled steps when scope_recommendation is active
+    if step_id >= 2 {
+        let clarifications_path = Path::new(&settings.skills_path)
+            .join(&skill_name)
+            .join("context")
+            .join("clarifications.md");
+        if parse_scope_recommendation(&clarifications_path) {
+            return Err(format!(
+                "Step {} is disabled: the research phase determined the skill scope is too broad. \
+                 Review the scope recommendations in clarifications.md, then reset to step 1 \
+                 and start with a narrower focus.",
+                step_id
+            ));
         }
     }
 
-    let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
+    // Step 0 fresh start — wipe the context directory and all artifacts so
+    // the agent doesn't see stale files from a previous workflow run.
+    // Context lives in skills_path (not workspace_path).
+    if step_id == 0 {
+        let context_dir = Path::new(&settings.skills_path).join(&skill_name).join("context");
+        if context_dir.is_dir() {
+            log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
+            let _ = std::fs::remove_dir_all(&context_dir);
+            let _ = std::fs::create_dir_all(&context_dir);
+        }
+    }
 
     run_workflow_step_inner(
         &app,
@@ -810,20 +963,15 @@ pub async fn run_workflow_step(
 #[tauri::command]
 pub async fn package_skill(
     skill_name: String,
-    workspace_path: String,
+    _workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<PackageResult, String> {
     log::info!("[package_skill] skill={}", skill_name);
-    let skills_path = read_skills_path(&db);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    // Determine where the skill files (SKILL.md, references/) live:
-    // - If skills_path is set, the build agent wrote directly there
-    // - Otherwise, they're in workspace_path/skill_name/
-    let source_dir = if let Some(ref sp) = skills_path {
-        Path::new(sp).join(&skill_name)
-    } else {
-        Path::new(&workspace_path).join(&skill_name)
-    };
+    // skills_path is required — no workspace fallback
+    let source_dir = Path::new(&skills_path).join(&skill_name);
 
     if !source_dir.exists() {
         return Err(format!(
@@ -1024,12 +1172,11 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
+            "context/research-plan.md",
             "context/clarifications.md",
         ],
         1 => vec![],  // Human review
-        2 => vec![
-            "context/clarifications-detailed.md",
-        ],
+        2 => vec![],  // Step 2 edits clarifications.md in-place (no unique artifact)
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
@@ -1044,7 +1191,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 /// produce no files by design.
 #[tauri::command]
 pub fn verify_step_output(
-    workspace_path: String,
+    _workspace_path: String,
     skill_name: String,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -1056,24 +1203,38 @@ pub fn verify_step_output(
         return Ok(true);
     }
 
-    let skills_path = read_skills_path(&db);
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
+    // skills_path is required — single code path, no workspace fallback
+    let target_dir = Path::new(&skills_path).join(&skill_name);
     let has_output = if step_id == 5 {
-        let output_dir = if let Some(ref sp) = skills_path {
-            Path::new(sp).join(&skill_name)
-        } else {
-            skill_dir.clone()
-        };
-        output_dir.join("SKILL.md").exists()
-    } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
-        let target_dir = Path::new(skills_path.as_ref().unwrap()).join(&skill_name);
-        files.iter().any(|f| target_dir.join(f).exists())
+        target_dir.join("SKILL.md").exists()
     } else {
-        files.iter().any(|f| skill_dir.join(f).exists())
+        files.iter().any(|f| target_dir.join(f).exists())
     };
 
     Ok(has_output)
+}
+
+#[tauri::command]
+pub fn get_disabled_steps(
+    skill_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<u32>, String> {
+    log::info!("[get_disabled_steps] skill={}", skill_name);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let clarifications_path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("context")
+        .join("clarifications.md");
+
+    if parse_scope_recommendation(&clarifications_path) {
+        Ok(vec![2, 3, 4, 5, 6])
+    } else {
+        Ok(vec![])
+    }
 }
 
 #[tauri::command]
@@ -1121,19 +1282,15 @@ pub fn reset_workflow_step(
 
 #[tauri::command]
 pub fn preview_step_reset(
-    workspace_path: String,
+    _workspace_path: String,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
     log::info!("[preview_step_reset] skill={} from_step={}", skill_name, from_step_id);
-    let skills_path = read_skills_path(&db);
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
-    let skill_output_dir = if let Some(ref sp) = skills_path {
-        Path::new(sp).join(&skill_name)
-    } else {
-        skill_dir.clone()
-    };
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
 
     let step_names = [
         "Research",
@@ -1147,25 +1304,18 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=6 {
-        let base_dir = if step_id == 5
-            || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6))
-        {
-            &skill_output_dir
-        } else {
-            &skill_dir
-        };
+        // skills_path is required — single code path, no workspace fallback
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            // Check both workspace and skills_path locations
-            if base_dir.join(file).exists() || skill_dir.join(file).exists() {
+            if skill_output_dir.join(file).exists() {
                 existing_files.push(file.to_string());
             }
         }
 
         // Step 5: also list individual files in references/ directory
         if step_id == 5 {
-            let refs_dir = base_dir.join("references");
+            let refs_dir = skill_output_dir.join("references");
             if refs_dir.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&refs_dir) {
                     for entry in entries.flatten() {
@@ -1247,83 +1397,44 @@ mod tests {
     }
 
     #[test]
-    fn test_build_prompt_without_skills_path() {
-        // When skills_path is None, skill_output_dir falls back to workspace_path/skill_name
+    fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            None,
+            "/home/user/my-skills",
             "domain",
             None,
             None,
+            5,
+            None,
+            None,
+            None,
         );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/.vibedata/my-skill/context"));
-        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
-        // Without skills_path, skill output dir is workspace_path/skill_name (no /skill/ subdir)
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_skills_path() {
-        // When skills_path is set, skill_output_dir uses skills_path/skill_name
-        let prompt = build_prompt(
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
-            "domain",
-            None,
-            None,
-        );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
-        // skill output directory should use skills_path
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-        // context dir should now point to skills_path when configured
+        // 3 distinct paths in prompt
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
-        // skill directory should still be workspace-based
-        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_skills_path_non_build_step() {
-        // When skills_path is set, context dir and skill output dir both use skills_path
-        let prompt = build_prompt(
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
-            "domain",
-            None,
-            None,
-        );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
-        // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
 
     #[test]
     fn test_build_prompt_with_skill_type() {
-        // Simplified prompt no longer references agents path
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            None,
+            "/home/user/my-skills",
             "platform",
             None,
             None,
+            5,
+            None,
+            None,
+            None,
         );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
-        assert!(prompt.contains("e-commerce"));
-        assert!(prompt.contains("my-skill"));
+        assert!(prompt.contains("The skill type is: platform."));
     }
 
     #[test]
@@ -1332,10 +1443,14 @@ mod tests {
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
+            "/home/user/my-skills",
             "domain",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
+            5,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("The author of this skill is: octocat."));
         assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -1348,8 +1463,12 @@ mod tests {
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
+            "/home/user/my-skills",
             "domain",
+            None,
+            None,
+            5,
+            None,
             None,
             None,
         );
@@ -1463,12 +1582,9 @@ mod tests {
         assert!(dev_path.is_some());
         let agents_dir = dev_path.unwrap();
         assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
-        // Verify subdirectories exist
-        assert!(agents_dir.join("domain").is_dir(), "agents/domain/ should exist");
-        assert!(agents_dir.join("platform").is_dir(), "agents/platform/ should exist");
-        assert!(agents_dir.join("source").is_dir(), "agents/source/ should exist");
-        assert!(agents_dir.join("data-engineering").is_dir(), "agents/data-engineering/ should exist");
-        assert!(agents_dir.join("shared").is_dir(), "agents/shared/ should exist");
+        // Verify flat agent files exist (no subdirectories)
+        assert!(agents_dir.join("research-entities.md").exists(), "agents/research-entities.md should exist");
+        assert!(agents_dir.join("consolidate-research.md").exists(), "agents/consolidate-research.md should exist");
     }
 
     #[test]
@@ -1481,14 +1597,10 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         // Create output files for steps 0, 2, 4, 5
+        // Steps 0 and 2 both use clarifications.md (unified artifact)
         std::fs::write(
             skill_dir.join("context/clarifications.md"),
-            "step0",
-        )
-        .unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications-detailed.md"),
-            "step2",
+            "step0+step2",
         )
         .unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
@@ -1499,9 +1611,8 @@ mod tests {
         // No skills_path set, so step 5 files are in workspace_path/skill_name/
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
 
-        // Steps 0, 2 outputs should still exist
+        // Steps 0, 2 output (unified clarifications.md) should still exist
         assert!(skill_dir.join("context/clarifications.md").exists());
-        assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -1510,20 +1621,21 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step_output_step2_removes_detailed_clarifications() {
+    fn test_clean_step_output_step2_is_noop() {
+        // Step 2 edits clarifications.md in-place (no unique artifact),
+        // so cleaning step 2 has no files to delete.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Step 2 output is only the detailed clarifications
-        std::fs::write(skill_dir.join("context/clarifications-detailed.md"), "d").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "refined").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
-        // Clean only step 2 — step 4 should be untouched
+        // Clean only step 2 — both files should be untouched (step 2 has no unique output)
         crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, None);
 
-        assert!(!skill_dir.join("context/clarifications-detailed.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }
 
@@ -1649,16 +1761,16 @@ mod tests {
 
     #[test]
     fn test_derive_agent_name_fallback() {
-        // Without deployed agent files, falls back to {skill_type}-{phase}
+        // Without deployed agent files, falls back to phase name
         let tmp = tempfile::tempdir().unwrap();
         let ws = tmp.path().to_str().unwrap();
         assert_eq!(
-            derive_agent_name(ws, "domain", "research.md"),
-            "domain-research"
+            derive_agent_name(ws, "domain", "research-orchestrator.md"),
+            "research-orchestrator"
         );
         assert_eq!(
             derive_agent_name(ws, "platform", "generate-skill.md"),
-            "platform-generate-skill"
+            "generate-skill"
         );
     }
 
@@ -1669,15 +1781,14 @@ mod tests {
         let agents_dir = tmp.path().join(".claude").join("agents");
         std::fs::create_dir_all(&agents_dir).unwrap();
 
-        // Write an agent file with a frontmatter name that differs from the filename
         std::fs::write(
-            agents_dir.join("data-engineering-research.md"),
-            "---\nname: de-research\nmodel: sonnet\n---\n# Agent\n",
+            agents_dir.join("research-orchestrator.md"),
+            "---\nname: research-orchestrator\nmodel: sonnet\n---\n# Agent\n",
         ).unwrap();
 
         assert_eq!(
-            derive_agent_name(ws, "data-engineering", "research.md"),
-            "de-research"
+            derive_agent_name(ws, "data-engineering", "research-orchestrator.md"),
+            "research-orchestrator"
         );
     }
 
@@ -1686,30 +1797,21 @@ mod tests {
         let src = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
 
-        // Create skill type directories with agent files
-        std::fs::create_dir_all(src.path().join("domain")).unwrap();
-        std::fs::create_dir_all(src.path().join("platform")).unwrap();
-        std::fs::create_dir_all(src.path().join("shared")).unwrap();
-
+        // Create flat agent files
         std::fs::write(
-            src.path().join("domain").join("research-entities.md"),
-            "# Domain Research",
+            src.path().join("research-entities.md"),
+            "# Research Entities",
         )
         .unwrap();
         std::fs::write(
-            src.path().join("platform").join("build.md"),
-            "# Platform Build",
-        )
-        .unwrap();
-        std::fs::write(
-            src.path().join("shared").join("consolidate-research.md"),
-            "# Shared Consolidate Research",
+            src.path().join("consolidate-research.md"),
+            "# Consolidate Research",
         )
         .unwrap();
 
         // Non-.md file should be ignored
         std::fs::write(
-            src.path().join("domain").join("README.txt"),
+            src.path().join("README.txt"),
             "ignore me",
         )
         .unwrap();
@@ -1720,20 +1822,19 @@ mod tests {
         let claude_agents_dir = workspace.path().join(".claude").join("agents");
         assert!(claude_agents_dir.is_dir());
 
-        // Verify flattened names
-        assert!(claude_agents_dir.join("domain-research-entities.md").exists());
-        assert!(claude_agents_dir.join("platform-build.md").exists());
-        assert!(claude_agents_dir.join("shared-consolidate-research.md").exists());
+        // Verify flat names (no prefix)
+        assert!(claude_agents_dir.join("research-entities.md").exists());
+        assert!(claude_agents_dir.join("consolidate-research.md").exists());
 
         // Non-.md file should NOT be copied
-        assert!(!claude_agents_dir.join("domain-README.txt").exists());
+        assert!(!claude_agents_dir.join("README.txt").exists());
 
         // Verify content
         let content = std::fs::read_to_string(
-            claude_agents_dir.join("domain-research-entities.md"),
+            claude_agents_dir.join("research-entities.md"),
         )
         .unwrap();
-        assert_eq!(content, "# Domain Research");
+        assert_eq!(content, "# Research Entities");
     }
 
     // --- Task 5: create_skill_zip excludes context/ ---
@@ -1752,12 +1853,8 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("clarifications-detailed.md"),
-            "# Detailed",
-        ).unwrap();
-        std::fs::write(
             source_dir.join("context").join("clarifications.md"),
-            "# Merged",
+            "# Clarifications",
         ).unwrap();
         std::fs::write(
             source_dir.join("context").join("decisions.md"),
@@ -1786,15 +1883,15 @@ mod tests {
     // --- VD-403: validate_decisions_exist_inner tests ---
 
     #[test]
-    fn test_validate_decisions_missing_everywhere() {
+    fn test_validate_decisions_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
@@ -1803,9 +1900,7 @@ mod tests {
     #[test]
     fn test_validate_decisions_found_in_skills_path() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
         std::fs::write(
             skills.join("my-skill").join("context").join("decisions.md"),
@@ -1814,26 +1909,8 @@ mod tests {
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            Some(skills.to_str().unwrap()),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_decisions_found_in_workspace() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-        std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions\n\nD1: Use periodic recognition",
-        ).unwrap();
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_ok());
     }
@@ -1841,45 +1918,21 @@ mod tests {
     #[test]
     fn test_validate_decisions_rejects_empty_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.md"),
+            skills.join("my-skill").join("context").join("decisions.md"),
             "   \n\n  ",
         ).unwrap();
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
-    }
-
-    #[test]
-    fn test_validate_decisions_priority_order() {
-        // skills_path takes priority over workspace
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
-
-        // Only write to skills_path (primary)
-        std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions from skills path",
-        ).unwrap();
-        // workspace has no decisions.md
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            Some(skills.to_str().unwrap()),
-        );
-        assert!(result.is_ok());
     }
 
     // --- debug mode: no reduced turns, sonnet model override ---
@@ -1934,10 +1987,10 @@ mod tests {
     }
 
     #[test]
-    fn test_normal_mode_wipes_step0_context() {
-        // Step 0 fresh start wipes the context directory
+    fn test_step0_always_wipes_context() {
+        // Step 0 always wipes the context directory in skills_path (not workspace)
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
@@ -1947,16 +2000,89 @@ mod tests {
         ).unwrap();
 
         let step_id: u32 = 0;
-        let resume = false;
-        if step_id == 0 && !resume {
-            let context_dir = Path::new(workspace).join("my-skill").join("context");
+        if step_id == 0 {
+            let context_dir = Path::new(skills_path).join("my-skill").join("context");
             if context_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&context_dir);
+                let _ = std::fs::create_dir_all(&context_dir);
             }
         }
 
-        // Context directory should have been wiped
+        // Context files should have been wiped
         assert!(!skill_dir.join("context/clarifications.md").exists());
+        // But context directory itself should be recreated
+        assert!(skill_dir.join("context").exists());
+    }
+
+    #[test]
+    fn test_write_user_context_file_all_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let workspace_dir = tmp.path().join("my-skill");
+        // Directory doesn't need to pre-exist — create_dir_all handles it
+
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
+        write_user_context_file(workspace_path, "my-skill", Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+
+        let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("# User Context"));
+        assert!(content.contains("**Industry**: Healthcare"));
+        assert!(content.contains("**Function**: Analytics Lead"));
+        assert!(content.contains("**Target Audience**: Data engineers"));
+        assert!(content.contains("**Key Challenges**: Legacy systems"));
+        assert!(content.contains("**Scope**: ETL pipelines"));
+    }
+
+    #[test]
+    fn test_write_user_context_file_partial_fields() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let workspace_dir = tmp.path().join("my-skill");
+
+        write_user_context_file(workspace_path, "my-skill", Some("Fintech"), None, None);
+
+        let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("**Industry**: Fintech"));
+        assert!(!content.contains("**Function**"));
+        assert!(!content.contains("**Target Audience**"));
+    }
+
+    #[test]
+    fn test_write_user_context_file_empty_fields_skipped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let workspace_dir = tmp.path().join("my-skill");
+
+        write_user_context_file(workspace_path, "my-skill", Some(""), None, None);
+
+        // Empty industry should not produce a file
+        assert!(!workspace_dir.join("user-context.md").exists());
+    }
+
+    #[test]
+    fn test_write_user_context_file_no_fields_is_noop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let workspace_dir = tmp.path().join("my-skill");
+
+        write_user_context_file(workspace_path, "my-skill", None, None, None);
+
+        // No fields → no file
+        assert!(!workspace_dir.join("user-context.md").exists());
+    }
+
+    #[test]
+    fn test_write_user_context_file_creates_missing_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace_path = tmp.path().to_str().unwrap();
+        let workspace_dir = tmp.path().join("new-skill");
+        // Directory does NOT exist yet
+        assert!(!workspace_dir.exists());
+
+        write_user_context_file(workspace_path, "new-skill", Some("Retail"), None, None);
+
+        // Directory should have been created and file written
+        assert!(workspace_dir.join("user-context.md").exists());
     }
 
     #[test]
@@ -2054,7 +2180,6 @@ mod tests {
 
         let context_files = [
             "clarifications.md",
-            "clarifications-detailed.md",
             "decisions.md",
         ];
         for file in &context_files {
@@ -2079,6 +2204,45 @@ mod tests {
             "Expected all context files in skills_path to be deleted, but these remain: {:?}",
             remaining
         );
+    }
+
+    // --- VD-664: parse_scope_recommendation tests ---
+
+    #[test]
+    fn test_scope_recommendation_true() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nscope_recommendation: true\noriginal_dimensions: 8\n---\n## Scope Recommendation").unwrap();
+        assert!(parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_false() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nscope_recommendation: false\nsections:\n  - entities\n---\n## Questions").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_absent() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nsections:\n  - entities\n---\n## Questions").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_missing_file() {
+        assert!(!parse_scope_recommendation(Path::new("/nonexistent/file.md")));
+    }
+
+    #[test]
+    fn test_scope_recommendation_no_frontmatter() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "# Just a regular markdown file\nNo frontmatter here.").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
     }
 
 }

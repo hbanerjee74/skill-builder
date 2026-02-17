@@ -14,6 +14,9 @@ interface SettingsState {
   githubUserEmail: string | null;
   remoteRepoOwner: string | null;
   remoteRepoName: string | null;
+  maxDimensions: number;
+  industry: string | null;
+  functionRole: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -33,6 +36,9 @@ const initialState = {
   githubUserEmail: null,
   remoteRepoOwner: null,
   remoteRepoName: null,
+  maxDimensions: 5,
+  industry: null,
+  functionRole: null,
   isConfigured: false,
 };
 
@@ -43,7 +49,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const next = { ...state, ...settings };
       return {
         ...next,
-        isConfigured: !!next.anthropicApiKey,
+        isConfigured: !!next.anthropicApiKey && !!next.skillsPath,
       };
     }),
   reset: () => set(initialState),

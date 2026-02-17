@@ -21,10 +21,8 @@ skill-builder/
 ├── skills/
 │   └── generate-skill/
 │       └── SKILL.md                 # Coordinator skill (entry point, self-contained)
-├── agents/                          # Agent prompts (see CLAUDE.md for layout)
+├── agents/                          # 26 agent prompts (flat directory, see CLAUDE.md for layout)
 └── agent-sources/
-    ├── templates/                   # 6 phase templates (source of truth for generated agents)
-    ├── types/                       # 4 type configs with output examples
     └── workspace/
         └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
 ```
@@ -35,7 +33,7 @@ Three layers:
 
 1. **Coordinator skill** (`skills/generate-skill/SKILL.md`) -- invoked via `/skill-builder:generate-skill`. Contains the 7-step workflow (Steps 0-7). Uses `` !`echo $CLAUDE_PLUGIN_ROOT` `` to resolve paths to plugin files at runtime.
 
-2. **Subagents** (`agents/{type}/*.md` and `agents/shared/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Type-specific agents are spawned via `Task(subagent_type: "skill-builder:{type_prefix}-{agent}")`, shared agents via `Task(subagent_type: "skill-builder:{agent}")`.
+2. **Subagents** (`agents/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Agents are spawned via `Task(subagent_type: "skill-builder:{agent}")`.
 
 3. **Agent instructions** (`agent-sources/workspace/CLAUDE.md`) -- protocols, file formats, content principles, skill best practices. In the app, auto-loaded into every agent's system prompt. In the plugin, embedded directly in `skills/generate-skill/SKILL.md` so the coordinator skill is self-contained.
 
@@ -43,12 +41,7 @@ Three layers:
 
 ### Adding/modifying an agent
 
-Agent files in `agents/{type}/` are **generated** — do not edit them directly.
-
-1. Edit the template in `agent-sources/templates/` (6 templates: research-entities, research-metrics, research-practices, research-implementation, research, generate-skill) or the config in `agent-sources/types/{type}/` (type-specific content)
-2. Run `./scripts/build-agents.sh` to regenerate all 24 type-specific agent files
-3. Use `./scripts/build-agents.sh --check` to verify generated files match templates (used in CI)
-4. Shared agents (`agents/shared/`: consolidate-research, confirm-decisions, validate-skill, detailed-research) are edited directly — they are not generated
+Agent files live in `agents/` (flat directory, 26 agents). Edit them directly.
 
 ### Modifying the workflow
 
@@ -58,7 +51,7 @@ Edit `skills/generate-skill/SKILL.md`. This contains the full coordinator logic:
 
 **Automated validation** runs after every Edit/Write via a Claude Code hook (`.claude/settings.json`). It checks:
 - Manifest validity (JSON, required fields)
-- All 28 agent files exist with valid frontmatter
+- All 26 agent files exist with valid frontmatter
 - Model tiers match the spec (sonnet/opus)
 - Coordinator skill exists with required keywords
 

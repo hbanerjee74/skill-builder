@@ -53,6 +53,8 @@ fn list_skills_inner(
                 skill_type: Some(run.skill_type),
                 author_login: run.author_login,
                 author_avatar: run.author_avatar,
+                display_name: run.display_name,
+                intake_json: run.intake_json,
             }
         })
         .collect();
@@ -62,6 +64,7 @@ fn list_skills_inner(
     Ok(skills)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
     app: tauri::AppHandle,
@@ -70,9 +73,11 @@ pub fn create_skill(
     domain: String,
     tags: Option<Vec<String>>,
     skill_type: Option<String>,
+    display_name: Option<String>,
+    intake_json: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[create_skill] name={} domain={} skill_type={:?}", name, domain, skill_type);
+    log::info!("[create_skill] name={} domain={} skill_type={:?} display_name={:?} tags={:?} intake={}", name, domain, skill_type, display_name, tags, intake_json.is_some());
     let conn = db.0.lock().ok();
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
@@ -100,6 +105,8 @@ pub fn create_skill(
         author_login.as_deref(),
         author_avatar.as_deref(),
         &app_version,
+        display_name.as_deref(),
+        intake_json.as_deref(),
     )
 }
 
@@ -115,6 +122,8 @@ fn create_skill_inner(
     author_login: Option<&str>,
     author_avatar: Option<&str>,
     app_version: &str,
+    display_name: Option<&str>,
+    intake_json: Option<&str>,
 ) -> Result<(), String> {
     // Check for collision in workspace_path (working directory)
     let base = Path::new(workspace_path).join(name);
@@ -163,6 +172,13 @@ fn create_skill_inner(
         if let Some(login) = author_login {
             let _ = crate::db::set_skill_author(conn, name, login, author_avatar);
         }
+
+        if let Some(dn) = display_name {
+            let _ = crate::db::set_skill_display_name(conn, name, Some(dn));
+        }
+        if let Some(ij) = intake_json {
+            let _ = crate::db::set_skill_intake(conn, name, Some(ij));
+        }
     }
 
     // Write .skill-builder manifest into the skill output directory
@@ -198,9 +214,14 @@ pub fn delete_skill(
         e.to_string()
     })?;
     // Read skills_path from settings DB
-    let skills_path = crate::db::read_settings(&conn)
-        .ok()
-        .and_then(|s| s.skills_path);
+    let settings = crate::db::read_settings(&conn).ok();
+    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    // Require skills_path to be configured
+    if skills_path.is_none() {
+        return Err("Skills path not configured. Please set it in Settings.".to_string());
+    }
+
     delete_skill_inner(
         &workspace_path,
         &name,
@@ -360,10 +381,56 @@ pub fn check_lock(
     }
 }
 
+#[tauri::command]
+pub fn update_skill_metadata(
+    skill_name: String,
+    display_name: Option<String>,
+    skill_type: Option<String>,
+    tags: Option<Vec<String>>,
+    intake_json: Option<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("[update_skill_metadata] skill={} display_name={:?} skill_type={:?} tags={:?} intake={}", skill_name, display_name, skill_type, tags, intake_json.is_some());
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[update_skill_metadata] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+
+    if let Some(dn) = &display_name {
+        crate::db::set_skill_display_name(&conn, &skill_name, Some(dn)).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set display_name: {}", e);
+            e
+        })?;
+    }
+    if let Some(st) = &skill_type {
+        conn.execute(
+            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params![skill_name, st],
+        ).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to update skill_type: {}", e);
+            e.to_string()
+        })?;
+    }
+    if let Some(tags) = &tags {
+        crate::db::set_skill_tags(&conn, &skill_name, tags).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set tags: {}", e);
+            e
+        })?;
+    }
+    if let Some(ij) = &intake_json {
+        crate::db::set_skill_intake(&conn, &skill_name, Some(ij)).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set intake_json: {}", e);
+            e
+        })?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::commands::test_utils::create_test_db;
+    use rusqlite::Connection;
     use tempfile::tempdir;
 
     // ===== list_skills_inner tests =====
@@ -476,7 +543,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0")
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0", None, None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -491,8 +558,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0").unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0");
+        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -505,7 +572,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0")
+        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None, None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -541,6 +608,8 @@ mod tests {
             None,
             None,
             "0.1.0",
+            None,
+            None,
         )
         .unwrap();
 
@@ -579,6 +648,8 @@ mod tests {
             None,
             None,
             "0.1.0",
+            None,
+            None,
         )
         .unwrap();
 
@@ -691,7 +762,7 @@ mod tests {
         // Create a symlink or sibling that the ".." traversal would resolve to
         // The workspace has a dir that resolves outside via ".."
         // workspace/legit is a real skill
-        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0").unwrap();
+        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         // This creates workspace/../outside-target which resolves to outside_dir
@@ -738,6 +809,8 @@ mod tests {
             None,
             None,
             "0.1.0",
+            None,
+            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -766,6 +839,8 @@ mod tests {
             None,
             None,
             "0.1.0",
+            None,
+            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -792,6 +867,8 @@ mod tests {
             None,
             None,
             "0.1.0",
+            None,
+            None,
         );
         assert!(result.is_ok());
 
@@ -810,7 +887,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0").unwrap();
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");
@@ -830,5 +907,96 @@ mod tests {
         // Verify the entire skill directory (including logs/) is gone
         assert!(!skill_dir.exists(), "skill directory should be removed");
         assert!(!logs_dir.exists(), "logs directory should be removed");
+    }
+
+    // ===== update_skill_metadata tests =====
+
+    /// Helper: create a skill in the DB for metadata update tests.
+    fn setup_skill_for_metadata(conn: &Connection, name: &str) {
+        crate::db::save_workflow_run(conn, name, "analytics", 0, "pending", "domain").unwrap();
+    }
+
+    #[test]
+    fn test_update_metadata_display_name() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "meta-skill");
+
+        crate::db::set_skill_display_name(&conn, "meta-skill", Some("Pretty Name")).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "meta-skill").unwrap().unwrap();
+        assert_eq!(row.display_name.as_deref(), Some("Pretty Name"));
+    }
+
+    #[test]
+    fn test_update_metadata_skill_type() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "type-skill");
+
+        conn.execute(
+            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params!["type-skill", "platform"],
+        ).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "type-skill").unwrap().unwrap();
+        assert_eq!(row.skill_type, "platform");
+    }
+
+    #[test]
+    fn test_update_metadata_tags() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "tag-skill");
+
+        crate::db::set_skill_tags(&conn, "tag-skill", &["rust".into(), "wasm".into()]).unwrap();
+
+        let tags = crate::db::get_tags_for_skills(&conn, &["tag-skill".into()]).unwrap();
+        assert_eq!(tags.get("tag-skill").unwrap(), &["rust", "wasm"]);
+    }
+
+    #[test]
+    fn test_update_metadata_intake_json() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "intake-skill");
+
+        let json = r#"{"audience":"Engineers","challenges":"Scale","scope":"Backend"}"#;
+        crate::db::set_skill_intake(&conn, "intake-skill", Some(json)).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "intake-skill").unwrap().unwrap();
+        assert_eq!(row.intake_json.as_deref(), Some(json));
+    }
+
+    #[test]
+    fn test_update_metadata_all_fields() {
+        let conn = create_test_db();
+        setup_skill_for_metadata(&conn, "full-meta");
+
+        // Update all four fields as update_skill_metadata would
+        crate::db::set_skill_display_name(&conn, "full-meta", Some("Full Metadata")).unwrap();
+        conn.execute(
+            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params!["full-meta", "source"],
+        ).unwrap();
+        crate::db::set_skill_tags(&conn, "full-meta", &["api".into(), "rest".into()]).unwrap();
+        crate::db::set_skill_intake(&conn, "full-meta", Some(r#"{"audience":"Devs"}"#)).unwrap();
+
+        let row = crate::db::get_workflow_run(&conn, "full-meta").unwrap().unwrap();
+        assert_eq!(row.display_name.as_deref(), Some("Full Metadata"));
+        assert_eq!(row.skill_type, "source");
+        assert_eq!(row.intake_json.as_deref(), Some(r#"{"audience":"Devs"}"#));
+
+        let tags = crate::db::get_tags_for_skills(&conn, &["full-meta".into()]).unwrap();
+        assert_eq!(tags.get("full-meta").unwrap(), &["api", "rest"]);
+    }
+
+    #[test]
+    fn test_update_metadata_nonexistent_skill_is_noop() {
+        let conn = create_test_db();
+
+        // These should succeed (UPDATE affects 0 rows, no error)
+        crate::db::set_skill_display_name(&conn, "ghost", Some("Name")).unwrap();
+        crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]).unwrap();
+        crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
+
+        // No row should exist
+        assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
     }
 }

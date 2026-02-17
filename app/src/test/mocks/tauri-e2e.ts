@@ -7,8 +7,9 @@
  */
 
 const defaultSettings = {
-  anthropic_api_key: null,
+  anthropic_api_key: "sk-ant-test-e2e",
   workspace_path: null,
+  skills_path: null,
   preferred_model: null,
   log_level: "info",
 };
@@ -85,6 +86,12 @@ const mockResponses: Record<string, unknown> = {
   check_lock: false,
   list_team_repo_skills: [],
   import_team_repo_skill: "imported-skill",
+  // Auth
+  github_get_user: null,
+  github_logout: undefined,
+  // Repos
+  list_user_repos: [],
+  validate_remote_repo: undefined,
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

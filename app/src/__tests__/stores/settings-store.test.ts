@@ -14,13 +14,24 @@ describe("useSettingsStore", () => {
     expect(state.isConfigured).toBe(false);
   });
 
-  it("setSettings with apiKey sets isConfigured to true", () => {
+  it("setSettings with apiKey and skillsPath sets isConfigured to true", () => {
+    useSettingsStore.getState().setSettings({
+      anthropicApiKey: "sk-ant-test-key",
+      skillsPath: "/some/skills",
+    });
+    const state = useSettingsStore.getState();
+    expect(state.anthropicApiKey).toBe("sk-ant-test-key");
+    expect(state.skillsPath).toBe("/some/skills");
+    expect(state.isConfigured).toBe(true);
+  });
+
+  it("setSettings with apiKey only keeps isConfigured false (skillsPath required)", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
     });
     const state = useSettingsStore.getState();
     expect(state.anthropicApiKey).toBe("sk-ant-test-key");
-    expect(state.isConfigured).toBe(true);
+    expect(state.isConfigured).toBe(false);
   });
 
   it("setSettings without apiKey keeps isConfigured false", () => {
@@ -35,6 +46,7 @@ describe("useSettingsStore", () => {
   it("setSettings preserves existing fields not included in update", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
+      skillsPath: "/some/skills",
     });
     useSettingsStore.getState().setSettings({
       workspacePath: "/some/path",
@@ -42,6 +54,7 @@ describe("useSettingsStore", () => {
     const state = useSettingsStore.getState();
     expect(state.anthropicApiKey).toBe("sk-ant-test-key");
     expect(state.workspacePath).toBe("/some/path");
+    expect(state.skillsPath).toBe("/some/skills");
     expect(state.isConfigured).toBe(true);
   });
 
@@ -49,6 +62,7 @@ describe("useSettingsStore", () => {
     useSettingsStore.getState().setSettings({
       anthropicApiKey: "sk-ant-test-key",
       workspacePath: "/some/path",
+      skillsPath: "/some/skills",
     });
     // Verify configured before reset
     expect(useSettingsStore.getState().isConfigured).toBe(true);

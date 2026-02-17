@@ -32,18 +32,20 @@ interface SkillCardProps {
   onContinue: (skill: SkillSummary) => void
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
-  onEditTags?: (skill: SkillSummary) => void
+  onEdit?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
   isGitHubLoggedIn?: boolean
 }
 
-function parseStepProgress(currentStep: string | null): number {
+function parseStepProgress(currentStep: string | null, status: string | null): number {
+  if (status === "completed") return 100
   if (!currentStep) return 0
   const match = currentStep.match(/step\s*(\d+)/i)
   if (match) {
     const stepIndex = Number(match[1])
-    return Math.min(Math.round((stepIndex / 7) * 100), 100)
+    // Steps are 0-6 (7 total). Use (stepIndex + 1) / 7 so step 6 = 100%.
+    return Math.min(Math.round(((stepIndex + 1) / 7) * 100), 100)
   }
   if (/completed/i.test(currentStep)) return 100
   if (/initialization/i.test(currentStep)) return 0
@@ -130,12 +132,12 @@ export default function SkillCard({
   onContinue,
   onDelete,
   onDownload,
-  onEditTags,
+  onEdit,
   onPushToRemote,
   remoteConfigured,
   isGitHubLoggedIn,
 }: SkillCardProps) {
-  const progress = parseStepProgress(skill.current_step)
+  const progress = parseStepProgress(skill.current_step, skill.status)
   const relativeTime = formatRelativeTime(skill.last_modified)
   const canDownload = isWorkflowComplete(skill)
 
@@ -144,7 +146,7 @@ export default function SkillCard({
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">
-            {formatSkillName(skill.name)}
+            {skill.display_name || formatSkillName(skill.name)}
           </CardTitle>
           <div className="flex items-center gap-1.5 shrink-0">
             {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
@@ -250,9 +252,9 @@ export default function SkillCard({
         {cardContent}
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onSelect={() => onEditTags?.(skill)}>
+        <ContextMenuItem onSelect={() => onEdit?.(skill)}>
           <Tag className="size-4" />
-          Edit Tags
+          Edit
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem

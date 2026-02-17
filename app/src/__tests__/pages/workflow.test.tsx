@@ -115,8 +115,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("auto-advances to next step after agent completion", async () => {
-    // Simulate: step 0 is running an agent
+  it("stays on completion screen after agent step when next is human review", async () => {
+    // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -125,7 +125,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — should auto-advance to step 1 (human review)
+    // Agent completes — should NOT auto-advance because next step is human review
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
@@ -136,9 +136,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Auto-advanced to step 1 which shows the editor immediately
-    expect(wf.currentStep).toBe(1);
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Stays on step 0 completion screen — user sees output files read-only
+    expect(wf.currentStep).toBe(0);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
@@ -146,7 +145,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("auto-advances from step 5 (build) to step 6 (validate)", async () => {
+  it("pauses on completion screen after step 5 (build)", async () => {
     // Simulate: steps 0-4 completed, step 5 running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -174,11 +173,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 5 completed
     expect(wf.steps[5].status).toBe("completed");
 
-    // Auto-advances to step 6 (validate)
-    expect(wf.currentStep).toBe(6);
-
-    // Step 6 is an agent step — stays pending (not waiting_for_user)
-    expect(wf.steps[6].status).toBe("pending");
+    // Stays on step 5 completion screen — user clicks "Next Step" to proceed
+    expect(wf.currentStep).toBe(5);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
@@ -417,10 +413,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
   });
 
-  it("shows Resume when partial output exists on disk", async () => {
+  it("always shows Start Step button (no Resume) even with partial output on disk", async () => {
     // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("clarifications.md")) {
+      if (path.includes("research-plan.md")) {
         return Promise.resolve("# Partial research output");
       }
       return Promise.reject("not found");
@@ -432,27 +428,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Filesystem fallback should detect partial output -> show "Resume"
+    // Should always show "Start Step", never "Resume"
     await waitFor(() => {
-      expect(screen.queryByText("Resume")).toBeTruthy();
+      expect(screen.queryByText("Start Step")).toBeTruthy();
     });
-  });
-
-  it("does not show Resume when no partial output exists anywhere", async () => {
-    // Filesystem has no output
-    vi.mocked(readFile).mockRejectedValue("not found");
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-
-    render(<WorkflowPage />);
-
-    // Wait for effects to settle
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // "Resume" should NOT appear — no partial output anywhere
     expect(screen.queryByText("Resume")).toBeNull();
   });
 
@@ -539,15 +518,9 @@ describe("WorkflowPage — human review file loading priority", () => {
     );
   });
 
-  it("falls back to workspace when skillsPath context file is not found", async () => {
-    // skillsPath does NOT have the file — should fall back to workspace
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.startsWith("/test/skills/")) {
-        return Promise.reject("not found");
-      }
-      if (path === "/test/workspace/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From workspace");
-      }
+  it("shows missing file error when skillsPath context file is not found (no workspace fallback)", async () => {
+    // skillsPath does NOT have the file — no workspace fallback
+    vi.mocked(readFile).mockImplementation(() => {
       return Promise.reject("not found");
     });
 
@@ -559,26 +532,20 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     render(<WorkflowPage />);
 
+    // Should show missing file error since skillsPath file not found and no workspace fallback
     await waitFor(() => {
-      expect(screen.getByText("From workspace")).toBeTruthy();
+      expect(screen.getByText("Missing clarification file")).toBeTruthy();
     });
   });
 
-  it("skips skillsPath lookup when skillsPath is null", async () => {
-    // No skillsPath configured — should go straight to workspace
+  it("shows missing file error when skillsPath is null", async () => {
+    // No skillsPath configured — review loading requires skillsPath
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: null,
       anthropicApiKey: "sk-test",
     });
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/workspace/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From workspace (no skillsPath)");
-      }
-      return Promise.reject("not found");
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -587,19 +554,19 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     render(<WorkflowPage />);
 
+    // Without skillsPath, review content is null — should show missing file error
     await waitFor(() => {
-      expect(screen.getByText("From workspace (no skillsPath)")).toBeTruthy();
+      expect(screen.getByText("Missing clarification file")).toBeTruthy();
     });
 
-    // readFile should NOT have been called with any skills path
-    const readFileCalls = vi.mocked(readFile).mock.calls.map((c) => c[0]);
-    expect(readFileCalls.some((p) => p.includes("/test/skills/"))).toBe(false);
+    // readFile should NOT have been called at all
+    expect(vi.mocked(readFile)).not.toHaveBeenCalled();
   });
 
-  it("uses skillsPath context dir for step 3 (clarifications-detailed.md) too", async () => {
-    // Step 3 reviews clarifications-detailed.md — same priority should apply
+  it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
+    // Step 3 reviews clarifications.md — same priority should apply
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve("# Merged clarifications from skills dir");
       }
       return Promise.reject("not found");
@@ -619,7 +586,7 @@ describe("WorkflowPage — human review file loading priority", () => {
     });
 
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications-detailed.md"
+      "/test/skills/test-skill/context/clarifications.md"
     );
   });
 });
@@ -702,7 +669,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const writePath = vi.mocked(writeFile).mock.calls[0][0];
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
-    expect(writePath).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.md");
     expect(savedContent).toBe(reviewContent);
 
     // Verify no auto-fill happened
@@ -718,7 +685,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
   });
 
-  it("auto-advances to human review step and sets waiting_for_user", async () => {
+  it("pauses on completion screen when next step is human review", async () => {
     // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -739,10 +706,9 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Should auto-advance to step 1 and show editor immediately
-    expect(wf.currentStep).toBe(1);
-    // Human review step set to waiting_for_user (not auto-completed)
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Should stay on step 0 completion screen (not auto-advance to human review)
+    // User clicks "Next Step" to proceed to review
+    expect(wf.currentStep).toBe(0);
   });
 
   it("preserves partially filled answers", async () => {
@@ -799,7 +765,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   });
 
   it("step 3 human review also saves without auto-fill", async () => {
-    // Step 3 reviews clarifications-detailed.md — same behavior expected
+    // Step 3 reviews clarifications.md — same behavior expected
     const reviewContent = [
       "## Merged Question 1",
       "**Recommendation**: Normalize customer dimensions",
@@ -811,7 +777,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -839,9 +805,9 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    // Verify it saved to the correct filesystem path for step 3
+    // Verify it saved to the correct filesystem path for step 3 (skillsPath, no workspace fallback)
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/workspace/test-skill/context/clarifications-detailed.md",
+      "/test/skills/test-skill/context/clarifications.md",
       reviewContent,
     );
 
@@ -941,9 +907,9 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     useWorkflowStore.getState().updateStepStatus(0, "error");
     useWorkflowStore.getState().setRunning(false);
 
-    // readFile returns content for the step's output file -> errorHasArtifacts = true
+    // readFile returns content for the step's first output file -> errorHasArtifacts = true
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("clarifications.md")) {
+      if (path.includes("research-plan.md")) {
         return Promise.resolve("partial content");
       }
       return Promise.reject("not found");
@@ -1135,7 +1101,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
 
     await waitFor(() => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-        "/test/workspace/test-skill/context/clarifications.md",
+        "/test/skills/test-skill/context/clarifications.md",
         "# Edited content",
       );
     });
@@ -1249,7 +1215,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
 
     // The save handler writes the editor content
     const saveCall = vi.mocked(writeFile).mock.calls[0];
-    expect(saveCall[0]).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(saveCall[0]).toBe("/test/skills/test-skill/context/clarifications.md");
     expect(saveCall[1]).toBe("# Save and continue");
 
     // Step should be completed and advanced

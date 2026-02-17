@@ -13,7 +13,7 @@ Changes that affect agent execution or output quality. Requires an API key.
 | Path Pattern | Why |
 |---|---|
 | `agents/` | Agent prompt content |
-| `agent-sources/` | Templates, type configs, workspace CLAUDE.md |
+| `agent-sources/workspace/CLAUDE.md` | Agent instructions |
 | `app/sidecar/*.ts` (except `mock-agent.ts`, `mock-templates/`) | Sidecar runtime logic |
 | `app/src-tauri/src/agents/` | Rust agent orchestration (sidecar.rs, sidecar_pool.rs) |
 | `app/src-tauri/src/commands/workflow.rs` (agent-execution paths) | Workflow step dispatch |
@@ -49,7 +49,7 @@ cd ../worktrees/<branch>/app && npm run dev
 |---|---|---|
 | `app/src/pages/dashboard.tsx`, `app/src/stores/skill-store.ts` | Mock | Pure UI + state |
 | `app/src-tauri/src/commands/settings.rs` | Mock | Non-agent Rust command |
-| `agents/shared/confirm-decisions.md` | Full | Agent prompt change |
+| `agents/confirm-decisions.md` | Full | Agent prompt change |
 | `app/sidecar/run-agent.ts` | Full | Sidecar runtime |
 | `app/src/components/workflow/AgentOutputPanel.tsx` | Mock | UI display of agent output (mock replays work) |
 | `app/src-tauri/src/agents/sidecar.rs` | Full | Agent process management |

@@ -15,6 +15,7 @@ interface WorkflowStepCompleteProps {
   duration?: number;
   cost?: number;
   onNextStep?: () => void;
+  onClose?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
@@ -37,6 +38,7 @@ export function WorkflowStepComplete({
   duration,
   cost,
   onNextStep,
+  onClose,
   isLastStep = false,
   reviewMode,
   skillName,
@@ -58,8 +60,9 @@ export function WorkflowStepComplete({
       .catch((err) => console.error("Failed to load agent stats:", err));
   }, [reviewMode, skillName, stepId]);
 
+  // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
-    if (!reviewMode || !skillName || outputFiles.length === 0) {
+    if (!skillName || outputFiles.length === 0) {
       setFileContents(new Map());
       return;
     }
@@ -78,19 +81,12 @@ export function WorkflowStepComplete({
           ? relativePath.slice("skill/".length)
           : relativePath;
 
+        // skills_path is required — no workspace fallback
         if (skillsPath) {
           try {
             content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
           } catch {
             // not found in skills path
-          }
-        }
-
-        if (!content && workspacePath) {
-          try {
-            content = await readFile(`${workspacePath}/${skillName}/${relativePath}`);
-          } catch {
-            // not found in workspace path either
           }
         }
 
@@ -109,10 +105,12 @@ export function WorkflowStepComplete({
     });
 
     return () => { cancelled = true; };
-  }, [reviewMode, skillName, workspacePath, skillsPath, outputFiles]);
+  }, [skillName, workspacePath, skillsPath, outputFiles]);
 
-  // Review mode: show file contents
-  if (reviewMode && outputFiles.length > 0) {
+  const hasFileContents = fileContents.size > 0;
+
+  // Show file contents when available (both review and non-review mode)
+  if (hasFileContents && outputFiles.length > 0) {
     if (loadingFiles) {
       return (
         <div className="flex flex-1 items-center justify-center">
@@ -126,6 +124,26 @@ export function WorkflowStepComplete({
         {agentRuns.length > 0 && (
           <div className="shrink-0">
             <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        {!reviewMode && (
+          <div className="flex items-center gap-2 pb-4">
+            <CheckCircle2 className="size-4 text-green-500" />
+            <h3 className="text-sm font-semibold">{stepName} Complete</h3>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
+              {duration !== undefined && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {formatDuration(duration)}
+                </span>
+              )}
+              {cost !== undefined && (
+                <span className="flex items-center gap-1">
+                  <DollarSign className="size-3" />
+                  ${cost.toFixed(4)}
+                </span>
+              )}
+            </div>
           </div>
         )}
         <ScrollArea className="min-h-0 flex-1">
@@ -160,58 +178,86 @@ export function WorkflowStepComplete({
               })}
           </div>
         </ScrollArea>
+        {!reviewMode && (
+          <div className="flex items-center justify-end border-t pt-4">
+            {isLastStep ? (
+              onClose && (
+                <Button size="sm" onClick={onClose}>
+                  <CheckCircle2 className="size-3.5" />
+                  Done
+                </Button>
+              )
+            ) : (
+              onNextStep && (
+                <Button size="sm" onClick={onNextStep}>
+                  <ArrowRight className="size-3.5" />
+                  Next Step
+                </Button>
+              )
+            )}
+          </div>
+        )}
       </div>
     );
   }
 
-  // Default rendering (non-review mode)
+  // Fallback: no file contents loaded yet (loading state or no files)
+  if (loadingFiles) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <div className="flex flex-col items-center gap-4 text-center">
-        <CheckCircle2 className="size-12 text-green-500" />
-        <h3 className="text-lg font-semibold">{stepName} Complete</h3>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <CheckCircle2 className="size-12 text-green-500" />
+          <h3 className="text-lg font-semibold">{stepName} Complete</h3>
 
-        {outputFiles.length > 0 && (
-          <div className="flex flex-col gap-1">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Created Files
-            </p>
-            {outputFiles.map((file) => (
-              <div
-                key={file}
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-              >
-                <FileText className="size-3.5" />
-                <span>{file}</span>
-              </div>
-            ))}
+          {outputFiles.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Created Files
+              </p>
+              {outputFiles.map((file) => (
+                <div
+                  key={file}
+                  className="flex items-center gap-2 text-sm text-muted-foreground"
+                >
+                  <FileText className="size-3.5" />
+                  <span>{file}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            {duration !== undefined && (
+              <span className="flex items-center gap-1">
+                <Clock className="size-3" />
+                {formatDuration(duration)}
+              </span>
+            )}
+            {cost !== undefined && (
+              <span className="flex items-center gap-1">
+                <DollarSign className="size-3" />
+                ${cost.toFixed(4)}
+              </span>
+            )}
           </div>
-        )}
-
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          {duration !== undefined && (
-            <span className="flex items-center gap-1">
-              <Clock className="size-3" />
-              {formatDuration(duration)}
-            </span>
-          )}
-          {cost !== undefined && (
-            <span className="flex items-center gap-1">
-              <DollarSign className="size-3" />
-              ${cost.toFixed(4)}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 mt-2">
-          {onNextStep && !isLastStep && !reviewMode && (
-            <Button size="sm" onClick={onNextStep}>
-              <ArrowRight className="size-3.5" />
-              Next Step
-            </Button>
-          )}
         </div>
       </div>
+      {onNextStep && !isLastStep && !reviewMode && (
+        <div className="flex items-center justify-end border-t pt-4">
+          <Button size="sm" onClick={onNextStep}>
+            <ArrowRight className="size-3.5" />
+            Next Step
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

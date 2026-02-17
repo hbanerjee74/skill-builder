@@ -320,8 +320,9 @@ describe("ReasoningReview", () => {
     expect(defaultProps.onStepComplete).not.toHaveBeenCalled();
   });
 
-  it("allows Complete Step when decisions.md found in workspace path (fallback)", async () => {
+  it("blocks Complete Step when decisions.md missing from skillsPath (no workspace fallback)", async () => {
     const user = userEvent.setup();
+    const { toast } = await import("sonner");
 
     render(<ReasoningReview {...defaultProps} />);
 
@@ -337,7 +338,7 @@ describe("ReasoningReview", () => {
       expect(screen.getByText("Complete Step")).toBeInTheDocument();
     });
 
-    // Mock readFile: skills path fails, workspace path succeeds
+    // Mock readFile: skills path fails, workspace path would succeed (but shouldn't be tried)
     mockReadFile.mockImplementation((...args: unknown[]) => {
       const filePath = args[0] as string;
       if (filePath === "/workspace/saas-revenue/context/decisions.md") {
@@ -348,12 +349,18 @@ describe("ReasoningReview", () => {
 
     await user.click(screen.getByText("Complete Step"));
 
+    // Should show error — workspace fallback is no longer used
     await waitFor(() => {
-      const store = useWorkflowStore.getState();
-      expect(store.steps[4].status).toBe("completed");
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining("Decisions file was not created"),
+        { duration: Infinity },
+      );
     });
 
-    expect(defaultProps.onStepComplete).toHaveBeenCalled();
+    // Step should NOT be completed
+    const store = useWorkflowStore.getState();
+    expect(store.steps[4].status).not.toBe("completed");
+    expect(defaultProps.onStepComplete).not.toHaveBeenCalled();
   });
 
   it("shows error guidance when agent fails", async () => {

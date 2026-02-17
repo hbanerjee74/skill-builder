@@ -1,29 +1,28 @@
 import { test, expect } from "@playwright/test";
+import { waitForAppReady } from "../helpers/app-helpers";
+
+const WORKSPACE_OVERRIDES = {
+  get_settings: {
+    anthropic_api_key: "sk-ant-test",
+    workspace_path: "/tmp/test-workspace",
+    skills_path: "/tmp/test-skills",
+  },
+  check_workspace_path: true,
+  list_skills: [],
+};
 
 test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
   test.beforeEach(async ({ page }) => {
     // Configure a workspace so the dashboard shows the New Skill button
-    await page.evaluate(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        get_settings: {
-          anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
-          workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
-        },
-        check_workspace_path: true,
-        list_skills: [],
-      };
-    });
+    await page.addInitScript((overrides) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
+    }, WORKSPACE_OVERRIDES);
     await page.goto("/");
-    // Wait for settings to hydrate
-    await page.waitForTimeout(500);
+    await waitForAppReady(page);
   });
 
   test("shows New Skill button when workspace is configured", async ({ page }) => {
-    const newSkillButton = page.getByRole("button", { name: /new skill/i });
+    const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await expect(newSkillButton).toBeVisible();
   });
 
@@ -31,8 +30,11 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
 
-    await page.getByLabel("Domain").fill("HR analytics");
-    await expect(page.getByLabel("Skill Name")).toHaveValue("hr-analytics");
+    // Select a skill type (required for the Create button to be enabled)
+    await page.getByRole("radio", { name: /Domain/ }).click();
+
+    await page.getByRole("textbox", { name: "Domain" }).fill("HR analytics");
+    await expect(page.getByRole("textbox", { name: "Skill Name" })).toHaveValue("hr-analytics");
 
     // Submit
     const createButton = page.getByRole("button", { name: "Create" });
@@ -45,15 +47,12 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
 
   test("shows skill cards when skills exist", async ({ page }) => {
     // Override with skills data
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
           anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
           workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
+          skills_path: "/tmp/test-skills",
         },
         check_workspace_path: true,
         list_skills: [
@@ -68,24 +67,21 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
       };
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
+    await waitForAppReady(page);
 
     // Skill card should show the formatted name
     await expect(page.getByText("Sales Pipeline")).toBeVisible();
-    await expect(page.getByText("Sales")).toBeVisible();
+    await expect(page.getByText("Sales", { exact: true })).toBeVisible();
     await expect(page.getByText("In Progress")).toBeVisible();
   });
 
   test("can open delete dialog from skill card", async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
           anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
           workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
+          skills_path: "/tmp/test-skills",
         },
         check_workspace_path: true,
         list_skills: [
@@ -100,7 +96,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
       };
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
+    await waitForAppReady(page);
 
     // Click the delete icon button on the skill card
     const deleteButton = page.locator("button").filter({ has: page.locator("svg.lucide-trash-2") });
@@ -112,15 +108,12 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
   });
 
   test("can confirm skill deletion", async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
           anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
           workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
+          skills_path: "/tmp/test-skills",
         },
         check_workspace_path: true,
         list_skills: [
@@ -136,7 +129,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
       };
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
+    await waitForAppReady(page);
 
     // Open delete dialog
     const deleteButton = page.locator("button").filter({ has: page.locator("svg.lucide-trash-2") });
@@ -151,15 +144,12 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
   });
 
   test("can cancel delete dialog", async ({ page }) => {
-    await page.evaluate(() => {
+    await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
           anthropic_api_key: "sk-ant-test",
-          github_token: "ghp_test",
-          github_repo: "testuser/my-skills",
           workspace_path: "/tmp/test-workspace",
-          auto_commit: false,
-          auto_push: false,
+          skills_path: "/tmp/test-skills",
         },
         check_workspace_path: true,
         list_skills: [
@@ -174,7 +164,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
       };
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
+    await waitForAppReady(page);
 
     // Open delete dialog
     const deleteButton = page.locator("button").filter({ has: page.locator("svg.lucide-trash-2") });

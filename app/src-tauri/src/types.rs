@@ -30,6 +30,12 @@ pub struct AppSettings {
     pub remote_repo_owner: Option<String>,
     #[serde(default)]
     pub remote_repo_name: Option<String>,
+    #[serde(default = "default_max_dimensions")]
+    pub max_dimensions: u32,
+    #[serde(default)]
+    pub industry: Option<String>,
+    #[serde(default)]
+    pub function_role: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -50,6 +56,9 @@ impl Default for AppSettings {
             github_user_email: None,
             remote_repo_owner: None,
             remote_repo_name: None,
+            max_dimensions: 5,
+            industry: None,
+            function_role: None,
         }
     }
 }
@@ -118,6 +127,10 @@ pub struct SkillSummary {
     pub author_login: Option<String>,
     #[serde(default)]
     pub author_avatar: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub intake_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +163,10 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+fn default_max_dimensions() -> u32 {
+    5
+}
+
 fn default_skill_type() -> String {
     "domain".to_string()
 }
@@ -168,6 +185,10 @@ pub struct WorkflowRunRow {
     pub author_login: Option<String>,
     #[serde(default)]
     pub author_avatar: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub intake_json: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -391,6 +412,8 @@ mod tests {
         assert!(settings.github_user_email.is_none());
         assert!(settings.remote_repo_owner.is_none());
         assert!(settings.remote_repo_name.is_none());
+        assert!(settings.industry.is_none());
+        assert!(settings.function_role.is_none());
     }
 
     #[test]
@@ -411,6 +434,9 @@ mod tests {
             github_user_email: Some("test@example.com".to_string()),
             remote_repo_owner: Some("my-org".to_string()),
             remote_repo_name: Some("shared-skills".to_string()),
+            max_dimensions: 5,
+            industry: Some("Financial Services".to_string()),
+            function_role: Some("Analytics Engineer".to_string()),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();
@@ -437,6 +463,14 @@ mod tests {
         assert_eq!(
             deserialized.remote_repo_name.as_deref(),
             Some("shared-skills")
+        );
+        assert_eq!(
+            deserialized.industry.as_deref(),
+            Some("Financial Services")
+        );
+        assert_eq!(
+            deserialized.function_role.as_deref(),
+            Some("Analytics Engineer")
         );
     }
 
@@ -476,7 +510,7 @@ mod tests {
             betas: None,
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
-            agent_name: Some("domain-research-entities".to_string()),
+            agent_name: Some("research-entities".to_string()),
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"apiKey\""));

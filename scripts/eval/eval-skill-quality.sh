@@ -186,7 +186,7 @@ Environment:
 Examples:
   # Baseline: does the skill help vs no skill?
   ./scripts/eval/eval-skill-quality.sh \
-    --baseline agents/data-engineering/generate-skill.md \
+    --baseline agents/generate-skill.md \
     --prompts scripts/eval/prompts/data-engineering.txt
 
   # Compare with JSON output saved to file

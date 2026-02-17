@@ -149,6 +149,8 @@ describe("NewSkillDialog", () => {
         domain: "Sales Pipeline",
         tags: null,
         skillType: "domain",
+        displayName: null,
+        intakeJson: null,
       });
     });
 
@@ -294,6 +296,8 @@ describe("NewSkillDialog", () => {
         domain: "Test Domain",
         tags: ["analytics", "salesforce"],
         skillType: "source",
+        displayName: null,
+        intakeJson: null,
       });
     });
   });
@@ -359,6 +363,8 @@ describe("NewSkillDialog", () => {
         domain: "ETL Patterns",
         tags: null,
         skillType: "data-engineering",
+        displayName: null,
+        intakeJson: null,
       });
     });
   });
@@ -430,6 +436,8 @@ describe("NewSkillDialog", () => {
         domain: "Test",
         tags: ["salesforce"],
         skillType: "platform",
+        displayName: null,
+        intakeJson: null,
       });
     });
   });

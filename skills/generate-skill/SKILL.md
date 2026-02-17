@@ -13,7 +13,7 @@ You are the coordinator for the Skill Builder workflow. You orchestrate a 7-step
 - [Single-Skill Mode]
 - [Workflow]
   - [Step 0: Initialization]
-  - [Agent Type Prefix]
+  - [Agent Names]
   - [Step 1: Research]
   - [Step 2: Human Gate — Review]
   - [Step 3: Detailed Research]
@@ -81,9 +81,9 @@ Only one skill is active at a time. The coordinator works on the skill the user 
 
    | Step | Output File | Meaning |
    |------|------------|---------|
-   | 1 | `./<skillname>/context/clarifications.md` | Research complete |
+   | 1 | `./<skillname>/context/clarifications.md` (without Refinements) | Research complete |
    | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
-   | 3 | `./<skillname>/context/clarifications-detailed.md` | Detailed Research complete |
+   | 3 | `./<skillname>/context/clarifications.md` (with `#### Refinements` subsections) | Detailed Research complete |
    | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
    | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
    | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
@@ -119,27 +119,25 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    TeamCreate(team_name: "skill-builder-<skillname>", description: "Building <domain> skill")
    ```
 
-### Agent Type Prefix
+### Agent Names
 
-The `skill_type` collected during initialization (or confirmed on resume) determines which agent variants to use.
-
-Derive the prefix once after initialization (or resume) and use it for all subsequent agent dispatches:
-
-- If `skill_type` is `data-engineering`, set `type_prefix` to `de`
-- Otherwise, set `type_prefix` to the `skill_type` value as-is (e.g., `platform`, `domain`, `source`)
-
-Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Shared agents are referenced as `skill-builder:<agent>` (no type prefix).
+All agents use bare names (no type prefix). Reference agents as `skill-builder:<agent-name>`:
+- `skill-builder:research-orchestrator` — research orchestrator
+- `skill-builder:detailed-research` — detailed research
+- `skill-builder:confirm-decisions` — confirm decisions
+- `skill-builder:generate-skill` — generate skill
+- `skill-builder:validate-skill` — validate skill
 
 ### Step 1: Research
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research <domain>", description: "Research entities, metrics, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
+   TaskCreate(subject: "Research <domain>", description: "Research relevant dimensions for this domain. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant research dimensions (research-entities.md, research-metrics.md, research-practices.md, research-implementation.md), launches them in parallel, and consolidates results into `clarifications.md`:
+2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`. If the planner selects more dimensions than the configured threshold, the orchestrator spawns the scope-advisor agent instead, which writes a scope recommendation to `clarifications.md` (with `scope_recommendation: true` in frontmatter). When this happens, downstream steps (detailed research, confirm decisions, generate skill, validate skill) detect the flag and gracefully no-op.
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-research",
+     subagent_type: "skill-builder:research-orchestrator",
      team_name: "skill-builder-<skillname>",
      name: "research",
      prompt: "You are on the skill-builder-<skillname> team. Claim the 'Research' task.
@@ -165,9 +163,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./<skillname>/context/clarifications-detailed.md")
+   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Read answered clarifications.md and insert #### Refinements subsections in-place")
    ```
-2. Spawn the detailed-research shared agent as a teammate. It reads `clarifications.md` and writes `clarifications-detailed.md` in the context directory:
+2. Spawn the detailed-research shared agent as a teammate. It reads the answered `clarifications.md` (containing user's answers from step 2) and inserts `#### Refinements` subsections under each question that warrants follow-up:
    ```
    Task(
      subagent_type: "skill-builder:detailed-research",
@@ -179,7 +177,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
      Domain: <domain>
      Context directory: ./<skillname>/context/
 
-     Return a 5-10 bullet summary of the detailed questions you generated."
+     Read the answered clarifications.md and insert #### Refinements subsections for questions that need deeper exploration based on the user's answers.
+
+     Return a 5-10 bullet summary of the refinement questions you generated."
    )
    ```
 3. Relay the agent's summary to the user.
@@ -187,9 +187,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 ### Step 4: Human Gate — Detailed Review
 
 1. Tell the user:
-   "Please review and answer the detailed questions in `./<skillname>/context/clarifications-detailed.md`.
+   "Please review and answer the refinement questions in `./<skillname>/context/clarifications.md`.
 
-   Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
+   Look for the `#### Refinements` subsections under answered questions, fill in the **Answer:** field for each refinement, then tell me when you're done."
 2. Wait for the user to confirm.
 
 ### Step 5: Confirm Decisions
@@ -228,7 +228,7 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 1. Spawn the generate-skill agent:
    ```
    Task(
-     subagent_type: "skill-builder:{type_prefix}-generate-skill",
+     subagent_type: "skill-builder:generate-skill",
      team_name: "skill-builder-<skillname>",
      name: "generate-skill",
      prompt: "You are on the skill-builder-<skillname> team.
@@ -330,12 +330,15 @@ The coordinator provides **context directory** and **skill output directory** pa
 
 IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
 
-### Clarifications (`clarifications.md` and `clarifications-detailed.md`)
+### Clarifications (`clarifications.md`)
+
+There is only one clarifications file. The detailed-research step inserts `#### Refinements` subsections in-place rather than creating a separate file.
+
 ```
 ---
 question_count: 12
 sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # clarifications.md only (post-consolidation)
+duplicates_removed: 3  # post-consolidation
 ---
 ## [Section]
 ### Q1: [Title]
@@ -346,6 +349,17 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
   c) Other (please specify)
 **Recommendation**: [letter] — [why]
 **Answer**: [PM's choice, or empty for unanswered]
+
+#### Refinements
+
+**R1.1: Follow-up topic**
+Rationale...
+- [ ] Choice a
+- [ ] Choice b
+- [ ] Other (please specify)
+
+**Answer**:
+
 ```
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
 

@@ -11,6 +11,7 @@ import {
   RotateCcw,
   CheckCircle2,
   Save,
+  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   releaseLock,
   verifyStepOutput,
   endWorkflowSession,
+  getDisabledSteps,
 } from "@/lib/tauri";
 
 // --- Step config ---
@@ -59,9 +61,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.md"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications-detailed.md"], model: "sonnet" },
+  2: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -71,7 +73,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   1: { relativePath: "context/clarifications.md" },
-  3: { relativePath: "context/clarifications-detailed.md" },
+  3: { relativePath: "context/clarifications.md" },
 };
 
 
@@ -89,6 +91,7 @@ export default function WorkflowPage() {
     isInitializing,
     hydrated,
     reviewMode,
+    disabledSteps,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
@@ -197,9 +200,6 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Track whether current step has partial output from an interrupted run
-  const [hasPartialOutput, setHasPartialOutput] = useState(false);
-
   // Markdown editor state
   const [editorContent, setEditorContent] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -274,6 +274,15 @@ export default function WorkflowPage() {
         } else {
           setHydrated(true);
         }
+
+        // Restore disabled steps (scope recommendation) after hydration
+        getDisabledSteps(skillName)
+          .then((disabled) => {
+            if (!cancelled) {
+              useWorkflowStore.getState().setDisabledSteps(disabled);
+            }
+          })
+          .catch(() => {}); // Non-fatal
       })
       .catch(() => {
         // No saved state — fresh skill
@@ -305,39 +314,22 @@ export default function WorkflowPage() {
 
   // Reset state when moving to a new step
   useEffect(() => {
-    setHasPartialOutput(false);
     setErrorHasArtifacts(false);
     hasUnsavedChangesRef.current = false;
   }, [currentStep]);
 
-  // Consolidated step-artifact detection: partial output + error artifacts.
-  // Merges two formerly separate effects that both depended on steps/currentStep
-  // and each triggered async Tauri calls.
+  // Error-state artifact check: detect whether a failed step left partial output.
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    // --- Partial output from interrupted runs ---
-    if (workspacePath && hydrated) {
+    if (stepStatus === "error" && skillName && skillsPath) {
       const cfg = STEP_CONFIGS[currentStep];
-      if (cfg?.outputFiles && stepStatus === "pending") {
-        const path = cfg.outputFiles[0];
-        if (path) {
-          const filePath = `${workspacePath}/${skillName}/${path}`;
-          readFile(filePath)
-            .then((content) => setHasPartialOutput(!!content))
-            .catch(() => setHasPartialOutput(false));
-        }
-      } else {
-        setHasPartialOutput(false);
-      }
-    }
-
-    // --- Error-state artifact check ---
-    if (stepStatus === "error" && skillName && workspacePath) {
-      const cfg2 = STEP_CONFIGS[currentStep];
-      const firstOutput = cfg2?.outputFiles?.[0];
+      const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
-        readFile(`${workspacePath}/${skillName}/${firstOutput}`)
+        const skillsRelative = firstOutput.startsWith("skill/")
+          ? firstOutput.slice("skill/".length)
+          : firstOutput;
+        readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
           .then((content) => setErrorHasArtifacts(!!content))
           .catch(() => setErrorHasArtifacts(false));
       } else {
@@ -346,7 +338,7 @@ export default function WorkflowPage() {
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, workspacePath, skillName, hydrated]);
+  }, [currentStep, steps, skillsPath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -379,9 +371,9 @@ export default function WorkflowPage() {
   }, [steps, currentStep, skillName, domain, skillType, hydrated]);
 
   // Load file content when entering a human review step.
-  // Priority: skill output context dir > SQLite artifact > workspace filesystem.
+  // skills_path is required — no workspace fallback.
   useEffect(() => {
-    if (!isHumanReviewStep || !workspacePath) {
+    if (!isHumanReviewStep || !skillsPath) {
       setReviewContent(null);
       return;
     }
@@ -393,27 +385,21 @@ export default function WorkflowPage() {
     setReviewFilePath(relativePath);
     setLoadingReview(true);
 
-    const workspaceFilePath = `${workspacePath}/${skillName}/${relativePath}`;
-
-    // 1. Try skill output context directory first (survives workspace clears)
-    const trySkillsPath = skillsPath
-      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
-      : Promise.resolve(null);
-
-    trySkillsPath
-      .then((content) => {
-        if (content) return content;
-        // 2. Fallback: read from workspace filesystem
-        return readFile(workspaceFilePath).catch(() => null);
-      })
+    readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => setReviewContent(content ?? null))
+      .catch(() => setReviewContent(null))
       .finally(() => setLoadingReview(false));
-  }, [currentStep, isHumanReviewStep, workspacePath, skillsPath, skillName]);
+  }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
+    const { disabledSteps: disabled } = useWorkflowStore.getState();
     const nextStep = currentStep + 1;
+
+    // Don't advance if the next step is disabled (scope too broad)
+    if (disabled.includes(nextStep)) return;
+
     setCurrentStep(nextStep);
 
     const nextConfig = STEP_CONFIGS[nextStep];
@@ -451,16 +437,23 @@ export default function WorkflowPage() {
           }
         }
 
+        // Check for disabled steps before marking complete (so first render has correct state)
+        if (step === 0 && skillName) {
+          try {
+            const disabled = await getDisabledSteps(skillName);
+            useWorkflowStore.getState().setDisabledSteps(disabled);
+          } catch {
+            // Non-fatal: proceed normally
+          }
+        }
+
         updateStepStatus(step, "completed");
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
 
-        // Auto-advance all agent steps so the user lands directly on
-        // the next step (human review steps show the editor immediately).
-        const cfg = STEP_CONFIGS[step];
-        if (cfg?.type === "agent") {
-          advanceToNextStep();
-        }
+        // Agent steps always pause on the completion screen so the user can
+        // review output files before proceeding. The user clicks "Next Step"
+        // (or "Close" on the last step) in the bottom action bar.
       };
 
       finish();
@@ -481,7 +474,7 @@ export default function WorkflowPage() {
 
   // --- Step handlers ---
 
-  const handleStartAgentStep = async (resume = false) => {
+  const handleStartAgentStep = async () => {
     if (!domain || !workspacePath) {
       toast.error("Missing domain or workspace path", { duration: Infinity });
       return;
@@ -493,7 +486,6 @@ export default function WorkflowPage() {
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
       setInitializing();
-      setHasPartialOutput(false);
 
       console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
       const agentId = await runWorkflowStep(
@@ -501,7 +493,6 @@ export default function WorkflowPage() {
         currentStep,
         domain,
         workspacePath,
-        resume,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
@@ -515,12 +506,12 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStartStep = async (resume = false) => {
+  const handleStartStep = async () => {
     if (!stepConfig) return;
 
     switch (stepConfig.type) {
       case "agent":
-        return handleStartAgentStep(resume);
+        return handleStartAgentStep();
       case "human":
         // Human steps don't have a "start" — they just show the form
         break;
@@ -528,12 +519,13 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the editor content to workspace filesystem
+    // Save the editor content to skills path (required — no workspace fallback)
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && reviewContent !== null && workspacePath) {
+    const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
+    if (config && reviewContent !== null && skillsPath && filename) {
       try {
         const content = editorDirty ? editorContent : (reviewContent ?? "");
-        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, content);
+        await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
         setReviewContent(content);
       } catch (err) {
         toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
@@ -551,38 +543,32 @@ export default function WorkflowPage() {
   };
 
   // Reload the file content (after user edits externally).
-  // Same priority as initial load: skill context dir > workspace.
+  // skills_path is required — no workspace fallback.
   const handleReviewReload = () => {
-    if (!reviewFilePath || !workspacePath) return;
+    if (!reviewFilePath || !skillsPath) return;
     setLoadingReview(true);
-    const workspaceFilePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
     const filename = reviewFilePath.split("/").pop() ?? reviewFilePath;
 
-    // 1. Try skill output context directory first
-    const trySkillsPath = skillsPath
-      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
-      : Promise.resolve(null);
-
-    trySkillsPath
-      .then((content) => {
-        if (content) return content;
-        // 2. Fallback: workspace filesystem
-        return readFile(workspaceFilePath).catch(() => null);
-      })
+    readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
         if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
+      .catch(() => {
+        setReviewContent(null);
+        toast.error("Failed to reload file", { duration: Infinity });
+      })
       .finally(() => setLoadingReview(false));
   };
 
-  // Save editor content to workspace filesystem
+  // Save editor content to skills path (required — no workspace fallback)
   const handleSave = async () => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config || !workspacePath) return;
+    if (!config || !skillsPath) return;
+    const filename = config.relativePath.split("/").pop() ?? config.relativePath;
     setIsSaving(true);
     try {
-      await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, editorContent);
+      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
       toast.success("Saved");
     } catch (err) {
@@ -609,7 +595,29 @@ export default function WorkflowPage() {
       currentStepDef?.status === "completed" &&
       !activeAgentId
     ) {
-      const isLastStep = currentStep >= steps.length - 1;
+      // Check if workflow is halted: next step (or all subsequent steps) are disabled
+      const nextStep = currentStep + 1;
+      const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
+      const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
+      const handleClose = () => navigate({ to: "/" });
+
+      // When halted, show a scope-too-broad message instead of normal completion
+      if (isWorkflowHalted && !reviewMode) {
+        const outputFiles = stepConfig?.outputFiles ?? [];
+        return (
+          <WorkflowStepComplete
+            stepName={currentStepDef.name}
+            outputFiles={outputFiles}
+            onClose={handleClose}
+            isLastStep={true}
+            reviewMode={reviewMode}
+            skillName={skillName}
+            workspacePath={workspacePath ?? undefined}
+            skillsPath={skillsPath}
+          />
+        );
+      }
+
       if (stepConfig?.outputFiles) {
         return (
           <WorkflowStepComplete
@@ -617,6 +625,7 @@ export default function WorkflowPage() {
             stepId={currentStep}
             outputFiles={stepConfig.outputFiles}
             onNextStep={advanceToNextStep}
+            onClose={handleClose}
             isLastStep={isLastStep}
             reviewMode={reviewMode}
             skillName={skillName}
@@ -632,6 +641,7 @@ export default function WorkflowPage() {
           stepId={currentStep}
           outputFiles={[]}
           onNextStep={advanceToNextStep}
+          onClose={handleClose}
           isLastStep={isLastStep}
           reviewMode={reviewMode}
           skillName={skillName}
@@ -672,6 +682,10 @@ export default function WorkflowPage() {
           );
         }
 
+        // Check if the workflow is halted at this review step
+        const nextStepAfterReview = currentStep + 1;
+        const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
+
         // Active editing mode: MDEditor
         return (
           <div className="flex h-full flex-col">
@@ -688,46 +702,69 @@ export default function WorkflowPage() {
                 visibleDragbar={false}
               />
             </div>
-            <div className="flex items-center justify-between border-t pt-4">
-              <p className="text-sm text-muted-foreground">
-                Edit the markdown above, then save and continue.
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={!hasUnsavedChanges || isSaving}
-                >
-                  {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                  Save
-                  {hasUnsavedChanges && (
-                    <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReviewReload}
-                >
-                  <RotateCcw className="size-3.5" />
-                  Reload
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (hasUnsavedChanges) {
-                      setShowUnsavedDialog(true);
-                    } else {
-                      handleReviewContinue();
-                    }
-                  }}
-                >
-                  <CheckCircle2 className="size-3.5" />
-                  Complete Step
-                </Button>
+            {isReviewHalted ? (
+              <div className="border-t pt-4">
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <CheckCircle2 className="size-8 text-green-500" />
+                  <div className="text-center max-w-md">
+                    <p className="text-base font-medium">Scope Too Broad</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      The research phase determined this skill topic is too broad for a single skill.
+                      Review the scope recommendations above, then start a new workflow with a narrower focus.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate({ to: "/" })}
+                  >
+                    <Home className="size-3.5" />
+                    Return to Dashboard
+                  </Button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-center justify-between border-t pt-4">
+                <p className="text-sm text-muted-foreground">
+                  Edit the markdown above, then save and continue.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={!hasUnsavedChanges || isSaving}
+                  >
+                    {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    Save
+                    {hasUnsavedChanges && (
+                      <span className="ml-1 size-2 rounded-full bg-orange-500" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReviewReload}
+                  >
+                    <RotateCcw className="size-3.5" />
+                    Reload
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      if (hasUnsavedChanges) {
+                        setShowUnsavedDialog(true);
+                      } else {
+                        handleReviewContinue();
+                      }
+                    }}
+                  >
+                    <CheckCircle2 className="size-3.5" />
+                    Complete Step
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         );
       }
@@ -992,6 +1029,7 @@ export default function WorkflowPage() {
         <WorkflowSidebar
           steps={steps}
           currentStep={currentStep}
+          disabledSteps={disabledSteps}
           onStepClick={(id) => {
             if (steps[id]?.status !== "completed") return;
             if (isRunning) {
@@ -1026,11 +1064,9 @@ export default function WorkflowPage() {
             </div>
             <div className="flex items-center gap-3">
               {canStart && !reviewMode && (
-                <Button onClick={() => {
-                  handleStartStep(hasPartialOutput);
-                }} size="sm">
-                  {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
-                  {hasPartialOutput ? "Resume" : getStartButtonLabel()}
+                <Button onClick={() => handleStartStep()} size="sm">
+                  {getStartButtonIcon()}
+                  {getStartButtonLabel()}
                 </Button>
               )}
               {isHumanReviewStep && currentStepDef?.status !== "completed" && (

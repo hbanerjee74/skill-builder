@@ -37,8 +37,5 @@ Backend (Rust) → Agent Orchestrator → Node.js Sidecar
 - `app/src/` — React frontend
 - `app/src-tauri/` — Rust backend
 - `app/sidecar/` — Node.js agent runner
-- `agent-sources/templates/` — 5 agent templates (source of truth for generated agents)
-- `agent-sources/types/` — 4 type configs with output examples
+- `agents/` — 25 agents (flat directory, no subdirectories)
 - `agent-sources/workspace/CLAUDE.md` — agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
-- `agents/shared/` — 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
-- `agents/{type}/` — 20 generated agents (5 templates × 4 types) — do not edit directly

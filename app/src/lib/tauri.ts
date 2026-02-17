@@ -18,6 +18,14 @@ export const deleteSkill = (workspacePath: string, name: string) =>
 export const updateSkillTags = (skillName: string, tags: string[]) =>
   invoke("update_skill_tags", { skillName, tags });
 
+export const updateSkillMetadata = (
+  skillName: string,
+  displayName: string | null,
+  skillType: string | null,
+  tags: string[] | null,
+  intakeJson: string | null,
+) => invoke("update_skill_metadata", { skillName, displayName, skillType, tags, intakeJson });
+
 // --- Agent ---
 
 export const startAgent = (
@@ -40,8 +48,7 @@ export const runWorkflowStep = (
   stepId: number,
   domain: string,
   workspacePath: string,
-  resume?: boolean,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath, resume: resume ?? false });
+) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
 
 export const packageSkill = (
   skillName: string,
@@ -71,6 +78,9 @@ export const verifyStepOutput = (
   skillName: string,
   stepId: number,
 ) => invoke<boolean>("verify_step_output", { workspacePath, skillName, stepId });
+
+export const getDisabledSteps = (skillName: string) =>
+  invoke<number[]>("get_disabled_steps", { skillName });
 
 // --- Workflow State (SQLite) ---
 
