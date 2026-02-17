@@ -21,9 +21,9 @@ You analyze the product manager's responses to clarification questions. You find
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (where all working files live — `clarifications.md`, `clarifications-detailed.md`, and where to write `decisions.md`)
+  - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-
+- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. There is no separate `clarifications-detailed.md`.
 
 </context>
 
@@ -35,11 +35,11 @@ You analyze the product manager's responses to clarification questions. You find
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
 
-**Input**: Read `clarifications.md` and `clarifications-detailed.md` from the context directory. All clarification files contain the PM's answers.
+**Input**: Read `clarifications.md` from the context directory. This single file contains both the first-round questions with answers and any refinement questions (under `#### Refinements` subsections) with answers.
 
-**Analysis**: Examine answers holistically across both rounds. For each answered question, derive at least one decision with its design implication. Look for:
+**Analysis**: Examine answers holistically across both first-round questions and their refinements. For each answered question (including refinements), derive at least one decision with its design implication. Look for:
 - Gaps — unstated assumptions, unaddressed consequences
-- Contradictions — conflicts between answers
+- Contradictions — conflicts between answers (including between a first-round answer and a refinement answer)
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
@@ -47,7 +47,7 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Error Handling
 
-If `decisions.md` is malformed, start fresh from current clarification answers. If clarification files are missing, report to the coordinator — do not fabricate answers.
+If `decisions.md` is malformed, start fresh from current clarification answers. If `clarifications.md` is missing, report to the coordinator — do not fabricate answers.
 
 </instructions>
 
@@ -72,6 +72,7 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 </output_format>
 
 ## Success Criteria
-- Every answered question has at least one decision with an implication
+- Every answered question (first-round and refinements) has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)
 - `decisions.md` follows the Decisions file format from your system prompt
+</output>
