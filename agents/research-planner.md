@@ -81,6 +81,12 @@ Evaluate all 18 dimensions against this specific domain. Do not shortcut based o
 Write `context/research-plan.md`:
 
 ```markdown
+---
+skill_type: [skill_type]
+domain: [domain name]
+dimensions_chosen: [count]
+dimensions_excluded: [count]
+---
 # Research Plan
 
 ## Skill: [domain name] ([skill_type])
