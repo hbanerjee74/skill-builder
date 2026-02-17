@@ -200,14 +200,23 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await textarea.type(" custom text");
     await page.waitForTimeout(200);
 
+    // Change the mock to return different content before clicking Reload.
+    // This ensures setReviewContent receives a new value, triggering the
+    // useEffect that syncs editorContent (same-value sets are no-ops in React).
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as
+        Record<string, unknown>;
+      overrides.read_file = "# Reloaded Content\n\nThis is the reloaded version.";
+    });
+
     // Click Reload
     await page.getByRole("button", { name: "Reload" }).click();
     await page.waitForTimeout(300);
 
-    // The textarea should be reset to original content (no "custom text")
+    // The textarea should show the reloaded content (no "custom text")
     await expect(textarea).not.toHaveValue(/custom text/);
-    // Original content should still be present
-    await expect(textarea).toHaveValue(/Primary focus area/);
+    // Reloaded content should be present
+    await expect(textarea).toHaveValue(/Reloaded Content/);
   });
 
   test("human review complete with unsaved changes shows dialog", async ({ page }) => {
@@ -321,8 +330,8 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     });
     await page.waitForTimeout(500);
 
-    // Should show error state
-    await expect(page.getByText("Step 1 failed")).toBeVisible({ timeout: 5_000 });
+    // Should show error state (scope to main content to avoid matching toast)
+    await expect(page.locator("main").getByText("Step 1 failed")).toBeVisible({ timeout: 5_000 });
 
     // Retry and Reset Step buttons should be visible
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();

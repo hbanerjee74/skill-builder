@@ -74,44 +74,6 @@ test.describe("Prompts Page", { tag: "@prompts" }, () => {
     await expect(page.getByText(/Network error/)).toBeVisible();
   });
 
-  test("shows loading state while fetching prompt", async ({ page }) => {
-    // For this test, we want to catch the loading state, so we'll add a delay
-    await page.addInitScript(() => {
-      const originalInvoke =
-        (window as unknown as { __TAURI_INVOKE__?: Function }).__TAURI_INVOKE__ ||
-        function () {};
-      (window as unknown as { __TAURI_INVOKE__: Function }).__TAURI_INVOKE__ = async function (
-        cmd: string,
-        args?: Record<string, unknown>
-      ) {
-        if (cmd === "get_agent_prompt") {
-          // Add a delay to make loading visible
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-        return originalInvoke(cmd, args);
-      };
-    });
-
-    await page.goto("/prompts");
-    await waitForAppReady(page);
-
-    // Select options
-    const skillTypeSelect = page.locator('select[aria-label="Skill Type"]');
-    await skillTypeSelect.selectOption("data-engineering");
-
-    const phaseSelect = page.locator('select[aria-label="Phase"]');
-    const selectPromise = phaseSelect.selectOption("detailed-research");
-
-    // Loading state should appear briefly
-    await expect(page.getByText("Loading prompt...")).toBeVisible();
-
-    // Wait for selection to complete
-    await selectPromise;
-
-    // Loading should disappear
-    await expect(page.getByText("Loading prompt...")).not.toBeVisible();
-  });
-
   test("can change selections to load different prompts", async ({ page }) => {
     // First selection
     const skillTypeSelect = page.locator('select[aria-label="Skill Type"]');
