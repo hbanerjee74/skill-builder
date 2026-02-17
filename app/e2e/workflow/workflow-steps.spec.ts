@@ -1,0 +1,349 @@
+/**
+ * E2E tests for workflow step progression, human review, and completion.
+ *
+ * Covers completed-step display, review/update mode toggles, human
+ * review editing (MDEditor), save/reload/complete flows, reset-step
+ * dialog, disabled steps (scope too broad), error state, and last-step
+ * completion.
+ */
+import { test, expect } from "@playwright/test";
+import { emitTauriEvent } from "../helpers/agent-simulator";
+import {
+  WORKFLOW_OVERRIDES,
+  navigateToWorkflow,
+  navigateToWorkflowUpdateMode,
+} from "../helpers/workflow-helpers";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const REVIEW_CONTENT = readFileSync(
+  resolve(__dirname, "../fixtures/agent-responses/review-content.md"),
+  "utf-8",
+);
+
+// --- Override presets ---
+
+/** Steps 0 and 1 completed, currently on step 2. */
+const COMPLETED_STEP_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { domain: "Testing", current_step: 2, skill_type: "domain" },
+    steps: [
+      { step_id: 0, status: "completed" },
+      { step_id: 1, status: "completed" },
+    ],
+  },
+  read_file: "# Research Results\n\nAnalysis complete.",
+};
+
+/** Step 0 completed, currently on human review step 1. */
+const HUMAN_REVIEW_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    steps: [{ step_id: 0, status: "completed" }],
+  },
+  read_file: REVIEW_CONTENT,
+};
+
+/** All steps completed, currently viewing the last step. */
+const LAST_STEP_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { domain: "Testing", current_step: 6, skill_type: "domain" },
+    steps: [
+      { step_id: 0, status: "completed" },
+      { step_id: 1, status: "completed" },
+      { step_id: 2, status: "completed" },
+      { step_id: 3, status: "completed" },
+      { step_id: 4, status: "completed" },
+      { step_id: 5, status: "completed" },
+      { step_id: 6, status: "completed" },
+    ],
+  },
+  read_file: "# Validation Report\n\nAll checks passed.",
+};
+
+/**
+ * Fresh workflow for testing error state. We start a step and then
+ * simulate an agent error exit. The read_file mock returns content
+ * so errorHasArtifacts is true (partial output detection).
+ */
+const ERROR_STEP_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  // Return content so errorHasArtifacts is true when the error state checks for partial output
+  read_file: "# Partial Output\n\nSome data was produced before the error.",
+};
+
+/**
+ * Step 0 completed, current step is human review (step 1), with steps
+ * 2-6 disabled. The human review UI checks whether the next step after
+ * review is disabled and shows "Scope Too Broad" when it is.
+ */
+const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
+  ...WORKFLOW_OVERRIDES,
+  get_workflow_state: {
+    run: { domain: "Testing", current_step: 1, skill_type: "domain" },
+    steps: [{ step_id: 0, status: "completed" }],
+  },
+  get_disabled_steps: [2, 3, 4, 5, 6],
+  read_file: "# Scope Recommendation\n\nThis skill topic is too broad for a single skill.",
+};
+
+test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
+  test("completed step shows completion screen with output files", async ({ page }) => {
+    // Stay in review mode so clicking a completed step shows the completion
+    // screen (update mode would trigger the reset-step dialog for prior steps).
+    await navigateToWorkflow(page, COMPLETED_STEP_OVERRIDES);
+
+    // Click step 1 (Research) in sidebar — it is completed
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // Should show completion screen with output file names
+    await expect(page.getByText("context/research-plan.md")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("context/clarifications.md")).toBeVisible();
+  });
+
+  test("review mode hides action buttons on completed step", async ({ page }) => {
+    // Stay in review mode (do NOT click Update)
+    await navigateToWorkflow(page, COMPLETED_STEP_OVERRIDES);
+
+    // Click step 1 (Research) in sidebar — completed
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // In review mode: no Start Step, no Next Step buttons
+    await expect(page.getByRole("button", { name: "Start Step" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
+  });
+
+  test("update mode shows Start Step button for pending steps", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page);
+
+    // Fresh workflow — step 0 is pending, should see Start Step
+    await expect(page.getByRole("button", { name: "Start Step" })).toBeVisible();
+  });
+
+  test("human review loads file content from read_file", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
+
+    // Should be on step 2 (Review) which is human review
+    await expect(page.getByText("Step 2: Review")).toBeVisible();
+
+    // MDEditor should have loaded the review content
+    // The editor renders inside a data-color-mode="dark" div
+    const editorContainer = page.locator("[data-color-mode='dark']");
+    await expect(editorContainer).toBeVisible({ timeout: 5_000 });
+
+    // Verify the content loaded by checking the textarea value
+    const textarea = editorContainer.locator("textarea").first();
+    await expect(textarea).toHaveValue(/Primary focus area/);
+  });
+
+  test("human review shows dirty indicator on edit", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
+    await page.waitForTimeout(500);
+
+    // Type in the MDEditor textarea
+    const textarea = page.locator("[data-color-mode='dark'] textarea").first();
+    await textarea.click();
+    await textarea.press("End");
+    await textarea.type(" my edit");
+    await page.waitForTimeout(200);
+
+    // The Save button should have an orange dot (dirty indicator)
+    const saveButton = page.getByRole("button", { name: "Save" });
+    await expect(saveButton).toBeVisible();
+    // The orange dot is a span inside the Save button with bg-orange-500
+    const dirtyDot = saveButton.locator("span.bg-orange-500");
+    await expect(dirtyDot).toBeVisible();
+  });
+
+  test("human review save clears dirty indicator and shows toast", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
+    await page.waitForTimeout(500);
+
+    // Type to make dirty
+    const textarea = page.locator("[data-color-mode='dark'] textarea").first();
+    await textarea.click();
+    await textarea.press("End");
+    await textarea.type(" edit");
+    await page.waitForTimeout(200);
+
+    // Click Save
+    const saveButton = page.getByRole("button", { name: "Save" });
+    await saveButton.click();
+    await page.waitForTimeout(300);
+
+    // Dirty indicator should be gone
+    const dirtyDot = saveButton.locator("span.bg-orange-500");
+    await expect(dirtyDot).not.toBeVisible();
+
+    // Toast should appear
+    await expect(page.getByText("Saved")).toBeVisible({ timeout: 3_000 });
+  });
+
+  test("human review reload re-reads from disk", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
+    await page.waitForTimeout(500);
+
+    // Type to make dirty
+    const textarea = page.locator("[data-color-mode='dark'] textarea").first();
+    await textarea.click();
+    await textarea.press("End");
+    await textarea.type(" custom text");
+    await page.waitForTimeout(200);
+
+    // Click Reload
+    await page.getByRole("button", { name: "Reload" }).click();
+    await page.waitForTimeout(300);
+
+    // The textarea should be reset to original content (no "custom text")
+    await expect(textarea).not.toHaveValue(/custom text/);
+    // Original content should still be present
+    await expect(textarea).toHaveValue(/Primary focus area/);
+  });
+
+  test("human review complete with unsaved changes shows dialog", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, HUMAN_REVIEW_OVERRIDES);
+    await page.waitForTimeout(500);
+
+    // Type to make dirty
+    const textarea = page.locator("[data-color-mode='dark'] textarea").first();
+    await textarea.click();
+    await textarea.press("End");
+    await textarea.type(" unsaved edit");
+    await page.waitForTimeout(200);
+
+    // Click Complete Step
+    await page.getByRole("button", { name: "Complete Step" }).click();
+    await page.waitForTimeout(200);
+
+    // Dialog should appear
+    await expect(
+      page.getByRole("heading", { name: "Unsaved Changes" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Discard & Continue" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save & Continue" })).toBeVisible();
+  });
+
+  test("reset to prior step shows ResetStepDialog", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, {
+      ...COMPLETED_STEP_OVERRIDES,
+      preview_step_reset: [
+        {
+          step_id: 0,
+          step_name: "Research",
+          files: ["context/research-plan.md", "context/clarifications.md"],
+        },
+        {
+          step_id: 1,
+          step_name: "Review",
+          files: ["context/clarifications.md"],
+        },
+      ],
+    });
+
+    // Click step 1 (Research) which is completed — triggers reset dialog in update mode
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // ResetStepDialog should appear
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByText("Going back will delete all artifacts"),
+    ).toBeVisible();
+
+    // Should show file preview
+    await expect(page.getByText("research-plan.md")).toBeVisible();
+
+    // Cancel and Reset buttons should be present
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Reset/ }),
+    ).toBeVisible();
+
+    // Click the reset button
+    await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
+    await page.waitForTimeout(500);
+
+    // After reset, dialog should close and we should be on step 1
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).not.toBeVisible();
+  });
+
+  test("disabled steps show Skipped label and scope-too-broad message", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, DISABLED_STEPS_OVERRIDES);
+
+    // Should be on step 2 (Review) — human review with disabled next steps
+    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+
+    // Disabled steps in sidebar should show "Skipped" labels
+    await expect(page.getByText("Skipped").first()).toBeVisible({ timeout: 5_000 });
+
+    // The human review step detects that the next step (2) is disabled
+    // and shows "Scope Too Broad" with "Return to Dashboard" button
+    await expect(page.getByText("Scope Too Broad")).toBeVisible({ timeout: 5_000 });
+    await expect(
+      page.getByRole("button", { name: "Return to Dashboard" }),
+    ).toBeVisible();
+  });
+
+  test("error state shows Retry and Reset Step buttons", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, ERROR_STEP_OVERRIDES);
+
+    // Start the step
+    await page.getByRole("button", { name: "Start Step" }).click();
+    await page.waitForTimeout(200);
+
+    // Simulate agent init then error exit
+    await emitTauriEvent(page, "agent-init-progress", {
+      agent_id: "agent-001",
+      subtype: "init_start",
+      timestamp: Date.now(),
+    });
+    await page.waitForTimeout(50);
+
+    await emitTauriEvent(page, "agent-exit", {
+      agent_id: "agent-001",
+      success: false,
+    });
+    await page.waitForTimeout(500);
+
+    // Should show error state
+    await expect(page.getByText("Step 1 failed")).toBeVisible({ timeout: 5_000 });
+
+    // Retry and Reset Step buttons should be visible
+    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible();
+  });
+
+  test("last step completion shows Done button that navigates to dashboard", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page, LAST_STEP_OVERRIDES);
+
+    // Should show the last step completion
+    await expect(page.getByText("Validate Skill Complete")).toBeVisible({ timeout: 5_000 });
+
+    // Should have Done button (not Next Step)
+    await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
+
+    // Click Done — should navigate to dashboard
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.waitForTimeout(500);
+
+    // Should be on dashboard (route "/")
+    await expect(page).toHaveURL("/");
+  });
+});
