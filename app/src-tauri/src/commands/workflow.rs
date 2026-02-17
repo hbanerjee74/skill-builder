@@ -516,7 +516,8 @@ fn build_prompt(
 
 const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
 const VALID_PHASES: &[&str] = &[
-    "research-concepts",
+    "research-entities",
+    "research-metrics",
     "research",
     "research-practices",
     "research-implementation",
@@ -1691,7 +1692,7 @@ mod tests {
         std::fs::create_dir_all(src.path().join("shared")).unwrap();
 
         std::fs::write(
-            src.path().join("domain").join("research-concepts.md"),
+            src.path().join("domain").join("research-entities.md"),
             "# Domain Research",
         )
         .unwrap();
@@ -1720,7 +1721,7 @@ mod tests {
         assert!(claude_agents_dir.is_dir());
 
         // Verify flattened names
-        assert!(claude_agents_dir.join("domain-research-concepts.md").exists());
+        assert!(claude_agents_dir.join("domain-research-entities.md").exists());
         assert!(claude_agents_dir.join("platform-build.md").exists());
         assert!(claude_agents_dir.join("shared-consolidate-research.md").exists());
 
@@ -1729,7 +1730,7 @@ mod tests {
 
         // Verify content
         let content = std::fs::read_to_string(
-            claude_agents_dir.join("domain-research-concepts.md"),
+            claude_agents_dir.join("domain-research-entities.md"),
         )
         .unwrap();
         assert_eq!(content, "# Domain Research");

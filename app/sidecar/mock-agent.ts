@@ -15,8 +15,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 function resolveStepTemplate(agentName: string | undefined): string | null {
   if (!agentName) return null;
 
-  // Research sub-agents: {type}-research-{concepts|practices|implementation}
-  if (/-research-(concepts|practices|implementation)$/.test(agentName)) {
+  // Research sub-agents: {type}-research-{entities|metrics|practices|implementation}
+  if (/-research-(entities|metrics|practices|implementation)$/.test(agentName)) {
     return "step0-research";
   }
   // Research orchestrator: {type}-research (but NOT detailed-research or consolidate-research)

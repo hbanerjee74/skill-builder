@@ -1,5 +1,5 @@
 ```markdown
-## Domain Concepts & Metrics
+## Source Entities & Relationships
 
 ### Q1: How should source system pagination be modeled?
 The source API returns paginated results with varying page sizes and cursor strategies. How should the skill represent pagination handling?

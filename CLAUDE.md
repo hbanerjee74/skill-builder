@@ -8,7 +8,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 ## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
-1. **Research** -- research orchestrator spawns concepts + practices + implementation sub-agents, consolidation agent produces `clarifications.md`
+1. **Research** -- research orchestrator uses opus planner to select relevant research agents (entities, metrics, practices, implementation), launches all in parallel, opus consolidation produces `clarifications.md`
 2. **Review** -- user answers `clarifications.md`
 3. **Detailed Research** -- detailed-research orchestrator spawns per-section sub-agents + consolidation → `clarifications-detailed.md`
 4. **Review** -- user answers `clarifications-detailed.md`
@@ -58,7 +58,7 @@ npm run test:e2e                         # All E2E tests
 cd src-tauri && cargo test               # Rust tests
 
 # Plugin
-./scripts/build-agents.sh               # Regenerate 20 type-specific agent files from templates
+./scripts/build-agents.sh               # Regenerate 24 type-specific agent files from templates
 ./scripts/build-agents.sh --check       # Check if generated files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
 ./scripts/test-plugin.sh                 # Full test harness (T1-T5)
@@ -130,7 +130,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (24), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (28), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
@@ -182,8 +182,8 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/{type}/` -- 5 agents per type (4 types = 20 files), **generated** by `scripts/build-agents.sh`
-- `agent-sources/templates/` -- 5 phase templates (research-concepts, research-practices, research-implementation, research, generate-skill)
+- `agents/{type}/` -- 6 agents per type (4 types = 24 files), **generated** by `scripts/build-agents.sh`
+- `agent-sources/templates/` -- 6 phase templates (research-entities, research-metrics, research-practices, research-implementation, research, generate-skill)
 - `agent-sources/types/` -- 4 type configs with output examples (focus lines, entity examples)
 - `agents/shared/` -- 4 shared agents (consolidate-research, confirm-decisions, validate-skill, detailed-research)
 - `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin embeds it in SKILL.md

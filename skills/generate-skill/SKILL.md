@@ -134,9 +134,9 @@ Type-specific agents are referenced as `skill-builder:{type_prefix}-<agent>`. Sh
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research <domain>", description: "Research concepts, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
+   TaskCreate(subject: "Research <domain>", description: "Research entities, metrics, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This single agent internally handles all sub-orchestration (concepts, practices, implementation, consolidation) and writes `clarifications.md` to the context directory:
+2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant research dimensions (research-entities.md, research-metrics.md, research-practices.md, research-implementation.md), launches them in parallel, and consolidates results into `clarifications.md`:
    ```
    Task(
      subagent_type: "skill-builder:{type_prefix}-research",
