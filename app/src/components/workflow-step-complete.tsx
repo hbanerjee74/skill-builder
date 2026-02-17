@@ -81,19 +81,12 @@ export function WorkflowStepComplete({
           ? relativePath.slice("skill/".length)
           : relativePath;
 
+        // skills_path is required — no workspace fallback
         if (skillsPath) {
           try {
             content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
           } catch {
             // not found in skills path
-          }
-        }
-
-        if (!content && workspacePath) {
-          try {
-            content = await readFile(`${workspacePath}/${skillName}/${relativePath}`);
-          } catch {
-            // not found in workspace path either
           }
         }
 

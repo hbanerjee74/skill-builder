@@ -49,7 +49,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       const next = { ...state, ...settings };
       return {
         ...next,
-        isConfigured: !!next.anthropicApiKey,
+        isConfigured: !!next.anthropicApiKey && !!next.skillsPath,
       };
     }),
   reset: () => set(initialState),

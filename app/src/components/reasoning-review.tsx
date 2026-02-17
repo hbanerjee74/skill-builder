@@ -103,31 +103,18 @@ export function ReasoningReview({
   // --- Load decisions when agent completes ---
 
   const loadDecisions = useCallback(async () => {
-    // Try loading from multiple sources: skillsPath > workspace
-    let content: string | null = null;
+    // skills_path is required — no workspace fallback
+    if (!skillsPath) return;
 
-    if (skillsPath) {
-      try {
-        const result = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
-        if (result && result.trim().length > 0) content = result;
-      } catch {
-        // not found there
+    try {
+      const result = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
+      if (result && result.trim().length > 0) {
+        setDecisionsContent(result);
       }
+    } catch {
+      // not found
     }
-
-    if (!content) {
-      try {
-        const result = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
-        if (result && result.trim().length > 0) content = result;
-      } catch {
-        // not found there
-      }
-    }
-
-    if (content) {
-      setDecisionsContent(content);
-    }
-  }, [skillName, workspacePath, skillsPath]);
+  }, [skillName, skillsPath]);
 
   useEffect(() => {
     if (agentCompleted) {
@@ -148,21 +135,12 @@ export function ReasoningReview({
   // --- Handlers ---
 
   const handleCompleteStep = useCallback(async () => {
-    // Validate decisions.md exists
+    // Validate decisions.md exists in skillsPath (required — no workspace fallback)
     let decisionsFound = false;
 
     if (skillsPath) {
       try {
         const content = await readFile(`${skillsPath}/${skillName}/context/decisions.md`);
-        if (content && content.trim().length > 0) decisionsFound = true;
-      } catch {
-        // not found
-      }
-    }
-
-    if (!decisionsFound) {
-      try {
-        const content = await readFile(`${workspacePath}/${skillName}/context/decisions.md`);
         if (content && content.trim().length > 0) decisionsFound = true;
       } catch {
         // not found
@@ -182,7 +160,7 @@ export function ReasoningReview({
     setRunning(false);
     toast.success("Reasoning step completed");
     onStepComplete();
-  }, [skillName, workspacePath, skillsPath, currentStep, updateStepStatus, setRunning, onStepComplete]);
+  }, [skillName, skillsPath, currentStep, updateStepStatus, setRunning, onStepComplete]);
 
   // --- Pre-compute message groups for streaming output ---
 

@@ -310,11 +310,14 @@ export default function WorkflowPage() {
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    if (stepStatus === "error" && skillName && workspacePath) {
+    if (stepStatus === "error" && skillName && skillsPath) {
       const cfg = STEP_CONFIGS[currentStep];
       const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
-        readFile(`${workspacePath}/${skillName}/${firstOutput}`)
+        const skillsRelative = firstOutput.startsWith("skill/")
+          ? firstOutput.slice("skill/".length)
+          : firstOutput;
+        readFile(`${skillsPath}/${skillName}/${skillsRelative}`)
           .then((content) => setErrorHasArtifacts(!!content))
           .catch(() => setErrorHasArtifacts(false));
       } else {
@@ -323,7 +326,7 @@ export default function WorkflowPage() {
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, workspacePath, skillName]);
+  }, [currentStep, steps, skillsPath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -356,9 +359,9 @@ export default function WorkflowPage() {
   }, [steps, currentStep, skillName, domain, skillType, hydrated]);
 
   // Load file content when entering a human review step.
-  // Priority: skill output context dir > SQLite artifact > workspace filesystem.
+  // skills_path is required — no workspace fallback.
   useEffect(() => {
-    if (!isHumanReviewStep || !workspacePath) {
+    if (!isHumanReviewStep || !skillsPath) {
       setReviewContent(null);
       return;
     }
@@ -370,22 +373,11 @@ export default function WorkflowPage() {
     setReviewFilePath(relativePath);
     setLoadingReview(true);
 
-    const workspaceFilePath = `${workspacePath}/${skillName}/${relativePath}`;
-
-    // 1. Try skill output context directory first (survives workspace clears)
-    const trySkillsPath = skillsPath
-      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
-      : Promise.resolve(null);
-
-    trySkillsPath
-      .then((content) => {
-        if (content) return content;
-        // 2. Fallback: read from workspace filesystem
-        return readFile(workspaceFilePath).catch(() => null);
-      })
+    readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => setReviewContent(content ?? null))
+      .catch(() => setReviewContent(null))
       .finally(() => setLoadingReview(false));
-  }, [currentStep, isHumanReviewStep, workspacePath, skillsPath, skillName]);
+  }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
   const advanceToNextStep = useCallback(() => {
@@ -500,12 +492,13 @@ export default function WorkflowPage() {
   };
 
   const handleReviewContinue = async () => {
-    // Save the editor content to workspace filesystem
+    // Save the editor content to skills path (required — no workspace fallback)
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (config && reviewContent !== null && workspacePath) {
+    const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
+    if (config && reviewContent !== null && skillsPath && filename) {
       try {
         const content = editorDirty ? editorContent : (reviewContent ?? "");
-        await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, content);
+        await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
         setReviewContent(content);
       } catch (err) {
         toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
@@ -523,38 +516,32 @@ export default function WorkflowPage() {
   };
 
   // Reload the file content (after user edits externally).
-  // Same priority as initial load: skill context dir > workspace.
+  // skills_path is required — no workspace fallback.
   const handleReviewReload = () => {
-    if (!reviewFilePath || !workspacePath) return;
+    if (!reviewFilePath || !skillsPath) return;
     setLoadingReview(true);
-    const workspaceFilePath = `${workspacePath}/${skillName}/${reviewFilePath}`;
     const filename = reviewFilePath.split("/").pop() ?? reviewFilePath;
 
-    // 1. Try skill output context directory first
-    const trySkillsPath = skillsPath
-      ? readFile(`${skillsPath}/${skillName}/context/${filename}`).catch(() => null)
-      : Promise.resolve(null);
-
-    trySkillsPath
-      .then((content) => {
-        if (content) return content;
-        // 2. Fallback: workspace filesystem
-        return readFile(workspaceFilePath).catch(() => null);
-      })
+    readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
         if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
+      .catch(() => {
+        setReviewContent(null);
+        toast.error("Failed to reload file", { duration: Infinity });
+      })
       .finally(() => setLoadingReview(false));
   };
 
-  // Save editor content to workspace filesystem
+  // Save editor content to skills path (required — no workspace fallback)
   const handleSave = async () => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config || !workspacePath) return;
+    if (!config || !skillsPath) return;
+    const filename = config.relativePath.split("/").pop() ?? config.relativePath;
     setIsSaving(true);
     try {
-      await writeFile(`${workspacePath}/${skillName}/${config.relativePath}`, editorContent);
+      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
       toast.success("Saved");
     } catch (err) {

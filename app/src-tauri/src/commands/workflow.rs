@@ -435,8 +435,8 @@ fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &
 fn build_prompt(
     skill_name: &str,
     domain: &str,
-    workspace_path: &str,
-    skills_path: Option<&str>,
+    _workspace_path: &str,
+    skills_path: &str,
     skill_type: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
@@ -445,18 +445,10 @@ fn build_prompt(
     function_role: Option<&str>,
     intake_json: Option<&str>,
 ) -> String {
-    let base = Path::new(workspace_path);
+    let base = Path::new(_workspace_path);
     let skill_dir = base.join(skill_name);
-    let context_dir = if let Some(sp) = skills_path {
-        Path::new(sp).join(skill_name).join("context")
-    } else {
-        skill_dir.join("context")
-    };
-    let skill_output_dir = if let Some(sp) = skills_path {
-        Path::new(sp).join(skill_name)
-    } else {
-        skill_dir.clone() // fallback: workspace_path/skill_name
-    };
+    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let skill_output_dir = Path::new(skills_path).join(skill_name);
     let mut prompt = format!(
         "The domain is: {}. The skill name is: {}. \
          The skill type is: {}. \
@@ -636,27 +628,13 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
     skill_name: &str,
-    workspace_path: &str,
-    skills_path: Option<&str>,
+    _workspace_path: &str,
+    skills_path: &str,
 ) -> Result<(), String> {
-    // 1. Check skill output directory (primary per VD-405)
-    if let Some(sp) = skills_path {
-        let path = Path::new(sp).join(skill_name).join("context").join("decisions.md");
-        if path.exists() {
-            let content = std::fs::read_to_string(&path).unwrap_or_default();
-            if !content.trim().is_empty() {
-                return Ok(());
-            }
-        }
-    }
-
-    // 2. Check workspace directory (fallback)
-    let workspace_decisions = Path::new(workspace_path)
-        .join(skill_name)
-        .join("context")
-        .join("decisions.md");
-    if workspace_decisions.exists() {
-        let content = std::fs::read_to_string(&workspace_decisions).unwrap_or_default();
+    // skills_path is required — no workspace fallback
+    let path = Path::new(skills_path).join(skill_name).join("context").join("decisions.md");
+    if path.exists() {
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
         if !content.trim().is_empty() {
             return Ok(());
         }
@@ -672,7 +650,7 @@ fn validate_decisions_exist_inner(
 
 /// Shared settings extracted from the DB, used by `run_workflow_step`.
 struct WorkflowSettings {
-    skills_path: Option<String>,
+    skills_path: String,
     api_key: String,
     extended_context: bool,
     extended_thinking: bool,
@@ -696,7 +674,8 @@ fn read_workflow_settings(
 
     // Read all settings in one pass
     let settings = crate::db::read_settings_hydrated(&conn)?;
-    let skills_path = settings.skills_path;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
     let extended_context = settings.extended_context;
@@ -707,7 +686,7 @@ fn read_workflow_settings(
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
-        validate_decisions_exist_inner(skill_name, workspace_path, skills_path.as_deref())?;
+        validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
 
     // Get skill type
@@ -760,7 +739,7 @@ async fn run_workflow_step_inner(
         skill_name,
         domain,
         workspace_path,
-        settings.skills_path.as_deref(),
+        &settings.skills_path,
         &settings.skill_type,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
@@ -846,20 +825,15 @@ pub async fn run_workflow_step(
 #[tauri::command]
 pub async fn package_skill(
     skill_name: String,
-    workspace_path: String,
+    _workspace_path: String,
     db: tauri::State<'_, Db>,
 ) -> Result<PackageResult, String> {
     log::info!("[package_skill] skill={}", skill_name);
-    let skills_path = read_skills_path(&db);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    // Determine where the skill files (SKILL.md, references/) live:
-    // - If skills_path is set, the build agent wrote directly there
-    // - Otherwise, they're in workspace_path/skill_name/
-    let source_dir = if let Some(ref sp) = skills_path {
-        Path::new(sp).join(&skill_name)
-    } else {
-        Path::new(&workspace_path).join(&skill_name)
-    };
+    // skills_path is required — no workspace fallback
+    let source_dir = Path::new(&skills_path).join(&skill_name);
 
     if !source_dir.exists() {
         return Err(format!(
@@ -1079,7 +1053,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 /// produce no files by design.
 #[tauri::command]
 pub fn verify_step_output(
-    workspace_path: String,
+    _workspace_path: String,
     skill_name: String,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -1091,21 +1065,15 @@ pub fn verify_step_output(
         return Ok(true);
     }
 
-    let skills_path = read_skills_path(&db);
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
+    // skills_path is required — single code path, no workspace fallback
+    let target_dir = Path::new(&skills_path).join(&skill_name);
     let has_output = if step_id == 5 {
-        let output_dir = if let Some(ref sp) = skills_path {
-            Path::new(sp).join(&skill_name)
-        } else {
-            skill_dir.clone()
-        };
-        output_dir.join("SKILL.md").exists()
-    } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6) {
-        let target_dir = Path::new(skills_path.as_ref().unwrap()).join(&skill_name);
-        files.iter().any(|f| target_dir.join(f).exists())
+        target_dir.join("SKILL.md").exists()
     } else {
-        files.iter().any(|f| skill_dir.join(f).exists())
+        files.iter().any(|f| target_dir.join(f).exists())
     };
 
     Ok(has_output)
@@ -1156,19 +1124,15 @@ pub fn reset_workflow_step(
 
 #[tauri::command]
 pub fn preview_step_reset(
-    workspace_path: String,
+    _workspace_path: String,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<crate::types::StepResetPreview>, String> {
     log::info!("[preview_step_reset] skill={} from_step={}", skill_name, from_step_id);
-    let skills_path = read_skills_path(&db);
-    let skill_dir = Path::new(&workspace_path).join(&skill_name);
-    let skill_output_dir = if let Some(ref sp) = skills_path {
-        Path::new(sp).join(&skill_name)
-    } else {
-        skill_dir.clone()
-    };
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    let skill_output_dir = Path::new(&skills_path).join(&skill_name);
 
     let step_names = [
         "Research",
@@ -1182,25 +1146,18 @@ pub fn preview_step_reset(
 
     let mut result = Vec::new();
     for step_id in from_step_id..=6 {
-        let base_dir = if step_id == 5
-            || (skills_path.is_some() && matches!(step_id, 0 | 2 | 4 | 6))
-        {
-            &skill_output_dir
-        } else {
-            &skill_dir
-        };
+        // skills_path is required — single code path, no workspace fallback
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            // Check both workspace and skills_path locations
-            if base_dir.join(file).exists() || skill_dir.join(file).exists() {
+            if skill_output_dir.join(file).exists() {
                 existing_files.push(file.to_string());
             }
         }
 
         // Step 5: also list individual files in references/ directory
         if step_id == 5 {
-            let refs_dir = base_dir.join("references");
+            let refs_dir = skill_output_dir.join("references");
             if refs_dir.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&refs_dir) {
                     for entry in entries.flatten() {
@@ -1282,13 +1239,13 @@ mod tests {
     }
 
     #[test]
-    fn test_build_prompt_without_skills_path() {
-        // When skills_path is None, skill_output_dir falls back to workspace_path/skill_name
+    fn test_build_prompt_uses_skills_path_for_all_dirs() {
+        // skills_path is required — context_dir and skill_output_dir always use it
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            None,
+            "/home/user/my-skills",
             "domain",
             None,
             None,
@@ -1297,72 +1254,21 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/.vibedata/my-skill/context"));
-        assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
-        // Without skills_path, skill output dir is workspace_path/skill_name (no /skill/ subdir)
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/.vibedata/my-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_skills_path() {
-        // When skills_path is set, skill_output_dir uses skills_path/skill_name
-        let prompt = build_prompt(
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
-            "domain",
-            None,
-            None,
-            5,
-            None,
-            None,
-            None,
-        );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
-        // skill output directory should use skills_path
-        assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
-        // context dir should now point to skills_path when configured
         assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
-        // skill directory should still be workspace-based
         assert!(prompt.contains("The skill directory is: /home/user/.vibedata/my-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_skills_path_non_build_step() {
-        // When skills_path is set, context dir and skill output dir both use skills_path
-        let prompt = build_prompt(
-            "my-skill",
-            "e-commerce",
-            "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
-            "domain",
-            None,
-            None,
-            5,
-            None,
-            None,
-            None,
-        );
-        // Should NOT contain legacy agent-dispatch instructions
-        assert!(!prompt.contains("follow the instructions"));
-        // skill output directory should still use skills_path
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
 
     #[test]
     fn test_build_prompt_with_skill_type() {
-        // Prompt should include the skill type
         let prompt = build_prompt(
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            None,
+            "/home/user/my-skills",
             "platform",
             None,
             None,
@@ -1371,7 +1277,6 @@ mod tests {
             None,
             None,
         );
-        // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -1384,7 +1289,7 @@ mod tests {
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
+            "/home/user/my-skills",
             "domain",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
@@ -1404,7 +1309,7 @@ mod tests {
             "my-skill",
             "e-commerce",
             "/home/user/.vibedata",
-            Some("/home/user/my-skills"),
+            "/home/user/my-skills",
             "domain",
             None,
             None,
@@ -1824,15 +1729,15 @@ mod tests {
     // --- VD-403: validate_decisions_exist_inner tests ---
 
     #[test]
-    fn test_validate_decisions_missing_everywhere() {
+    fn test_validate_decisions_missing() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
@@ -1841,9 +1746,7 @@ mod tests {
     #[test]
     fn test_validate_decisions_found_in_skills_path() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
         std::fs::write(
             skills.join("my-skill").join("context").join("decisions.md"),
@@ -1852,26 +1755,8 @@ mod tests {
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            Some(skills.to_str().unwrap()),
-        );
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_decisions_found_in_workspace() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-        std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions\n\nD1: Use periodic recognition",
-        ).unwrap();
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_ok());
     }
@@ -1879,45 +1764,21 @@ mod tests {
     #[test]
     fn test_validate_decisions_rejects_empty_file() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
         // Write an empty decisions file
         std::fs::write(
-            workspace.join("my-skill").join("context").join("decisions.md"),
+            skills.join("my-skill").join("context").join("decisions.md"),
             "   \n\n  ",
         ).unwrap();
 
         let result = validate_decisions_exist_inner(
             "my-skill",
-            workspace.to_str().unwrap(),
-            None,
+            "/unused",
+            skills.to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("decisions.md was not found"));
-    }
-
-    #[test]
-    fn test_validate_decisions_priority_order() {
-        // skills_path takes priority over workspace
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().join("workspace");
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
-
-        // Only write to skills_path (primary)
-        std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
-            "# Decisions from skills path",
-        ).unwrap();
-        // workspace has no decisions.md
-
-        let result = validate_decisions_exist_inner(
-            "my-skill",
-            workspace.to_str().unwrap(),
-            Some(skills.to_str().unwrap()),
-        );
-        assert!(result.is_ok());
     }
 
     // --- debug mode: no reduced turns, sonnet model override ---

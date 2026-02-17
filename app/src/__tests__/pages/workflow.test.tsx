@@ -518,15 +518,9 @@ describe("WorkflowPage — human review file loading priority", () => {
     );
   });
 
-  it("falls back to workspace when skillsPath context file is not found", async () => {
-    // skillsPath does NOT have the file — should fall back to workspace
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.startsWith("/test/skills/")) {
-        return Promise.reject("not found");
-      }
-      if (path === "/test/workspace/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From workspace");
-      }
+  it("shows missing file error when skillsPath context file is not found (no workspace fallback)", async () => {
+    // skillsPath does NOT have the file — no workspace fallback
+    vi.mocked(readFile).mockImplementation(() => {
       return Promise.reject("not found");
     });
 
@@ -538,26 +532,20 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     render(<WorkflowPage />);
 
+    // Should show missing file error since skillsPath file not found and no workspace fallback
     await waitFor(() => {
-      expect(screen.getByText("From workspace")).toBeTruthy();
+      expect(screen.getByText("Missing clarification file")).toBeTruthy();
     });
   });
 
-  it("skips skillsPath lookup when skillsPath is null", async () => {
-    // No skillsPath configured — should go straight to workspace
+  it("shows missing file error when skillsPath is null", async () => {
+    // No skillsPath configured — review loading requires skillsPath
     useSettingsStore.getState().setSettings({
       workspacePath: "/test/workspace",
       skillsPath: null,
       anthropicApiKey: "sk-test",
     });
 
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/workspace/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From workspace (no skillsPath)");
-      }
-      return Promise.reject("not found");
-    });
-
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
@@ -566,13 +554,13 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     render(<WorkflowPage />);
 
+    // Without skillsPath, review content is null — should show missing file error
     await waitFor(() => {
-      expect(screen.getByText("From workspace (no skillsPath)")).toBeTruthy();
+      expect(screen.getByText("Missing clarification file")).toBeTruthy();
     });
 
-    // readFile should NOT have been called with any skills path
-    const readFileCalls = vi.mocked(readFile).mock.calls.map((c) => c[0]);
-    expect(readFileCalls.some((p) => p.includes("/test/skills/"))).toBe(false);
+    // readFile should NOT have been called at all
+    expect(vi.mocked(readFile)).not.toHaveBeenCalled();
   });
 
   it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
@@ -681,7 +669,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const writePath = vi.mocked(writeFile).mock.calls[0][0];
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
-    expect(writePath).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.md");
     expect(savedContent).toBe(reviewContent);
 
     // Verify no auto-fill happened
@@ -817,9 +805,9 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    // Verify it saved to the correct filesystem path for step 3
+    // Verify it saved to the correct filesystem path for step 3 (skillsPath, no workspace fallback)
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/workspace/test-skill/context/clarifications.md",
+      "/test/skills/test-skill/context/clarifications.md",
       reviewContent,
     );
 
@@ -1113,7 +1101,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
 
     await waitFor(() => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-        "/test/workspace/test-skill/context/clarifications.md",
+        "/test/skills/test-skill/context/clarifications.md",
         "# Edited content",
       );
     });
@@ -1227,7 +1215,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
 
     // The save handler writes the editor content
     const saveCall = vi.mocked(writeFile).mock.calls[0];
-    expect(saveCall[0]).toBe("/test/workspace/test-skill/context/clarifications.md");
+    expect(saveCall[0]).toBe("/test/skills/test-skill/context/clarifications.md");
     expect(saveCall[1]).toBe("# Save and continue");
 
     // Step should be completed and advanced
