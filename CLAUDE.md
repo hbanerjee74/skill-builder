@@ -8,7 +8,7 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 ## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
-1. **Research** -- research orchestrator uses opus planner to select relevant research agents (entities, metrics, practices, implementation), launches all in parallel, opus consolidation produces `clarifications.md`
+1. **Research** -- research orchestrator spawns opus planner to select relevant dimensions from 18 available research agents, launches selected agents in parallel, opus consolidation produces `clarifications.md` and `research-plan.md`
 2. **Review** -- user answers `clarifications.md`
 3. **Detailed Research** -- detailed-research orchestrator spawns per-section sub-agents + consolidation → `clarifications-detailed.md`
 4. **Review** -- user answers `clarifications-detailed.md`

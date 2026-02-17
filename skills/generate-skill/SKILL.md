@@ -132,9 +132,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Research <domain>", description: "Research entities, metrics, practices, and implementation. Write consolidated output to ./<skillname>/context/clarifications.md")
+   TaskCreate(subject: "Research <domain>", description: "Research relevant dimensions for this domain. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant research dimensions (research-entities.md, research-metrics.md, research-practices.md, research-implementation.md), launches them in parallel, and consolidates results into `clarifications.md`:
+2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`:
    ```
    Task(
      subagent_type: "skill-builder:research-orchestrator",
