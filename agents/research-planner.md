@@ -19,11 +19,15 @@ You do NOT launch dimension agents -- the orchestrator handles that based on you
 <context>
 
 ## Context
-The orchestrator passes you:
-- **Skill type** -- `domain`, `data-engineering`, `platform`, or `source`
-- **Domain name** -- e.g., "sales pipeline", "Salesforce", "dbt on Fabric"
-- **User context** -- any additional context the user provided during init (may be empty)
-- **Dimension catalog** -- all 18 dimensions, each with name and default focus
+- The coordinator provides these standard fields at runtime:
+  - The **domain name** -- e.g., "sales pipeline", "Salesforce", "dbt on Fabric"
+  - The **skill name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **context directory** path (where to write `research-plan.md`)
+  - The **skill output directory** path (where SKILL.md and reference files will be generated)
+- The orchestrator also passes:
+  - **User context** -- any additional context the user provided during init (may be empty)
+  - **Dimension catalog** -- all 18 dimensions, each with name and default focus
 
 ## Dimension Catalog
 

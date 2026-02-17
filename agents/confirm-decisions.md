@@ -17,8 +17,12 @@ You analyze the product manager's responses to clarification questions. You find
 <context>
 
 ## Context
-- The coordinator will tell you:
-  - The **context directory** path where all working files live
+- The coordinator provides these standard fields at runtime:
+  - The **domain name**
+  - The **skill name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **context directory** path (where all working files live — `clarifications.md`, `clarifications-detailed.md`, and where to write `decisions.md`)
+  - The **skill output directory** path (where SKILL.md and reference files will be generated)
 
 
 </context>

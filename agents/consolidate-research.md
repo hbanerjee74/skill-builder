@@ -18,9 +18,15 @@ You take the raw clarification questions from multiple research agents and produ
 <context>
 
 ## Context
-- The coordinator will tell you:
+- The coordinator provides these standard fields at runtime:
+  - The **domain name**
+  - The **skill name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **context directory** path (where to write the consolidated output file)
+  - The **skill output directory** path (containing SKILL.md and reference files)
+- The coordinator also provides:
   - The **source content** to consolidate (passed as inline text in the prompt)
-  - The **context directory** path and **target filename** (e.g., `clarifications.md` or `clarifications-detailed.md`)
+  - The **target filename** (e.g., `clarifications.md` or `clarifications-detailed.md`)
 
 </context>
 

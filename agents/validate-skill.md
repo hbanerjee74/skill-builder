@@ -27,11 +27,12 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
 <context>
 
 ## Context
-- The coordinator will tell you:
-  - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
-  - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
+- The coordinator provides these standard fields at runtime:
   - The **domain name**
+  - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
+  - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
 
 
 </context>
@@ -170,11 +171,41 @@ Target 2-4 recommendations. At least one must be contextually specific (not gene
 
 Returns findings as text.
 
+**Sub-agent F: Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
+
+Reads SKILL.md and all `references/` files. Scans for prescriptive language patterns that violate the Content Principles from your system prompt:
+
+**Patterns to detect:**
+- Imperative directives: "always", "never", "must", "shall", "do not"
+- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
+- Prescriptive mandates: "you should", "it is required", "ensure that"
+- Absolutes without context: "the only way", "the correct approach", "best practice is"
+
+**False positive exclusions** — do NOT flag:
+- Content inside code blocks or inline code
+- Quoted error messages or API responses
+- Field names or API parameter names (e.g., `must_match` config key)
+- References to external documentation requirements
+
+For each detected pattern, suggest an informational rewrite that provides the same guidance with rationale and exceptions instead of imperative tone.
+
+Returns findings as text:
+```
+### Prescriptiveness Check Results
+- **Patterns found**: N
+- **Files affected**: N
+
+#### Pattern 1: [file:section]
+- **Original**: "[exact text]"
+- **Issue**: [which pattern type]
+- **Suggested rewrite**: "[informational alternative]"
+```
+
 ## Phase 3: Consolidate, Fix, and Report
 
 After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
-Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), and the companion recommender (E) directly in the prompt. Also pass the skill output directory and context directory paths.
+Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), the companion recommender (E), and the prescriptiveness checker (F) directly in the prompt. Also pass the skill output directory and context directory paths.
 
 Prompt it to:
 1. Review all validation and test results (passed in the prompt)
@@ -183,8 +214,9 @@ Prompt it to:
 4. **Boundary violations:** Review boundary check results (Sub-agent D). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
 5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
 6. **Companion recommendations:** Include companion skill recommendations (Sub-agent E) in `test-skill.md` as a new section.
-7. Suggest 5-8 additional test prompt categories for future evaluation
-8. Write TWO output files to the context directory (formats below)
+7. **Prescriptiveness rewrites:** Review prescriptiveness checker results (Sub-agent F). Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
+8. Suggest 5-8 additional test prompt categories for future evaluation
+9. Write TWO output files to the context directory (formats below)
 
 ## Error Handling
 
@@ -193,6 +225,7 @@ Prompt it to:
 - **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
 - **Boundary checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary check results and note "BOUNDARY CHECK UNAVAILABLE" in the validation log.
 - **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to skip companion recommendations and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the test report.
+- **Prescriptiveness checker failure:** Re-spawn once. If it fails again, tell the reporter to skip prescriptiveness results and note "PRESCRIPTIVENESS CHECK UNAVAILABLE" in the validation log.
 
 </instructions>
 
@@ -215,6 +248,10 @@ Prompt it to:
 - **Skill type**: [type] | **Violations**: N
 ### [section/file] — VIOLATION | OK
 - Maps to: [dimension] | Belongs to: [type] | Fix: [suggestion]
+## Prescriptiveness Rewrites
+- **Patterns found**: N | **Rewrites applied**: N
+### [file:section] — REWRITTEN | KEPT (with justification)
+- Original: "[text]" → Revised: "[text]"
 ## Items Needing Manual Review
 ```
 

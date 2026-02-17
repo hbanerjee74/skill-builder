@@ -17,10 +17,13 @@ Orchestrate research by spawning an opus planner to decide which of the 18 resea
 <context>
 
 ## Context
-- The coordinator tells you:
+- The coordinator provides these standard fields at runtime:
+  - The **domain name**
+  - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **domain** name
   - The **context directory** path (write `clarifications.md` here)
+  - The **skill output directory** path (where SKILL.md and reference files will be generated)
+- The coordinator also provides:
   - **User context** (optional) -- any additional context the user provided during init
 
 ## Available Dimension Agents

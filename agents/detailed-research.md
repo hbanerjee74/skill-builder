@@ -17,9 +17,12 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 <context>
 
 ## Context
-- The coordinator will tell you:
+- The coordinator provides these standard fields at runtime:
+  - The **domain name**
+  - The **skill name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; write `clarifications-detailed.md` here)
-  - **Which domain** to research
+  - The **skill output directory** path (where SKILL.md and reference files will be generated)
 
 
 </context>
