@@ -11,6 +11,7 @@ import {
   simulateAgentRun,
   simulateAgentInitError,
 } from "../helpers/agent-simulator";
+import { waitForAppReady } from "../helpers/app-helpers";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,11 +33,8 @@ const researchFixture: AgentFixture = JSON.parse(
 const WORKFLOW_OVERRIDES = {
   get_settings: {
     anthropic_api_key: "sk-ant-test",
-    github_token: null,
-    github_repo: null,
     workspace_path: "/tmp/test-workspace",
-    auto_commit: false,
-    auto_push: false,
+    skills_path: "/tmp/test-skills",
   },
   check_workspace_path: true,
   list_skills: [
@@ -56,13 +54,14 @@ const WORKFLOW_OVERRIDES = {
   run_workflow_step: "agent-001",
   read_file: "",
   get_artifact_content: null,
+  verify_step_output: true,
 };
 
 /**
  * Navigate to the workflow page for test-skill.
  * Uses `addInitScript` so mock overrides survive page navigation.
- * Waits for the splash screen to dismiss (5s startup check timer)
- * and the workflow page to hydrate.
+ * Waits for the splash screen to dismiss and the workflow page to hydrate.
+ * Switches from review mode to update mode so the Start Step button is visible.
  */
 async function navigateToWorkflow(page: import("@playwright/test").Page) {
   // addInitScript runs before every page load, ensuring overrides
@@ -71,11 +70,12 @@ async function navigateToWorkflow(page: import("@playwright/test").Page) {
     (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
   }, WORKFLOW_OVERRIDES);
   await page.goto("/skill/test-skill");
-  // Wait for splash screen to complete its 5s startup check timer,
-  // then for the workflow sidebar to render (proves <Outlet /> is mounted).
+  // Wait for splash screen to dismiss (startup checks + fade animation)
+  await waitForAppReady(page);
+  // Wait for the workflow sidebar to render (proves <Outlet /> is mounted)
   await page.getByText("Workflow Steps").waitFor({ timeout: 10_000 });
-  // Brief extra wait for React state to settle
-  await page.waitForTimeout(300);
+  // Switch from review mode (default) to update mode so Start Step is visible
+  await page.getByRole("button", { name: "Update" }).click();
 }
 
 test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
@@ -229,17 +229,21 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     });
 
     // Wait for the completion effect chain:
-    // captureStepArtifacts -> mark step complete -> advanceToNextStep
-    // After advancing, Step 2 (Review) becomes the current step.
+    // verifyStepOutput -> mark step complete -> show completion screen
     await page.waitForTimeout(500);
 
+    // The completion screen should show with a "Next Step" button
+    await expect(page.getByRole("button", { name: "Next Step" })).toBeVisible({ timeout: 5_000 });
+
+    // Click "Next Step" to advance to Step 2
+    await page.getByRole("button", { name: "Next Step" }).click();
+    await page.waitForTimeout(200);
+
     // The workflow should have advanced to Step 2 (Review).
-    // Step header should now show the next step.
     await expect(page.getByText("Step 2: Review")).toBeVisible();
 
     // Step 1 in the sidebar should show as completed (green checkmark icon
     // is rendered by WorkflowSidebar for completed status).
-    // The sidebar button for step 1 should be clickable (completed steps are).
     const step1Button = page.locator("button").filter({ hasText: "1. Research" });
     await expect(step1Button).toBeVisible();
     // Completed steps are NOT disabled in the sidebar

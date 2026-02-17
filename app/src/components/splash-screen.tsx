@@ -53,6 +53,7 @@ export function SplashScreen({ onDismiss, onReady }: SplashScreenProps) {
 
   return (
     <div
+      data-testid="splash-screen"
       className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden transition-all duration-500 ${fading ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100"}`}
     >
       {/* Gradient backdrop */}
