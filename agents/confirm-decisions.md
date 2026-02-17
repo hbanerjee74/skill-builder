@@ -32,26 +32,33 @@ You analyze the product manager's responses to clarification questions. You find
 
 <instructions>
 
-### Scope Recommendation Guard
+## Step 1: Read clarifications.md
 
-Before analyzing any clarifications, read `clarifications.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+Read `clarifications.md` from the context directory. This is the ONLY input file — there is no `clarifications-detailed.md` or any other clarifications file. This single file contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
 
-1. Write a minimal `decisions.md` to the context directory with this content:
-   ```
-   ---
-   scope_recommendation: true
-   ---
-   ## Scope Recommendation Active
+## Step 2: Scope Recommendation Guard
 
-   The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
-   ```
-2. Return immediately. Do NOT analyze clarifications or produce normal decisions.
+Check the YAML frontmatter of `clarifications.md`. If `scope_recommendation: true` is present, the scope was too broad and no real clarifications exist. You MUST:
 
-## Instructions
+1. Use the Write tool to create `decisions.md` in the context directory with EXACTLY this content:
+
+```
+---
+scope_recommendation: true
+decision_count: 0
+---
+## Scope Recommendation Active
+
+The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
+```
+
+2. After writing the file, return immediately. Do NOT analyze clarifications or produce normal decisions. Your only job in this path is to write the file above.
+
+## Step 3: Analyze Answers (normal path only)
+
+Skip this step if you wrote the scope recommendation marker in Step 2.
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
-
-**Input**: Read `clarifications.md` from the context directory. This single file contains both the first-round questions with answers and any refinement questions (under `#### Refinements` subsections) with answers.
 
 **Analysis**: Examine answers holistically across both first-round questions and their refinements. For each answered question (including refinements), derive at least one decision with its design implication. Look for:
 - Gaps — unstated assumptions, unaddressed consequences
@@ -91,4 +98,4 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 - Every answered question (first-round and refinements) has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)
 - `decisions.md` follows the Decisions file format from your system prompt
-</output>
+- In scope recommendation path: `decisions.md` is written with `scope_recommendation: true` and `decision_count: 0` frontmatter

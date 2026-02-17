@@ -43,18 +43,31 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
 
 ### Scope Recommendation Guard
 
-Before running any validation, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
+Before running any validation, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
 
-1. Write a minimal validation log to the context directory:
-   ```
-   ---
-   scope_recommendation: true
-   ---
-   ## Validation Skipped
+1. Use the Write tool to create `agent-validation-log.md` in the context directory with EXACTLY this content:
 
-   Scope recommendation is active. No skill was generated, so no validation was performed.
-   ```
-2. Return immediately. Do NOT run any validation or test generation.
+```
+---
+scope_recommendation: true
+---
+## Validation Skipped
+
+Scope recommendation is active. No skill was generated, so no validation was performed.
+```
+
+2. Use the Write tool to create `test-skill.md` in the context directory with EXACTLY this content:
+
+```
+---
+scope_recommendation: true
+---
+## Testing Skipped
+
+Scope recommendation is active. No skill was generated, so no tests were run.
+```
+
+3. After writing both files, return immediately. Do NOT run any validation or test generation.
 
 ## Phase 1: Inventory and Prepare
 

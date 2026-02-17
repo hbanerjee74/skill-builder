@@ -40,7 +40,20 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
 Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
 
 1. Do NOT generate SKILL.md or any reference files
-2. Return immediately with: "Scope recommendation active. Skill generation skipped — see clarifications.md for recommended narrower skills."
+2. Use the Write tool to create a placeholder `SKILL.md` in the skill output directory with this content:
+
+```
+---
+name: (scope too broad)
+description: Scope recommendation active — no skill generated.
+scope_recommendation: true
+---
+## Scope Recommendation Active
+
+The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No skill was generated.
+```
+
+3. Return immediately after writing the file.
 
 ## Phase 1: Plan the Skill Structure
 
