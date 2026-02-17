@@ -152,28 +152,12 @@ test.describe("Usage Page", { tag: "@usage" }, () => {
     await expect(page.getByRole("heading", { name: "Reset Usage Data" })).toBeVisible();
     await expect(page.getByText(/This will permanently delete all usage tracking data/)).toBeVisible();
 
-    // After reset_usage is called, the store re-fetches data
-    // Override the fetch calls to return empty data for the re-fetch
-    await page.addInitScript((overrides) => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = overrides;
-    }, {
-      get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
-      get_recent_workflow_sessions: [],
-      get_usage_by_step: [],
-      get_usage_by_model: [],
-      reset_usage: undefined,
-    });
-
     // Confirm reset
     const confirmButton = page.getByRole("button", { name: "Reset All Data" });
     await confirmButton.click();
 
-    // Dialog should close
+    // Dialog should close (reset_usage mock succeeds)
     await expect(page.getByRole("heading", { name: "Reset Usage Data" })).not.toBeVisible();
-
-    // Note: The empty state should now show, but since we're doing the override
-    // mid-test, we'd need to reload to see it. The important thing is the dialog
-    // closes and the reset_usage command is called.
   });
 
   test("opens reset dialog and cancels", async ({ page }) => {
