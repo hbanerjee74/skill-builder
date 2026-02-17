@@ -10,6 +10,7 @@ Changes to these files affect all test layers — run the full test suite (`./te
 - `src/test/mocks/tauri.ts` — Unit/integration mock infrastructure
 - `src/test/mocks/tauri-e2e.ts` — E2E mock infrastructure
 - `src/test/mocks/tauri-e2e-event.ts` — E2E event system mock
+- `e2e/helpers/app-helpers.ts` — Shared E2E helpers (splash screen wait, etc.)
 - `src/test/setup.ts` — Vitest global setup
 - `vite.config.ts` / `vitest.config.ts` / `playwright.config.ts` — Build and test runner config
 
@@ -42,6 +43,8 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | Source Pattern | Plugin Tag | Plugin Tiers |
 |---|---|---|
 | `agents/*.md` | `@agents` | t1, t4 |
+| `agent-sources/templates/*.md` | `@agents` | t1, t4 |
+| `agent-sources/types/*/config.conf` | `@agents` | t1, t4 |
 | `agent-sources/workspace/CLAUDE.md` | `@agents` | t1, t4 |
 | `skills/generate-skill/SKILL.md` | `@coordinator` | t1, t2, t3 |
 | `.claude-plugin/plugin.json` | `@structure` | t1 |
