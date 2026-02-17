@@ -12,18 +12,21 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents via the Task tool to write reference files. A fresh reviewer sub-agent checks coverage and fixes gaps.
 
-This agent is universal -- it works from `decisions.md` only, with no type-specific content or output examples.
+This agent uses `decisions.md` and the skill type to determine the correct SKILL.md architecture and content tier rules.
 
 </role>
 
 <context>
 
 ## Context
-- The coordinator will provide these paths at runtime -- use them exactly as given:
+- The coordinator provides these standard fields at runtime:
+  - The **domain name**
+  - The **skill name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
-  - The **domain name**
-- Read `decisions.md` -- this is your only input
+- Read `decisions.md` — this is your primary input
+- The skill type determines which SKILL.md architecture to use (see Type-Specific Structure below)
 
 </context>
 
@@ -43,18 +46,92 @@ Planning guidelines:
 - File names should be descriptive and use kebab-case (e.g., `entity-model.md`, `pipeline-metrics.md`)
 - SKILL.md is the entry point; reference files provide depth
 
+## Type-Specific SKILL.md Architecture
+
+The skill type determines the structural pattern for SKILL.md. There are two architectures:
+
+### Interview Architecture (Source, Domain)
+
+Sections organize **questions about the customer's environment**. Sections are parallel — no dependency ordering between them.
+
+**Source skill sections (6):**
+1. Field Semantics and Overrides
+2. Data Extraction Gotchas
+3. Reconciliation Rules
+4. State Machine and Lifecycle
+5. System Workarounds
+6. API/Integration Behaviors
+
+**Domain skill sections (6):**
+1. Metric Definitions
+2. Materiality Thresholds
+3. Segmentation Standards
+4. Period Handling
+5. Business Logic Decisions
+6. Output Standards
+
+### Decision Architecture (Platform, Data Engineering)
+
+Sections organize **implementation decisions with explicit dependency maps**. Each section may have up to three content tiers:
+- **Decision structure** — what to decide and in what order
+- **Resolution criteria** — platform-specific facts (pre-filled assertions)
+- **Context factors** — customer-specific parameters (guided prompts)
+
+Include a **Decision Dependency Map** at the top of SKILL.md showing how decisions constrain each other.
+
+**Platform skill sections (6):**
+1. Target Architecture Decisions
+2. Materialization Decision Matrix
+3. Incremental Strategy Decisions
+4. Platform Constraint Interactions
+5. Capacity and Cost Decisions
+6. Testing and Deployment
+
+**Data Engineering skill sections (6):**
+1. Pattern Selection Criteria
+2. Key and Identity Decisions
+3. Temporal Design Decisions
+4. Implementation Approach
+5. Edge Case Resolution
+6. Performance and Operations
+
+### Annotation Budget
+
+Pre-filled factual assertions allowed per type:
+- **Source**: 3-5 (extraction-grade procedural traps)
+- **Domain**: 0 (domain metrics too variable across customers)
+- **Platform**: 3-5 (platform-specific resolution criteria)
+- **Data Engineering**: 2-3 (pattern-platform intersection facts only)
+
+### Delta Principle
+
+Skills must encode only the delta between Claude's parametric knowledge and the customer's actual needs. Restating what Claude already knows risks knowledge suppression. Calibrate by type:
+
+- **Source** — Moderate suppression risk. Platform extraction knowledge varies; procedural annotations for non-obvious traps are safe.
+- **Domain** — Low risk. No pre-filled content; guided prompts only.
+- **Platform** — High suppression risk. Claude knows dbt and Fabric well. Only include platform-specific facts that Claude gets wrong unprompted (e.g., CU economics, adapter-specific behaviors).
+- **Data Engineering** — Highest suppression risk. Claude knows Kimball methodology, SCD patterns, and dimensional modeling at expert level. Do NOT explain what SCD types are, do NOT describe dbt snapshot configuration, do NOT compare surrogate key patterns. Only include the intersection of the pattern with the specific platform where Claude's knowledge breaks down.
+
 ## Phase 2: Write SKILL.md
 
 Follow the Skill Best Practices from your system prompt -- structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
 The SKILL.md frontmatter description must follow the trigger pattern from your system prompt: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive.
 
-Required SKILL.md sections:
-1. **Metadata** (YAML frontmatter) -- name, description, author, created, modified
-2. **Overview** -- What the skill covers, who it's for, key concepts
-3. **When to Use This Skill** -- Specific trigger conditions (engineer questions, task types)
-4. **Quick Reference** -- The most critical facts an engineer needs immediately
-5. **Reference Files** -- Pointers to each reference file with description and when to read it
+**All types include these common sections:**
+1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
+2. **Overview** — What the skill covers, who it's for, key concepts
+3. **When to Use This Skill** — Specific trigger conditions (engineer questions, task types)
+4. **Quick Reference** — The most critical facts an engineer needs immediately
+
+**Then add the 6 type-specific sections** from the Type-Specific Structure above.
+
+**For Decision Architecture types (Platform, DE) only:**
+- Include a Decision Dependency Map section immediately after Quick Reference, showing how choosing one option constrains downstream decisions
+- Use the three content tiers (decision structure, resolution criteria, context factors) within each section where applicable
+
+**Finally:**
+5. **Reference Files** — Pointers to each reference file with description and when to read it
 
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
@@ -65,6 +142,7 @@ Each prompt must include:
 - Path to `SKILL.md` (so the sub-agent can align with the overall structure)
 - The full output path for the reference file
 - The topic description and which decisions this file should address
+- The **skill type** and **content tier rules**: for Source/Domain, writers produce guided prompts only; for Platform/DE, writers use the three content tiers (decision structure, resolution criteria, context factors) and respect the annotation budget
 
 Each sub-agent writes its reference file directly to the skill output directory.
 
@@ -88,39 +166,33 @@ After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`
 
 <output_format>
 
-### Output Example
+### Output Example — Interview Architecture (Domain)
 
-Example SKILL.md metadata block and pointer section:
-
-```markdown
+```yaml
 ---
-name: Sales Pipeline Analytics
-description: Domain knowledge for modeling and analyzing B2B sales pipeline data, covering entities, metrics, stage management, and forecasting patterns.
+name: Procurement Analytics
+description: Domain knowledge for procurement spend analysis. Use when building procurement dashboards, analyzing supplier performance, or modeling purchase order lifecycle. Covers metric definitions, segmentation standards, and period handling specific to the customer's procurement organization. Also use when questions arise about spend classification or approval workflow impact on metrics.
 author: octocat
 created: 2025-06-15
 modified: 2025-06-15
 ---
-
-# Sales Pipeline Analytics
-
-## Overview
-This skill covers B2B sales pipeline analytics for data/analytics engineers building silver and gold layer models. Key concepts: opportunities, pipeline stages, conversion metrics, and forecast accuracy.
-
-## When to Use This Skill
-- Engineer asks about modeling sales pipeline data
-- Questions about opportunity stages, win rates, or forecast accuracy
-- Building silver layer tables from CRM data (Salesforce, HubSpot, etc.)
-- Designing gold layer metrics for pipeline health or sales performance
-
-## Quick Reference
-- Pipeline stages should be modeled as a slowly changing dimension...
-- Win rate = closed-won / (closed-won + closed-lost), excluding open opportunities...
-
-## Reference Files
-- **references/entity-model.md** — Core entities (opportunity, account, contact) and their relationships. Read when modeling silver layer tables.
-- **references/pipeline-metrics.md** — Metric definitions and calculation rules. Read when building gold layer aggregates.
-- **references/stage-modeling.md** — How to model pipeline stages and transitions. Read when handling stage history or conversion analysis.
 ```
+
+Sections: Overview → When to Use → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
+
+### Output Example — Decision Architecture (Platform)
+
+```yaml
+---
+name: dbt on Fabric
+description: Implementation decisions for running dbt projects on Microsoft Fabric. Use when configuring materializations, choosing incremental strategies, or optimizing CU consumption on Fabric. Covers decision dependencies between target architecture, materialization, and Direct Lake compatibility. Also use when troubleshooting Fabric-specific dbt adapter behaviors.
+author: octocat
+created: 2025-06-15
+modified: 2025-06-15
+---
+```
+
+Sections: Overview → When to Use → Quick Reference → **Decision Dependency Map** → Target Architecture → Materialization Matrix → Incremental Strategy → Platform Constraints → Capacity & Cost → Testing & Deployment → Reference Files
 
 </output_format>
 
@@ -130,3 +202,7 @@ This skill covers B2B sales pipeline analytics for data/analytics engineers buil
 - 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file
 - SKILL.md pointers accurately describe each reference file's content and when to read it
+- SKILL.md uses the correct architecture for the skill type (interview vs decision)
+- Type-specific canonical sections are present (6 per type)
+- Annotation budget respected (Source 3-5, Domain 0, Platform 3-5, DE 2-3)
+- Delta principle followed — no content Claude already knows at expert level
