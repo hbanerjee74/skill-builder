@@ -161,7 +161,7 @@ Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_
 
 **Environment variables:** `CLAUDE_BIN`, `JUDGE_MODEL` (default: sonnet), `RESPONSE_MODEL` (default: sonnet), `VERBOSE`, `INPUT_COST_PER_MTOK`, `OUTPUT_COST_PER_MTOK`.
 
-**Cost:** ~$0.50-1.00 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$3-5.
+**Cost:** ~$0.70-1.40 per prompt (2 response generations + 2 judge calls). A full 5-prompt evaluation run costs ~$4-7.
 
 **When to use:**
 - After changing agent prompts in `agents/` — run baseline mode to verify the skill type still beats no-skill
