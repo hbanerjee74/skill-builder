@@ -70,7 +70,15 @@ All sub-agents **return text** — they do not write files.
 
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files. Returns findings as text.
+Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns from your system prompt. Flags orphaned or unnecessary files.
+
+Also verifies SKILL.md uses the correct architectural pattern for the skill type:
+- **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
+- **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
+
+Report architectural pattern as CORRECT or MISMATCH with details.
+
+Returns findings as text.
 
 **Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
 
