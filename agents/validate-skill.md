@@ -90,7 +90,7 @@ Scope recommendation is active. No skill was generated, so no tests were run.
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN), test evaluator sub-agents (T1..T10), boundary checker (D), and companion recommender (E) — all in the same turn.
+Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN), test evaluator sub-agents (T1..T10), boundary checker (D), and companion recommender (E) — all in the same turn. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
 
 ### Validation Sub-agents
 

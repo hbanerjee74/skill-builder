@@ -174,6 +174,8 @@ Each sub-agent writes its reference file directly to the skill output directory.
 
 After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`).
 
+Pass it the skill output directory, context directory, and **workspace directory** paths.
+
 **Reviewer's mandate:**
 - Cross-check `decisions.md` against `SKILL.md` and all `references/` files -- fix gaps, inconsistencies, or missing content directly
 - Verify SKILL.md pointers accurately describe each reference file's content and when to read it
