@@ -197,9 +197,6 @@ export default function WorkflowPage() {
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Track whether current step has partial output from an interrupted run
-  const [hasPartialOutput, setHasPartialOutput] = useState(false);
-
   // Markdown editor state
   const [editorContent, setEditorContent] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
@@ -305,37 +302,17 @@ export default function WorkflowPage() {
 
   // Reset state when moving to a new step
   useEffect(() => {
-    setHasPartialOutput(false);
     setErrorHasArtifacts(false);
     hasUnsavedChangesRef.current = false;
   }, [currentStep]);
 
-  // Consolidated step-artifact detection: partial output + error artifacts.
-  // Merges two formerly separate effects that both depended on steps/currentStep
-  // and each triggered async Tauri calls.
+  // Error-state artifact check: detect whether a failed step left partial output.
   useEffect(() => {
     const stepStatus = steps[currentStep]?.status;
 
-    // --- Partial output from interrupted runs ---
-    if (workspacePath && hydrated) {
-      const cfg = STEP_CONFIGS[currentStep];
-      if (cfg?.outputFiles && stepStatus === "pending") {
-        const path = cfg.outputFiles[0];
-        if (path) {
-          const filePath = `${workspacePath}/${skillName}/${path}`;
-          readFile(filePath)
-            .then((content) => setHasPartialOutput(!!content))
-            .catch(() => setHasPartialOutput(false));
-        }
-      } else {
-        setHasPartialOutput(false);
-      }
-    }
-
-    // --- Error-state artifact check ---
     if (stepStatus === "error" && skillName && workspacePath) {
-      const cfg2 = STEP_CONFIGS[currentStep];
-      const firstOutput = cfg2?.outputFiles?.[0];
+      const cfg = STEP_CONFIGS[currentStep];
+      const firstOutput = cfg?.outputFiles?.[0];
       if (firstOutput) {
         readFile(`${workspacePath}/${skillName}/${firstOutput}`)
           .then((content) => setErrorHasArtifacts(!!content))
@@ -346,7 +323,7 @@ export default function WorkflowPage() {
     } else {
       setErrorHasArtifacts(false);
     }
-  }, [currentStep, steps, workspacePath, skillName, hydrated]);
+  }, [currentStep, steps, workspacePath, skillName]);
 
   // Debounced SQLite persistence — saves workflow state at most once per 300ms
   // instead of firing synchronously on every step/status change.
@@ -478,7 +455,7 @@ export default function WorkflowPage() {
 
   // --- Step handlers ---
 
-  const handleStartAgentStep = async (resume = false) => {
+  const handleStartAgentStep = async () => {
     if (!domain || !workspacePath) {
       toast.error("Missing domain or workspace path", { duration: Infinity });
       return;
@@ -490,7 +467,6 @@ export default function WorkflowPage() {
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
       setInitializing();
-      setHasPartialOutput(false);
 
       console.log(`[workflow] Starting step ${currentStep} for skill "${skillName}"`);
       const agentId = await runWorkflowStep(
@@ -498,7 +474,6 @@ export default function WorkflowPage() {
         currentStep,
         domain,
         workspacePath,
-        resume,
       );
       agentStartRun(agentId, stepConfig?.model ?? "sonnet");
     } catch (err) {
@@ -512,12 +487,12 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStartStep = async (resume = false) => {
+  const handleStartStep = async () => {
     if (!stepConfig) return;
 
     switch (stepConfig.type) {
       case "agent":
-        return handleStartAgentStep(resume);
+        return handleStartAgentStep();
       case "human":
         // Human steps don't have a "start" — they just show the form
         break;
@@ -1026,11 +1001,9 @@ export default function WorkflowPage() {
             </div>
             <div className="flex items-center gap-3">
               {canStart && !reviewMode && (
-                <Button onClick={() => {
-                  handleStartStep(hasPartialOutput);
-                }} size="sm">
-                  {hasPartialOutput ? <RotateCcw className="size-3.5" /> : getStartButtonIcon()}
-                  {hasPartialOutput ? "Resume" : getStartButtonLabel()}
+                <Button onClick={() => handleStartStep()} size="sm">
+                  {getStartButtonIcon()}
+                  {getStartButtonLabel()}
                 </Button>
               )}
               {isHumanReviewStep && currentStepDef?.status !== "completed" && (

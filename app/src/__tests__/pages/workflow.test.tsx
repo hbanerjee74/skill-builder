@@ -413,7 +413,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
   });
 
-  it("shows Resume when partial output exists on disk", async () => {
+  it("always shows Start Step button (no Resume) even with partial output on disk", async () => {
     // Simulate: step 0 was interrupted — files on disk from a previous run
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path.includes("research-plan.md")) {
@@ -428,27 +428,10 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Filesystem fallback should detect partial output -> show "Resume"
+    // Should always show "Start Step", never "Resume"
     await waitFor(() => {
-      expect(screen.queryByText("Resume")).toBeTruthy();
+      expect(screen.queryByText("Start Step")).toBeTruthy();
     });
-  });
-
-  it("does not show Resume when no partial output exists anywhere", async () => {
-    // Filesystem has no output
-    vi.mocked(readFile).mockRejectedValue("not found");
-
-    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
-    useWorkflowStore.getState().setHydrated(true);
-
-    render(<WorkflowPage />);
-
-    // Wait for effects to settle
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 50));
-    });
-
-    // "Resume" should NOT appear — no partial output anywhere
     expect(screen.queryByText("Resume")).toBeNull();
   });
 

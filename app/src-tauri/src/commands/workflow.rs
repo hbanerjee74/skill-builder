@@ -814,16 +814,14 @@ pub async fn run_workflow_step(
     step_id: u32,
     domain: String,
     workspace_path: String,
-    resume: bool,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={} domain={} resume={}", skill_name, step_id, domain, resume);
+    log::info!("[run_workflow_step] skill={} step={} domain={}", skill_name, step_id, domain);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
-    // Skip this when resuming a paused step to preserve partial progress.
-    if step_id == 0 && !resume {
+    if step_id == 0 {
         let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             let _ = std::fs::remove_dir_all(&context_dir);
@@ -1974,8 +1972,8 @@ mod tests {
     }
 
     #[test]
-    fn test_normal_mode_wipes_step0_context() {
-        // Step 0 fresh start wipes the context directory
+    fn test_step0_always_wipes_context() {
+        // Step 0 always wipes the context directory (no resume support)
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
@@ -1987,8 +1985,7 @@ mod tests {
         ).unwrap();
 
         let step_id: u32 = 0;
-        let resume = false;
-        if step_id == 0 && !resume {
+        if step_id == 0 {
             let context_dir = Path::new(workspace).join("my-skill").join("context");
             if context_dir.is_dir() {
                 let _ = std::fs::remove_dir_all(&context_dir);
