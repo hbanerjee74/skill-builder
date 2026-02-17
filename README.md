@@ -43,12 +43,12 @@ This replays bundled JSONL templates with short delays, writes mock output files
 
 ## How It Works
 
-The workflow guides you through building a skill in 8 steps:
+The workflow guides you through building a skill in 7 steps:
 
 0. **Init** -- select skill type and name, detect previous progress
-1. **Research** -- agents research key concepts, practices, and implementation patterns
-2. **Review** -- you answer clarification questions
-3. **Detailed Research** -- agents dive deeper per section, produce consolidated questions
+1. **Research** -- opus planner selects relevant research dimensions, parallel agents research them, opus consolidation produces clarification questions. If scope is too broad, recommends narrower skills instead
+2. **Review** -- you answer clarification questions (or review scope recommendation)
+3. **Detailed Research** -- agents dive deeper per section, produce refinement questions
 4. **Review** -- you answer a second round of questions
 5. **Confirm Decisions** -- agent analyzes your answers, detects gaps and contradictions
 6. **Generate Skill** -- agent creates SKILL.md and reference files
@@ -62,7 +62,7 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 
 ```
 skill-builder/
-├── agents/                  # 25 agent prompts (shared by both frontends)
+├── agents/                  # 26 agent prompts (shared by both frontends)
 ├── agent-sources/
 │   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: embedded in SKILL.md)
 ├── skills/generate-skill/SKILL.md    # Plugin coordinator (self-contained entry point)

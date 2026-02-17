@@ -125,7 +125,7 @@ Before writing any test code, read existing tests for the files you changed:
 - Changed `scripts/eval/prompts/`? → no tests needed (prompts are data files)
 
 **Cross-cutting** (shared files affect both app and plugin):
-- Changed `agents/`, `references/`, or `.claude-plugin/`? → run both `./tests/run.sh plugin --tag <tag>` and `./scripts/test-plugin.sh t1`
+- Changed `agents/`, `references/`, or `.claude-plugin/`? → `./scripts/test-plugin.sh t1`
 
 ### Plugin test tiers
 
