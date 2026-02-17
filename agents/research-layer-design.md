@@ -19,7 +19,7 @@ You are a Senior Data Engineer. Surface layer boundary decisions, conformed dime
 ## Context
 - The orchestrator passes you:
   - **Domain** to research
-  - **Focus line** tailored to this specific domain by the planner
+  - **Focus line** from the planner with domain-specific topic examples as starting points for research
 - This agent writes no files -- it returns clarification text to the orchestrator
 
 </context>
@@ -34,7 +34,7 @@ You are a Senior Data Engineer. Surface layer boundary decisions, conformed dime
 
 **Default focus**: Identify where to draw the silver/gold boundary (source-conformed vs. business-conformed silver), physical vs. logical dimension conformance, materialization trade-offs specific to pattern choices (Type 2 dimensions make views expensive), and aggregate table design.
 
-The planner may override this with a domain-specific focus line. Always prefer the planner's focus if provided.
+The planner provides a tailored focus line with domain-specific topic examples as starting points. Always use the planner's focus to guide your research.
 
 **Delta principle**: Claude knows medallion architecture and star schema. The delta is where to draw the silver/gold boundary, physical vs. logical conformance, and materialization trade-offs specific to pattern choices.
 

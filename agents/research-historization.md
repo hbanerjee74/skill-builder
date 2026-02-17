@@ -19,7 +19,7 @@ You are a Senior Data Engineer. Surface SCD type selection rationale per entity,
 ## Context
 - The orchestrator passes you:
   - **Domain** to research
-  - **Focus line** tailored to this specific domain by the planner
+  - **Focus line** from the planner with domain-specific topic examples as starting points for research
 - This agent writes no files -- it returns clarification text to the orchestrator
 
 </context>
@@ -34,7 +34,7 @@ You are a Senior Data Engineer. Surface SCD type selection rationale per entity,
 
 **Default focus**: Identify when Type 2 breaks down (>10M rows with 10% daily changes), when snapshots outperform row-versioning (wide tables with many changing columns), when bitemporal modeling is required vs. overkill, and retention policies.
 
-The planner may override this with a domain-specific focus line. Always prefer the planner's focus if provided.
+The planner provides a tailored focus line with domain-specific topic examples as starting points. Always use the planner's focus to guide your research.
 
 **Delta principle**: Claude knows SCD Types 1/2/3/4/6. The delta is threshold decisions: when Type 2 breaks down at scale, when snapshots outperform row-versioning, when bitemporal modeling is required.
 

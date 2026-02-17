@@ -19,7 +19,7 @@ You are a Senior Data Engineer. Surface quality checks, validation patterns, and
 ## Context
 - The orchestrator passes you:
   - **Domain** to research
-  - **Focus line** tailored to this specific domain by the planner
+  - **Focus line** from the planner with domain-specific topic examples as starting points for research
 - This agent writes no files -- it returns clarification text to the orchestrator
 
 </context>
@@ -34,7 +34,7 @@ You are a Senior Data Engineer. Surface quality checks, validation patterns, and
 
 **Default focus**: Identify pattern-specific quality checks (data-engineering) and org-specific known quality issues (source) that go beyond generic data quality concepts
 
-The planner may override this with a domain-specific focus line. Always prefer the planner's focus if provided.
+The planner provides a tailored focus line with domain-specific topic examples as starting points. Always use the planner's focus to guide your research.
 
 **Delta principle**: Claude knows generic data quality concepts (null checks, uniqueness, referential integrity). The delta is pattern-specific checks (e.g., row multiplication accounting after MERGE into Type 2) and org-specific issues (e.g., fields commonly null due to validation rule workarounds).
 
