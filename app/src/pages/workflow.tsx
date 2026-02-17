@@ -59,7 +59,7 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.md"], model: "sonnet" },
   1: { type: "human" },
   2: { type: "agent", outputFiles: ["context/clarifications-detailed.md"], model: "sonnet" },
   3: { type: "human" },

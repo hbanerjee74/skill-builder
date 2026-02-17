@@ -1024,6 +1024,7 @@ pub fn save_workflow_state(
 pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
+            "context/research-plan.md",
             "context/clarifications.md",
         ],
         1 => vec![],  // Human review
