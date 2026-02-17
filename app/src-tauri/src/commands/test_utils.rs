@@ -16,7 +16,9 @@ pub fn create_test_db() -> rusqlite::Connection {
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             author_login TEXT,
-            author_avatar TEXT
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT
         );
         CREATE TABLE IF NOT EXISTS workflow_steps (
             skill_name TEXT NOT NULL,

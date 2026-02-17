@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
@@ -24,6 +25,29 @@ const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
   domain: "Business domain knowledge (Finance, Marketing, HR)",
   source: "Source system extraction patterns (Salesforce, SAP, Workday)",
   "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
+}
+
+const INTAKE_PLACEHOLDERS: Record<string, { audience: string; challenges: string; scope: string }> = {
+  platform: {
+    audience: "e.g., Data engineers building ELT pipelines, platform admins managing environments",
+    challenges: "e.g., Complex dependency management, environment promotion, cost optimization",
+    scope: "e.g., Focus on development workflow and CI/CD, exclude administration and security",
+  },
+  domain: {
+    audience: "e.g., Business analysts in finance, data scientists building forecasting models",
+    challenges: "e.g., Data quality issues in revenue recognition, reconciliation across systems",
+    scope: "e.g., Focus on revenue analytics and reporting, exclude operational finance",
+  },
+  source: {
+    audience: "e.g., Integration engineers connecting Salesforce to data warehouse",
+    challenges: "e.g., API rate limits, incremental extraction, schema drift handling",
+    scope: "e.g., Focus on Sales Cloud objects and custom objects, exclude Marketing Cloud",
+  },
+  "data-engineering": {
+    audience: "e.g., Analytics engineers implementing SCD patterns, data platform teams",
+    challenges: "e.g., Late-arriving dimensions, retroactive corrections, audit trail requirements",
+    scope: "e.g., Focus on Type 2 SCD with effectivity dates, exclude Type 6 hybrid patterns",
+  },
 }
 
 interface NewSkillDialogProps {
@@ -52,6 +76,10 @@ export default function NewSkillDialog({
   const [domain, setDomain] = useState("")
   const [name, setName] = useState("")
   const [tags, setTags] = useState<string[]>([])
+  const [displayName, setDisplayName] = useState("")
+  const [audience, setAudience] = useState("")
+  const [challenges, setChallenges] = useState("")
+  const [scope, setScope] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,6 +89,8 @@ export default function NewSkillDialog({
     setError(null)
   }
 
+  const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!domain.trim() || !name.trim()) return
@@ -68,12 +98,19 @@ export default function NewSkillDialog({
     setLoading(true)
     setError(null)
     try {
+      const intakeData: Record<string, string> = {}
+      if (audience.trim()) intakeData.audience = audience.trim()
+      if (challenges.trim()) intakeData.challenges = challenges.trim()
+      if (scope.trim()) intakeData.scope = scope.trim()
+
       await invoke("create_skill", {
         workspacePath,
         name: name.trim(),
         domain: domain.trim(),
         tags: tags.length > 0 ? tags : null,
         skillType: skillType || null,
+        displayName: displayName.trim() || null,
+        intakeJson: Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
       })
       console.log(`[skill] Created skill "${name}"`)
       toast.success(`Skill "${name}" created`)
@@ -85,6 +122,10 @@ export default function NewSkillDialog({
       setDomain("")
       setName("")
       setTags([])
+      setDisplayName("")
+      setAudience("")
+      setChallenges("")
+      setScope("")
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
@@ -110,7 +151,7 @@ export default function NewSkillDialog({
               Define the functional domain for your new skill.
             </DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-4 py-4 max-h-[60vh] overflow-y-auto pr-1">
             <div className="flex flex-col gap-2">
               <Label>Skill Type</Label>
               <RadioGroup
@@ -173,6 +214,59 @@ export default function NewSkillDialog({
                 Optional tags for categorization
               </p>
             </div>
+            {skillType && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="display-name">Display Name</Label>
+                  <Input
+                    id="display-name"
+                    placeholder="e.g., Sales Pipeline Analytics"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional friendly name shown on skill cards
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="audience">Target Audience</Label>
+                  <Textarea
+                    id="audience"
+                    placeholder={placeholders.audience}
+                    value={audience}
+                    onChange={(e) => setAudience(e.target.value)}
+                    disabled={loading}
+                    rows={2}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="challenges">Key Challenges</Label>
+                  <Textarea
+                    id="challenges"
+                    placeholder={placeholders.challenges}
+                    value={challenges}
+                    onChange={(e) => setChallenges(e.target.value)}
+                    disabled={loading}
+                    rows={2}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="scope">Scope</Label>
+                  <Textarea
+                    id="scope"
+                    placeholder={placeholders.scope}
+                    value={scope}
+                    onChange={(e) => setScope(e.target.value)}
+                    disabled={loading}
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional — helps agents focus research on what matters most
+                  </p>
+                </div>
+              </>
+            )}
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}

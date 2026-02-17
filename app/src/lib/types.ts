@@ -31,6 +31,8 @@ export interface AppSettings {
   remote_repo_owner: string | null
   remote_repo_name: string | null
   max_dimensions: number
+  industry: string | null
+  function_role: string | null
 }
 
 export interface DeviceFlowResponse {
@@ -54,6 +56,7 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
+  display_name: string | null
   domain: string | null
   current_step: string | null
   status: string | null

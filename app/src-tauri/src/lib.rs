@@ -155,6 +155,7 @@ pub fn run() {
             commands::skill::create_skill,
             commands::skill::delete_skill,
             commands::skill::update_skill_tags,
+            commands::skill::update_skill_metadata,
             commands::skill::get_all_tags,
             commands::skill::acquire_lock,
             commands::skill::release_lock,

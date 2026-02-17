@@ -32,7 +32,7 @@ interface SkillCardProps {
   onContinue: (skill: SkillSummary) => void
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
-  onEditTags?: (skill: SkillSummary) => void
+  onEdit?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
   isGitHubLoggedIn?: boolean
@@ -130,7 +130,7 @@ export default function SkillCard({
   onContinue,
   onDelete,
   onDownload,
-  onEditTags,
+  onEdit,
   onPushToRemote,
   remoteConfigured,
   isGitHubLoggedIn,
@@ -144,7 +144,7 @@ export default function SkillCard({
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">
-            {formatSkillName(skill.name)}
+            {skill.display_name || formatSkillName(skill.name)}
           </CardTitle>
           <div className="flex items-center gap-1.5 shrink-0">
             {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
@@ -250,9 +250,9 @@ export default function SkillCard({
         {cardContent}
       </ContextMenuTrigger>
       <ContextMenuContent>
-        <ContextMenuItem onSelect={() => onEditTags?.(skill)}>
+        <ContextMenuItem onSelect={() => onEdit?.(skill)}>
           <Tag className="size-4" />
-          Edit Tags
+          Edit
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem

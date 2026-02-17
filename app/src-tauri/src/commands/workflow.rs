@@ -441,6 +441,9 @@ fn build_prompt(
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
 ) -> String {
     let base = Path::new(workspace_path);
     let skill_dir = base.join(skill_name);
@@ -482,6 +485,43 @@ fn build_prompt(
     }
 
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
+
+    // Inject user context if any fields are present
+    let mut ctx_parts: Vec<String> = Vec::new();
+    if let Some(ind) = industry {
+        if !ind.is_empty() {
+            ctx_parts.push(format!("- **Industry**: {}", ind));
+        }
+    }
+    if let Some(fr) = function_role {
+        if !fr.is_empty() {
+            ctx_parts.push(format!("- **Function**: {}", fr));
+        }
+    }
+    // Parse intake_json and add audience/challenges/scope
+    if let Some(ij) = intake_json {
+        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
+            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
+                if !a.is_empty() {
+                    ctx_parts.push(format!("- **Target Audience**: {}", a));
+                }
+            }
+            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
+                if !c.is_empty() {
+                    ctx_parts.push(format!("- **Key Challenges**: {}", c));
+                }
+            }
+            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
+                if !s.is_empty() {
+                    ctx_parts.push(format!("- **Scope**: {}", s));
+                }
+            }
+        }
+    }
+    if !ctx_parts.is_empty() {
+        prompt.push_str("\n\n## User Context\n");
+        prompt.push_str(&ctx_parts.join("\n"));
+    }
 
     prompt
 }
@@ -640,6 +680,9 @@ struct WorkflowSettings {
     author_login: Option<String>,
     created_at: Option<String>,
     max_dimensions: u32,
+    industry: Option<String>,
+    function_role: Option<String>,
+    intake_json: Option<String>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -659,6 +702,8 @@ fn read_workflow_settings(
     let extended_context = settings.extended_context;
     let extended_thinking = settings.extended_thinking;
     let max_dimensions = settings.max_dimensions;
+    let industry = settings.industry;
+    let function_role = settings.function_role;
 
     // Validate prerequisites (step 5 requires decisions.md)
     if step_id == 5 {
@@ -668,12 +713,13 @@ fn read_workflow_settings(
     // Get skill type
     let skill_type = crate::db::get_skill_type(&conn, skill_name)?;
 
-    // Read author info from workflow run
+    // Read author info and intake data from workflow run
     let run_row = crate::db::get_workflow_run(&conn, skill_name)
         .ok()
         .flatten();
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
+    let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
 
     Ok(WorkflowSettings {
         skills_path,
@@ -684,6 +730,9 @@ fn read_workflow_settings(
         author_login,
         created_at,
         max_dimensions,
+        industry,
+        function_role,
+        intake_json,
     })
 }
 
@@ -716,7 +765,11 @@ async fn run_workflow_step_inner(
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
         settings.max_dimensions,
+        settings.industry.as_deref(),
+        settings.function_role.as_deref(),
+        settings.intake_json.as_deref(),
     );
+    log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
@@ -1242,6 +1295,9 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1265,6 +1321,9 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1288,6 +1347,9 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1307,6 +1369,9 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
         );
         // Should NOT contain legacy agent-dispatch instructions
         assert!(!prompt.contains("follow the instructions"));
@@ -1326,6 +1391,9 @@ mod tests {
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
             5,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("The author of this skill is: octocat."));
         assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -1343,6 +1411,9 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
         );
         assert!(!prompt.contains("The author of this skill is:"));
         assert!(!prompt.contains("The skill was created on:"));

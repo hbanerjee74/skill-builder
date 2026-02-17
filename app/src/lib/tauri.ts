@@ -18,6 +18,14 @@ export const deleteSkill = (workspacePath: string, name: string) =>
 export const updateSkillTags = (skillName: string, tags: string[]) =>
   invoke("update_skill_tags", { skillName, tags });
 
+export const updateSkillMetadata = (
+  skillName: string,
+  displayName: string | null,
+  skillType: string | null,
+  tags: string[] | null,
+  intakeJson: string | null,
+) => invoke("update_skill_metadata", { skillName, displayName, skillType, tags, intakeJson });
+
 // --- Agent ---
 
 export const startAgent = (

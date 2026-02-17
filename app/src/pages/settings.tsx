@@ -38,6 +38,8 @@ export default function SettingsPage() {
   const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
   const [maxDimensions, setMaxDimensions] = useState(5)
+  const [industry, setIndustry] = useState("")
+  const [functionRole, setFunctionRole] = useState("")
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -75,6 +77,8 @@ export default function SettingsPage() {
             setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
             setMaxDimensions(result.max_dimensions ?? 5)
+            setIndustry(result.industry ?? "")
+            setFunctionRole(result.function_role ?? "")
             if (result.remote_repo_owner && result.remote_repo_name) {
               setRemoteRepo(`${result.remote_repo_owner}/${result.remote_repo_name}`)
               setValidationStatus("valid") // Assume valid if previously saved
@@ -122,6 +126,8 @@ export default function SettingsPage() {
     maxDimensions: number;
     remoteRepoOwner: string | null;
     remoteRepoName: string | null;
+    industry: string | null;
+    functionRole: string | null;
   }>) => {
     const settings: AppSettings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
@@ -140,6 +146,8 @@ export default function SettingsPage() {
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
       remote_repo_owner: overrides.remoteRepoOwner !== undefined ? overrides.remoteRepoOwner : (useSettingsStore.getState().remoteRepoOwner ?? null),
       remote_repo_name: overrides.remoteRepoName !== undefined ? overrides.remoteRepoName : (useSettingsStore.getState().remoteRepoName ?? null),
+      industry: overrides.industry !== undefined ? overrides.industry : (industry || null),
+      function_role: overrides.functionRole !== undefined ? overrides.functionRole : (functionRole || null),
     }
     try {
       await invoke("save_settings", { settings })
@@ -155,6 +163,8 @@ export default function SettingsPage() {
         maxDimensions: settings.max_dimensions,
         remoteRepoOwner: settings.remote_repo_owner,
         remoteRepoName: settings.remote_repo_name,
+        industry: settings.industry,
+        functionRole: settings.function_role,
       })
       console.log("[settings] Settings saved")
       setSaved(true)
@@ -338,6 +348,37 @@ export default function SettingsPage() {
                 {apiKeyValid ? "Valid" : "Test"}
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>User Profile</CardTitle>
+          <CardDescription>
+            Optional context about you and your work. Agents use this to tailor research and skill content.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="industry">Industry</Label>
+            <Input
+              id="industry"
+              placeholder="e.g., Financial Services, Healthcare, Retail"
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              onBlur={() => autoSave({ industry: industry || null })}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="function-role">Function / Role</Label>
+            <Input
+              id="function-role"
+              placeholder="e.g., Analytics Engineer, Data Platform Lead"
+              value={functionRole}
+              onChange={(e) => setFunctionRole(e.target.value)}
+              onBlur={() => autoSave({ functionRole: functionRole || null })}
+            />
           </div>
         </CardContent>
       </Card>

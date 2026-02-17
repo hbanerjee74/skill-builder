@@ -15,6 +15,8 @@ interface SettingsState {
   remoteRepoOwner: string | null;
   remoteRepoName: string | null;
   maxDimensions: number;
+  industry: string | null;
+  functionRole: string | null;
   isConfigured: boolean;
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
@@ -35,6 +37,8 @@ const initialState = {
   remoteRepoOwner: null,
   remoteRepoName: null,
   maxDimensions: 5,
+  industry: null,
+  functionRole: null,
   isConfigured: false,
 };
 
