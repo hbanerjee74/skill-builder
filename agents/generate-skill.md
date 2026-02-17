@@ -23,9 +23,9 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (for reading `decisions.md` and `user-context.md`)
+  - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
-- **User context file**: If `user-context.md` exists in the context directory, read it for the user's industry, role, audience, challenges, and scope. Use this to tailor the skill's tone, examples, and focus areas.
+  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, audience, challenges, and scope. Use this to tailor the skill's tone, examples, and focus areas. Pass the workspace directory to sub-agents.
 - Read `decisions.md` — this is your primary input
 - The skill type determines which SKILL.md architecture to use (see Type-Specific Structure below)
 

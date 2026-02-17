@@ -23,7 +23,7 @@ You analyze the product manager's responses to clarification questions. You find
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-- **User context file**: If `user-context.md` exists in the context directory, read it for additional context about the user's industry, role, and requirements. Use this to inform decision framing.
+  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements. Use this to inform decision framing.
 - **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. There is no separate `clarifications-detailed.md`.
 
 </context>

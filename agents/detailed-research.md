@@ -23,7 +23,8 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into this same file)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-- **User context file**: If `user-context.md` exists in the context directory, it contains the user's industry, role, and intake responses. Read it and pass relevant context to sub-agents.
+  - The **workspace directory** path (contains `user-context.md` with the user's industry, role, audience, challenges, and scope)
+- **Sub-agent propagation**: Pass the **workspace directory** path to all sub-agents so they can read `user-context.md`.
 - **Single artifact**: There is no separate `clarifications-detailed.md`. All refinements are added in-place to `clarifications.md` using the Edit tool.
 
 </context>

@@ -20,6 +20,7 @@ You are a Senior Business Analyst. Surface how the organization segments busines
 - The orchestrator passes you:
   - **Domain** to research
   - **Focus line** from the planner with domain-specific topic examples as starting points for research
+  - **Workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements
 - This agent writes no files -- it returns clarification text to the orchestrator
 
 </context>

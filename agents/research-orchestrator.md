@@ -23,9 +23,10 @@ Orchestrate research by spawning an opus planner to decide which of the 18 resea
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (write `clarifications.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
+  - The **workspace directory** path (contains `user-context.md` with the user's industry, role, audience, challenges, and scope)
 - The coordinator also provides:
-  - **User context** (optional) -- any additional context the user provided during init (industry, function/role, audience, challenges, scope)
-- **User context file**: If `user-context.md` exists in the context directory, it contains the user's industry, role, and intake responses. Pass its content to sub-agents that need domain context (planner, scope-advisor).
+  - **User context** (optional) -- inline in the prompt (industry, function/role, audience, challenges, scope)
+- **Sub-agent propagation**: Pass the **workspace directory** path to all sub-agents (planner, dimension agents, scope-advisor, consolidation) so they can read `user-context.md`.
 
 ## Available Dimension Agents
 

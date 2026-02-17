@@ -24,6 +24,7 @@ Your output causes downstream steps (detailed research, confirm decisions, gener
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (where `research-plan.md` exists and `clarifications.md` should be written)
+  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements
   - The **research plan** — the planner's output including all chosen dimensions and their focus lines
   - The **dimension threshold** — the maximum dimensions configured (e.g., 5)
   - The **number of dimensions chosen** by the planner
