@@ -420,6 +420,30 @@ fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<Stri
     None
 }
 
+/// Check if clarifications.md has `scope_recommendation: true` in its YAML frontmatter.
+fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
+    let content = match std::fs::read_to_string(clarifications_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if !content.starts_with("---") {
+        return false;
+    }
+    let after_start = &content[3..];
+    let end = match after_start.find("---") {
+        Some(pos) => pos,
+        None => return false,
+    };
+    let frontmatter = &after_start[..end];
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if trimmed == "scope_recommendation: true" {
+            return true;
+        }
+    }
+    false
+}
+
 /// Derive agent name from prompt template.
 /// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
 /// this to register the agent). Falls back to the phase name if the
@@ -894,6 +918,22 @@ pub async fn run_workflow_step(
         settings.industry, settings.function_role,
     );
 
+    // Gate: reject disabled steps when scope_recommendation is active
+    if step_id >= 2 {
+        let clarifications_path = Path::new(&settings.skills_path)
+            .join(&skill_name)
+            .join("context")
+            .join("clarifications.md");
+        if parse_scope_recommendation(&clarifications_path) {
+            return Err(format!(
+                "Step {} is disabled: the research phase determined the skill scope is too broad. \
+                 Review the scope recommendations in clarifications.md, then reset to step 1 \
+                 and start with a narrower focus.",
+                step_id
+            ));
+        }
+    }
+
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
     // Context lives in skills_path (not workspace_path).
@@ -1174,6 +1214,26 @@ pub fn verify_step_output(
     };
 
     Ok(has_output)
+}
+
+#[tauri::command]
+pub fn get_disabled_steps(
+    skill_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<u32>, String> {
+    log::info!("[get_disabled_steps] skill={}", skill_name);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let clarifications_path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("context")
+        .join("clarifications.md");
+
+    if parse_scope_recommendation(&clarifications_path) {
+        Ok(vec![2, 3, 4, 5, 6])
+    } else {
+        Ok(vec![])
+    }
 }
 
 #[tauri::command]
@@ -2143,6 +2203,45 @@ mod tests {
             "Expected all context files in skills_path to be deleted, but these remain: {:?}",
             remaining
         );
+    }
+
+    // --- VD-664: parse_scope_recommendation tests ---
+
+    #[test]
+    fn test_scope_recommendation_true() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nscope_recommendation: true\noriginal_dimensions: 8\n---\n## Scope Recommendation").unwrap();
+        assert!(parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_false() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nscope_recommendation: false\nsections:\n  - entities\n---\n## Questions").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_absent() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "---\nsections:\n  - entities\n---\n## Questions").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    #[test]
+    fn test_scope_recommendation_missing_file() {
+        assert!(!parse_scope_recommendation(Path::new("/nonexistent/file.md")));
+    }
+
+    #[test]
+    fn test_scope_recommendation_no_frontmatter() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        use std::io::Write as _;
+        writeln!(f, "# Just a regular markdown file\nNo frontmatter here.").unwrap();
+        assert!(!parse_scope_recommendation(f.path()));
     }
 
 }
