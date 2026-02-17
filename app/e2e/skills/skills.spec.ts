@@ -19,9 +19,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       page.getByText("Upload a .skill package or import from GitHub to add skills to your library.")
     ).toBeVisible();
 
-    // Action buttons in empty state
-    await expect(page.getByRole("button", { name: /upload skill/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /import from github/i })).toBeVisible();
+    // Action buttons in empty state card
+    const emptyCard = page.locator("[data-slot='card']");
+    await expect(emptyCard.getByRole("button", { name: /upload skill/i })).toBeVisible();
+    await expect(emptyCard.getByRole("button", { name: /import from github/i })).toBeVisible();
   });
 
   test("shows page header with action buttons", async ({ page }) => {
@@ -37,9 +38,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Page header
     await expect(page.getByRole("heading", { name: "Skills Library" })).toBeVisible();
 
-    // Header action buttons
-    await expect(page.getByRole("button", { name: /import from github/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /upload skill/i })).toBeVisible();
+    // Header action buttons (scoped to the row containing the h1, not the empty state card)
+    const headerRow = page.getByRole("heading", { name: "Skills Library" }).locator("..");
+    await expect(headerRow.getByRole("button", { name: /import from github/i })).toBeVisible();
+    await expect(headerRow.getByRole("button", { name: /upload skill/i })).toBeVisible();
   });
 
   test("shows populated state with skill cards", async ({ page }) => {
@@ -422,8 +424,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       page.getByText("Review and edit the trigger text for each imported skill.")
     ).toBeVisible();
 
-    // Should show the skill name
-    await expect(page.getByText("analytics")).toBeVisible();
+    // Should show the skill name (use exact match to avoid matching trigger text)
+    await expect(page.getByText("analytics", { exact: true }).first()).toBeVisible();
 
     // Skip trigger review
     await page.getByRole("button", { name: "Skip" }).click();
