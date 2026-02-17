@@ -31,6 +31,7 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **domain name**
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
 
 
 </context>
@@ -60,7 +61,7 @@ Only evaluate: conformance to Skill Best Practices and Content Principles from y
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN) AND test evaluator sub-agents (T1..T10) — all in the same turn.
+Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN), test evaluator sub-agents (T1..T10), boundary checker (D), and companion recommender (E) — all in the same turn.
 
 ### Validation Sub-agents
 
@@ -98,25 +99,94 @@ Returns the result as text using this format:
 - **Gap**: [what's missing, if any — write "None" for PASS]
 ```
 
+### Boundary and Companion Sub-agents
+
+**Sub-agent D: Skill Type Boundary Check** (`name: "boundary-checker"`, `model: "haiku"`)
+
+The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files.
+
+This sub-agent checks whether the generated skill contains content that belongs to a different skill type. Use the dimension assignment matrix:
+
+| Dimension | domain | data-eng | platform | source |
+|-----------|:------:|:--------:|:--------:|:------:|
+| entities | x | x | x | x |
+| data-quality | - | x | - | x |
+| metrics | x | - | - | - |
+| business-rules | x | - | - | - |
+| segmentation-and-periods | x | - | - | - |
+| modeling-patterns | x | - | - | - |
+| pattern-interactions | - | x | - | - |
+| load-merge-patterns | - | x | - | - |
+| historization | - | x | - | - |
+| layer-design | - | x | - | - |
+| platform-behavioral-overrides | - | - | x | - |
+| config-patterns | - | - | x | - |
+| integration-orchestration | - | - | x | - |
+| operational-failure-modes | - | - | x | - |
+| extraction | - | - | - | x |
+| field-semantics | - | - | - | x |
+| lifecycle-and-state | - | - | - | x |
+| reconciliation | - | - | - | x |
+
+For each section and reference file in the skill, classify which dimension(s) it covers. If content maps to a dimension NOT assigned to this skill type, flag it as a boundary violation.
+
+**Exception**: The `entities` dimension is universal — entity-related content is always in-scope. Cross-type concepts that naturally appear in domain discussions (e.g., mentioning "extraction" briefly in a domain skill's context) are not violations — only substantial content sections that belong to another type.
+
+Returns findings as text:
+```
+### Boundary Check Results
+- **Skill type**: [type]
+- **Violations found**: N
+
+#### Violation 1: [section/file]
+- **Content**: [brief quote]
+- **Maps to dimension**: [dimension name]
+- **Belongs to type**: [correct type]
+- **Suggested fix**: [how to remove or restructure]
+```
+
+**Sub-agent E: Companion Skill Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
+
+Reads SKILL.md, all reference files, and `decisions.md`. Analyzes the skill's content and recommends complementary skills that would compose well with it.
+
+**Recommendation scope** (only recommend from these categories):
+- **Source skills** — for any skill type, recommend the source system skill(s) that would provide upstream data context
+- **Platform skills** — only Fabric, dbt, or dlt platform skills (these are the supported platforms)
+- **Data engineering design approaches** — recommend DE pattern skills that would complement the domain or source knowledge
+
+**For each recommendation**, provide:
+- **Skill name and type** — e.g., "Salesforce extraction (source skill)"
+- **Why it pairs well** — how this skill's content composes with the current skill
+- **Composability** — which sections/decisions in the current skill would benefit from the companion skill's knowledge
+- **Priority** — High (strong dependency), Medium (improves quality), Low (nice to have)
+
+Target 2-4 recommendations. At least one must be contextually specific (not generic like "you should also build a source skill").
+
+Returns findings as text.
+
 ## Phase 3: Consolidate, Fix, and Report
 
 After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
-Pass the returned text from all validation sub-agents (A, B, C1..CN) and all test evaluator sub-agents (T1..T10) directly in the prompt. Also pass the skill output directory and context directory paths.
+Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), and the companion recommender (E) directly in the prompt. Also pass the skill output directory and context directory paths.
 
 Prompt it to:
 1. Review all validation and test results (passed in the prompt)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
-4. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-5. Suggest 5-8 additional test prompt categories for future evaluation
-6. Write TWO output files to the context directory (formats below)
+4. **Boundary violations:** Review boundary check results (Sub-agent D). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
+5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
+6. **Companion recommendations:** Include companion skill recommendations (Sub-agent E) in `test-skill.md` as a new section.
+7. Suggest 5-8 additional test prompt categories for future evaluation
+8. Write TWO output files to the context directory (formats below)
 
 ## Error Handling
 
 - **Validator sub-agent failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
 - **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
+- **Boundary checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary check results and note "BOUNDARY CHECK UNAVAILABLE" in the validation log.
+- **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to skip companion recommendations and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the test report.
 
 </instructions>
 
@@ -135,6 +205,10 @@ Prompt it to:
 ### [Check name] — PASS | FIXED | NEEDS REVIEW — [details]
 ## Content Results
 ### [File name] — PASS | FIXED | NEEDS REVIEW — [details]
+## Boundary Check
+- **Skill type**: [type] | **Violations**: N
+### [section/file] — VIOLATION | OK
+- Maps to: [dimension] | Belongs to: [type] | Fix: [suggestion]
 ## Items Needing Manual Review
 ```
 
@@ -149,6 +223,11 @@ Prompt it to:
 - **Skill coverage**: [what the skill provides]
 - **Gap**: [what's missing, or "None"]
 ## Skill Content Issues
+## Companion Skill Recommendations
+### Recommendation 1: [skill name] ([type])
+- **Why**: [composability rationale]
+- **Sections affected**: [which current skill sections benefit]
+- **Priority**: High | Medium | Low
 ## Suggested PM Prompts
 ```
 
