@@ -115,8 +115,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("auto-advances to next step after agent completion", async () => {
-    // Simulate: step 0 is running an agent
+  it("pauses on completion screen when next step is human review", async () => {
+    // Simulate: step 0 is running an agent (next step is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -125,7 +125,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — step should be marked completed and auto-advance
+    // Agent completes — step should be marked completed but NOT auto-advance
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
@@ -139,15 +139,11 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 0 completed
     expect(wf.steps[0].status).toBe("completed");
 
-    // Auto-advances to step 1
-    expect(wf.currentStep).toBe(1);
+    // Should NOT auto-advance — stays on step 0 completion screen
+    expect(wf.currentStep).toBe(0);
 
-    // Step 1 is a human review step — should be set to waiting_for_user
-    expect(wf.steps[1].status).toBe("waiting_for_user");
-
-    // No further steps affected
-    expect(wf.steps[2].status).toBe("pending");
-    expect(wf.steps[3].status).toBe("pending");
+    // Step 1 still pending (user must click Next Step)
+    expect(wf.steps[1].status).toBe("pending");
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
@@ -727,8 +723,8 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
   });
 
-  it("does not auto-complete human review steps on advance", async () => {
-    // Simulate: step 0 is running an agent
+  it("does not auto-advance to human review step after agent completion", async () => {
+    // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -748,9 +744,10 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Should advance to step 1 but NOT auto-complete it
-    expect(wf.currentStep).toBe(1);
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Should stay on step 0 completion screen — user must click Next Step
+    expect(wf.currentStep).toBe(0);
+    // Step 1 remains pending (not waiting_for_user yet)
+    expect(wf.steps[1].status).toBe("pending");
   });
 
   it("preserves partially filled answers", async () => {
