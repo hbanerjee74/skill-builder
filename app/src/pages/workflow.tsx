@@ -455,10 +455,12 @@ export default function WorkflowPage() {
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
 
-        // Auto-advance all agent steps so the user lands directly on
-        // the next step (human review steps show the editor immediately).
+        // Auto-advance agent steps unless the next step is a human review step.
+        // When the next step is human review, pause on the completion screen so
+        // the user can see all output files before proceeding to the editor.
         const cfg = STEP_CONFIGS[step];
-        if (cfg?.type === "agent") {
+        const nextCfg = STEP_CONFIGS[step + 1];
+        if (cfg?.type === "agent" && nextCfg?.type !== "human") {
           advanceToNextStep();
         }
       };

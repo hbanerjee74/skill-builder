@@ -115,8 +115,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("auto-advances to next step after agent completion", async () => {
-    // Simulate: step 0 is running an agent
+  it("stays on completion screen after agent step when next is human review", async () => {
+    // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().updateStepStatus(0, "in_progress");
@@ -125,7 +125,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Agent completes — should auto-advance to step 1 (human review)
+    // Agent completes — should NOT auto-advance because next step is human review
     act(() => {
       useAgentStore.getState().completeRun("agent-1", true);
     });
@@ -136,9 +136,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Auto-advanced to step 1 which shows the editor immediately
-    expect(wf.currentStep).toBe(1);
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Stays on step 0 completion screen — user sees output files read-only
+    expect(wf.currentStep).toBe(0);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);
@@ -718,7 +717,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
   });
 
-  it("auto-advances to human review step and sets waiting_for_user", async () => {
+  it("pauses on completion screen when next step is human review", async () => {
     // Simulate: step 0 is running an agent (step 1 is human review)
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -739,10 +738,9 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     const wf = useWorkflowStore.getState();
 
-    // Should auto-advance to step 1 and show editor immediately
-    expect(wf.currentStep).toBe(1);
-    // Human review step set to waiting_for_user (not auto-completed)
-    expect(wf.steps[1].status).toBe("waiting_for_user");
+    // Should stay on step 0 completion screen (not auto-advance to human review)
+    // User clicks "Next Step" to proceed to review
+    expect(wf.currentStep).toBe(0);
   });
 
   it("preserves partially filled answers", async () => {
