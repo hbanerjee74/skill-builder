@@ -5,6 +5,10 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 @import CLAUDE-APP.md
 @import CLAUDE-PLUGIN.md
 
+**Companion files** (imported above, must be reviewed together with this file):
+- `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, logging rules, git/publishing workflow
+- `CLAUDE-PLUGIN.md` — Plugin structure, agent management, validation hooks
+
 ## Workflow (7 steps)
 
 0. **Init** -- skill type selection, name confirmation, resume detection
