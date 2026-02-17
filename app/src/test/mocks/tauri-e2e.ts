@@ -92,6 +92,56 @@ const mockResponses: Record<string, unknown> = {
   // Repos
   list_user_repos: [],
   validate_remote_repo: undefined,
+  // Imported skills (Skills Library page)
+  list_imported_skills: [],
+  upload_skill: {
+    skill_id: "skill-001",
+    skill_name: "test-skill",
+    domain: "testing",
+    description: "A test skill",
+    is_active: true,
+    disk_path: "/tmp/skills/test-skill",
+    trigger_text: "When testing...",
+    imported_at: new Date().toISOString(),
+  },
+  toggle_skill_active: undefined,
+  delete_imported_skill: undefined,
+  get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
+  // GitHub import
+  parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+  list_github_skills: [
+    { path: "skills/analytics", name: "analytics", domain: "Data", description: "Analytics skill" },
+    { path: "skills/reporting", name: "reporting", domain: "Data", description: "Reporting skill" },
+  ],
+  import_github_skills: [
+    {
+      skill_id: "imported-001",
+      skill_name: "analytics",
+      domain: "Data",
+      description: "Analytics skill",
+      is_active: true,
+      disk_path: "/tmp/skills/analytics",
+      trigger_text: null,
+      imported_at: new Date().toISOString(),
+    },
+  ],
+  generate_trigger_text: "When the user asks about analytics or data analysis...",
+  update_trigger_text: undefined,
+  regenerate_claude_md: undefined,
+  // Usage
+  get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
+  get_recent_workflow_sessions: [],
+  get_session_agent_runs: [],
+  get_usage_by_step: [],
+  get_usage_by_model: [],
+  reset_usage: undefined,
+  // Workflow extras
+  write_file: undefined,
+  get_disabled_steps: [],
+  end_workflow_session: undefined,
+  preview_step_reset: [],
+  get_step_agent_runs: [],
+  verify_step_output: true,
 };
 
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
