@@ -60,8 +60,10 @@ There are 18 research dimension agents, each named `research-{slug}`:
 ## Phase 0: Research Planning
 
 Spawn a **planner sub-agent** (`name: "research-planner"`, `model: "opus"`) via the Task tool. Pass it:
+- The **domain name**
+- The **skill name**
 - The **skill type**
-- The **domain** name
+- The **context directory** path (so it can write `research-plan.md`)
 - The **user context** (if any)
 - The full **dimension catalog** (all 18 dimensions with names and default focus lines from the research-planner agent's context)
 
