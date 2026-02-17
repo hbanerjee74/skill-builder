@@ -19,7 +19,9 @@ pub fn detect_furthest_step(
 
     let mut furthest: Option<u32> = None;
 
-    for step_id in [0u32, 2, 4, 5, 6] {
+    // Step 2 (detailed research) edits clarifications.md in-place — no unique
+    // artifact to detect, so it's treated as non-detectable (like steps 1/3).
+    for step_id in [0u32, 4, 5, 6] {
         let files = get_step_output_files(step_id);
         let (has_all, has_any) = if step_id == 5 {
             let output_dir = if let Some(sp) = skills_path {
@@ -120,9 +122,8 @@ mod tests {
         create_step_output(tmp.path(), "my-skill", 0);
         assert_eq!(detect_furthest_step(workspace, "my-skill", None), Some(0));
 
-        // Step 2 output
-        create_step_output(tmp.path(), "my-skill", 2);
-        assert_eq!(detect_furthest_step(workspace, "my-skill", None), Some(2));
+        // Step 2 is non-detectable (edits clarifications.md in-place, no unique artifact).
+        // Detection skips from step 0 to step 4.
 
         // Step 4 output
         create_step_output(tmp.path(), "my-skill", 4);

@@ -38,7 +38,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 2,
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
-            output_file: "context/clarifications-detailed.md".to_string(),
+            output_file: "context/clarifications.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
@@ -1005,9 +1005,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
             "context/clarifications.md",
         ],
         1 => vec![],  // Human review
-        2 => vec![
-            "context/clarifications-detailed.md",
-        ],
+        2 => vec![],  // Step 2 edits clarifications.md in-place (no unique artifact)
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
@@ -1457,14 +1455,10 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         // Create output files for steps 0, 2, 4, 5
+        // Steps 0 and 2 both use clarifications.md (unified artifact)
         std::fs::write(
             skill_dir.join("context/clarifications.md"),
-            "step0",
-        )
-        .unwrap();
-        std::fs::write(
-            skill_dir.join("context/clarifications-detailed.md"),
-            "step2",
+            "step0+step2",
         )
         .unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
@@ -1475,9 +1469,8 @@ mod tests {
         // No skills_path set, so step 5 files are in workspace_path/skill_name/
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
 
-        // Steps 0, 2 outputs should still exist
+        // Steps 0, 2 output (unified clarifications.md) should still exist
         assert!(skill_dir.join("context/clarifications.md").exists());
-        assert!(skill_dir.join("context/clarifications-detailed.md").exists());
 
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -1486,20 +1479,21 @@ mod tests {
     }
 
     #[test]
-    fn test_clean_step_output_step2_removes_detailed_clarifications() {
+    fn test_clean_step_output_step2_is_noop() {
+        // Step 2 edits clarifications.md in-place (no unique artifact),
+        // so cleaning step 2 has no files to delete.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skill_dir = tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Step 2 output is only the detailed clarifications
-        std::fs::write(skill_dir.join("context/clarifications-detailed.md"), "d").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.md"), "refined").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
-        // Clean only step 2 — step 4 should be untouched
+        // Clean only step 2 — both files should be untouched (step 2 has no unique output)
         crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, None);
 
-        assert!(!skill_dir.join("context/clarifications-detailed.md").exists());
+        assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }
 
@@ -1717,12 +1711,8 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("clarifications-detailed.md"),
-            "# Detailed",
-        ).unwrap();
-        std::fs::write(
             source_dir.join("context").join("clarifications.md"),
-            "# Merged",
+            "# Clarifications",
         ).unwrap();
         std::fs::write(
             source_dir.join("context").join("decisions.md"),
@@ -2019,7 +2009,6 @@ mod tests {
 
         let context_files = [
             "clarifications.md",
-            "clarifications-detailed.md",
             "decisions.md",
         ];
         for file in &context_files {
