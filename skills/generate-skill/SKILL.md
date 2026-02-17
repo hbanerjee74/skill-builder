@@ -83,7 +83,7 @@ Only one skill is active at a time. The coordinator works on the skill the user 
    |------|------------|---------|
    | 1 | `./<skillname>/context/clarifications.md` | Research complete |
    | 2 | (inferred — if step 3 output exists, step 2 was completed) | Human Review complete |
-   | 3 | `./<skillname>/context/clarifications-detailed.md` | Detailed Research complete |
+   | 3 | `./<skillname>/context/clarifications.md` contains `#### Refinements` subsections | Detailed Research complete |
    | 4 | (inferred — if step 5 output exists, step 4 was completed) | Human Review — Detailed complete |
    | 5 | `./<skillname>/context/decisions.md` | Confirm Decisions complete |
    | 6 | `./<skillname>/SKILL.md` | Generate Skill complete |
@@ -163,9 +163,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
 1. Create a task in the team task list:
    ```
-   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Write to ./<skillname>/context/clarifications-detailed.md")
+   TaskCreate(subject: "Detailed research for <domain>", description: "Deep-dive research based on answered clarifications. Insert refinement subsections into ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the detailed-research shared agent as a teammate. It reads `clarifications.md` and writes `clarifications-detailed.md` in the context directory:
+2. Spawn the detailed-research shared agent as a teammate. It reads the answered `clarifications.md` and inserts `#### Refinements` subsections back into the same file:
    ```
    Task(
      subagent_type: "skill-builder:detailed-research",
@@ -177,7 +177,7 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Domain: <domain>
      Context directory: ./<skillname>/context/
 
-     Return a 5-10 bullet summary of the detailed questions you generated."
+     Return a 5-10 bullet summary of the refinement questions you generated."
    )
    ```
 3. Relay the agent's summary to the user.
@@ -185,9 +185,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 ### Step 4: Human Gate — Detailed Review
 
 1. Tell the user:
-   "Please review and answer the detailed questions in `./<skillname>/context/clarifications-detailed.md`.
+   "Please review and answer the refinement questions in `./<skillname>/context/clarifications.md`.
 
-   Open the file, fill in the **Answer:** field for each question, then tell me when you're done."
+   Look for the `#### Refinements` subsections under each answered question, fill in the **Answer:** field for each refinement, then tell me when you're done."
 2. Wait for the user to confirm.
 
 ### Step 5: Confirm Decisions
@@ -328,12 +328,15 @@ The coordinator provides **context directory** and **skill output directory** pa
 
 IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
 
-### Clarifications (`clarifications.md` and `clarifications-detailed.md`)
+### Clarifications (`clarifications.md`)
+
+There is only one clarifications file. The detailed-research step inserts `#### Refinements` subsections in-place rather than creating a separate file.
+
 ```
 ---
 question_count: 12
 sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # clarifications.md only (post-consolidation)
+duplicates_removed: 3  # post-consolidation
 ---
 ## [Section]
 ### Q1: [Title]
@@ -344,6 +347,17 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
   c) Other (please specify)
 **Recommendation**: [letter] — [why]
 **Answer**: [PM's choice, or empty for unanswered]
+
+#### Refinements
+
+**R1.1: Follow-up topic**
+Rationale...
+- [ ] Choice a
+- [ ] Choice b
+- [ ] Other (please specify)
+
+**Answer**:
+
 ```
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
 

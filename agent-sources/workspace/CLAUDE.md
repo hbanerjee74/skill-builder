@@ -27,12 +27,15 @@ The coordinator provides **context directory** and **skill output directory** pa
 
 IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
 
-### Clarifications (`clarifications.md` and `clarifications-detailed.md`)
+### Clarifications (`clarifications.md`)
+
+There is only one clarifications file. The detailed-research step inserts `#### Refinements` subsections in-place rather than creating a separate file.
+
 ```
 ---
 question_count: 12
 sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # clarifications.md only (post-consolidation)
+duplicates_removed: 3  # post-consolidation
 ---
 ## [Section]
 ### Q1: [Title]
@@ -49,6 +52,36 @@ duplicates_removed: 3  # clarifications.md only (post-consolidation)
 Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply in the in-app editor. Never omit it, never pre-fill it.
 
 **Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
+
+#### Refinements subsection format
+
+After the user answers first-round questions, the detailed-research step inserts `#### Refinements` blocks under each answered question that warrants follow-up. Refinements drill deeper into the user's chosen direction.
+
+```
+### Q1: [Original question]
+**Answer**: [User's first-round answer]
+
+#### Refinements
+
+**R1.1: Follow-up topic**
+Rationale for why this matters given the answer above...
+- [ ] Choice a
+- [ ] Choice b
+- [ ] Other (please specify)
+
+**Answer**:
+
+**R1.2: Another follow-up**
+Rationale...
+- [ ] Choice a
+- [ ] Choice b
+- [ ] Other (please specify)
+
+**Answer**:
+
+```
+
+Each refinement question ID uses the parent question number as a prefix (e.g., R3.1 is the first refinement under Q3). Refinements follow the same `**Answer**:` convention -- blank line after for the user to fill in.
 
 ### Decisions (`decisions.md`)
 Clean snapshot, not a log. Write the complete file from scratch each time.
