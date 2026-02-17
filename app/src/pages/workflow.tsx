@@ -437,11 +437,7 @@ export default function WorkflowPage() {
           }
         }
 
-        updateStepStatus(step, "completed");
-        setRunning(false);
-        toast.success(`Step ${step + 1} completed`);
-
-        // After step 0 completes, check for disabled steps (scope recommendation)
+        // Check for disabled steps before marking complete (so first render has correct state)
         if (step === 0 && skillName) {
           try {
             const disabled = await getDisabledSteps(skillName);
@@ -450,6 +446,10 @@ export default function WorkflowPage() {
             // Non-fatal: proceed normally
           }
         }
+
+        updateStepStatus(step, "completed");
+        setRunning(false);
+        toast.success(`Step ${step + 1} completed`);
 
         // Agent steps always pause on the completion screen so the user can
         // review output files before proceeding. The user clicks "Next Step"
