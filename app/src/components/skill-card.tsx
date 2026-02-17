@@ -38,12 +38,14 @@ interface SkillCardProps {
   isGitHubLoggedIn?: boolean
 }
 
-function parseStepProgress(currentStep: string | null): number {
+function parseStepProgress(currentStep: string | null, status: string | null): number {
+  if (status === "completed") return 100
   if (!currentStep) return 0
   const match = currentStep.match(/step\s*(\d+)/i)
   if (match) {
     const stepIndex = Number(match[1])
-    return Math.min(Math.round((stepIndex / 7) * 100), 100)
+    // Steps are 0-6 (7 total). Use (stepIndex + 1) / 7 so step 6 = 100%.
+    return Math.min(Math.round(((stepIndex + 1) / 7) * 100), 100)
   }
   if (/completed/i.test(currentStep)) return 100
   if (/initialization/i.test(currentStep)) return 0
@@ -135,7 +137,7 @@ export default function SkillCard({
   remoteConfigured,
   isGitHubLoggedIn,
 }: SkillCardProps) {
-  const progress = parseStepProgress(skill.current_step)
+  const progress = parseStepProgress(skill.current_step, skill.status)
   const relativeTime = formatRelativeTime(skill.last_modified)
   const canDownload = isWorkflowComplete(skill)
 
