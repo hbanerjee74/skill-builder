@@ -2,6 +2,7 @@
 name: consolidate-research
 description: Consolidates clarification questions from parallel research agents into a cohesive, well-organized set. Uses extended thinking to deeply reason about overlap, rephrase for clarity, and eliminate redundancy across research streams.
 model: opus
+effort: high
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
