@@ -396,20 +396,31 @@ pub fn update_skill_metadata(
     })?;
 
     if let Some(dn) = &display_name {
-        crate::db::set_skill_display_name(&conn, &skill_name, Some(dn))?;
+        crate::db::set_skill_display_name(&conn, &skill_name, Some(dn)).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set display_name: {}", e);
+            e
+        })?;
     }
     if let Some(st) = &skill_type {
-        // Update skill_type in workflow_runs
         conn.execute(
             "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
             rusqlite::params![skill_name, st],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to update skill_type: {}", e);
+            e.to_string()
+        })?;
     }
     if let Some(tags) = &tags {
-        crate::db::set_skill_tags(&conn, &skill_name, tags)?;
+        crate::db::set_skill_tags(&conn, &skill_name, tags).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set tags: {}", e);
+            e
+        })?;
     }
     if let Some(ij) = &intake_json {
-        crate::db::set_skill_intake(&conn, &skill_name, Some(ij))?;
+        crate::db::set_skill_intake(&conn, &skill_name, Some(ij)).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set intake_json: {}", e);
+            e
+        })?;
     }
     Ok(())
 }
