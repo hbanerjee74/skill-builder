@@ -16,6 +16,11 @@ pub fn persist_agent_run(
     cache_write_tokens: i32,
     total_cost: f64,
     duration_ms: i64,
+    num_turns: i32,
+    stop_reason: Option<String>,
+    duration_api_ms: Option<i64>,
+    tool_use_count: i32,
+    compaction_count: i32,
     session_id: Option<String>,
     workflow_session_id: Option<String>,
 ) -> Result<(), String> {
@@ -27,7 +32,9 @@ pub fn persist_agent_run(
     crate::db::persist_agent_run(
         &conn, &agent_id, &skill_name, step_id, &model, &status,
         input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-        total_cost, duration_ms, session_id.as_deref(), workflow_session_id.as_deref(),
+        total_cost, duration_ms, num_turns, stop_reason.as_deref(), duration_api_ms,
+        tool_use_count, compaction_count,
+        session_id.as_deref(), workflow_session_id.as_deref(),
     )
 }
 
@@ -109,4 +116,18 @@ pub fn get_session_agent_runs(
         e.to_string()
     })?;
     crate::db::get_session_agent_runs(&conn, &session_id)
+}
+
+#[tauri::command]
+pub fn get_step_agent_runs(
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    step_id: i32,
+) -> Result<Vec<AgentRunRecord>, String> {
+    log::info!("[get_step_agent_runs] skill={} step={}", skill_name, step_id);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_step_agent_runs] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    crate::db::get_step_agent_runs(&conn, &skill_name, step_id)
 }
