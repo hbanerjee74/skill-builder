@@ -7,7 +7,6 @@ import {
   Loader2,
   Play,
   MessageSquare,
-  SkipForward,
   FileText,
   ArrowRight,
   AlertCircle,
@@ -719,14 +718,6 @@ export default function WorkflowPage() {
                 >
                   <RotateCcw className="size-3.5" />
                   Reload
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSkipHumanStep}
-                >
-                  <SkipForward className="size-3.5" />
-                  Skip
                 </Button>
                 <Button
                   size="sm"
