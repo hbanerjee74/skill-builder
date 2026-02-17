@@ -44,9 +44,9 @@ echo "=== Agents ==="
 # Shared agents (no type prefix)
 SHARED_AGENTS="shared/consolidate-research:consolidate-research:opus shared/confirm-decisions:confirm-decisions:opus shared/validate-skill:validate-skill:sonnet shared/detailed-research:detailed-research:sonnet"
 
-# Type-specific agents: each type dir has 5 agents
+# Type-specific agents: each type dir has 6 agents
 TYPE_DIRS="domain platform source data-engineering"
-TYPE_AGENTS="research-concepts:sonnet research-practices:sonnet research-implementation:sonnet research:sonnet generate-skill:sonnet"
+TYPE_AGENTS="research-entities:sonnet research-metrics:sonnet research-practices:sonnet research-implementation:sonnet research:sonnet generate-skill:sonnet"
 
 # Build full list: path:expected_name:expected_model
 ALL_AGENTS="$SHARED_AGENTS"

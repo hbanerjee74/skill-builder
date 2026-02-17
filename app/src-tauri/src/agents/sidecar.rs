@@ -121,7 +121,7 @@ mod tests {
             betas: None,
             max_thinking_tokens: None,
             path_to_claude_code_executable: None,
-            agent_name: Some("domain-research-concepts".to_string()),
+            agent_name: Some("domain-research-entities".to_string()),
 
         };
 

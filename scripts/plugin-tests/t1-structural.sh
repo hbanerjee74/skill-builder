@@ -29,14 +29,14 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (24 = 5 per type × 4 types + 4 shared) ----
+  # ---- T1.3: Agent file count (28 = 6 per type × 4 types + 4 shared) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_24" "24" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_28" "28" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in correct subdirectory ----
   local type_dirs="domain platform source data-engineering"
-  local type_agents="research-concepts research-practices research-implementation research generate-skill"
+  local type_agents="research-entities research-metrics research-practices research-implementation research generate-skill"
   local shared_agents="consolidate-research confirm-decisions validate-skill detailed-research"
 
   for dir in $type_dirs; do
@@ -82,7 +82,7 @@ run_t1() {
   local model_errors=0
   expected_model_for() {
     case "$1" in
-      research-concepts|research-practices|research-implementation|research|generate-skill) echo "sonnet" ;;
+      research-entities|research-metrics|research-practices|research-implementation|research|generate-skill) echo "sonnet" ;;
       validate-skill|detailed-research) echo "sonnet" ;;
       consolidate-research) echo "opus" ;;
       confirm-decisions) echo "opus" ;;
