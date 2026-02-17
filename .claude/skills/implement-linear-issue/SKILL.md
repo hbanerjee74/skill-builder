@@ -48,6 +48,11 @@ Given the issue, deliver a working implementation that satisfies all acceptance 
 - Each coding agent checks off its ACs on Linear after tests pass via `linear-server:update_issue`.
 - Coordinator writes Implementation Updates at checkpoints. See [linear-updates.md](references/linear-updates.md).
 
+**After every code-changing turn:**
+- Run `git diff --name-only main` in the worktree to see what changed.
+- **Recommend test mode:** If ANY changed file matches an agent-related path (see [test-mode.md](references/test-mode.md)), recommend full mode. Otherwise recommend mock mode. Include the launch command.
+- **Review requirements and ACs against changes:** Compare what was just implemented to the issue's description, requirements, and acceptance criteria. If the change reveals that requirements are missing context, ACs are incomplete or overly broad, or either needs adjustment, recommend specific updates to the user. If the user agrees, update the Linear issue immediately.
+
 **Before declaring done:**
 - Code review: see [review-flow.md](references/review-flow.md). Max 2 cycles.
 - Tests pass for changed files per the project's test strategy. Max 3 attempts, then escalate to user.
@@ -61,8 +66,25 @@ Only enter when all ACs are verified and PR is created.
 
 1. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
 2. Move issue to Review via `linear-server:update_issue`.
-3. Report to user: what was done, PR URL, worktree path (for manual testing).
-4. **Do NOT remove the worktree.**
+3. **Determine test mode.** Run `git diff --name-only main` in the worktree. Classify using [test-mode.md](references/test-mode.md): if ANY changed file matches an agent-related path, recommend full mode; otherwise mock mode.
+4. **Report to user** with this format:
+
+   > **PR:** <url>
+   > **Worktree:** `../worktrees/<branch>`
+   >
+   > **Test mode: Mock** *(or Full)*
+   > ```
+   > cd ../worktrees/<branch>/app && MOCK_AGENTS=true npm run dev
+   > ```
+   > *(or `npm run dev` for full mode)*
+   >
+   > **Manual test steps:**
+   > - [ ] <step from PR test plan>
+   > - [ ] ...
+   >
+   > **Relevant E2E tags:** `@workflow`, `@dashboard`, etc.
+
+5. **Do NOT remove the worktree.**
 
 ## Sub-agent Type Selection
 
