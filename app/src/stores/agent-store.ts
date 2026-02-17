@@ -354,20 +354,39 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist shutdown status with whatever partial data we have
     if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
-      persistAgentRun({
+      const sharedParams = {
         agentId,
         skillName: workflow.skillName ?? "unknown",
         stepId: workflow.currentStep,
-        model: runBeforeUpdate.model,
-        status: "shutdown",
-        inputTokens: runBeforeUpdate.tokenUsage?.input ?? 0,
-        outputTokens: runBeforeUpdate.tokenUsage?.output ?? 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        totalCost: runBeforeUpdate.totalCost ?? 0,
+        status: "shutdown" as const,
         durationMs: Date.now() - runBeforeUpdate.startTime,
         workflowSessionId: workflow.workflowSessionId ?? undefined,
-      }).catch((err) => console.error("Failed to persist agent shutdown:", err));
+      };
+
+      const breakdown = runBeforeUpdate.modelUsageBreakdown;
+      if (breakdown && breakdown.length > 0) {
+        for (const mu of breakdown) {
+          persistAgentRun({
+            ...sharedParams,
+            model: mu.model,
+            inputTokens: mu.inputTokens,
+            outputTokens: mu.outputTokens,
+            cacheReadTokens: mu.cacheReadTokens,
+            cacheWriteTokens: mu.cacheWriteTokens,
+            totalCost: mu.cost,
+          }).catch((err) => console.error("Failed to persist agent shutdown:", err));
+        }
+      } else {
+        persistAgentRun({
+          ...sharedParams,
+          model: runBeforeUpdate.model,
+          inputTokens: runBeforeUpdate.tokenUsage?.input ?? 0,
+          outputTokens: runBeforeUpdate.tokenUsage?.output ?? 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          totalCost: runBeforeUpdate.totalCost ?? 0,
+        }).catch((err) => console.error("Failed to persist agent shutdown:", err));
+      }
     }
   },
 

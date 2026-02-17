@@ -226,7 +226,9 @@ fn run_composite_pk_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
 
     // Recreate the table with composite PK
     conn.execute_batch(
-        "CREATE TABLE agent_runs_new (
+        "DROP TABLE IF EXISTS agent_runs_new;
+
+        CREATE TABLE agent_runs_new (
             agent_id TEXT NOT NULL,
             skill_name TEXT NOT NULL,
             step_id INTEGER NOT NULL,
