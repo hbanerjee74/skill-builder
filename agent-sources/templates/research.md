@@ -1,6 +1,6 @@
 ---
 name: {{NAME_PREFIX}}-research
-description: Orchestrates all research phases by dynamically selecting which research agents (entity, metrics, practices, implementation) to launch based on domain analysis, then consolidating results into a cohesive questionnaire.
+description: Orchestrates research by using an opus planner to select relevant research agents, launching them in parallel, then consolidating results with extended thinking into a cohesive questionnaire.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-Orchestrate research by analyzing the domain to decide which research agents are relevant (entity, metrics, practices, implementation — any combination), spawning them in two phases, and consolidating all results into a cohesive clarifications file.
+Orchestrate research by spawning an opus planner to decide which research agents are relevant, launching all selected agents in parallel, and consolidating results into a cohesive clarifications file.
 
 </role>
 
@@ -29,52 +29,36 @@ Orchestrate research by analyzing the domain to decide which research agents are
 
 <instructions>
 
-## Phase 0: Domain Analysis & Research Plan
+## Phase 0: Research Planning
 
-Before spawning any agents, assess the domain and decide which research agents are relevant. Consider ALL four dimensions:
+Spawn a **planner sub-agent** (`model: "opus"`) via the Task tool. Pass it the domain name and skill name. The planner assesses which of the four research agents are relevant for this domain:
 
-**Foundational agents** (Phase 1 — run first, their output feeds Phase 2):
-- **Entity agent** (`{{NAME_PREFIX}}-research-entities`): Launch if the domain involves modeling entities with relationships (e.g., business objects, resources, API objects, pipeline components). Skip for domains with no meaningful entity modeling (e.g., pure algorithms, simple CLI tools).
-- **Metrics agent** (`{{NAME_PREFIX}}-research-metrics`): Launch if the domain involves KPIs, calculations, measurements, or performance indicators. Skip for domains with no quantitative dimension (e.g., pure configuration, text processing).
+- **Entity agent** (`{{NAME_PREFIX}}-research-entities`): Relevant if the domain involves modeling entities with relationships (e.g., business objects, resources, API objects, pipeline components). Skip for domains with no meaningful entity modeling.
+- **Metrics agent** (`{{NAME_PREFIX}}-research-metrics`): Relevant if the domain involves KPIs, calculations, measurements, or performance indicators. Skip for domains with no quantitative dimension.
+- **Practices agent** (`{{NAME_PREFIX}}-research-practices`): Relevant if the domain has meaningful patterns, edge cases, or industry-specific variations. Skip for narrow, well-defined domains with no ambiguity.
+- **Implementation agent** (`{{NAME_PREFIX}}-research-implementation`): Relevant if the domain involves technical implementation decisions (architectures, frameworks, deployment patterns). Skip for purely conceptual domains.
 
-**Exploratory agents** (Phase 2 — run after foundational, receive concept text as context):
-- **Practices agent** (`{{NAME_PREFIX}}-research-practices`): Launch if the domain has meaningful patterns, edge cases, or industry-specific variations that affect skill design. Skip for narrow, well-defined domains with no ambiguity.
-- **Implementation agent** (`{{NAME_PREFIX}}-research-implementation`): Launch if the domain involves technical implementation decisions (architectures, frameworks, deployment patterns). Skip for domains that are purely conceptual or non-technical.
+The planner returns a list of agents to launch with a brief rationale for each inclusion/exclusion.
 
-**Decision criteria**: If unsure whether a dimension is relevant, include it — the consolidation agent will filter low-value questions. Only skip agents when the domain clearly lacks that dimension.
+**Fallback**: If the planner fails, default to launching all four agents.
 
-Output your decision and reasoning for each agent before proceeding.
+## Phase 1: Parallel Research
 
-## Phase 1: Foundational Research (conditional)
+Follow the Sub-agent Spawning protocol. All research sub-agents **return text** — they do not write files.
 
-Follow the Sub-agent Spawning protocol. All sub-agents **return text** — they do not write files.
+Spawn ALL agents selected by the planner **in parallel** via the Task tool. Pass the domain name to each agent.
 
-Based on your Phase 0 decision, spawn the relevant foundational agents in parallel:
+Wait for all agents to return their research text.
 
-**Both entity + metrics**: Spawn both in parallel. When both return, combine their text under clear section headers (`## Entity & Relationship Research` and `## Metrics & KPI Research`). This combined text is the concept text for Phase 2.
+## Phase 2: Consolidation
 
-**One agent only**: Spawn the single relevant agent. Its returned text IS the concept text.
-
-**Neither**: Skip to Phase 2. No concept text is available.
-
-## Phase 2: Exploratory Research (conditional)
-
-Based on your Phase 0 decision, spawn the relevant exploratory agents in parallel:
-
-- **If Phase 1 produced concept text**: Pass the concept text to each agent in the prompt
-- **If Phase 1 was skipped**: Pass only the domain context (no concept text)
-
-Pass the domain to all sub-agents. If neither practices nor implementation was selected, skip to Phase 3.
-
-## Phase 3: Final Consolidation
-
-After all research agents return their text, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
-- The returned text from ALL agents that ran (foundational + exploratory)
+After all research agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
+- The returned text from ALL agents that ran, each labeled with its source (e.g., "Entity Research:", "Metrics Research:", "Practices Research:", "Implementation Research:")
 - The context directory path and target filename `clarifications.md`
 
-The consolidation agent reasons about the full question set — consolidating overlapping concerns, rephrasing for clarity, eliminating redundancy, and organizing into a logical flow — then writes the output file to the context directory.
+The consolidation agent uses extended thinking to deeply reason about the full question set — identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow — then writes the output file to the context directory.
 
-**Edge case**: If Phase 0 decided no agents are relevant (unlikely but possible), skip consolidation and write a minimal `clarifications.md` yourself explaining that the domain requires no clarification questions.
+**Edge case**: If the planner decided no agents are relevant (unlikely but possible), skip consolidation and write a minimal `clarifications.md` yourself explaining that the domain requires no clarification questions.
 
 ## Error Handling
 
@@ -83,7 +67,7 @@ If a sub-agent fails, re-spawn once. If it fails again, proceed with available o
 </instructions>
 
 ## Success Criteria
-- Phase 0 decision is explicit and reasoned for ALL four agents
+- Planner decision is explicit and reasoned for each of the four agents
 - Each launched agent returns 5+ clarification questions as text
 - Consolidation agent produces a cohesive `clarifications.md` with logical section flow
 - Cross-cutting questions that span multiple research areas are identified and grouped

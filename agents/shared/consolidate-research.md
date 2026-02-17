@@ -1,6 +1,6 @@
 ---
 name: consolidate-research
-description: Consolidates clarification questions from parallel research agents into a cohesive, well-organized set. Called during Step 1 to reason about overlap, rephrase for clarity, and eliminate redundancy across research streams.
+description: Consolidates clarification questions from parallel research agents into a cohesive, well-organized set. Uses extended thinking to deeply reason about overlap, rephrase for clarity, and eliminate redundancy across research streams.
 model: opus
 tools: Read, Write, Edit, Glob, Grep, Bash
 ---
@@ -29,7 +29,9 @@ You take the raw clarification questions from multiple research agents and produ
 
 ### Goal
 
-Transform 3 independent research outputs into a unified questionnaire that reads as if written by a single author. The PM should encounter a logical progression of questions — broad scoping first, then detailed design decisions — without repetition or awkward topic jumps.
+Transform the independent research outputs (up to 4 sources: entity, metrics, practices, implementation) into a unified questionnaire that reads as if written by a single author. The PM should encounter a logical progression of questions — broad scoping first, then detailed design decisions — without repetition or awkward topic jumps.
+
+Use extended thinking to deeply reason about the question set before writing output. Consider how questions from different research dimensions interact, identify hidden dependencies between seemingly unrelated questions, and find the optimal organization that minimizes cognitive load for the PM.
 
 ### Step 1: Read and understand all sources
 
@@ -60,7 +62,7 @@ Write to the target filename in the context directory. Follow the Clarifications
 </instructions>
 
 ## Success Criteria
-- Output reads as a cohesive questionnaire, not a concatenation of three files
+- Output reads as a cohesive questionnaire, not a concatenation of source files
 - No two questions resolve the same underlying design decision
 - Questions flow logically: broad scoping → specific design → cross-cutting
 - Consolidated questions preserve the strongest choices and rationale from all source versions
