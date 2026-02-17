@@ -55,7 +55,7 @@ There are 18 research dimension agents, each named `research-{slug}`:
 
 ## Scope Advisor
 
-When the planner selects more dimensions than the configured threshold (passed as "maximum research dimensions" in the coordinator prompt), the orchestrator skips dimension agents entirely and spawns a **scope-advisor** agent instead. This writes a "Scope Recommendation" section into `clarifications.md` with suggestions for narrower skills.
+When the planner selects more dimensions than the configured threshold (passed as "maximum research dimensions" in the coordinator prompt), the orchestrator skips dimension agents entirely and spawns a **scope-advisor** agent instead. The scope-advisor returns the `clarifications.md` content as text, and the orchestrator writes it to disk.
 
 </context>
 
@@ -63,7 +63,7 @@ When the planner selects more dimensions than the configured threshold (passed a
 
 <instructions>
 
-## Phase 0: Research Planning
+## Phase 1: Research Planning
 
 Spawn a **planner sub-agent** (`name: "research-planner"`, `model: "opus"`) via the Task tool. Pass it:
 - The **domain name**
@@ -80,31 +80,31 @@ The planner evaluates every dimension against this specific domain, writes `cont
 - `metrics` (with default focus)
 - `data-quality` (with default focus)
 
-## Phase 0.5: Scope Check
+## Phase 2: Scope Check
 
 After the planner returns, count the number of chosen dimensions. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
 
 **If dimensions_chosen > max_dimensions:**
 
-1. **Skip Phase 1 and Phase 2 entirely.** Do not launch any dimension agents or consolidation.
-2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Pass it:
-   - The **domain name**
-   - The **skill name**
-   - The **skill type**
-   - The **context directory** path
+1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
+2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Include this directive in the prompt:
+   > Do not provide progress updates. Return your complete output as text. Do not write files.
+
+   Pass it:
+   - The **domain name**, **skill name**, **skill type**
    - The full text of `research-plan.md` (the planner's output)
-   - The **dimension threshold** (max_dimensions from the coordinator prompt)
-   - The **number of dimensions chosen** by the planner
-3. The scope-advisor writes `clarifications.md` with a `## Scope Recommendation` section.
-4. **Return immediately** after the scope-advisor completes. Do not proceed to Phase 1 or Phase 2.
+   - The **dimension threshold** and **number of dimensions chosen**
+3. The scope-advisor returns the full `clarifications.md` content as text. **You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool.
+4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
 
-**If dimensions_chosen <= max_dimensions:** Proceed to Phase 1 as normal.
+**If dimensions_chosen <= max_dimensions:** Proceed to Phase 3.
 
-## Phase 1: Parallel Research
-
-Follow the Sub-agent Spawning protocol. All research sub-agents **return text** -- they do not write files.
+## Phase 3: Parallel Research
 
 Parse the planner's `CHOSEN_DIMENSIONS:` output. For each chosen dimension, spawn the corresponding agent (`research-{slug}`) via the Task tool. Launch ALL dimension agents **in the same turn** for parallel execution.
+
+Include this directive in each prompt:
+> Do not provide progress updates. Return your complete output as text. Do not write files.
 
 Pass each agent:
 - The **domain** name
@@ -112,13 +112,18 @@ Pass each agent:
 
 Wait for all agents to return their research text.
 
-## Phase 2: Consolidation
+## Phase 4: Consolidation
 
-After all dimension agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
+After all dimension agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Include this directive in the prompt:
+> Do not provide progress updates. Return your complete output as text. Do not write files.
+
+Pass it:
 - The returned text from ALL dimension agents that ran, each labeled with its dimension name (e.g., "Entities Research:", "Data Quality Research:", "Metrics Research:")
-- The **context directory** path and target filename `clarifications.md`
+- The **domain name** and **skill type**
 
-The consolidation agent uses extended thinking to deeply reason about the full question set -- identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow -- then writes the output file to the context directory.
+The consolidation agent uses extended thinking to deeply reason about the full question set — identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow — then returns the complete `clarifications.md` content as text.
+
+**You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool. This is the orchestrator's most critical responsibility — the workflow cannot advance until this file exists on disk.
 
 **Edge case**: If the planner decided no agents are relevant (unlikely but possible), skip consolidation and write a minimal `clarifications.md` yourself explaining that the domain requires no clarification questions.
 
@@ -126,13 +131,14 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 
 - **Planner failure**: Default to launching `entities`, `metrics`, and `data-quality` with their default focus lines.
 - **Dimension agent failure**: Re-spawn the failed agent once. If it fails again, proceed with available output from the other agents.
-- **Consolidation failure**: Perform the consolidation yourself directly -- combine the returned text, deduplicate overlapping questions, organize into logical sections, and write `clarifications.md`.
+- **Consolidation failure**: Write `clarifications.md` yourself — combine the returned text, deduplicate overlapping questions, organize into logical sections.
 
 </instructions>
 
 ## Success Criteria
 - Planner decision is explicit and reasoned for each of the 18 dimensions
 - Each launched agent returns 5+ clarification questions as text
-- Consolidation produces cohesive `clarifications.md` with logical section flow
+- Consolidation returns cohesive text; orchestrator writes `clarifications.md` to the context directory
+- `clarifications.md` exists on disk before the orchestrator returns — this is the critical output
 - Cross-cutting questions that span multiple research dimensions are identified and grouped
 - When dimensions exceed threshold, scope-advisor is spawned and no dimension agents run

@@ -70,9 +70,9 @@ Questions that are genuinely independent pass through, but may be rephrased for 
 
 Arrange questions into logical sections. Within each section, order from broad scoping decisions to specific design choices. Add a `## Cross-cutting` section for questions that span multiple areas.
 
-#### Step 4: Write output
+#### Step 4: Return output as text
 
-Write to the target filename in the context directory. Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
+Return the complete `clarifications.md` content as text. The orchestrator will write it to disk. Follow the Clarifications file format from your system prompt — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
 
 **Critical:** Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply. The format for each question must be:
 
@@ -82,6 +82,8 @@ Write to the target filename in the context directory. Follow the Clarifications
 **Answer**:
 
 ```
+
+Do not write files. Return the complete file content as text.
 
 ---
 
@@ -133,6 +135,7 @@ After inserting all refinement blocks, use the Edit tool to update the YAML fron
 ## Success Criteria
 
 ### First-round mode
+- Complete file content returned as text (orchestrator writes to disk)
 - Output reads as a cohesive questionnaire, not a concatenation of source files
 - No two questions resolve the same underlying design decision
 - Questions flow logically: broad scoping → specific design → cross-cutting

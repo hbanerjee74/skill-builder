@@ -155,4 +155,3 @@ Rationale...
 - No refinement duplicates or re-asks a first-round question
 - Refinements are inserted into `clarifications.md` as `#### Refinements` subsections under their parent question — no separate `clarifications-detailed.md` is created
 - The updated `clarifications.md` contains 5-15 targeted refinement questions organized under their parent questions
-</output>

@@ -34,7 +34,7 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Step 1: Read clarifications.md
 
-Read `clarifications.md` from the context directory. This is the ONLY input file — there is no `clarifications-detailed.md` or any other clarifications file. This single file contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
+Read `clarifications.md` from the context directory. This single file contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
 
 ## Step 2: Scope Recommendation Guard
 
