@@ -38,7 +38,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows standard business rules at textbook level. The delta is the customer's actual rule logic: pushed deals treated differently by deal type, maverick spend with a $5K threshold plus sole-source exception, co-sold deal attribution models.
 
-**Template sections**: Business Logic Decisions (primary), Materiality Thresholds (co-primary), Segmentation Standards (secondary)
+**Template sections**: Business Logic Decisions (primary), Materiality Thresholds, Segmentation Standards
 
 **Research approach**: Investigate the business rules landscape for the domain, focusing on rules with exceptions, conditional logic, and thresholds that vary by segment or context. Look for attribution models with competing approaches, regulatory requirements that override natural modeling choices, and rules that engineers without domain expertise commonly get wrong. Probe for the precise threshold values, exception conditions, and edge cases that distinguish correct implementation from plausible-but-wrong defaults.
 

@@ -38,7 +38,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Delta principle**: Claude knows each pattern individually. The delta is the interactions: SCD Type 2 forces hash-based surrogate keys, which forces MERGE INTO, which requires reliable change timestamps. Late-arriving fact handling depends on whether the joined dimension uses Type 1 (safe) or Type 2 (requires point-in-time lookup).
 
-**Template sections**: Pattern Selection & Interaction Rules (primary), Entity & Grain Design (secondary), Load & Merge Patterns (secondary), Historization & Temporal Design (secondary)
+**Template sections**: Pattern Selection & Interaction Rules (primary), Load & Merge Patterns (secondary)
 
 **Research approach**: Map the constraint graph for this domain by starting with the entity types and their likely historization choices, then tracing forward to see which merge strategies, key designs, and materialization approaches each choice forces or eliminates. Look for "hidden couplings" -- pairs of patterns that are individually correct but produce incorrect combinations when used together, such as Type 2 dimensions combined with view-based materialization at high query volume.
 

@@ -130,7 +130,7 @@ This sub-agent checks whether the generated skill contains content that belongs 
 
 For each section and reference file in the skill, classify which dimension(s) it covers. If content maps to a dimension NOT assigned to this skill type, flag it as a boundary violation.
 
-**Exception**: The `entities` dimension is universal — entity-related content is always in-scope. Cross-type concepts that naturally appear in domain discussions (e.g., mentioning "extraction" briefly in a domain skill's context) are not violations — only substantial content sections that belong to another type.
+**Threshold**: Brief incidental mentions of concepts from other types are not violations — only flag substantial content sections that belong to another type.
 
 Returns findings as text:
 ```
@@ -149,10 +149,16 @@ Returns findings as text:
 
 Reads SKILL.md, all reference files, and `decisions.md`. Analyzes the skill's content and recommends complementary skills that would compose well with it.
 
-**Recommendation scope** (only recommend from these categories):
-- **Source skills** — for any skill type, recommend the source system skill(s) that would provide upstream data context
-- **Platform skills** — only Fabric, dbt, or dlt platform skills (these are the supported platforms)
-- **Data engineering design approaches** — recommend DE pattern skills that would complement the domain or source knowledge
+**Recommendation scope** — recommendations depend on the current skill's type:
+
+| Current skill type | Can recommend |
+|---|---|
+| **domain** | source, platform (dbt/dlt/Fabric only), data-engineering |
+| **source** | platform (dbt/dlt/Fabric only), data-engineering |
+| **platform** | data-engineering |
+| **data-engineering** | platform (dbt/dlt/Fabric only) |
+
+Platform recommendations are always limited to **dbt, dlt, and Fabric** — these are the only supported platforms. Do not recommend other platforms.
 
 **For each recommendation**, provide:
 - **Skill name and type** — e.g., "Salesforce extraction (source skill)"
