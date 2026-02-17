@@ -6,9 +6,7 @@ import MDEditor from "@uiw/react-md-editor";
 import {
   Loader2,
   Play,
-  MessageSquare,
   FileText,
-  ArrowRight,
   AlertCircle,
   RotateCcw,
   CheckCircle2,
@@ -517,12 +515,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleSkipHumanStep = () => {
-    updateStepStatus(currentStep, "completed");
-    advanceToNextStep();
-    toast.success(`Step ${currentStep + 1} skipped`);
-  };
-
   const handleStartStep = async (resume = false) => {
     if (!stepConfig) return;
 
@@ -738,21 +730,17 @@ export default function WorkflowPage() {
         );
       }
 
-      // File not available yet
+      // File not available — this is an error (previous step should have produced it)
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-          <MessageSquare className="size-8 text-muted-foreground/50" />
-          <p className="text-sm">
-            No clarification file found. Run the previous step or continue.
-          </p>
-          {!reviewMode && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleSkipHumanStep}>
-                <ArrowRight className="size-3.5" />
-                Continue
-              </Button>
-            </div>
-          )}
+          <AlertCircle className="size-8 text-destructive/50" />
+          <div className="text-center">
+            <p className="font-medium text-destructive">Missing clarification file</p>
+            <p className="mt-1 text-sm">
+              Expected <code className="text-xs">{HUMAN_REVIEW_STEPS[currentStep]?.relativePath}</code> but it was not found.
+              The previous step may not have completed successfully.
+            </p>
+          </div>
         </div>
       );
     }
