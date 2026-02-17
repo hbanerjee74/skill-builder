@@ -53,7 +53,7 @@ produce the final clarifications file.
    adding/removing dimensions wholesale.
 
 3. **LangGraph's Plan-and-Execute pattern validates this.** The planner produces a
-   structured plan, the orchestrator executes it, and fallback to defaults provides
+   structured plan and launches agents itself, with fallback to defaults providing
    the reliability LangGraph achieves through replanning.
 
 4. **DSPy's module composition pattern validates dimension reuse.** Dimensions are
@@ -63,20 +63,27 @@ produce the final clarifications file.
 ### Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────┐
-│            Research Orchestrator (per-type)            │
-│                                                        │
-│  Phase 0: Planner (opus) ─── picks dimensions +        │
-│      │                       adjusts focus lines       │
-│      ▼                                                 │
-│  Phase 1: ALL Dimensions ─── spawned in parallel       │
-│      │    (entities, metrics, pipeline-patterns, etc.) │
-│      ▼                                                 │
-│  Phase 2: Consolidation (opus + extended thinking)     │
-│           reasons across all outputs, cross-references │
-│           → clarifications.md                          │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│              Research Orchestrator (per-type)              │
+│                                                            │
+│  Phase 0: Planner (opus)                                   │
+│      │         │                                           │
+│      │         └──► writes context/research-plan.md        │
+│      │              (decision table — all 14 dimensions)   │
+│      │                                                     │
+│      └──► launches chosen dimension agents in parallel     │
+│           (entities, metrics, pipeline-patterns, etc.)     │
+│               │                                            │
+│               ▼                                            │
+│  Phase 1: Consolidation (opus + extended thinking)         │
+│           reasons across all outputs, cross-references     │
+│           → clarifications.md                              │
+└──────────────────────────────────────────────────────────┘
 ```
+
+The planner writes the decision file and launches agents **simultaneously** — it doesn't
+wait for the file write before spawning agents. If the planner fails, the orchestrator
+falls back to defaults and launches agents itself.
 
 **Why flat parallel, not phased?** The original design split dimensions into "foundational"
 (entities, metrics) and "exploratory" (everything else), with Phase 2 receiving Phase 1 output
@@ -91,9 +98,9 @@ as context. This was over-engineered:
 | Component | Change? | Details |
 |-----------|---------|---------|
 | Research orchestrator template | **Rewrite** | Dimension-aware, planner phase |
-| research-concepts template | **Remove** | Replaced by `research-entities` + `research-metrics` shared agents |
-| research-practices template | **Remove** | Replaced by type-specific exploratory dimension agents |
-| research-implementation template | **Remove** | Replaced by type-specific exploratory dimension agents |
+| research-concepts template | **Already removed** | Split into entities + metrics templates by VD-599; VD-608 converts these to shared agents |
+| research-practices template | **Remove** | Still a generated template after VD-599; replaced by shared dimension agents |
+| research-implementation template | **Remove** | Still a generated template after VD-599; replaced by shared dimension agents |
 | generate-skill template | No change | Works from decisions.md as before |
 | Dimension agents (new) | **Create** | 12 shared agents in `agents/shared/` |
 | Research planner (new) | **Create** | 1 shared agent in `agents/shared/` |
@@ -145,7 +152,7 @@ agents/
     └── generate-skill.md               # GENERATED
 ```
 
-**Agent count: 22** (14 shared + 8 generated) — down from 24 (4 shared + 20 generated).
+**Agent count: 22** (14 shared + 8 generated) — down from 28 after VD-599 (4 shared + 24 generated), originally 24 on main.
 
 ---
 
@@ -381,36 +388,64 @@ The orchestrator passes these in the Task tool prompt:
    ```
 5. **Available dimensions** — full catalog of all dimensions with descriptions
 
-### Output Format (returned as text)
+### Dual Output: Decision File + Agent Launch
+
+The planner does two things **in parallel**:
+
+1. **Writes `context/research-plan.md`** — a decision table covering all 14 dimensions
+   for transparency and auditability. This file is a record of what was decided and why.
+
+2. **Launches chosen dimension agents** — the planner itself spawns the dimension agents
+   via Task tool calls based on its decisions. It doesn't wait for the file write to
+   complete before launching agents — both happen simultaneously.
+
+This means the orchestrator does **not** parse the plan file. The planner is both the
+decision-maker and the executor. The orchestrator spawns the planner, and the planner
+spawns the dimension agents directly.
+
+### Decision File Format (`context/research-plan.md`)
+
+The file contains a decision table covering **all 14 available dimensions** — not just
+the chosen ones. This makes the planner's reasoning transparent and auditable.
 
 ```markdown
 # Research Plan
 
 ## Skill: [domain] ([skill_type])
 
-## Dimensions
-1. **entities** — Focus: [adjusted focus or "Use default"]
-   Entity examples: [adjusted examples or "Use default"]
-2. **metrics** — Focus: [adjusted focus or "Use default"]
-3. **pipeline-patterns** — Focus: [adjusted focus specific to this domain]
-4. **data-quality** — Focus: [adjusted focus specific to this domain]
-5. **historization** — Focus: [adjusted focus specific to this domain]
-6. **silver-gold-design** — Focus: [adjusted focus specific to this domain]
+## Dimension Decisions
 
-## Adjustments Made
-- [List of changes from defaults, with brief rationale]
-- [Or "None — defaults are appropriate for this domain"]
+| Dimension | Chosen | Focus | Reasoning |
+|-----------|--------|-------|-----------|
+| entities | Yes | [adjusted focus or "Default"] | [why this dimension is relevant] |
+| metrics | Yes | [adjusted focus or "Default"] | [why this dimension is relevant] |
+| pipeline-patterns | No | — | [why this dimension was excluded] |
+| data-quality | No | — | [why this dimension was excluded] |
+| historization | No | — | [why this dimension was excluded] |
+| silver-gold-design | No | — | [why this dimension was excluded] |
+| business-rules | Yes | [adjusted focus or "Default"] | [why this dimension is relevant] |
+| modeling-patterns | Yes | [adjusted focus or "Default"] | [why this dimension is relevant] |
+| api-patterns | No | — | [why this dimension was excluded] |
+| integration | No | — | [why this dimension was excluded] |
+| deployment | No | — | [why this dimension was excluded] |
+| extraction | No | — | [why this dimension was excluded] |
+| authentication | No | — | [why this dimension was excluded] |
+| schema-mapping | No | — | [why this dimension was excluded] |
+
+## Entity Examples
+[adjusted entity examples or "Use defaults from config"]
 ```
 
-### Orchestrator Parsing
+**Table rules:**
+- **Chosen** column: "Yes" or "No"
+- **Focus** column: the focus line for chosen dimensions (or "Default" to keep the type config's focus), "—" for excluded dimensions
+- **Reasoning** column: brief justification for inclusion or exclusion
+- **Entity Examples** section: only present if the planner adjusts entity examples from the config defaults
 
-The orchestrator reads the plan text and extracts:
-1. Dimension names from `**bold**` text in the Dimensions section
-2. Focus lines from the "Focus:" values
-3. Entity examples from "Entity examples:" values (entities dimension only)
+### Fallback
 
-If parsing fails or the planner returns no output, the orchestrator falls back to
-the baked-in defaults from the generated template.
+If the planner fails or produces no output, the orchestrator falls back to the
+baked-in defaults from the generated template and launches those dimension agents itself.
 
 ### Planner Behavior Guidelines
 
@@ -430,14 +465,18 @@ The planner prompt instructs it to:
 4. **Never remove `entities`.** It is always required. `metrics` can be removed
    only for platform/source types that don't have business metrics.
 
-5. **Keep output concise.** The plan is a configuration artifact, not an essay.
+5. **Cover all 14 dimensions.** The table must list every dimension — no omissions.
+   Reasoning for exclusion is just as important as reasoning for inclusion.
+
+6. **Keep reasoning concise.** One sentence per dimension. The table is a decision
+   artifact, not an essay.
 
 ### Cost and Latency
 
 - **Model:** opus (needs reasoning about domain-dimension fit)
-- **Expected tokens:** ~500 input, ~300 output
-- **Latency:** ~3-5 seconds
-- **Cost:** ~$0.02 per call
+- **Expected tokens:** ~500 input, ~500 output (table is larger than old list format)
+- **Latency:** ~5-8 seconds
+- **Cost:** ~$0.03 per call
 - **Impact on total research step:** +5% wall time (current step is ~90-120s)
 
 ---
@@ -447,8 +486,10 @@ The planner prompt instructs it to:
 ### Current Format (`config.conf`)
 
 ```conf
+# After VD-599 (current baseline)
 NAME_PREFIX=de
-FOCUS_LINE__research_concepts=Focus on historization strategies...
+FOCUS_LINE__research_entities=Focus on historization strategies...
+FOCUS_LINE__research_metrics=Focus on pipeline health metrics...
 FOCUS_LINE__research_practices=Focus on transformation patterns...
 FOCUS_LINE__research_implementation=Focus on historization strategies...
 ENTITY_EXAMPLES=e.g., for dimensional pipelines: dimensions...
@@ -526,9 +567,11 @@ They can be left in config for a transition period and removed in a follow-up cl
 
 | File | Reason |
 |------|--------|
-| `agent-sources/templates/research-concepts.md` | Replaced by shared `research-entities` + `research-metrics` |
-| `agent-sources/templates/research-practices.md` | Replaced by type-specific exploratory dimensions |
-| `agent-sources/templates/research-implementation.md` | Replaced by type-specific exploratory dimensions |
+| `agent-sources/templates/research-concepts.md` | **Already removed** by VD-599 (split into entities + metrics templates) |
+| `agent-sources/templates/research-entities.md` | Added by VD-599; replaced by shared `research-entities` dimension agent |
+| `agent-sources/templates/research-metrics.md` | Added by VD-599; replaced by shared `research-metrics` dimension agent |
+| `agent-sources/templates/research-practices.md` | Replaced by shared dimension agents |
+| `agent-sources/templates/research-implementation.md` | Replaced by shared dimension agents |
 
 ### Templates Modified
 
@@ -777,17 +820,21 @@ Step 0 (Research) still runs a single orchestrator agent.
 
 ## 7. Migration Path
 
+> **Prerequisite:** VD-599 must be merged first. VD-599 establishes the flat parallel
+> execution pattern, opus planner (inline), and opus consolidation with extended thinking.
+> It also splits `research-concepts` into `research-entities` + `research-metrics` templates
+> and makes practices/implementation agents independent. The migration phases below start
+> from VD-599's state (28 agents, 6 per type).
+
 ### Phase 1: Create Dimension Agents (Low Risk)
 
 **Goal:** Add all 14 shared dimension agents without changing any existing code.
 
-1. Create `agents/shared/research-entities.md` — adapted from the entity sub-agent
-   currently described inline in `research-concepts.md`
-2. Create `agents/shared/research-metrics.md` — adapted from the metrics sub-agent
-   currently described inline in `research-concepts.md`
+1. Convert VD-599's `research-entities` template to shared `agents/shared/research-entities.md`
+2. Convert VD-599's `research-metrics` template to shared `agents/shared/research-metrics.md`
 3. Create the remaining 12 dimension agents with appropriate role descriptions,
    research instructions, and success criteria
-4. Create `agents/shared/research-planner.md`
+4. Extract VD-599's inline planner into `agents/shared/research-planner.md`
 
 **Verification:** `./scripts/validate.sh` still passes. No existing agents are modified.
 
@@ -812,8 +859,9 @@ Step 0 (Research) still runs a single orchestrator agent.
    - Generate the dimension catalog summary
    - Only process `research.md` and `generate-skill.md` templates (skip removed ones)
 4. Run `./scripts/build-agents.sh` to regenerate
-5. Delete old generated files: `agents/{type}/research-concepts.md`,
-   `agents/{type}/research-practices.md`, `agents/{type}/research-implementation.md`
+5. Delete old generated files: `agents/{type}/research-entities.md`,
+   `agents/{type}/research-metrics.md`, `agents/{type}/research-practices.md`,
+   `agents/{type}/research-implementation.md`
 
 **Verification:**
 - `./scripts/build-agents.sh --check` passes
@@ -824,7 +872,7 @@ Step 0 (Research) still runs a single orchestrator agent.
 
 **Goal:** Update test expectations for new agent count and structure.
 
-1. Update T1 structural validation: agent count changes from 24 to 22
+1. Update T1 structural validation: agent count changes from 28 (VD-599) to 22
 2. Update agent name expectations (new dimension agent names, removed old names)
 3. Add dimension agent validation (verify all declared dimensions have corresponding files)
 4. Run `./scripts/test-plugin.sh t1`
@@ -988,43 +1036,34 @@ and ensures questions are ordered so that earlier answers inform later choices.
 
 ### Example Planner Output for "Sales Pipeline Lakehouse"
 
+Written to `context/research-plan.md`:
+
 ```markdown
 # Research Plan
 
 ## Skill: Sales Pipeline Lakehouse (data-engineering)
 
-## Dimensions
-1. **entities** — Focus: Focus on sales pipeline entities (opportunities, pipeline
-   stages, accounts, contacts, products), their grain, and cardinality relationships.
-   Emphasize the opportunity-to-account and opportunity-to-stage relationships.
-   Entity examples: opportunities, pipeline stages, accounts, contacts, products,
-   forecast categories, sales territories
+## Dimension Decisions
 
-2. **metrics** — Focus: Focus on sales pipeline metrics (conversion rates by stage,
-   pipeline velocity, win rates, average deal size, forecast accuracy) and the
-   calculation nuances that drive aggregation design in the gold layer.
+| Dimension | Chosen | Focus | Reasoning |
+|-----------|--------|-------|-----------|
+| entities | Yes | Sales pipeline entities (opportunities, pipeline stages, accounts, contacts, products), their grain, and cardinality relationships. Emphasize opportunity-to-account and opportunity-to-stage relationships. | Core to any data engineering skill — must model domain entities and relationships |
+| metrics | Yes | Sales pipeline metrics (conversion rates by stage, pipeline velocity, win rates, average deal size, forecast accuracy) and calculation nuances that drive gold layer aggregation. | Sales pipeline has rich KPIs; forecast accuracy is critical and commonly miscalculated |
+| pipeline-patterns | Yes | Incremental loading for high-volume opportunity updates, CDC for stage transition tracking, and merge strategies for slowly-changing account hierarchies. | Default for DE — sales has high-volume opportunity updates requiring careful load strategy |
+| data-quality | Yes | Pipeline stage transition validation (no backward jumps without reason), amount consistency checks, and duplicate opportunity detection. | Default for DE — CRM data has known quality issues (duplicate opps, stale amounts) |
+| historization | Yes | SCD Type 2 for accounts (territory changes, ownership changes) and pipeline stage snapshots for funnel analysis over time. | Default for DE — stage history is essential for pipeline velocity and funnel analysis |
+| silver-gold-design | Yes | Star schema with opportunity fact table at stage-transition grain, conformed account/contact/product dimensions, and pre-computed pipeline progression aggregates. | Default for DE — sales dashboards need pre-computed aggregates for responsive reporting |
+| business-rules | No | — | Domain type dimension — not relevant for a data engineering lakehouse skill |
+| modeling-patterns | No | — | Domain type dimension — silver-gold-design already covers modeling for DE skills |
+| api-patterns | No | — | Platform type dimension — no API design involved in lakehouse modeling |
+| integration | No | — | Platform type dimension — no multi-tool orchestration involved |
+| deployment | No | — | Platform type dimension — deployment patterns are out of scope for this skill |
+| extraction | No | — | Source type dimension — lakehouse skill focuses on transformation, not extraction |
+| authentication | No | — | Source type dimension — no auth flows in the skill scope |
+| schema-mapping | No | — | Source type dimension — mapping handled upstream of the lakehouse |
 
-3. **pipeline-patterns** — Focus: Focus on incremental loading for high-volume
-   opportunity updates, CDC for stage transition tracking, and merge strategies
-   for slowly-changing account hierarchies.
-
-4. **data-quality** — Focus: Focus on pipeline stage transition validation
-   (no backward jumps without reason), amount consistency checks, and
-   duplicate opportunity detection.
-
-5. **historization** — Focus: Focus on SCD Type 2 for accounts (territory
-   changes, ownership changes) and pipeline stage snapshots for funnel analysis
-   over time.
-
-6. **silver-gold-design** — Focus: Focus on star schema with opportunity fact
-   table at stage-transition grain, conformed account/contact/product dimensions,
-   and pre-computed pipeline progression aggregates for sales dashboards.
-
-## Adjustments Made
-- Adjusted entity focus to emphasize sales-specific entities and their CRM relationships
-- Adjusted metrics focus to include forecast accuracy (critical for sales pipelines)
-- Adjusted historization focus to emphasize stage snapshots for funnel analysis
-- No dimensions added or removed — defaults are appropriate for this domain
+## Entity Examples
+opportunities, pipeline stages, accounts, contacts, products, forecast categories, sales territories
 ```
 
 ---
