@@ -14,6 +14,8 @@ const baseSkill: SkillSummary = {
   skill_type: null,
   author_login: null,
   author_avatar: null,
+  display_name: null,
+  intake_json: null,
 };
 
 describe("SkillCard", () => {

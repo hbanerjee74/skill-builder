@@ -64,6 +64,7 @@ fn list_skills_inner(
     Ok(skills)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
     app: tauri::AppHandle,

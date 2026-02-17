@@ -90,6 +90,9 @@ const defaultSettings: AppSettings = {
   github_user_email: null,
   remote_repo_owner: null,
   remote_repo_name: null,
+  max_dimensions: 8,
+  industry: null,
+  function_role: null,
 };
 
 const emptyReconciliation: ReconciliationResult = {

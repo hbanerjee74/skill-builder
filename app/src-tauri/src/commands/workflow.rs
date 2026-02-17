@@ -535,6 +535,7 @@ fn write_user_context_file(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     skill_name: &str,
     domain: &str,

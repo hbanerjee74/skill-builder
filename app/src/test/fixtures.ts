@@ -19,6 +19,9 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     github_user_email: null,
     remote_repo_owner: null,
     remote_repo_name: null,
+    max_dimensions: 8,
+    industry: null,
+    function_role: null,
     ...overrides,
   };
 }
@@ -36,6 +39,8 @@ export function makeSkillSummary(overrides?: Partial<SkillSummary>): SkillSummar
     skill_type: null,
     author_login: null,
     author_avatar: null,
+    display_name: null,
+    intake_json: null,
     ...overrides,
   };
 }
