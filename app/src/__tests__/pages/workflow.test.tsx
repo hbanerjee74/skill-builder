@@ -596,10 +596,10 @@ describe("WorkflowPage — human review file loading priority", () => {
     expect(readFileCalls.some((p) => p.includes("/test/skills/"))).toBe(false);
   });
 
-  it("uses skillsPath context dir for step 3 (clarifications-detailed.md) too", async () => {
-    // Step 3 reviews clarifications-detailed.md — same priority should apply
+  it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
+    // Step 3 reviews clarifications.md — same priority should apply
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve("# Merged clarifications from skills dir");
       }
       return Promise.reject("not found");
@@ -619,7 +619,7 @@ describe("WorkflowPage — human review file loading priority", () => {
     });
 
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications-detailed.md"
+      "/test/skills/test-skill/context/clarifications.md"
     );
   });
 });
@@ -799,7 +799,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
   });
 
   it("step 3 human review also saves without auto-fill", async () => {
-    // Step 3 reviews clarifications-detailed.md — same behavior expected
+    // Step 3 reviews clarifications.md — same behavior expected
     const reviewContent = [
       "## Merged Question 1",
       "**Recommendation**: Normalize customer dimensions",
@@ -811,7 +811,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications-detailed.md") {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
         return Promise.resolve(reviewContent);
       }
       return Promise.reject("not found");
@@ -841,7 +841,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     // Verify it saved to the correct filesystem path for step 3
     expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/workspace/test-skill/context/clarifications-detailed.md",
+      "/test/workspace/test-skill/context/clarifications.md",
       reviewContent,
     );
 

@@ -61,7 +61,7 @@ interface StepConfig {
 const STEP_CONFIGS: Record<number, StepConfig> = {
   0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.md"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications-detailed.md"], model: "sonnet" },
+  2: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -71,7 +71,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   1: { relativePath: "context/clarifications.md" },
-  3: { relativePath: "context/clarifications-detailed.md" },
+  3: { relativePath: "context/clarifications.md" },
 };
 
 
