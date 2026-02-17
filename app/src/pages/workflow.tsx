@@ -455,14 +455,9 @@ export default function WorkflowPage() {
         setRunning(false);
         toast.success(`Step ${step + 1} completed`);
 
-        // Auto-advance agent steps unless the next step is a human review step.
-        // When the next step is human review, pause on the completion screen so
-        // the user can see all output files before proceeding to the editor.
-        const cfg = STEP_CONFIGS[step];
-        const nextCfg = STEP_CONFIGS[step + 1];
-        if (cfg?.type === "agent" && nextCfg?.type !== "human") {
-          advanceToNextStep();
-        }
+        // Agent steps always pause on the completion screen so the user can
+        // review output files before proceeding. The user clicks "Next Step"
+        // (or "Close" on the last step) in the bottom action bar.
       };
 
       finish();
@@ -612,6 +607,7 @@ export default function WorkflowPage() {
       !activeAgentId
     ) {
       const isLastStep = currentStep >= steps.length - 1;
+      const handleClose = () => navigate({ to: "/" });
       if (stepConfig?.outputFiles) {
         return (
           <WorkflowStepComplete
@@ -619,6 +615,7 @@ export default function WorkflowPage() {
             stepId={currentStep}
             outputFiles={stepConfig.outputFiles}
             onNextStep={advanceToNextStep}
+            onClose={handleClose}
             isLastStep={isLastStep}
             reviewMode={reviewMode}
             skillName={skillName}
@@ -634,6 +631,7 @@ export default function WorkflowPage() {
           stepId={currentStep}
           outputFiles={[]}
           onNextStep={advanceToNextStep}
+          onClose={handleClose}
           isLastStep={isLastStep}
           reviewMode={reviewMode}
           skillName={skillName}

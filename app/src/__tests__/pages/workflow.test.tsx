@@ -145,7 +145,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Step 1 completed");
   });
 
-  it("auto-advances from step 5 (build) to step 6 (validate)", async () => {
+  it("pauses on completion screen after step 5 (build)", async () => {
     // Simulate: steps 0-4 completed, step 5 running
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
@@ -173,11 +173,8 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // Step 5 completed
     expect(wf.steps[5].status).toBe("completed");
 
-    // Auto-advances to step 6 (validate)
-    expect(wf.currentStep).toBe(6);
-
-    // Step 6 is an agent step — stays pending (not waiting_for_user)
-    expect(wf.steps[6].status).toBe("pending");
+    // Stays on step 5 completion screen — user clicks "Next Step" to proceed
+    expect(wf.currentStep).toBe(5);
 
     // Running flag cleared
     expect(wf.isRunning).toBe(false);

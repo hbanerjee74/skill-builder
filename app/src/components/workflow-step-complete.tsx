@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
@@ -15,6 +15,7 @@ interface WorkflowStepCompleteProps {
   duration?: number;
   cost?: number;
   onNextStep?: () => void;
+  onClose?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
   skillName?: string;
@@ -37,6 +38,7 @@ export function WorkflowStepComplete({
   duration,
   cost,
   onNextStep,
+  onClose,
   isLastStep = false,
   reviewMode,
   skillName,
@@ -183,12 +185,23 @@ export function WorkflowStepComplete({
               })}
           </div>
         </ScrollArea>
-        {onNextStep && !isLastStep && !reviewMode && (
+        {!reviewMode && (
           <div className="flex items-center justify-end border-t pt-4">
-            <Button size="sm" onClick={onNextStep}>
-              <ArrowRight className="size-3.5" />
-              Next Step
-            </Button>
+            {isLastStep ? (
+              onClose && (
+                <Button size="sm" variant="outline" onClick={onClose}>
+                  <X className="size-3.5" />
+                  Close
+                </Button>
+              )
+            ) : (
+              onNextStep && (
+                <Button size="sm" onClick={onNextStep}>
+                  <ArrowRight className="size-3.5" />
+                  Next Step
+                </Button>
+              )
+            )}
           </div>
         )}
       </div>
