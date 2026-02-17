@@ -47,9 +47,7 @@ Follow the Sub-agent Spawning protocol. All sub-agents **return text** — they 
 
 Based on your Phase 0 decision:
 
-**Both agents relevant**: Spawn `source-research-entities` and `source-research-metrics` in parallel. When both return, spawn `consolidate-research` (`model: "opus"`) to merge their output into cohesive concept text. Pass it:
-- The returned text from both agents
-- Instructions to consolidate into unified concept text (do NOT write files — return text only)
+**Both agents relevant**: Spawn `source-research-entities` and `source-research-metrics` in parallel. When both return, combine their text under clear section headers (`## Entity & Relationship Research` and `## Metrics & KPI Research`). This combined text is the concept text for Phase 2.
 
 **One agent only**: Spawn the single relevant agent. Its returned text IS the concept text — no consolidation needed for a single source.
 
