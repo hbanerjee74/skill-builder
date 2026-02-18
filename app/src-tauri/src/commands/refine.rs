@@ -394,6 +394,7 @@ pub async fn send_refine_message(
         })?;
         session.skill_name.clone()
     };
+    log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
 
     // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
     let (skills_path, api_key, extended_thinking, model) = {
