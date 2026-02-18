@@ -1,16 +1,16 @@
 ## File Formats
 
-IMPORTANT: All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
+All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
 
 ### Clarifications (`clarifications.md`)
 
-There is only one clarifications file. The detailed-research step inserts `#### Refinements` subsections in-place rather than creating a separate file.
+Single file across both research rounds. The detailed-research step inserts `#### Refinements` subsections in-place.
 
 ```
 ---
 question_count: 12
 sections: ["Entity Model", "Metrics & KPIs"]
-duplicates_removed: 3  # post-consolidation
+duplicates_removed: 3
 ---
 ## [Section]
 ### Q1: [Title]
@@ -24,13 +24,14 @@ duplicates_removed: 3  # post-consolidation
 **Answer**:
 
 ```
-Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply in the in-app editor. Never omit it, never pre-fill it.
 
-**Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification — use the recommendation and proceed.
+Every question MUST end with a blank `**Answer**:` line followed by an empty line. Never omit it, never pre-fill it.
 
-#### Refinements subsection format
+**Auto-fill rule:** Empty `**Answer**:` fields → use the `**Recommendation**:` as the answer. Do not ask for clarification.
 
-After the user answers first-round questions, the detailed-research step inserts `#### Refinements` blocks under each answered question that warrants follow-up. Refinements drill deeper into the user's chosen direction.
+#### Refinements
+
+Inserted under answered questions that warrant follow-up. Refinement IDs use the parent question number as prefix (R3.1 = first refinement under Q3).
 
 ```
 ### Q1: [Original question]
@@ -46,29 +47,16 @@ Rationale for why this matters given the answer above...
 
 **Answer**:
 
-**R1.2: Another follow-up**
-Rationale...
-- [ ] Choice a
-- [ ] Choice b
-- [ ] Other (please specify)
-
-**Answer**:
-
 ```
 
-Each refinement question ID uses the parent question number as a prefix (e.g., R3.1 is the first refinement under Q3). Refinements follow the same `**Answer**:` convention -- blank line after for the user to fill in.
+#### Scope Recommendation mode
 
-### Scope Recommendation (clarifications.md -- scope mode)
-
-When the research planner selects more dimensions than the configured threshold, the scope-advisor agent writes a scope recommendation instead of normal clarifications. This file has `scope_recommendation: true` in its YAML frontmatter and contains:
-- Explanation of why the scope is too broad
-- 2-4 suggested narrower skill alternatives
-- Instructions for the user to restart with a narrower focus
-
-Downstream agents (detailed research, confirm decisions, generate skill, validate skill) detect `scope_recommendation: true` and gracefully no-op.
+When the research planner selects too many dimensions, the scope-advisor writes a scope recommendation instead of normal clarifications. The file has `scope_recommendation: true` in frontmatter. Downstream agents detect this and no-op (see Scope Recommendation Guard).
 
 ### Decisions (`decisions.md`)
+
 Clean snapshot, not a log. Write the complete file from scratch each time.
+
 ```
 ---
 decision_count: 5
@@ -81,4 +69,5 @@ round: 2
 - **Implication**: [design impact]
 - **Status**: resolved | conflict-resolved | needs-review
 ```
-Frontmatter counts give the user an at-a-glance summary: total decisions, how many had contradictions that the agent resolved (review these first). Each decision's `**Status**` field indicates whether it was straightforward (`resolved`), required the agent to pick between contradicting answers (`conflict-resolved`), or needs user input (`needs-review`).
+
+Frontmatter counts give an at-a-glance summary. `conflict-resolved` = agent picked between contradicting answers (review first). `needs-review` = requires user input.
