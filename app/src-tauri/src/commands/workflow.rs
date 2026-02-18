@@ -1108,7 +1108,28 @@ pub fn save_workflow_state(
         log::error!("[save_workflow_state] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &status, &skill_type)?;
+
+    // Backend-authoritative status: if all submitted steps are completed,
+    // override the run status to "completed" regardless of what the frontend sent.
+    // This prevents a race where the debounced frontend save fires before the
+    // final step status is computed.
+    let effective_status = if !step_statuses.is_empty()
+        && step_statuses.iter().all(|s| s.status == "completed")
+    {
+        if status != "completed" {
+            log::info!(
+                "[save_workflow_state] All {} steps completed for '{}', overriding status '{}' → 'completed'",
+                step_statuses.len(),
+                skill_name,
+                status
+            );
+        }
+        "completed".to_string()
+    } else {
+        status
+    };
+
+    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &effective_status, &skill_type)?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
