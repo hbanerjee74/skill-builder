@@ -25,11 +25,20 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 
+const sections = [
+  { id: "general", label: "General" },
+  { id: "skill-building", label: "Skill Building" },
+  { id: "github", label: "GitHub" },
+  { id: "advanced", label: "Advanced" },
+] as const
+
+type SectionId = typeof sections[number]["id"]
+
 export default function SettingsPage() {
+  const [activeSection, setActiveSection] = useState<SectionId>("general")
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
@@ -299,15 +308,26 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <Tabs defaultValue="general">
-        <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="skill-building">Skill Building</TabsTrigger>
-          <TabsTrigger value="github">GitHub</TabsTrigger>
-          <TabsTrigger value="advanced">Advanced</TabsTrigger>
-        </TabsList>
+      <div className="flex gap-8">
+        <nav className="flex w-44 shrink-0 flex-col space-y-1">
+          {sections.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveSection(id)}
+              className={cn(
+                "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors text-left",
+                activeSection === id
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
 
-        <TabsContent value="general">
+        <div className="flex-1 min-w-0">
+          {activeSection === "general" && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -425,9 +445,9 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="skill-building">
+          {activeSection === "skill-building" && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -481,9 +501,9 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="github">
+          {activeSection === "github" && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -663,9 +683,9 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="advanced">
+          {activeSection === "advanced" && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -778,8 +798,9 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-      </Tabs>
+          )}
+        </div>
+      </div>
 
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />

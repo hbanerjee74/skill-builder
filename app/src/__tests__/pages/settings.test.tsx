@@ -93,12 +93,12 @@ function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
   });
 }
 
-/** Helper to switch to a specific tab after page loads */
-async function switchToTab(tabName: RegExp | string) {
-  const pattern = tabName instanceof RegExp ? tabName : new RegExp(tabName, "i");
-  const tab = screen.getByRole("tab", { name: pattern });
+/** Helper to switch to a specific settings section after page loads */
+async function switchToSection(sectionName: RegExp | string) {
+  const pattern = sectionName instanceof RegExp ? sectionName : new RegExp(sectionName, "i");
+  const button = screen.getByRole("button", { name: pattern });
   const user = userEvent.setup();
-  await user.click(tab);
+  await user.click(button);
 }
 
 describe("SettingsPage", () => {
@@ -108,7 +108,7 @@ describe("SettingsPage", () => {
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
   });
 
-  it("renders all 4 tabs", async () => {
+  it("renders all 4 sections in left nav", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -116,10 +116,10 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Skill Building/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /GitHub/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Advanced/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });
 
   it("renders General tab card sections by default", async () => {
@@ -168,7 +168,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
     expect(screen.getByText("Not initialized")).toBeInTheDocument();
   });
 
@@ -202,7 +202,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Skill Building/i);
+    await switchToSection(/Skill Building/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -248,7 +248,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Skill Building/i);
+    await switchToSection(/Skill Building/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -274,7 +274,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Skill Building/i);
+    await switchToSection(/Skill Building/i);
 
     const thinkingSwitch = screen.getByRole("switch", { name: /Extended thinking/i });
     await user.click(thinkingSwitch);
@@ -326,7 +326,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Storage")).toBeInTheDocument();
     expect(screen.getByText("Skills Folder")).toBeInTheDocument();
@@ -342,7 +342,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("/home/user/my-skills")).toBeInTheDocument();
   });
@@ -355,7 +355,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Storage")).toBeInTheDocument();
     expect(screen.getByText("Workspace Folder")).toBeInTheDocument();
@@ -370,7 +370,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const clearButton = screen.getByRole("button", { name: /Clear/i });
     expect(clearButton).toBeDisabled();
@@ -386,7 +386,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
@@ -411,7 +411,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
@@ -432,7 +432,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
@@ -452,7 +452,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const browseButton = screen.getByRole("button", { name: /Browse/i });
     await user.click(browseButton);
@@ -470,7 +470,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Data Directory")).toBeInTheDocument();
     expect(
@@ -488,7 +488,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Unknown")).toBeInTheDocument();
   });
@@ -501,7 +501,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: /Log Level/i })).toBeInTheDocument();
@@ -516,7 +516,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const select = screen.getByRole("combobox", { name: /Log Level/i });
     await user.selectOptions(select, "debug");
@@ -535,7 +535,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     const select = screen.getByRole("combobox", { name: /Log Level/i });
     await user.selectOptions(select, "debug");
@@ -557,7 +557,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
     expect(screen.getByText("/tmp/com.skillbuilder.app/skill-builder.log")).toBeInTheDocument();
@@ -576,7 +576,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/Advanced/i);
+    await switchToSection(/Advanced/i);
 
     expect(screen.getByText("Not available")).toBeInTheDocument();
   });
@@ -616,7 +616,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/GitHub/i);
+    await switchToSection(/GitHub/i);
 
     expect(screen.getByText("GitHub Account")).toBeInTheDocument();
     expect(screen.getByText("Not connected")).toBeInTheDocument();
@@ -636,7 +636,7 @@ describe("SettingsPage", () => {
       expect(screen.getByText("Settings")).toBeInTheDocument();
     });
 
-    await switchToTab(/GitHub/i);
+    await switchToSection(/GitHub/i);
 
     expect(screen.getByText("GitHub Account")).toBeInTheDocument();
     expect(screen.getByText("@octocat")).toBeInTheDocument();
