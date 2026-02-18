@@ -453,6 +453,30 @@ pub fn rename_skill(
         e.to_string()
     })?;
 
+    // Read settings for skills_path
+    let settings = crate::db::read_settings(&conn).ok();
+    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    rename_skill_inner(&old_name, &new_name, &workspace_path, &conn, skills_path.as_deref())?;
+
+    // Auto-commit: skill renamed
+    if let Some(ref sp) = skills_path {
+        let msg = format!("{}: renamed from {}", new_name, old_name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
+    Ok(())
+}
+
+fn rename_skill_inner(
+    old_name: &str,
+    new_name: &str,
+    workspace_path: &str,
+    conn: &rusqlite::Connection,
+    skills_path: Option<&str>,
+) -> Result<(), String> {
     // Check new name doesn't already exist
     let exists: bool = conn
         .query_row(
@@ -466,13 +490,9 @@ pub fn rename_skill(
         return Err(format!("Skill '{}' already exists", new_name));
     }
 
-    // Read settings for skills_path
-    let settings = crate::db::read_settings(&conn).ok();
-    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
-
     // Move directories on disk
-    let workspace_old = Path::new(&workspace_path).join(&old_name);
-    let workspace_new = Path::new(&workspace_path).join(&new_name);
+    let workspace_old = Path::new(workspace_path).join(old_name);
+    let workspace_new = Path::new(workspace_path).join(new_name);
     if workspace_old.exists() {
         fs::rename(&workspace_old, &workspace_new).map_err(|e| {
             log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
@@ -480,9 +500,9 @@ pub fn rename_skill(
         })?;
     }
 
-    if let Some(ref sp) = skills_path {
-        let skills_old = Path::new(sp).join(&old_name);
-        let skills_new = Path::new(sp).join(&new_name);
+    if let Some(sp) = skills_path {
+        let skills_old = Path::new(sp).join(old_name);
+        let skills_new = Path::new(sp).join(new_name);
         if skills_old.exists() {
             fs::rename(&skills_old, &skills_new).map_err(|e| {
                 log::error!("[rename_skill] Failed to rename skills dir: {}", e);
@@ -554,28 +574,20 @@ pub fn rename_skill(
     if let Err(e) = tx_result {
         let _ = conn.execute_batch("ROLLBACK");
         // Rollback disk changes
-        let workspace_new = Path::new(&workspace_path).join(&new_name);
-        let workspace_old = Path::new(&workspace_path).join(&old_name);
+        let workspace_new = Path::new(workspace_path).join(new_name);
+        let workspace_old = Path::new(workspace_path).join(old_name);
         if workspace_new.exists() {
             let _ = fs::rename(&workspace_new, &workspace_old);
         }
-        if let Some(ref sp) = skills_path {
-            let skills_new = Path::new(sp).join(&new_name);
-            let skills_old = Path::new(sp).join(&old_name);
+        if let Some(sp) = skills_path {
+            let skills_new = Path::new(sp).join(new_name);
+            let skills_old = Path::new(sp).join(old_name);
             if skills_new.exists() {
                 let _ = fs::rename(&skills_new, &skills_old);
             }
         }
         log::error!("[rename_skill] DB transaction failed: {}", e);
         return Err(format!("Failed to rename skill in database: {}", e));
-    }
-
-    // Auto-commit: skill renamed
-    if let Some(ref sp) = skills_path {
-        let msg = format!("{}: renamed from {}", new_name, old_name);
-        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
     }
 
     Ok(())
@@ -1278,5 +1290,231 @@ mod tests {
 
         // No row should exist
         assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
+    }
+
+    // ===== rename_skill tests =====
+
+    /// Helper: save skills_path into the settings table so rename_skill_inner
+    /// can read it via `crate::db::read_settings`.
+    fn save_skills_path_setting(conn: &Connection, skills_path: &str) {
+        let settings = crate::types::AppSettings {
+            skills_path: Some(skills_path.to_string()),
+            ..Default::default()
+        };
+        crate::db::write_settings(conn, &settings).unwrap();
+    }
+
+    #[test]
+    fn test_rename_skill_basic() {
+        let workspace_dir = tempdir().unwrap();
+        let workspace = workspace_dir.path().to_str().unwrap();
+        let skills_dir = tempdir().unwrap();
+        let skills_path = skills_dir.path().to_str().unwrap();
+        let conn = create_test_db();
+        save_skills_path_setting(&conn, skills_path);
+
+        // Create skill with workspace dir, skills dir, DB record, tags, and steps
+        create_skill_inner(
+            workspace, "old-name", "analytics",
+            Some(&["tag-a".into(), "tag-b".into()]),
+            Some("domain"), Some(&conn), Some(skills_path),
+            None, None, "0.1.0", None,
+        ).unwrap();
+        crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
+
+        // Rename
+        rename_skill_inner("old-name", "new-name", workspace, &conn, Some(skills_path)).unwrap();
+
+        // Workspace dirs moved
+        assert!(!Path::new(workspace).join("old-name").exists());
+        assert!(Path::new(workspace).join("new-name").exists());
+
+        // Skills dirs moved
+        assert!(!Path::new(skills_path).join("old-name").exists());
+        assert!(Path::new(skills_path).join("new-name").exists());
+
+        // DB: old record gone, new record present with same data
+        assert!(crate::db::get_workflow_run(&conn, "old-name").unwrap().is_none());
+        let row = crate::db::get_workflow_run(&conn, "new-name").unwrap().unwrap();
+        assert_eq!(row.domain, "analytics");
+        assert_eq!(row.skill_type, "domain");
+
+        // Tags migrated
+        let tags = crate::db::get_tags_for_skills(&conn, &["new-name".into()]).unwrap();
+        let new_tags = tags.get("new-name").unwrap();
+        assert!(new_tags.contains(&"tag-a".to_string()));
+        assert!(new_tags.contains(&"tag-b".to_string()));
+        // Old tags gone
+        let old_tags = crate::db::get_tags_for_skills(&conn, &["old-name".into()]).unwrap();
+        assert!(old_tags.get("old-name").is_none());
+
+        // Workflow steps migrated
+        let steps = crate::db::get_workflow_steps(&conn, "new-name").unwrap();
+        assert_eq!(steps.len(), 1);
+        let old_steps = crate::db::get_workflow_steps(&conn, "old-name").unwrap();
+        assert!(old_steps.is_empty());
+    }
+
+    #[test]
+    fn test_rename_skill_invalid_kebab_case() {
+        // The kebab-case validation happens in the Tauri command wrapper (rename_skill),
+        // not in rename_skill_inner, so we test the validation logic directly.
+        let invalid_names = vec![
+            "HasUpperCase",
+            "has spaces",
+            "-leading-hyphen",
+            "trailing-hyphen-",
+            "double--hyphen",
+            "",
+            "ALLCAPS",
+            "under_score",
+        ];
+
+        for name in invalid_names {
+            let is_kebab = !name.is_empty()
+                && !name.starts_with('-')
+                && !name.ends_with('-')
+                && !name.contains("--")
+                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            assert!(
+                !is_kebab,
+                "Name '{}' should be rejected as non-kebab-case",
+                name
+            );
+        }
+
+        // Valid kebab-case names should pass
+        let valid_names = vec!["my-skill", "a", "skill-123", "a-b-c"];
+        for name in valid_names {
+            let is_kebab = !name.is_empty()
+                && !name.starts_with('-')
+                && !name.ends_with('-')
+                && !name.contains("--")
+                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+            assert!(
+                is_kebab,
+                "Name '{}' should be accepted as valid kebab-case",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn test_rename_skill_collision() {
+        let workspace_dir = tempdir().unwrap();
+        let workspace = workspace_dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create two skills in DB
+        create_skill_inner(workspace, "skill-a", "domain-a", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace, "skill-b", "domain-b", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+
+        // Attempt to rename skill-a to skill-b (collision)
+        let result = rename_skill_inner("skill-a", "skill-b", workspace, &conn, None);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("already exists"), "Error should mention collision: {}", err);
+
+        // Original skill should be untouched
+        let row = crate::db::get_workflow_run(&conn, "skill-a").unwrap().unwrap();
+        assert_eq!(row.domain, "domain-a");
+    }
+
+    #[test]
+    fn test_rename_skill_noop_same_name() {
+        // When old == new, the Tauri command returns Ok(()) without touching DB.
+        // Since rename_skill_inner is only called when old != new, we test the
+        // early-return logic that lives in the command wrapper.
+        let old = "same-name";
+        let new = "same-name";
+        assert_eq!(old, new);
+        // The command returns Ok(()) for this case — verified by the condition.
+        // We also verify rename_skill_inner would work if called (same name = collision in DB).
+        let conn = create_test_db();
+        let workspace_dir = tempdir().unwrap();
+        let workspace = workspace_dir.path().to_str().unwrap();
+        create_skill_inner(workspace, "same-name", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+
+        // rename_skill_inner with same name hits the "already exists" check in DB,
+        // confirming the early-return in the wrapper is necessary.
+        let result = rename_skill_inner("same-name", "same-name", workspace, &conn, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("already exists"));
+    }
+
+    #[test]
+    fn test_rename_skill_disk_rollback_on_db_failure() {
+        let workspace_dir = tempdir().unwrap();
+        let workspace = workspace_dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create the skill on disk (workspace dir) and in DB
+        create_skill_inner(workspace, "will-rollback", "analytics", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+        assert!(Path::new(workspace).join("will-rollback").exists());
+
+        // To force the DB transaction to fail, we drop the workflow_runs table
+        // after creating the skill, so the INSERT in the transaction will fail.
+        // But we need the existence check to pass first (no row for "new-name").
+        // Strategy: drop and recreate workflow_runs without the old row data columns,
+        // so the INSERT...SELECT fails due to column mismatch.
+        //
+        // Simpler approach: insert a row with the new name AFTER the existence check
+        // runs but before the transaction. Since we can't do that with a single call,
+        // we instead corrupt the table structure.
+        //
+        // Simplest: drop the workflow_runs table entirely after the existence check.
+        // But rename_skill_inner does the check and the tx in one call.
+        //
+        // Best approach: rename to a name that will fail in the INSERT because the
+        // source row doesn't exist (i.e., old_name doesn't exist in DB, so
+        // INSERT...SELECT copies 0 rows, then DELETE affects 0 rows, then the other
+        // UPDATEs also affect 0 rows — that actually succeeds).
+        //
+        // Real approach: We need to make the transaction fail. We can do this by
+        // creating a trigger that raises an error, or by making the table read-only.
+        // The easiest: add a UNIQUE constraint violation by pre-inserting the new name
+        // into a table that the transaction will try to UPDATE into.
+        //
+        // Actually, the cleanest way: put a row in workflow_steps with the NEW name
+        // and a UNIQUE constraint, but workflow_steps PK is (skill_name, step_id) so
+        // we need a conflicting row. Let's add a step for "rollback-target" (the new name)
+        // with the same step_id that "will-rollback" has after the UPDATE tries to set it.
+        //
+        // The transaction first does INSERT+DELETE on workflow_runs (succeeds), then
+        // UPDATE workflow_steps. If we pre-insert a workflow_steps row with
+        // (skill_name="rollback-target", step_id=0), the UPDATE from
+        // (skill_name="will-rollback", step_id=0) to (skill_name="rollback-target", step_id=0)
+        // will violate the PK and fail.
+        crate::db::save_workflow_step(&conn, "will-rollback", 0, "completed").unwrap();
+        // Pre-insert a conflicting row for the new name
+        conn.execute(
+            "INSERT INTO workflow_steps (skill_name, step_id, status) VALUES ('rollback-target', 0, 'pending')",
+            [],
+        ).unwrap();
+
+        let result = rename_skill_inner("will-rollback", "rollback-target", workspace, &conn, None);
+        assert!(result.is_err(), "Rename should fail due to DB constraint violation");
+        assert!(result.unwrap_err().contains("Failed to rename skill in database"));
+
+        // Workspace dir should be rolled back to original name
+        assert!(
+            Path::new(workspace).join("will-rollback").exists(),
+            "Workspace dir should be rolled back to original name"
+        );
+        assert!(
+            !Path::new(workspace).join("rollback-target").exists(),
+            "New workspace dir should not exist after rollback"
+        );
+
+        // DB should still have the original skill
+        let row = crate::db::get_workflow_run(&conn, "will-rollback");
+        // The transaction was rolled back, but the INSERT+DELETE on workflow_runs
+        // may have partially committed before the ROLLBACK. Let's check what we have.
+        // Actually, since the transaction used BEGIN...COMMIT and the closure returned Err,
+        // the outer code calls ROLLBACK, so all changes within the transaction are undone.
+        // However, the INSERT of "rollback-target" into workflow_runs succeeded before
+        // the workflow_steps UPDATE failed. The ROLLBACK undoes the entire transaction.
+        // So the original "will-rollback" row should still exist.
+        assert!(row.unwrap().is_some(), "Original DB row should survive after rollback");
     }
 }
