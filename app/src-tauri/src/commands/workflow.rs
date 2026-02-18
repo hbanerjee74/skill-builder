@@ -896,6 +896,7 @@ async fn run_workflow_step_inner(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
+        conversation_history: None,
     };
 
     sidecar::spawn_sidecar(
