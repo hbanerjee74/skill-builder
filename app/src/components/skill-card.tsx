@@ -94,31 +94,6 @@ function formatRelativeTime(dateString: string | null): string {
   }
 }
 
-function statusVariant(
-  status: string | null
-): "default" | "secondary" | "outline" {
-  switch (status) {
-    case "completed":
-      return "default"
-    case "waiting_for_user":
-      return "outline"
-    default:
-      return "secondary"
-  }
-}
-
-function statusLabel(status: string | null): string {
-  switch (status) {
-    case "in_progress":
-      return "In Progress"
-    case "waiting_for_user":
-      return "Needs Input"
-    case "completed":
-      return "Completed"
-    default:
-      return status || "Unknown"
-  }
-}
 
 export default function SkillCard({
   skill,
@@ -143,12 +118,7 @@ export default function SkillCard({
           <CardTitle className="min-w-0 truncate text-base">
             {skill.name}
           </CardTitle>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
-            <Badge variant={statusVariant(skill.status)}>
-              {statusLabel(skill.status)}
-            </Badge>
-          </div>
+          {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
         {skill.domain && (
           <Badge variant="outline" className="max-w-full truncate text-xs">
