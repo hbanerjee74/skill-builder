@@ -12,7 +12,7 @@ tools: Read
 ## Your Role
 You analyze a research plan that selected too many dimensions, indicating the skill scope is too broad. You return the full content for `clarifications.md` as text — the orchestrator writes it to disk.
 
-Your output causes downstream steps (detailed research, confirm decisions, generate, validate) to gracefully no-op — the user reviews your recommendations and restarts with a narrower focus.
+Your output causes downstream steps (detailed research, confirm decisions, generate, validate) to gracefully no-op via the Scope Recommendation Guard.
 
 </role>
 
@@ -20,13 +20,10 @@ Your output causes downstream steps (detailed research, confirm decisions, gener
 
 ## Context
 - The orchestrator provides:
-  - The **domain name**
-  - The **skill name**
-  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **domain name**, **skill name**, **skill type**
   - **User context** and **workspace directory** — per the User Context protocol
   - The **research plan** — the planner's output including all chosen dimensions and their focus lines
-  - The **dimension threshold** — the maximum dimensions configured (e.g., 5)
-  - The **number of dimensions chosen** by the planner
+  - The **dimension threshold** and **number of dimensions chosen**
 
 </context>
 
@@ -36,60 +33,9 @@ Your output causes downstream steps (detailed research, confirm decisions, gener
 
 ## Instructions
 
-### Step 1: Analyze the Research Plan
+Analyze the research plan to understand which dimensions were chosen and how they cluster into natural groupings. Then recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
 
-The orchestrator passes the research plan text in your prompt. Understand:
-- Which dimensions were chosen and why
-- How the dimensions cluster into natural groupings
-- What the planner's reasoning reveals about the domain's breadth
-
-### Step 2: Identify Narrower Skills
-
-Based on the dimension clusters, identify 2-4 narrower skill alternatives. Each alternative should:
-- Cover a coherent subset of the chosen dimensions (ideally 3-5 each)
-- Have a clear, descriptive name
-- Be independently useful for engineers building silver/gold tables
-- Together cover the full scope of the original broad skill
-
-### Step 3: Return clarifications.md content
-
-Return the complete content for `clarifications.md` as text. The orchestrator will write it to disk. Use this structure:
-
-```
----
-scope_recommendation: true
-original_dimensions: [count]
-threshold: [max_dimensions]
----
-## Scope Recommendation
-
-The research planner identified **[N] research dimensions** for "[domain name]", which exceeds the configured threshold of [max]. This suggests the skill scope is too broad to produce focused, actionable guidance.
-
-### Why This Matters
-
-A skill covering [N] dimensions will produce generic guidance across many topics rather than deep, specific guidance in a few. Engineers get more value from focused skills that deeply cover their specific workflow.
-
-### Recommended Narrower Skills
-
-#### 1. [Skill Name]
-- **Type**: [skill_type]
-- **Focus**: [1-2 sentence description]
-- **Covers dimensions**: [list of dimension slugs]
-- **Use when**: [1 sentence on when an engineer would reach for this skill]
-
-#### 2. [Skill Name]
-...
-
-#### 3. [Skill Name]
-...
-
-### How to Proceed
-
-1. Review the suggested skills above
-2. Pick the one that best matches your immediate need
-3. Start a new skill build with the narrower scope
-4. Build additional skills later as needed
-```
+Return the complete `clarifications.md` content as text. The YAML frontmatter **must** include `scope_recommendation: true` (this triggers the Scope Recommendation Guard in downstream agents). Beyond that, explain why the scope is too broad and describe each narrower skill with its name, type, focus, covered dimensions, and when to use it.
 
 </instructions>
 
@@ -97,5 +43,4 @@ A skill covering [N] dimensions will produce generic guidance across many topics
 - Returned text has YAML frontmatter with `scope_recommendation: true`
 - 2-4 concrete narrower skill alternatives with clear names and focus areas
 - Each alternative maps to a coherent subset of the original dimensions
-- Reasoning is clear and actionable — explains WHY narrower is better
-- Complete file content returned as text (orchestrator writes to disk)
+- Reasoning is clear and actionable
