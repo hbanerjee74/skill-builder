@@ -20,7 +20,7 @@ import TagInput from "@/components/tag-input"
 import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
-import { isValidKebab, toKebabChars } from "@/lib/utils"
+import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
 const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -28,6 +28,12 @@ const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
   domain: "Business domain knowledge (Finance, Marketing, HR)",
   source: "Source system extraction patterns (Salesforce, SAP, Workday)",
   "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
+}
+
+const STEP_DESCRIPTIONS: Record<number, string> = {
+  1: "Name your skill and choose its type.",
+  2: "Describe the domain, scope, and tags.",
+  3: "Add optional details to guide research.",
 }
 
 interface NewSkillDialogProps {
@@ -73,8 +79,8 @@ export default function NewSkillDialog({
         try {
           const result = await generateSuggestions(skillName, type, industry, functionRole)
           setSuggestions(result)
-        } catch {
-          // Silently fail — ghost text is optional
+        } catch (err) {
+          console.warn("[new-skill] Ghost suggestion fetch failed:", err)
         }
       }, 800)
     },
@@ -109,20 +115,16 @@ export default function NewSkillDialog({
     setLoading(true)
     setError(null)
     try {
-      const intakeData: Record<string, string> = {}
-      if (audience.trim()) intakeData.audience = audience.trim()
-      if (challenges.trim()) intakeData.challenges = challenges.trim()
-      if (scope.trim()) intakeData.scope = scope.trim()
-      if (uniqueSetup.trim()) intakeData.unique_setup = uniqueSetup.trim()
-      if (claudeMistakes.trim()) intakeData.claude_mistakes = claudeMistakes.trim()
-
       await invoke("create_skill", {
         workspacePath,
         name: name.trim(),
         domain: domain.trim() || name.replace(/-/g, " "),
         tags: tags.length > 0 ? tags : null,
         skillType: skillType || null,
-        intakeJson: Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
+        intakeJson: buildIntakeJson({
+          audience, challenges, scope,
+          unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
+        }),
       })
       console.log(`[skill] Created skill "${name}"`)
       toast.success(`Skill "${name}" created`)
@@ -158,6 +160,12 @@ export default function NewSkillDialog({
 
   const canAdvanceStep1 = name.trim() !== "" && isValidKebab(name.trim()) && skillType !== ""
 
+  function stepDotColor(s: number): string {
+    if (s === step) return "bg-primary"
+    if (s < step) return "bg-primary/40"
+    return "bg-muted-foreground/20"
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
       <DialogTrigger asChild>
@@ -171,9 +179,7 @@ export default function NewSkillDialog({
           <DialogHeader>
             <DialogTitle>Create New Skill</DialogTitle>
             <DialogDescription>
-              {step === 1 && "Name your skill and choose its type."}
-              {step === 2 && "Describe the domain, scope, and tags."}
-              {step === 3 && "Add optional details to guide research."}
+              {STEP_DESCRIPTIONS[step]}
             </DialogDescription>
           </DialogHeader>
 
