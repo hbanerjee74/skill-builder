@@ -425,7 +425,7 @@ pub async fn import_team_repo_skill(
     let creator_for_manifest = manifest_creator
         .as_deref()
         .or(github_user_login.as_deref());
-    super::github_push::write_manifest_to_dir(
+    super::github_push::write_manifest_file(
         &skill_output_dir,
         creator_for_manifest,
         &app_version,

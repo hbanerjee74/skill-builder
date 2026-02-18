@@ -131,6 +131,46 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
     Ok(Some(oid.to_string()))
 }
 
+/// Return names of top-level directories that exist on disk but are not in the HEAD tree.
+/// Skips dotfile/hidden directories.
+pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
+    if !path.join(".git").exists() {
+        return Ok(vec![]);
+    }
+    let repo = Repository::open(path)
+        .map_err(|e| format!("Failed to open git repo: {}", e))?;
+
+    let head_tree = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_tree().ok());
+
+    let entries = std::fs::read_dir(path)
+        .map_err(|e| format!("Failed to read dir: {e}"))?;
+
+    let mut untracked = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let is_tracked = head_tree
+            .as_ref()
+            .map(|tree| tree.get_name(&name).is_some())
+            .unwrap_or(false);
+
+        if !is_tracked {
+            untracked.push(name);
+        }
+    }
+
+    Ok(untracked)
+}
+
 /// Get commit history for a specific skill (filtered by path prefix).
 pub fn get_history(
     repo_path: &Path,
@@ -621,5 +661,58 @@ mod tests {
         let tree = head.tree().unwrap();
         assert!(tree.get_path(Path::new("skill-a/SKILL.md")).is_ok());
         assert!(tree.get_path(Path::new("skill-b/SKILL.md")).is_ok());
+    }
+
+    #[test]
+    fn test_get_untracked_dirs_detects_new_folders() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        // Commit one skill
+        let a_dir = dir.path().join("skill-a");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        commit_all(dir.path(), "add skill-a").unwrap();
+
+        // Add two new folders without committing
+        let b_dir = dir.path().join("skill-b");
+        let c_dir = dir.path().join("skill-c");
+        std::fs::create_dir_all(&b_dir).unwrap();
+        std::fs::create_dir_all(&c_dir).unwrap();
+        std::fs::write(b_dir.join("SKILL.md"), "# B").unwrap();
+        std::fs::write(c_dir.join("SKILL.md"), "# C").unwrap();
+
+        let mut untracked = get_untracked_dirs(dir.path()).unwrap();
+        untracked.sort();
+        assert_eq!(untracked, vec!["skill-b", "skill-c"]);
+    }
+
+    #[test]
+    fn test_get_untracked_dirs_skips_dotfiles() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        // Add a dotfile directory (should be skipped)
+        let hidden = dir.path().join(".claude");
+        std::fs::create_dir_all(&hidden).unwrap();
+        std::fs::write(hidden.join("config.json"), "{}").unwrap();
+
+        let untracked = get_untracked_dirs(dir.path()).unwrap();
+        assert!(untracked.is_empty());
+    }
+
+    #[test]
+    fn test_get_untracked_dirs_empty_when_all_tracked() {
+        let dir = tempdir().unwrap();
+        ensure_repo(dir.path()).unwrap();
+
+        // Commit a skill
+        let a_dir = dir.path().join("skill-a");
+        std::fs::create_dir_all(&a_dir).unwrap();
+        std::fs::write(a_dir.join("SKILL.md"), "# A").unwrap();
+        commit_all(dir.path(), "add skill-a").unwrap();
+
+        let untracked = get_untracked_dirs(dir.path()).unwrap();
+        assert!(untracked.is_empty());
     }
 }

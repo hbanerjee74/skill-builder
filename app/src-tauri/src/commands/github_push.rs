@@ -480,22 +480,10 @@ pub async fn list_user_repos(
     Ok(all_repos)
 }
 
-// --- Public Helpers (used by other commands) ---
+// --- Helpers (crate-internal) ---
 
 /// Write the .skill-builder manifest JSON file into a skill directory.
-/// Public wrapper for use by `skill.rs` during skill creation.
-pub fn write_manifest_to_dir(
-    skill_dir: &Path,
-    creator: Option<&str>,
-    app_version: &str,
-) -> Result<(), String> {
-    write_manifest_file(skill_dir, creator, app_version)
-}
-
-// --- Internal Helpers ---
-
-/// Write the .skill-builder manifest JSON file into a skill directory.
-fn write_manifest_file(
+pub(crate) fn write_manifest_file(
     skill_dir: &Path,
     creator: Option<&str>,
     app_version: &str,
@@ -1372,15 +1360,6 @@ mod tests {
         create_push_tag(&repo, "my-skill", 1).unwrap();
         // Should not error when overwriting
         create_push_tag(&repo, "my-skill", 1).unwrap();
-    }
-
-    // --- write_manifest_to_dir (public helper) ---
-
-    #[test]
-    fn test_write_manifest_to_dir_delegates() {
-        let dir = tempfile::tempdir().unwrap();
-        write_manifest_to_dir(dir.path(), Some("user"), "0.1.0").unwrap();
-        assert!(dir.path().join(".skill-builder").exists());
     }
 
     // --- reconcile: creates missing manifests ---
