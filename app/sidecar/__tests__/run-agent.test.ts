@@ -308,7 +308,7 @@ describe("emitSystemEvent", () => {
 
 describe("buildRefinePrompt", () => {
   it("formats conversation history with current request", () => {
-    const history = [
+    const history: { role: "user" | "assistant"; content: string }[] = [
       { role: "user", content: "Make the metrics section more specific" },
       { role: "assistant", content: "I've updated the metrics section." },
     ];
