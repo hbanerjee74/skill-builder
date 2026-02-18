@@ -62,10 +62,11 @@ Pipeline Progress:
 - [ ] Phase 1: Unit & integration tests written/updated
 - [ ] Phase 2: E2E tests assessed and written (if needed)
 - [ ] Phase 3: Targeted tests passing
-- [ ] Phase 4: Code simplified
-- [ ] Phase 5: Code review passed
-- [ ] Phase 6: Documentation updated
-- [ ] Phase 7: E2E tests passing
+- [ ] Phase 4: Logging compliance verified
+- [ ] Phase 5: Code simplified
+- [ ] Phase 6: Code review passed
+- [ ] Phase 7: Documentation updated
+- [ ] Phase 8: E2E tests passing
 ```
 
 ### Phase 1: Unit & Integration Tests
@@ -80,19 +81,28 @@ Assess whether changes affect user-facing flows that warrant new Playwright E2E 
 
 Run tests per the project's test strategy (see CLAUDE.md "Choosing which tests to run"). Max 3 attempts per failure, then escalate to user.
 
-### Phase 4: Code Simplification
+### Phase 4: Logging Compliance
+
+Verify all changed code follows the project logging guidelines (CLAUDE-APP.md § Logging):
+- **Rust**: Every new `#[tauri::command]` has `info!` on entry (with key params) and `error!` on failure. Intermediate steps use `debug!`. No secrets logged.
+- **Frontend**: Caught errors use `console.error()`, unexpected states use `console.warn()`, significant user actions use `console.log()`. No render-cycle or state-read logging.
+- **Format**: Log messages include context — e.g. `info!("import_skills: importing {} from {}", count, repo)` not just `info!("importing")`.
+
+If any gaps, fix them and re-run affected tests.
+
+### Phase 5: Code Simplification
 
 Spawn `code-simplifier:code-simplifier` targeting the worktree. It reviews recently changed files and simplifies for clarity, consistency, and maintainability while preserving all functionality. Fix any issues it surfaces, then re-run affected tests to confirm nothing broke.
 
-### Phase 5: Code Review
+### Phase 6: Code Review
 
 Spawn `feature-dev:code-reviewer`. See [review-flow.md](references/review-flow.md). Max 2 review-fix cycles — fix high/medium issues, note low-severity if not straightforward.
 
-### Phase 6: Update Documentation
+### Phase 7: Update Documentation
 
 Keep project docs in sync with changes. Check `CLAUDE.md` (and its `@import` files) and any `README.md` in changed directories. Update if the changes affect documented architecture, commands, conventions, or usage. Commit doc updates separately.
 
-### Phase 7: Run E2E Tests
+### Phase 8: Run E2E Tests
 
 Run E2E tests tagged for the changed areas. This is the final validation gate after simplification, review fixes, and doc updates. Fix failures. Max 3 attempts, then escalate to user.
 
