@@ -149,7 +149,7 @@ test.describe("Usage Multi-Model Tracking", { tag: "@dashboard" }, () => {
     await expect(page.getByText("$0.90 (1 agents)")).toBeVisible();
   });
 
-  test("expanding a session shows per-model step detail with mixed badge", async ({ page }) => {
+  test("expanding a session shows separate rows per model within a step", async ({ page }) => {
     await page.goto("/usage");
     await waitForAppReady(page);
 
@@ -162,10 +162,16 @@ test.describe("Usage Multi-Model Tracking", { tag: "@dashboard" }, () => {
     const stepTable = page.getByTestId("step-table");
     await expect(stepTable).toBeVisible();
 
-    // The Research step groups both models, so it should show "mixed" badge
-    await expect(stepTable.getByText("mixed")).toBeVisible();
+    // Should show two separate rows for the Research step — one per model
+    await expect(stepTable.getByText("claude-sonnet-4-520250514")).toBeVisible();
+    await expect(stepTable.getByText("claude-haiku-3-520250514")).toBeVisible();
 
-    // The step should show the combined cost across both models
-    await expect(stepTable.getByText("$2.75")).toBeVisible();
+    // No "mixed" badge — each row is a specific model
+    await expect(stepTable.getByText("mixed")).not.toBeVisible();
+
+    // Sonnet row: agent-001 ($1.25) + agent-002 ($0.60) = $1.85
+    await expect(stepTable.getByText("$1.85")).toBeVisible();
+    // Haiku row: agent-001 haiku ($0.90)
+    await expect(stepTable.getByText("$0.90")).toBeVisible();
   });
 });

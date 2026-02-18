@@ -95,20 +95,24 @@ interface StepSummary {
 }
 
 function groupByStep(agents: AgentRunRecord[]): StepSummary[] {
-  const map = new Map<number, { cost: number; tokens: number; models: Set<string> }>()
+  const map = new Map<string, { stepId: number; cost: number; tokens: number }>()
   for (const a of agents) {
-    const entry = map.get(a.step_id) ?? { cost: 0, tokens: 0, models: new Set<string>() }
+    const key = `${a.step_id}|${a.model}`
+    const entry = map.get(key) ?? { stepId: a.step_id, cost: 0, tokens: 0 }
     entry.cost += a.total_cost
     entry.tokens += a.input_tokens + a.output_tokens
-    entry.models.add(a.model)
-    map.set(a.step_id, entry)
+    map.set(key, entry)
   }
   return Array.from(map.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([stepId, { cost, tokens, models }]) => ({
+    .sort(([a], [b]) => {
+      const stepA = parseInt(a.split("|")[0])
+      const stepB = parseInt(b.split("|")[0])
+      return stepA !== stepB ? stepA - stepB : a.localeCompare(b)
+    })
+    .map(([key, { stepId, cost, tokens }]) => ({
       stepId,
       name: getStepName(stepId),
-      model: models.size === 1 ? [...models][0] : "mixed",
+      model: key.split("|")[1],
       cost,
       tokens,
     }))
