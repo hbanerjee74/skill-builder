@@ -183,6 +183,26 @@ describe("SetupScreen", () => {
     });
   });
 
+  it("pre-populates API key from store when already set", async () => {
+    useSettingsStore.getState().setSettings({ anthropicApiKey: "sk-ant-existing" });
+    render(<SetupScreen />);
+
+    await waitFor(() => {
+      const input = screen.getByLabelText("Anthropic API Key") as HTMLInputElement;
+      expect(input.value).toBe("sk-ant-existing");
+    });
+  });
+
+  it("pre-populates skills path from store instead of default when already set", async () => {
+    useSettingsStore.getState().setSettings({ skillsPath: "/existing/skills" });
+    render(<SetupScreen />);
+
+    await waitFor(() => {
+      const input = screen.getByLabelText("Skills Folder") as HTMLInputElement;
+      expect(input.value).toBe("/existing/skills");
+    });
+  });
+
   it("disables Get Started when skills path is cleared", async () => {
     const user = userEvent.setup();
     render(<SetupScreen onComplete={vi.fn()} />);

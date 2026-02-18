@@ -14,19 +14,24 @@ interface SetupScreenProps {
 }
 
 export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
-  const [apiKey, setApiKey] = useState("")
+  const existingApiKey = useSettingsStore((s) => s.anthropicApiKey)
+  const existingSkillsPath = useSettingsStore((s) => s.skillsPath)
+  const [apiKey, setApiKey] = useState(existingApiKey ?? "")
   const [showApiKey, setShowApiKey] = useState(false)
-  const [skillsPath, setSkillsPath] = useState("")
+  const [skillsPath, setSkillsPath] = useState(existingSkillsPath ?? "")
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [saving, setSaving] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
 
+  // Only fetch default skills path if no existing value
   useEffect(() => {
-    getDefaultSkillsPath()
-      .then((path) => setSkillsPath(path))
-      .catch(() => {})
-  }, [])
+    if (!existingSkillsPath) {
+      getDefaultSkillsPath()
+        .then((path) => setSkillsPath(path))
+        .catch(() => {})
+    }
+  }, [existingSkillsPath])
 
   const handleTestApiKey = async () => {
     if (!apiKey) return
