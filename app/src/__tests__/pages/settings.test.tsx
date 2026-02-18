@@ -43,6 +43,10 @@ vi.mock("@/pages/skills", () => ({
   default: () => <div data-testid="skills-page">Skills Library Content</div>,
 }));
 
+vi.mock("@/pages/prompts", () => ({
+  default: () => <div data-testid="prompts-page">Prompts Content</div>,
+}));
+
 vi.mock("@/components/feedback-dialog", () => ({
   FeedbackDialog: () => null,
 }));
@@ -116,7 +120,7 @@ describe("SettingsPage", () => {
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
   });
 
-  it("renders all 5 sections in left nav", async () => {
+  it("renders all 6 sections in left nav", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -127,6 +131,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Skills Library/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Prompts/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });

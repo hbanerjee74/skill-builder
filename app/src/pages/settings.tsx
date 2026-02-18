@@ -30,11 +30,13 @@ import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
 import SkillsPage from "./skills"
+import PromptsPage from "./prompts"
 
 const sections = [
   { id: "general", label: "General" },
   { id: "skill-building", label: "Skill Building" },
   { id: "skills-library", label: "Skills Library" },
+  { id: "prompts", label: "Prompts" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
 ] as const
@@ -519,6 +521,8 @@ export default function SettingsPage() {
           )}
 
           {activeSection === "skills-library" && <SkillsPage />}
+
+          {activeSection === "prompts" && <PromptsPage />}
 
           {activeSection === "github" && (
           <div className="space-y-6 p-6">
