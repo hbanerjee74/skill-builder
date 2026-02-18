@@ -8,6 +8,14 @@ use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
+/// Tools available to the refine-skill agent. Matches the agent's frontmatter
+/// `tools: Read, Edit, Write, Glob, Grep, Task`. Task is required for the
+/// `/rewrite` and `/validate` magic commands which spawn sub-agents.
+const REFINE_TOOLS: &[&str] = &["Read", "Edit", "Write", "Glob", "Grep", "Task"];
+
+const REFINE_AGENT_NAME: &str = "refine-skill";
+const REFINE_MAX_TURNS: u32 = 20;
+
 // ─── Session management scaffolding ──────────────────────────────────────────
 
 /// In-memory state for a single refine session.
@@ -41,6 +49,58 @@ impl RefineSessionManager {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Build a SidecarConfig for a refine session message.
+/// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
+fn build_refine_config(
+    message: String,
+    conversation_history: Vec<serde_json::Value>,
+    session_id: String,
+    skill_name: &str,
+    skills_path: &str,
+    api_key: String,
+    model: String,
+    extended_context: bool,
+    extended_thinking: bool,
+) -> (SidecarConfig, String) {
+    let thinking_budget: Option<u32> = if extended_thinking {
+        Some(16_000)
+    } else {
+        None
+    };
+
+    let cwd = Path::new(skills_path)
+        .join(skill_name)
+        .to_string_lossy()
+        .to_string();
+    let agent_id = format!(
+        "refine-{}-{}",
+        skill_name,
+        chrono::Utc::now().timestamp_millis()
+    );
+
+    let config = SidecarConfig {
+        prompt: message,
+        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        model: Some(model),
+        api_key,
+        cwd,
+        allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
+        max_turns: Some(REFINE_MAX_TURNS),
+        permission_mode: None,
+        session_id: Some(session_id),
+        max_thinking_tokens: thinking_budget,
+        path_to_claude_code_executable: None,
+        agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        conversation_history: if conversation_history.is_empty() {
+            None
+        } else {
+            Some(conversation_history)
+        },
+    };
+
+    (config, agent_id)
+}
 
 fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -392,51 +452,25 @@ pub async fn send_refine_message(
         (skills_path, key, settings.extended_context, settings.extended_thinking, model)
     };
 
-    let thinking_budget: Option<u32> = if extended_thinking {
-        Some(16_000)
-    } else {
-        None
-    };
-
-    let cwd = Path::new(&skills_path)
-        .join(&skill_name)
-        .to_string_lossy()
-        .to_string();
-    let agent_id = format!("refine-{}-{}", skill_name, chrono::Utc::now().timestamp_millis());
-
-    log::debug!(
-        "[send_refine_message] spawning agent {} in cwd={} with {} history messages",
-        agent_id,
-        cwd,
-        conversation_history.len()
+    // 3. Build config and agent_id
+    let (config, agent_id) = build_refine_config(
+        message,
+        conversation_history,
+        session_id,
+        &skill_name,
+        &skills_path,
+        api_key,
+        model,
+        extended_context,
+        extended_thinking,
     );
 
-    // 3. Build SidecarConfig
-    let config = SidecarConfig {
-        prompt: message,
-        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
-        model: Some(model),
-        api_key,
-        cwd,
-        allowed_tools: Some(vec![
-            "Read".to_string(),
-            "Edit".to_string(),
-            "Write".to_string(),
-            "Glob".to_string(),
-            "Grep".to_string(),
-        ]),
-        max_turns: Some(20),
-        permission_mode: None,
-        session_id: Some(session_id),
-        max_thinking_tokens: thinking_budget,
-        path_to_claude_code_executable: None,
-        agent_name: Some("refine-skill".to_string()),
-        conversation_history: if conversation_history.is_empty() {
-            None
-        } else {
-            Some(conversation_history)
-        },
-    };
+    log::debug!(
+        "[send_refine_message] spawning agent {} in cwd={} with agent_name={}",
+        agent_id,
+        config.cwd,
+        config.agent_name.as_deref().unwrap_or("none")
+    );
 
     // 4. Spawn via pool — events stream automatically to frontend
     sidecar::spawn_sidecar(
@@ -730,45 +764,186 @@ mod tests {
         assert!(map.get("nonexistent").is_none());
     }
 
-    #[test]
-    fn test_conversation_history_serialization() {
-        // Verify the conversation history format matches what the sidecar expects
-        let history = vec![
-            serde_json::json!({"role": "user", "content": "Make it better"}),
-            serde_json::json!({"role": "assistant", "content": "I've updated the file."}),
-        ];
+    // ===== build_refine_config tests =====
 
-        let config = SidecarConfig {
-            prompt: "Add examples".to_string(),
-            model: Some("sonnet".to_string()),
-            api_key: "sk-test".to_string(),
-            cwd: "/tmp/skills/my-skill".to_string(),
-            allowed_tools: Some(vec![
-                "Read".to_string(),
-                "Edit".to_string(),
-                "Write".to_string(),
-                "Glob".to_string(),
-                "Grep".to_string(),
-            ]),
-            max_turns: Some(20),
-            permission_mode: None,
-            session_id: Some("session-123".to_string()),
-            betas: None,
-            max_thinking_tokens: None,
-            path_to_claude_code_executable: None,
-            agent_name: Some("refine-skill".to_string()),
-            conversation_history: Some(history),
-        };
+    fn base_refine_config(
+        message: &str,
+        history: Vec<serde_json::Value>,
+    ) -> (SidecarConfig, String) {
+        build_refine_config(
+            message.to_string(),
+            history,
+            "session-123".to_string(),
+            "my-skill",
+            "/skills",
+            "sk-test-key".to_string(),
+            "sonnet".to_string(),
+            false,
+            false,
+        )
+    }
+
+    #[test]
+    fn test_refine_config_agent_name_matches_agent_prompt() {
+        // agent_name must match agents/refine-skill.md so the sidecar loads the correct prompt
+        let (config, _) = base_refine_config("improve metrics", vec![]);
+        assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
+    }
+
+    #[test]
+    fn test_refine_config_includes_task_tool_for_magic_commands() {
+        // /rewrite and /validate magic commands spawn sub-agents via Task
+        let (config, _) = base_refine_config("/rewrite", vec![]);
+        let tools = config.allowed_tools.unwrap();
+        assert!(
+            tools.contains(&"Task".to_string()),
+            "Task tool required for /rewrite and /validate magic commands"
+        );
+    }
+
+    #[test]
+    fn test_refine_config_includes_all_file_tools() {
+        let (config, _) = base_refine_config("edit SKILL.md", vec![]);
+        let tools = config.allowed_tools.unwrap();
+        for tool in &["Read", "Edit", "Write", "Glob", "Grep"] {
+            assert!(
+                tools.contains(&tool.to_string()),
+                "Missing expected tool: {}",
+                tool
+            );
+        }
+    }
+
+    #[test]
+    fn test_refine_config_cwd_points_to_skill_directory() {
+        // cwd must be skills_path/skill_name so the agent can Read/Edit skill files
+        let (config, _) = build_refine_config(
+            "test".to_string(),
+            vec![],
+            "s1".to_string(),
+            "data-engineering",
+            "/home/user/skills",
+            "sk-key".to_string(),
+            "sonnet".to_string(),
+            false,
+            false,
+        );
+        assert_eq!(config.cwd, "/home/user/skills/data-engineering");
+    }
+
+    #[test]
+    fn test_refine_config_passes_conversation_history() {
+        // Multi-turn history is passed to the sidecar for context
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "Add metrics section"}),
+            serde_json::json!({"role": "assistant", "content": "Done. I added..."}),
+        ];
+        let (config, _) = base_refine_config("Now add examples", history);
+        let ch = config.conversation_history.unwrap();
+        assert_eq!(ch.len(), 2);
+        assert_eq!(ch[0]["role"], "user");
+        assert_eq!(ch[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_refine_config_empty_history_becomes_none() {
+        let (config, _) = base_refine_config("first message", vec![]);
+        assert!(config.conversation_history.is_none());
+    }
+
+    #[test]
+    fn test_refine_config_rewrite_command_passthrough() {
+        // /rewrite is passed as the prompt — the agent interprets it
+        let (config, _) = base_refine_config("/rewrite", vec![]);
+        assert_eq!(config.prompt, "/rewrite");
+    }
+
+    #[test]
+    fn test_refine_config_validate_command_passthrough() {
+        // /validate is passed as the prompt — the agent interprets it
+        let (config, _) = base_refine_config("/validate", vec![]);
+        assert_eq!(config.prompt, "/validate");
+    }
+
+    #[test]
+    fn test_refine_config_file_targeting_passthrough() {
+        // @file targeting is part of the message — the agent interprets it
+        let (config, _) =
+            base_refine_config("@references/metrics.md Add SLA thresholds", vec![]);
+        assert_eq!(
+            config.prompt,
+            "@references/metrics.md Add SLA thresholds"
+        );
+    }
+
+    #[test]
+    fn test_refine_config_agent_id_format() {
+        let (_, agent_id) = base_refine_config("test", vec![]);
+        assert!(agent_id.starts_with("refine-my-skill-"));
+    }
+
+    #[test]
+    fn test_refine_config_session_id_passed_through() {
+        let (config, _) = base_refine_config("test", vec![]);
+        assert_eq!(config.session_id.as_deref(), Some("session-123"));
+    }
+
+    #[test]
+    fn test_refine_config_extended_thinking_sets_budget() {
+        let (config, _) = build_refine_config(
+            "test".to_string(),
+            vec![],
+            "s1".to_string(),
+            "my-skill",
+            "/skills",
+            "sk-key".to_string(),
+            "sonnet".to_string(),
+            false,
+            true, // extended_thinking enabled
+        );
+        assert_eq!(config.max_thinking_tokens, Some(16_000));
+    }
+
+    #[test]
+    fn test_refine_config_no_thinking_when_disabled() {
+        let (config, _) = base_refine_config("test", vec![]);
+        assert!(config.max_thinking_tokens.is_none());
+    }
+
+    #[test]
+    fn test_refine_config_serialization_matches_sidecar_schema() {
+        // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "First request"}),
+            serde_json::json!({"role": "assistant", "content": "Done"}),
+        ];
+        let (config, _) = base_refine_config("@SKILL.md Update overview", history);
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        // Verify conversationHistory is present and correctly serialized
-        let ch = parsed.get("conversationHistory").unwrap();
-        assert!(ch.is_array());
-        assert_eq!(ch.as_array().unwrap().len(), 2);
-        assert_eq!(ch[0]["role"], "user");
-        assert_eq!(ch[1]["role"], "assistant");
+        // Verify camelCase field names match sidecar's SidecarConfig interface
+        assert_eq!(parsed["prompt"], "@SKILL.md Update overview");
+        assert_eq!(parsed["agentName"], "refine-skill");
+        assert_eq!(parsed["maxTurns"], REFINE_MAX_TURNS);
+        assert!(parsed["allowedTools"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!("Task")));
+        assert_eq!(parsed["conversationHistory"].as_array().unwrap().len(), 2);
+        assert!(parsed.get("sessionId").is_some());
+    }
+
+    #[test]
+    fn test_refine_config_serialization_omits_none_fields() {
+        let (config, _) = base_refine_config("test", vec![]);
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // None fields with skip_serializing_if should be absent
+        assert!(parsed.get("conversationHistory").is_none());
+        assert!(parsed.get("maxThinkingTokens").is_none());
+        assert!(parsed.get("permissionMode").is_none());
     }
 
     #[test]
