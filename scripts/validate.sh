@@ -135,7 +135,7 @@ echo "=== Skill Reference Files ==="
 REFS_DIR="skills/generate-skill/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
-  for ref in protocols.md content-guidelines.md file-formats.md best-practices.md; do
+  for ref in protocols.md content-guidelines.md best-practices.md; do
     if [ -f "$REFS_DIR/$ref" ]; then
       size=$(wc -c < "$REFS_DIR/$ref" | tr -d ' ')
       if [ "$size" -gt 100 ]; then
@@ -209,13 +209,13 @@ fi
 
 # ---------- Generate-skill agent: best practices in agent-sources/workspace/CLAUDE.md + references/ in generate-skill agents ----------
 echo "=== Generate-Skill Agent ==="
-# Progressive disclosure and output structure are in agent-sources/workspace/CLAUDE.md (auto-loaded into all agents)
+# SKILL.md structure guidance is in agent-sources/workspace/CLAUDE.md (auto-loaded into all agents)
 if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
   ws_content=$(cat "agent-sources/workspace/CLAUDE.md")
-  if echo "$ws_content" | grep -q "progressive disclosure"; then
-    pass "agent-sources/workspace/CLAUDE.md contains progressive disclosure guidance"
+  if echo "$ws_content" | grep -q "SKILL.md Structure"; then
+    pass "agent-sources/workspace/CLAUDE.md contains SKILL.md structure guidance"
   else
-    fail "agent-sources/workspace/CLAUDE.md missing progressive disclosure guidance"
+    fail "agent-sources/workspace/CLAUDE.md missing SKILL.md structure guidance"
   fi
 fi
 if [ -f "agents/generate-skill.md" ]; then
