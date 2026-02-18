@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn per-file quality reviewers, a cross-cutting coverage/structure checker, and per-prompt test evaluators — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write both output files.
+You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn a coverage & quality checker, per-file reference reviewers, a test evaluator, a boundary & tone checker, and a companion recommender — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write all output files.
 
 ## Out of Scope
 
@@ -92,56 +92,52 @@ Scope recommendation is active. No skill was generated, so no companion recommen
    - What entities, patterns, and concepts are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
 4. **Count the files** — you'll need this to know how many sub-agents to spawn.
-5. **Generate 10 test prompts** that an engineer would ask when using this skill. Cover these categories:
-   - **Core concepts** (2 prompts) — "What are the key entities/patterns in [domain]?"
-   - **Architecture & design** (2 prompts) — "How should I structure/model [specific aspect]?"
-   - **Implementation details** (2 prompts) — "What's the recommended approach for [specific decision]?"
-   - **Configuration & setup** (1 prompt) — "What do I need to configure for [specific feature]?"
-   - **Edge cases** (2 prompts) — domain-specific tricky scenarios the skill should handle
-   - **Cross-functional analysis** (1 prompt) — questions that span multiple areas of the skill
+5. **Generate 5 test prompts** that an engineer would ask when using this skill. Cover all 6 categories across the 5 prompts:
+   - **Core concepts** (1 prompt) — "What are the key entities/patterns in [domain]?"
+   - **Architecture & design** (1 prompt) — "How should I structure/model [specific aspect]?"
+   - **Implementation details** (1 prompt) — "What's the recommended approach for [specific decision]?"
+   - **Edge cases** (1 prompt) — domain-specific tricky scenario the skill should handle
+   - **Cross-functional analysis** (1 prompt) — question spanning multiple areas of the skill, including configuration/setup aspects
 
-   Each prompt should be something a real engineer would ask, not a generic knowledge question. Assign each a number (Test 1, Test 2, etc.) and note its category.
+   Each prompt should be something a real engineer would ask, not a generic knowledge question. Assign each a number (Test 1 through Test 5) and note its category.
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch all sub-agents in the same turn: coverage-structure checker, SKILL.md quality reviewer, per-reference-file reviewers, test evaluators, boundary checker, companion recommender, and prescriptiveness checker. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
+Follow the Sub-agent Spawning protocol. Launch all sub-agents in the same turn: coverage & quality checker, per-reference-file reviewers, test evaluator, boundary & tone checker, and companion recommender. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
 
 ### Validation Sub-agents
 
 All sub-agents **return text** — they do not write files.
 
-**Coverage & Structure Checker** (`name: "coverage-structure"`)
+**Coverage & Quality Checker** (`name: "coverage-quality"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files.
+Combined cross-cutting and content quality checker for SKILL.md. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Performs two passes:
 
-Also verifies SKILL.md uses the correct architectural pattern for the skill type:
-- **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
-- **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
+1. **Coverage & structure pass**: Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files. Verifies SKILL.md uses the correct architectural pattern for the skill type:
+   - **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
+   - **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
+   Report architectural pattern as CORRECT or MISMATCH with details.
 
-Report architectural pattern as CORRECT or MISMATCH with details.
+2. **Content quality pass**: Scores each SKILL.md section on the Quality Dimensions and flags anti-patterns. Returns PASS/FAIL per section with improvement suggestions for any FAIL.
 
-Returns findings as text.
-
-**SKILL.md Quality Reviewer** (`name: "reviewer-skill-md"`)
-
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — the coverage-structure checker handles that). Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
+Returns combined findings as text.
 
 **Reference File Reviewers — one per file** (`name: "reviewer-<filename>"`)
 
-Same approach as the SKILL.md quality reviewer, but for each file in `references/`. Returns findings as text.
+Reads one reference file plus `decisions.md`. Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section with improvement suggestions for any FAIL as text.
 
-### Test Evaluator Sub-agents
+### Test Evaluator
 
-**Test Evaluators — one per test prompt** (`name: "tester-N"`, `model: "haiku"`)
+**Test Evaluator** (`name: "test-evaluator"`, `model: "haiku"`)
 
-Each reads `SKILL.md` and all `references/` files, then evaluates one test prompt. Scoring:
+Reads `SKILL.md` and all `references/` files once, then evaluates all 5 test prompts. Pass all 5 prompts in the sub-agent's prompt. Scoring per prompt:
 - **PASS** — skill directly addresses the question with actionable guidance
 - **PARTIAL** — some relevant content but misses key details or is vague
 - **FAIL** — skill doesn't address the question or gives misleading guidance
 
 For PARTIAL/FAIL, explain: what the engineer would expect, what the skill provides, and whether it's a content gap or organization issue.
 
-Returns the result as text using this format:
+Returns all results as text using this format (one block per test):
 ```
 ### Test N: [prompt text]
 - **Category**: [category]
@@ -152,22 +148,32 @@ Returns the result as text using this format:
 
 ### Quality Gate Sub-agents
 
-**Boundary Checker** (`name: "boundary-checker"`, `model: "haiku"`)
+**Boundary & Tone Checker** (`name: "boundary-tone"`, `model: "haiku"`)
 
-The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files.
+The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files. This sub-agent performs two checks in a single pass:
 
-This sub-agent checks whether the generated skill contains content that belongs to a different skill type. Use the type-scoped dimension sets to determine which dimensions belong to each type:
+**1. Boundary check** — Checks whether the skill contains content that belongs to a different skill type. Use the type-scoped dimension sets:
 
 - **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
 - **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
 - **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
 - **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
 
-For each section and reference file in the skill, classify which dimension(s) it covers. If content maps to a dimension NOT in the current skill type's set, flag it as a boundary violation.
+For each section and reference file, classify which dimension(s) it covers. If content maps to a dimension NOT in the current skill type's set, flag it as a boundary violation. Brief incidental mentions are not violations — only flag substantial content sections that belong to another type.
 
-**Threshold**: Brief incidental mentions of concepts from other types are not violations — only flag substantial content sections that belong to another type.
+**2. Prescriptiveness check** — Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
 
-Returns findings as text:
+Patterns to detect:
+- Imperative directives: "always", "never", "must", "shall", "do not"
+- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
+- Prescriptive mandates: "you should", "it is required", "ensure that"
+- Absolutes without context: "the only way", "the correct approach", "best practice is"
+
+False positive exclusions — do NOT flag content inside code blocks/inline code, quoted error messages, field/API parameter names (e.g., `must_match`), or references to external documentation requirements.
+
+For each detected pattern, suggest an informational rewrite that provides the same guidance with rationale and exceptions instead of imperative tone.
+
+Returns combined findings as text:
 ```
 ### Boundary Check Results
 - **Skill type**: [type]
@@ -178,6 +184,15 @@ Returns findings as text:
 - **Maps to dimension**: [dimension name]
 - **Belongs to type**: [correct type]
 - **Suggested fix**: [how to remove or restructure]
+
+### Prescriptiveness Check Results
+- **Patterns found**: N
+- **Files affected**: N
+
+#### Pattern 1: [file:section]
+- **Original**: "[exact text]"
+- **Issue**: [which pattern type]
+- **Suggested rewrite**: "[informational alternative]"
 ```
 
 **Companion Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
@@ -210,61 +225,31 @@ Returns findings as text using this format:
 - **Template match**: null
 ```
 
-**Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
-
-Reads SKILL.md and all `references/` files. Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
-
-**Patterns to detect:**
-- Imperative directives: "always", "never", "must", "shall", "do not"
-- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
-- Prescriptive mandates: "you should", "it is required", "ensure that"
-- Absolutes without context: "the only way", "the correct approach", "best practice is"
-
-**False positive exclusions** — do NOT flag:
-- Content inside code blocks or inline code
-- Quoted error messages or API responses
-- Field names or API parameter names (e.g., `must_match` config key)
-- References to external documentation requirements
-
-For each detected pattern, suggest an informational rewrite that provides the same guidance with rationale and exceptions instead of imperative tone.
-
-Returns findings as text:
-```
-### Prescriptiveness Check Results
-- **Patterns found**: N
-- **Files affected**: N
-
-#### Pattern 1: [file:section]
-- **Original**: "[exact text]"
-- **Issue**: [which pattern type]
-- **Suggested rewrite**: "[informational alternative]"
-```
-
 ## Phase 3: Consolidate, Fix, and Report
 
 After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
-Pass the returned text from all sub-agents (coverage-structure checker, SKILL.md quality reviewer, reference file reviewers, test evaluators, boundary checker, companion recommender, and prescriptiveness checker) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
+Pass the returned text from all sub-agents (coverage & quality checker, reference file reviewers, test evaluator, boundary & tone checker, and companion recommender) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
 
 Prompt it to:
 1. Review all validation and test results (passed in the prompt)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
-4. **Boundary violations:** Review boundary checker results. For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
+4. **Boundary violations:** Review boundary & tone checker results (boundary section). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
 5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
 6. **Companion skill report:** Write companion recommender results as a standalone `companion-skills.md` file in the context directory. Use YAML frontmatter with structured companion data (for future UI parsing) plus a markdown body with detailed reasoning. See format below.
-7. **Prescriptiveness rewrites:** Review prescriptiveness checker results. Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
+7. **Prescriptiveness rewrites:** Review boundary & tone checker results (prescriptiveness section). Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
 8. Suggest 5-8 additional test prompt categories for future evaluation
 9. Write THREE output files to the context directory (formats below)
 
 ## Error Handling
 
-- **Validator sub-agent failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
+- **Coverage & quality checker failure:** Re-spawn once. If it fails again, tell the reporter to perform coverage and quality checks itself during consolidation.
+- **Reference file reviewer failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
-- **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
-- **Boundary checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary check results and note "BOUNDARY CHECK UNAVAILABLE" in the validation log.
+- **Test evaluator failure:** Re-spawn once. If it fails again, tell the reporter to note "TESTS NOT EVALUATED" in the test report.
+- **Boundary & tone checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary and prescriptiveness results and note "BOUNDARY & TONE CHECK UNAVAILABLE" in the validation log.
 - **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to write `companion-skills.md` with `companions: []` in the YAML frontmatter and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the markdown body.
-- **Prescriptiveness checker failure:** Re-spawn once. If it fails again, tell the reporter to skip prescriptiveness results and note "PRESCRIPTIVENESS CHECK UNAVAILABLE" in the validation log.
 
 </instructions>
 
@@ -368,7 +353,7 @@ No companion recommendations available.
 - All auto-fixable issues are fixed and verified
 
 ### Testing
-- 10 test prompts covering all 6 categories
+- 5 test prompts covering all 6 categories
 - Each result has PASS/PARTIAL/FAIL with specific evidence from skill files
 - Report identifies actionable patterns, not just individual results
 - Suggested prompts target real gaps found during testing
