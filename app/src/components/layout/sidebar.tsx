@@ -19,7 +19,6 @@ const navItems = [
   { to: "/" as const, label: "Skills", icon: Home },
   { to: "/prompts" as const, label: "Prompts", icon: FileText },
   { to: "/usage" as const, label: "Usage", icon: DollarSign },
-  { to: "/settings" as const, label: "Settings", icon: Settings },
 ];
 
 const STORAGE_KEY = "sidebar-collapsed";

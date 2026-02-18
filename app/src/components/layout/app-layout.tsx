@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
@@ -16,6 +16,8 @@ export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const navigate = useNavigate();
+  const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const isSettings = currentPath === "/settings";
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
@@ -113,10 +115,10 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar />
+      {!isSettings && <Sidebar />}
       <div className="flex flex-1 flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-6">
+        {!isSettings && <Header />}
+        <main className={`flex-1 overflow-y-auto${isSettings ? "" : " p-6"}`}>
           {ready && isConfigured ? <Outlet /> : null}
         </main>
       </div>

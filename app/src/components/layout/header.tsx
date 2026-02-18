@@ -1,4 +1,6 @@
-import { useRouterState } from "@tanstack/react-router";
+import { useRouterState, useNavigate } from "@tanstack/react-router";
+import { Settings } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
 
@@ -14,6 +16,7 @@ function getPageTitle(path: string): string {
 
 export function Header() {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const isWorkflow = currentPath.startsWith("/skill/");
 
   return (
@@ -23,6 +26,14 @@ export function Header() {
       </div>
       <div className="flex items-center gap-2">
         {isWorkflow && <ReviewModeToggle />}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => navigate({ to: "/settings" })}
+          title="Settings (⌘,)"
+        >
+          <Settings className="size-4" />
+        </Button>
         <FeedbackDialog />
       </div>
     </header>
