@@ -91,12 +91,12 @@ Refinement is skipped when all first-round clarification answers are:
 
 ## 3. Model Tier Optimization
 
-| Agent Group | Current | Proposed |
-|-------------|---------|----------|
-| Complex dimensions (entities, metrics, business-rules, modeling-patterns) | sonnet | sonnet (keep) |
-| Simpler dimensions (config-patterns, reconciliation, field-semantics, lifecycle-and-state) | sonnet | haiku (~30% savings) |
-| Research planner | opus | opus (keep) |
-| Consolidation | opus | opus (keep) |
+| Agent Group | Model | Notes |
+|-------------|-------|-------|
+| Complex dimensions (entities, metrics, business-rules, modeling-patterns + 10 others) | sonnet | Unchanged |
+| Simpler dimensions (config-patterns, reconciliation, field-semantics, lifecycle-and-state) | haiku | Changed from sonnet (~30% savings) |
+| Research planner | opus | Unchanged |
+| Consolidation | opus | Unchanged |
 
 ---
 
