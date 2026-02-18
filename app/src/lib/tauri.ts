@@ -45,6 +45,8 @@ export interface FieldSuggestions {
   audience: string;
   challenges: string;
   scope: string;
+  unique_setup: string;
+  claude_mistakes: string;
 }
 
 export const generateSuggestions = (

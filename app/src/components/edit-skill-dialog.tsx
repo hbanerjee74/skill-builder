@@ -29,9 +29,9 @@ interface EditSkillDialogProps {
   availableTags: string[]
 }
 
-const EMPTY_INTAKE = { audience: "", challenges: "", scope: "" }
+const EMPTY_INTAKE = { audience: "", challenges: "", scope: "", unique_setup: "", claude_mistakes: "" }
 
-function parseIntake(json: string | null | undefined): { audience: string; challenges: string; scope: string } {
+function parseIntake(json: string | null | undefined): { audience: string; challenges: string; scope: string; unique_setup: string; claude_mistakes: string } {
   if (!json) return EMPTY_INTAKE
   try {
     const obj = JSON.parse(json)
@@ -39,6 +39,8 @@ function parseIntake(json: string | null | undefined): { audience: string; chall
       audience: obj.audience || "",
       challenges: obj.challenges || "",
       scope: obj.scope || "",
+      unique_setup: obj.unique_setup || "",
+      claude_mistakes: obj.claude_mistakes || "",
     }
   } catch {
     return EMPTY_INTAKE
@@ -60,6 +62,8 @@ export default function EditSkillDialog({
   const [audience, setAudience] = useState("")
   const [challenges, setChallenges] = useState("")
   const [scope, setScope] = useState("")
+  const [uniqueSetup, setUniqueSetup] = useState("")
+  const [claudeMistakes, setClaudeMistakes] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -72,6 +76,8 @@ export default function EditSkillDialog({
       setAudience(intake.audience)
       setChallenges(intake.challenges)
       setScope(intake.scope)
+      setUniqueSetup(intake.unique_setup)
+      setClaudeMistakes(intake.claude_mistakes)
     } else if (!open) {
       setSkillName("")
       setDomain("")
@@ -80,6 +86,8 @@ export default function EditSkillDialog({
       setAudience("")
       setChallenges("")
       setScope("")
+      setUniqueSetup("")
+      setClaudeMistakes("")
       setSaving(false)
     }
   }, [open, skill])
@@ -107,6 +115,8 @@ export default function EditSkillDialog({
       if (audience.trim()) intakeData.audience = audience.trim()
       if (challenges.trim()) intakeData.challenges = challenges.trim()
       if (scope.trim()) intakeData.scope = scope.trim()
+      if (uniqueSetup.trim()) intakeData.unique_setup = uniqueSetup.trim()
+      if (claudeMistakes.trim()) intakeData.claude_mistakes = claudeMistakes.trim()
 
       await updateSkillMetadata(
         nameChanged ? skillName : skill.name,
@@ -235,6 +245,28 @@ export default function EditSkillDialog({
             <p className="text-xs text-muted-foreground">
               Helps agents focus research on what matters most
             </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-unique-setup">What makes your setup unique?</Label>
+            <Textarea
+              id="edit-unique-setup"
+              placeholder={placeholders.unique_setup}
+              value={uniqueSetup}
+              onChange={(e) => setUniqueSetup(e.target.value)}
+              disabled={saving}
+              rows={2}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-claude-mistakes">What does Claude get wrong?</Label>
+            <Textarea
+              id="edit-claude-mistakes"
+              placeholder={placeholders.claude_mistakes}
+              value={claudeMistakes}
+              onChange={(e) => setClaudeMistakes(e.target.value)}
+              disabled={saving}
+              rows={2}
+            />
           </div>
         </div>
         <DialogFooter>

@@ -67,26 +67,37 @@ export interface SkillSummary {
   intake_json: string | null
 }
 
-export const INTAKE_PLACEHOLDERS: Record<string, { audience: string; challenges: string; scope: string }> = {
+export const INTAKE_PLACEHOLDERS: Record<string, {
+  audience: string; challenges: string; scope: string;
+  unique_setup: string; claude_mistakes: string;
+}> = {
   platform: {
     audience: "e.g., Data engineers building ELT pipelines, platform admins managing environments",
     challenges: "e.g., Complex dependency management, environment promotion, cost optimization",
     scope: "e.g., Focus on development workflow and CI/CD, exclude administration and security",
+    unique_setup: "e.g., Multi-tenant Fabric workspace with custom capacity management",
+    claude_mistakes: "e.g., Generates generic dbt configs instead of platform-specific overrides",
   },
   domain: {
     audience: "e.g., Business analysts in finance, data scientists building forecasting models",
     challenges: "e.g., Data quality issues in revenue recognition, reconciliation across systems",
     scope: "e.g., Focus on revenue analytics and reporting, exclude operational finance",
+    unique_setup: "e.g., Multi-currency with daily FX snapshots and retroactive adjustments",
+    claude_mistakes: "e.g., Misses industry-specific compliance requirements like ASC 606",
   },
   source: {
     audience: "e.g., Integration engineers connecting Salesforce to data warehouse",
     challenges: "e.g., API rate limits, incremental extraction, schema drift handling",
     scope: "e.g., Focus on Sales Cloud objects and custom objects, exclude Marketing Cloud",
+    unique_setup: "e.g., Custom Salesforce objects with complex record type hierarchies",
+    claude_mistakes: "e.g., Uses bulk API for real-time objects, misses soft-delete patterns",
   },
   "data-engineering": {
     audience: "e.g., Analytics engineers implementing SCD patterns, data platform teams",
     challenges: "e.g., Late-arriving dimensions, retroactive corrections, audit trail requirements",
     scope: "e.g., Focus on Type 2 SCD with effectivity dates, exclude Type 6 hybrid patterns",
+    unique_setup: "e.g., Bi-temporal design with both transaction time and valid time tracking",
+    claude_mistakes: "e.g., Generates Type 1 overwrites when Type 2 history tracking is needed",
   },
 }
 
