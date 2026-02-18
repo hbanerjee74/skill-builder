@@ -42,7 +42,6 @@ export default function RefinePage() {
   const skillFiles = useRefineStore((s) => s.skillFiles);
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
-  const messages = useRefineStore((s) => s.messages);
 
   const runs = useAgentStore((s) => s.runs);
 
@@ -174,6 +173,8 @@ export default function RefinePage() {
           store.setLoadingFiles(false);
           toast.error("Could not load skill files");
         }
+      } else {
+        store.setLoadingFiles(false);
       }
     },
     [isRunning, effectiveSkillsPath],
@@ -224,16 +225,19 @@ export default function RefinePage() {
           ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
           : "";
 
-      // Build conversation context from previous messages
-      const conversationContext = messages
+      // Build conversation context from previous messages (read fresh from stores)
+      const currentMessages = useRefineStore.getState().messages;
+      const agentRuns = useAgentStore.getState().runs;
+      const conversationContext = currentMessages
+        .slice(0, -1) // Exclude the agent turn just added above
         .map((msg) => {
           if (msg.role === "user") {
             return `User: ${msg.userText}`;
           }
           if (msg.role === "agent" && msg.agentId) {
-            const run = useAgentStore.getState().runs[msg.agentId];
-            if (run && (run.status === "completed" || run.status === "error")) {
-              const lastText = run.messages
+            const agentRun = agentRuns[msg.agentId];
+            if (agentRun) {
+              const lastText = agentRun.messages
                 .filter((m) => m.type === "assistant" && m.content)
                 .map((m) => m.content)
                 .pop();
@@ -273,7 +277,7 @@ Read the relevant files, make the requested changes, and briefly describe what y
         toast.error("Failed to start agent");
       }
     },
-    [selectedSkill, effectiveSkillsPath, preferredModel, messages],
+    [selectedSkill, effectiveSkillsPath, preferredModel],
   );
 
   return (
