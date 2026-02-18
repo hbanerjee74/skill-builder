@@ -113,7 +113,7 @@ export default function EditSkillDialog({
 
       await updateSkillMetadata(
         nameChanged ? skillName : skill.name,
-        domain.trim() || null,
+        domain.trim(),
         skillType || null,
         tags,
         buildIntakeJson({

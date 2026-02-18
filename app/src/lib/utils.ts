@@ -16,7 +16,8 @@ export function toKebabChars(str: string): string {
   return str
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-");
+    .replace(/-+/g, "-")
+    .replace(/^-/, "");
 }
 
 /** Build intake JSON from optional form fields. Returns null if all fields are empty. */

@@ -659,7 +659,10 @@ pub async fn generate_suggestions(
          \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\"}}"
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client
         .post("https://api.anthropic.com/v1/messages")
         .header("x-api-key", &api_key)
