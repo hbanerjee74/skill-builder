@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
-  CardContent,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -74,26 +73,6 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
-function formatRelativeTime(dateString: string | null): string {
-  if (!dateString) return ""
-  try {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / 60000)
-
-    if (diffMinutes < 1) return "just now"
-    if (diffMinutes < 60) return `${diffMinutes}m ago`
-    const diffHours = Math.floor(diffMinutes / 60)
-    if (diffHours < 24) return `${diffHours}h ago`
-    const diffDays = Math.floor(diffHours / 24)
-    if (diffDays < 30) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  } catch {
-    return ""
-  }
-}
-
 
 export default function SkillCard({
   skill,
@@ -108,7 +87,6 @@ export default function SkillCard({
   isGitHubLoggedIn,
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
-  const relativeTime = formatRelativeTime(skill.last_modified)
   const canDownload = isWorkflowComplete(skill)
 
   const cardContent = (
@@ -140,15 +118,8 @@ export default function SkillCard({
           </div>
         )}
       </CardHeader>
-      <CardContent className="mt-auto flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span className="truncate min-w-0">{skill.current_step || "Not started"}</span>
-          <span className="shrink-0">{progress}%</span>
-        </div>
-        <Progress value={progress} />
-      </CardContent>
-      <CardFooter className="flex flex-wrap items-center justify-between gap-y-2">
-        <div className="flex items-center gap-2 min-w-0">
+      <CardFooter className="mt-auto flex items-center gap-3">
+        <div className="flex items-center gap-1.5 shrink-0">
           <Button size="sm" onClick={() => onContinue(skill)}>
             <Play className="size-3" />
             Continue
@@ -176,32 +147,9 @@ export default function SkillCard({
             <Trash2 className="size-3" />
           </Button>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {skill.author_login && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-1">
-                    {skill.author_avatar ? (
-                      <img
-                        src={skill.author_avatar}
-                        alt={skill.author_login}
-                        className="size-4 rounded-full"
-                      />
-                    ) : (
-                      <span className="text-xs text-muted-foreground max-w-[80px] truncate">{skill.author_login}</span>
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{skill.author_login}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          {relativeTime && (
-            <span className="text-xs text-muted-foreground">{relativeTime}</span>
-          )}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Progress value={progress} className="flex-1" />
+          <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
         </div>
       </CardFooter>
     </Card>
