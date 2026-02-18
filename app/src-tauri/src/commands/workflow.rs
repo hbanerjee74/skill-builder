@@ -1180,7 +1180,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
-        6 => vec!["context/agent-validation-log.md", "context/test-skill.md"],
+        6 => vec!["context/agent-validation-log.md", "context/test-skill.md", "context/companion-skills.md"],
         _ => vec![],
     }
 }

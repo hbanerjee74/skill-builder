@@ -184,28 +184,33 @@ Returns findings as text:
 
 **Sub-agent E: Companion Skill Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
 
-Reads SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Uses the research planner's dimension scores to identify companion skill candidates -- dimensions scored 2-3 that were skipped represent knowledge gaps that companion skills could fill. Analyzes the skill's content and recommends complementary skills that would compose well with it.
+Reads SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Uses the research planner's dimension scores to identify companion skill candidates -- dimensions scored 2-3 that were skipped represent knowledge gaps that companion skills could fill. Analyzes the skill's content and recommends complementary skills that would compose well with it. Recommends companions across **all skill types** (domain, source, platform, data-engineering) — not limited to the current skill's type.
 
-**Recommendation scope** — recommendations depend on the current skill's type:
-
-| Current skill type | Can recommend |
-|---|---|
-| **domain** | source, platform (dbt/dlt/Fabric only), data-engineering |
-| **source** | platform (dbt/dlt/Fabric only), data-engineering |
-| **platform** | data-engineering |
-| **data-engineering** | platform (dbt/dlt/Fabric only) |
-
-Platform recommendations are always limited to **dbt, dlt, and Fabric** — these are the only supported platforms. Do not recommend other platforms.
+Platform recommendations are limited to **dbt, dlt, and Fabric** — these are the only supported platforms. Do not recommend other platforms.
 
 **For each recommendation**, provide:
 - **Skill name and type** — e.g., "Salesforce extraction (source skill)"
-- **Why it pairs well** — how this skill's content composes with the current skill
+- **Slug** — kebab-case identifier for the companion (e.g., "salesforce-extraction")
+- **Why it pairs well** — how this skill's content composes with the current skill, referencing the skipped dimension and its score
 - **Composability** — which sections/decisions in the current skill would benefit from the companion skill's knowledge
 - **Priority** — High (strong dependency), Medium (improves quality), Low (nice to have)
+- **Suggested trigger description** — a draft `description` field for the companion's SKILL.md (following the trigger pattern: "[What it does]. Use when [triggers]. [How it works].")
+- **Dimension and score** — the skipped dimension this companion covers and its planner score
+- **Template match** — `null` (reserved for future template matching via VD-696)
 
 Target 2-4 recommendations. At least one must be contextually specific (not generic like "you should also build a source skill").
 
-Returns findings as text.
+Returns findings as text using this format:
+```
+### Recommendation 1: [skill name] ([type] skill)
+- **Slug**: [kebab-case]
+- **Priority**: High | Medium | Low
+- **Dimension**: [dimension slug] (score: [N])
+- **Why**: [composability rationale referencing skipped dimension]
+- **Sections affected**: [which current skill sections benefit]
+- **Suggested trigger**: [draft description field for companion SKILL.md]
+- **Template match**: null
+```
 
 **Sub-agent F: Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
 
@@ -249,10 +254,10 @@ Prompt it to:
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
 4. **Boundary violations:** Review boundary check results (Sub-agent D). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
 5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-6. **Companion recommendations:** Include companion skill recommendations (Sub-agent E) in `test-skill.md` as a new section.
+6. **Companion skill report:** Write companion skill recommendations (Sub-agent E) as a standalone `companion-skills.md` file in the context directory. Use YAML frontmatter with structured companion data (for future UI parsing) plus a markdown body with detailed reasoning. See format below.
 7. **Prescriptiveness rewrites:** Review prescriptiveness checker results (Sub-agent F). Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
 8. Suggest 5-8 additional test prompt categories for future evaluation
-9. Write TWO output files to the context directory (formats below)
+9. Write THREE output files to the context directory (formats below)
 
 ## Error Handling
 
@@ -260,7 +265,7 @@ Prompt it to:
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
 - **Evaluator sub-agent failure:** Re-spawn once. If it fails again, include as "NOT EVALUATED" in the reporter prompt.
 - **Boundary checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary check results and note "BOUNDARY CHECK UNAVAILABLE" in the validation log.
-- **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to skip companion recommendations and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the test report.
+- **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to write `companion-skills.md` with `companions: []` in the YAML frontmatter and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the markdown body.
 - **Prescriptiveness checker failure:** Re-spawn once. If it fails again, tell the reporter to skip prescriptiveness results and note "PRESCRIPTIVENESS CHECK UNAVAILABLE" in the validation log.
 
 </instructions>
@@ -302,12 +307,50 @@ Prompt it to:
 - **Skill coverage**: [what the skill provides]
 - **Gap**: [what's missing, or "None"]
 ## Skill Content Issues
-## Companion Skill Recommendations
-### Recommendation 1: [skill name] ([type])
-- **Why**: [composability rationale]
-- **Sections affected**: [which current skill sections benefit]
-- **Priority**: High | Medium | Low
 ## Suggested PM Prompts
+```
+
+**`companion-skills.md` format:**
+
+This file uses YAML frontmatter with structured data (for future UI parsing) followed by a markdown body with detailed reasoning.
+
+```yaml
+---
+skill_name: [current skill name]
+skill_type: [current skill type]
+companions:
+  - name: [companion name]
+    slug: [kebab-case identifier]
+    type: [domain | source | platform | data-engineering]
+    dimension: [skipped dimension slug]
+    dimension_score: [2-3]
+    priority: [high | medium | low]
+    reason: "[why this companion fills the gap]"
+    trigger_description: "[draft description field for companion SKILL.md]"
+    template_match: null
+---
+# Companion Skill Recommendations
+
+[Introductory paragraph explaining which dimensions were skipped and why companions are recommended]
+
+## 1. [Companion name] ([type] skill)
+**Priority**: [High | Medium | Low] | **Dimension**: [dimension] (score: [N])
+
+**Why**: [detailed reasoning referencing the skipped dimension]
+**Suggested trigger**: [trigger description]
+**Template match**: No matching template found
+```
+
+If the companion recommender failed or returned no recommendations, write:
+```yaml
+---
+skill_name: [current skill name]
+skill_type: [current skill type]
+companions: []
+---
+# Companion Skill Recommendations
+
+No companion recommendations available.
 ```
 
 ### Short Example
