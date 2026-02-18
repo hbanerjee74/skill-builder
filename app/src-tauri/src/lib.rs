@@ -163,6 +163,7 @@ pub fn run() {
             commands::skill::release_lock,
             commands::skill::get_locked_skills,
             commands::skill::check_lock,
+            commands::skill::list_refinable_skills,
             commands::clarification::save_raw_file,
             commands::files::list_skill_files,
             commands::files::read_file,

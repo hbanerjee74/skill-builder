@@ -264,3 +264,12 @@ export interface GitHubRepo {
   is_private: boolean
 }
 
+export interface SkillFileEntry {
+  name: string
+  relative_path: string
+  absolute_path: string
+  is_directory: boolean
+  is_readonly: boolean
+  size_bytes: number
+}
+

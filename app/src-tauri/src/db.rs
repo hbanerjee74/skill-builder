@@ -949,6 +949,38 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
         .map_err(|e| e.to_string())
 }
 
+pub fn list_refinable_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json
+             FROM workflow_runs
+             WHERE status = 'completed' OR current_step >= 6
+             ORDER BY updated_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(WorkflowRunRow {
+                skill_name: row.get(0)?,
+                domain: row.get(1)?,
+                current_step: row.get(2)?,
+                status: row.get(3)?,
+                skill_type: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                author_login: row.get(7)?,
+                author_avatar: row.get(8)?,
+                display_name: row.get(9)?,
+                intake_json: row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
     // Delete workflow artifacts
     conn.execute(

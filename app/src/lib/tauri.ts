@@ -34,6 +34,12 @@ export const updateSkillMetadata = (
   intakeJson: string | null,
 ) => invoke("update_skill_metadata", { skillName, displayName, skillType, tags, intakeJson });
 
+export const listRefinableSkills = (workspacePath: string) =>
+  invoke<SkillSummary[]>("list_refinable_skills", { workspacePath });
+
+export const listSkillFiles = (workspacePath: string, skillName: string) =>
+  invoke<SkillFileEntry[]>("list_skill_files", { workspacePath, skillName });
+
 // --- Agent ---
 
 export const startAgent = (
