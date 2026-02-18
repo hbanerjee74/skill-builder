@@ -76,7 +76,10 @@ pub fn list_refinable_skills(
         log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    let settings = crate::db::read_settings(&conn)?;
+    let settings = crate::db::read_settings(&conn).map_err(|e| {
+        log::error!("[list_refinable_skills] Failed to read settings: {}", e);
+        e
+    })?;
     let skills_path = settings
         .skills_path
         .unwrap_or_else(|| workspace_path.clone());
