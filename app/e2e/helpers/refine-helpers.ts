@@ -41,7 +41,13 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
     { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
     { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
   ],
-  start_agent: "agent-refine-001",
+  start_refine_session: {
+    session_id: "e2e-refine-session-001",
+    skill_name: "test-skill",
+    created_at: new Date().toISOString(),
+  },
+  send_refine_message: "refine-test-skill-e2e-001",
+  close_refine_session: undefined,
 };
 
 /**

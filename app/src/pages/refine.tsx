@@ -17,7 +17,9 @@ import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
   getSkillContentForRefine,
-  startAgent,
+  startRefineSession,
+  sendRefineMessage,
+  closeRefineSession,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
@@ -38,7 +40,6 @@ function resolveAgentName(command?: RefineCommand): string {
 /** Build the prompt sent to the sidecar agent. */
 function buildPrompt(
   text: string,
-  conversationContext: string,
   fileConstraint: string,
   command?: RefineCommand,
 ): string {
@@ -68,42 +69,41 @@ Fix any issues you find. Provide a brief validation report: what you checked, wh
 ${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
   }
 
-  // Default refine prompt
+  // Default refine prompt — conversation context is passed separately
+  // via the sidecar's conversationHistory parameter
   return `You are refining a skill. The skill files are in the current working directory.
 
-${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
+Current request: ${text}${fileConstraint}
 
 Read the relevant files, make the requested changes, and briefly describe what you changed.`;
 }
 
 /**
- * Build a text summary of previous chat messages for inclusion in the agent prompt.
- * Excludes the trailing agent turn (the one about to be sent).
+ * Build structured conversation history for the sidecar's conversationHistory parameter.
+ * Includes all previous messages (user + agent) so the sidecar has full context.
  */
-function buildConversationContext(
+function buildConversationHistory(
   messages: RefineMessage[],
   runs: Record<string, { messages: { type: string; content?: string }[] }>,
-): string {
-  return messages
-    .slice(0, -1)
-    .map((msg) => {
-      if (msg.role === "user") {
-        return `User: ${msg.userText}`;
-      }
-      if (msg.role === "agent" && msg.agentId) {
-        const agentRun = runs[msg.agentId];
-        if (agentRun) {
-          const lastText = agentRun.messages
-            .filter((m) => m.type === "assistant" && m.content)
-            .map((m) => m.content)
-            .pop();
-          return lastText ? `Assistant: ${lastText}` : null;
+): Array<{ role: "user" | "assistant"; content: string }> {
+  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const msg of messages) {
+    if (msg.role === "user" && msg.userText) {
+      history.push({ role: "user", content: msg.userText });
+    } else if (msg.role === "agent" && msg.agentId) {
+      const agentRun = runs[msg.agentId];
+      if (agentRun) {
+        const lastText = agentRun.messages
+          .filter((m) => m.type === "assistant" && m.content)
+          .map((m) => m.content)
+          .pop();
+        if (lastText) {
+          history.push({ role: "assistant", content: lastText });
         }
       }
-      return null;
-    })
-    .filter(Boolean)
-    .join("\n\n");
+    }
+  }
+  return history;
 }
 
 /** Load skill files from disk, returning null on failure. */
@@ -184,10 +184,29 @@ export default function RefinePage() {
 
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
+
+      // Close previous backend session if any
+      const prevSessionId = store.sessionId;
+      if (prevSessionId) {
+        await closeRefineSession(prevSessionId).catch((err) =>
+          console.warn("[refine] Failed to close previous session:", err),
+        );
+      }
+
+      // Reset store state (clears sessionId, messages, etc.)
       store.selectSkill(skill);
       store.setLoadingFiles(true);
 
       if (effectiveSkillsPath) {
+        // Start backend refine session
+        try {
+          const session = await startRefineSession(skill.name, effectiveSkillsPath);
+          useRefineStore.setState({ sessionId: session.session_id });
+        } catch (err) {
+          console.error("[refine] Failed to start refine session:", err);
+          toast.error("Failed to start refine session");
+        }
+
         const files = await loadSkillFiles(effectiveSkillsPath, skill.name);
         if (files) {
           store.setSkillFiles(files);
@@ -245,6 +264,9 @@ export default function RefinePage() {
   useEffect(() => {
     return () => {
       const store = useRefineStore.getState();
+      if (store.sessionId) {
+        closeRefineSession(store.sessionId).catch(() => {});
+      }
       if (store.isRunning && store.activeAgentId) {
         store.setRunning(false);
         store.setActiveAgentId(null);
@@ -256,6 +278,9 @@ export default function RefinePage() {
   const handleConfirmSwitch = useCallback(() => {
     if (!pendingSwitchSkill) return;
     const store = useRefineStore.getState();
+    if (store.sessionId) {
+      closeRefineSession(store.sessionId).catch(() => {});
+    }
     store.setRunning(false);
     store.setActiveAgentId(null);
     setPendingSwitchSkill(null);
@@ -265,17 +290,17 @@ export default function RefinePage() {
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
-      if (!selectedSkill || !effectiveSkillsPath) return;
+      const store = useRefineStore.getState();
+      const sessionId = store.sessionId;
+      if (!selectedSkill || !effectiveSkillsPath || !sessionId) return;
       if (isRunning) return; // guard against double-submission race
 
       console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
 
-      const store = useRefineStore.getState();
       const model = preferredModel ?? "sonnet";
 
-      // Build conversation context BEFORE adding the new message to avoid duplicating
-      // the current user text (which is already in the prompt's "Current request" field)
-      const conversationContext = buildConversationContext(
+      // Build structured conversation history BEFORE adding the new message
+      const conversationHistory = buildConversationHistory(
         store.messages,
         useAgentStore.getState().runs,
       );
@@ -286,48 +311,37 @@ export default function RefinePage() {
       // Add user message
       store.addUserMessage(text, targetFiles, command);
 
-      // Generate agent ID and session ID
-      const agentId = crypto.randomUUID();
-      let currentSessionId = store.sessionId;
-      if (!currentSessionId) {
-        currentSessionId = crypto.randomUUID();
-        useRefineStore.setState({ sessionId: currentSessionId });
-      }
-
-      // Register run in agent store (without setting global activeAgentId)
-      useAgentStore.getState().registerRun(agentId, model, selectedSkill.name);
-
-      // Add agent turn to chat
-      store.addAgentTurn(agentId);
-      store.setActiveAgentId(agentId);
-      store.setRunning(true);
-
-      // Build prompt
+      // Build prompt (conversation context is passed separately via conversationHistory)
       const fileConstraint =
         targetFiles && targetFiles.length > 0
           ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
           : "";
 
-      const prompt = buildPrompt(text, conversationContext, fileConstraint, command);
+      const message = buildPrompt(text, fileConstraint, command);
       const agentName = resolveAgentName(command);
-      const stepLabel = command ?? "refine";
-      const cwd = `${effectiveSkillsPath}/${selectedSkill.name}`;
+
+      // Mark running before async call to prevent double-submission
+      store.setRunning(true);
 
       try {
-        await startAgent(
-          agentId,
-          prompt,
-          model,
-          cwd,
-          ["Read", "Edit", "Write", "Glob", "Grep", "Task"],
-          20,
-          undefined, // sessionId — refine session is app-level, not SDK resume
-          selectedSkill.name,
-          stepLabel,
+        // sendRefineMessage returns the agent_id generated by the backend
+        const agentId = await sendRefineMessage(
+          sessionId,
+          message,
+          conversationHistory,
+          effectiveSkillsPath,
           agentName,
         );
+
+        // Register run in agent store (events may have already started streaming —
+        // addMessage auto-creates runs, registerRun merges with the correct model)
+        useAgentStore.getState().registerRun(agentId, model, selectedSkill.name);
+
+        // Add agent turn to chat
+        store.addAgentTurn(agentId);
+        store.setActiveAgentId(agentId);
       } catch (err) {
-        console.error("[refine] Failed to start agent:", err);
+        console.error("[refine] Failed to send refine message:", err);
         store.setRunning(false);
         store.setActiveAgentId(null);
         toast.error("Failed to start agent");

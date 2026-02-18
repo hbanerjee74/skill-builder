@@ -23,7 +23,7 @@ pub async fn start_agent(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
         agent_id, model, skill_name, agent_name
     );
-    let (api_key, extended_thinking, user_context) = {
+    let (api_key, extended_thinking) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -33,25 +33,7 @@ pub async fn start_agent(
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;
 
-        // Read user context (industry, function/role, intake) for this skill
-        let run_row = crate::db::get_workflow_run(&conn, &skill_name).ok().flatten();
-        let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
-        let ctx = crate::commands::workflow::format_user_context(
-            settings.industry.as_deref(),
-            settings.function_role.as_deref(),
-            intake_json.as_deref(),
-        );
-
-        (key, settings.extended_thinking, ctx)
-    };
-
-    // Append user context to prompt (same pattern as workflow build_prompt)
-    let effective_prompt = if let Some(ctx) = user_context {
-        log::info!("[start_agent] appending user context to prompt for skill '{}'", skill_name);
-        format!("{}\n\n{}", prompt, ctx)
-    } else {
-        log::debug!("[start_agent] no user context available for skill '{}'", skill_name);
-        prompt
+        (key, settings.extended_thinking)
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
@@ -61,7 +43,7 @@ pub async fn start_agent(
     };
 
     let config = SidecarConfig {
-        prompt: effective_prompt,
+        prompt,
         model: Some(model.clone()),
         api_key,
         cwd,

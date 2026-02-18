@@ -55,6 +55,7 @@ fn build_refine_config(
     api_key: String,
     model: String,
     extended_thinking: bool,
+    agent_name: Option<&str>,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
@@ -68,6 +69,8 @@ fn build_refine_config(
         chrono::Utc::now().timestamp_millis()
     );
 
+    let effective_agent_name = agent_name.unwrap_or(REFINE_AGENT_NAME);
+
     let config = SidecarConfig {
         prompt: message,
         betas: crate::commands::workflow::build_betas(thinking_budget, &model),
@@ -80,7 +83,7 @@ fn build_refine_config(
         session_id: Some(session_id),
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
-        agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        agent_name: Some(effective_agent_name.to_string()),
         conversation_history: (!conversation_history.is_empty()).then(|| {
             conversation_history
                 .into_iter()
@@ -376,6 +379,7 @@ pub async fn send_refine_message(
     message: String,
     conversation_history: Vec<ConversationMessage>,
     workspace_path: String,
+    agent_name: Option<String>,
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
@@ -451,6 +455,7 @@ pub async fn send_refine_message(
         api_key,
         model,
         extended_thinking,
+        agent_name.as_deref(),
     );
 
     log::debug!(
@@ -763,6 +768,7 @@ mod tests {
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
+            None,
         )
     }
 
@@ -809,6 +815,7 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
+            None,
         );
         assert_eq!(config.cwd, "/home/user/skills/data-engineering");
     }
@@ -881,8 +888,25 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             true, // extended_thinking enabled
+            None,
         );
         assert_eq!(config.max_thinking_tokens, Some(16_000));
+    }
+
+    #[test]
+    fn test_refine_config_custom_agent_name_overrides_default() {
+        let (config, _) = build_refine_config(
+            "test".to_string(),
+            vec![],
+            "s1".to_string(),
+            "my-skill",
+            "/skills",
+            "sk-key".to_string(),
+            "sonnet".to_string(),
+            false,
+            Some("rewrite-skill"),
+        );
+        assert_eq!(config.agent_name.as_deref(), Some("rewrite-skill"));
     }
 
     #[test]

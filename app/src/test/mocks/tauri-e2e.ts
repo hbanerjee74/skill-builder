@@ -88,6 +88,13 @@ const mockResponses: Record<string, unknown> = {
   list_team_repo_skills: [],
   import_team_repo_skill: "imported-skill",
   // Refine page
+  start_refine_session: {
+    session_id: "e2e-refine-session-001",
+    skill_name: "test-skill",
+    created_at: new Date().toISOString(),
+  },
+  send_refine_message: "refine-test-skill-e2e-001",
+  close_refine_session: undefined,
   list_refinable_skills: [
     {
       name: "test-skill",

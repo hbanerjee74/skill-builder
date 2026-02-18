@@ -381,5 +381,6 @@ export const sendRefineMessage = (
   message: string,
   conversationHistory: Array<{ role: "user" | "assistant"; content: string }>,
   workspacePath: string,
-) => invoke<string>("send_refine_message", { sessionId, message, conversationHistory, workspacePath })
+  agentName?: string,
+) => invoke<string>("send_refine_message", { sessionId, message, conversationHistory, workspacePath, agentName: agentName ?? null })
 
