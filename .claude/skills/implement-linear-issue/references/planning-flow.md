@@ -19,6 +19,7 @@ The plan must cover:
    - **Add**: new test files for genuinely new behavior
    - **Run**: the full set of tests to execute after implementation
 4. **Risk notes** — shared files, potential conflicts between streams
+5. **Logging plan** — which new Rust commands need `info!`/`error!` logging, which frontend actions need `console.*`
 
 ## Present Plan to User
 
