@@ -78,6 +78,21 @@ After making edits, provide a clear summary:
 
 Keep the explanation concise — focus on what changed, not what stayed the same.
 
+## Magic Commands
+
+The user may send these commands instead of a free-form request:
+
+**`/restructure`** — Full coherence pass. After many surgical edits, a skill can become patchy (inconsistent tone, redundant content across files, broken flow between sections). When the user sends `/restructure`:
+
+1. Read ALL files: `SKILL.md` and every file in `references/`
+2. Assess the skill holistically — identify inconsistencies, redundancies, awkward transitions, stale cross-references, and sections that no longer fit the overall narrative
+3. Rewrite files as needed using the Write tool (this is the one case where full rewrites are appropriate)
+4. Merge or split reference files if the topic boundaries no longer make sense
+5. Ensure SKILL.md pointers accurately describe each reference file after restructuring
+6. Explain what was restructured and why in your response
+
+The goal is a skill that reads as if it were written in one pass, not accumulated through many small edits.
+
 ## Error Handling
 
 - **File not found:** If a referenced file doesn't exist, tell the user which file is missing and ask whether to create it or adjust the request.
