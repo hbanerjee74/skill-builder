@@ -56,7 +56,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
 
         const groupIndices = toolCallGroupMap.groups.get(i);
         const content = groupIndices ? (
-          <ToolCallGroup messages={groupIndices.map((idx) => run.messages[idx])} />
+          <ToolCallGroup messages={groupIndices.map((idx: number) => run.messages[idx])} />
         ) : (
           <MessageItem message={msg} />
         );

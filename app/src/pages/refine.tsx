@@ -1,9 +1,331 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearch } from "@tanstack/react-router";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { useSettingsStore } from "@/stores/settings-store";
+import { useRefineStore } from "@/stores/refine-store";
+import { useAgentStore } from "@/stores/agent-store";
+import {
+  listRefinableSkills,
+  listSkillFiles,
+  readFile,
+  startAgent,
+} from "@/lib/tauri";
+import type { SkillSummary } from "@/lib/types";
+import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
+import { SkillPicker } from "@/components/refine/skill-picker";
+import { ChatPanel } from "@/components/refine/chat-panel";
+import { PreviewPanel } from "@/components/refine/preview-panel";
+import type { SkillFile } from "@/stores/refine-store";
+
+// Ensure agent-stream listeners are registered
+import "@/hooks/use-agent-stream";
+
 export default function RefinePage() {
+  const { skill: skillParam } = useSearch({ from: "/refine" });
+
+  const workspacePath = useSettingsStore((s) => s.workspacePath);
+  const skillsPath = useSettingsStore((s) => s.skillsPath);
+  const preferredModel = useSettingsStore((s) => s.preferredModel);
+
+  const selectedSkill = useRefineStore((s) => s.selectedSkill);
+  const refinableSkills = useRefineStore((s) => s.refinableSkills);
+  const isLoadingSkills = useRefineStore((s) => s.isLoadingSkills);
+  const skillFiles = useRefineStore((s) => s.skillFiles);
+  const isRunning = useRefineStore((s) => s.isRunning);
+  const activeAgentId = useRefineStore((s) => s.activeAgentId);
+  const messages = useRefineStore((s) => s.messages);
+
+  const runs = useAgentStore((s) => s.runs);
+
+  const [pendingSwitchSkill, setPendingSwitchSkill] = useState<SkillSummary | null>(null);
+  const autoSelectedRef = useRef(false);
+
+  // Resolve the effective skills path (skillsPath for completed skills, fallback to workspacePath)
+  const effectiveSkillsPath = skillsPath ?? workspacePath;
+
+  // Available filenames for @file autocomplete
+  const availableFiles = useMemo(
+    () => skillFiles.map((f) => f.filename),
+    [skillFiles],
+  );
+
+  // --- Load refinable skills on mount ---
+  useEffect(() => {
+    if (!workspacePath) return;
+
+    const store = useRefineStore.getState();
+    store.setLoadingSkills(true);
+
+    listRefinableSkills(workspacePath)
+      .then((skills) => {
+        store.setRefinableSkills(skills);
+        store.setLoadingSkills(false);
+      })
+      .catch((err) => {
+        console.error("[refine] Failed to load skills:", err);
+        store.setLoadingSkills(false);
+        toast.error("Failed to load skills", { duration: Infinity });
+      });
+  }, [workspacePath]);
+
+  // --- Auto-select skill from search param ---
+  useEffect(() => {
+    if (!skillParam || autoSelectedRef.current || refinableSkills.length === 0) return;
+
+    const match = refinableSkills.find((s) => s.name === skillParam);
+    if (match) {
+      autoSelectedRef.current = true;
+      handleSelectSkill(match);
+    }
+  }, [skillParam, refinableSkills]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Watch agent completion ---
+  useEffect(() => {
+    if (!activeAgentId) return;
+
+    const run = runs[activeAgentId];
+    if (!run) return;
+
+    if (run.status === "completed" || run.status === "error" || run.status === "shutdown") {
+      const store = useRefineStore.getState();
+
+      if (run.status === "error" || run.status === "shutdown") {
+        toast.error("Agent failed — check the chat for details", { duration: Infinity });
+      }
+
+      // Re-read skill files to capture any changes the agent made
+      if (effectiveSkillsPath && selectedSkill) {
+        loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
+          if (files) store.updateSkillFiles(files);
+        });
+      }
+
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+    }
+  }, [activeAgentId, runs, effectiveSkillsPath, selectedSkill]);
+
+  // --- Cleanup on unmount ---
+  useEffect(() => {
+    return () => {
+      const { isRunning: running, activeAgentId: agentId } = useRefineStore.getState();
+      if (running && agentId) {
+        useRefineStore.getState().setRunning(false);
+        useRefineStore.getState().setActiveAgentId(null);
+      }
+    };
+  }, []);
+
+  // --- Load skill files from disk ---
+  async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
+    try {
+      const entries = await listSkillFiles(basePath, skillName);
+      const files: SkillFile[] = [];
+
+      for (const entry of entries) {
+        if (entry.relative_path.endsWith(".md")) {
+          const fullPath = `${basePath}/${skillName}/${entry.relative_path}`;
+          const content = await readFile(fullPath);
+          files.push({ filename: entry.relative_path, content });
+        }
+      }
+
+      // Ensure SKILL.md is first
+      files.sort((a, b) => {
+        if (a.filename === "SKILL.md") return -1;
+        if (b.filename === "SKILL.md") return 1;
+        return a.filename.localeCompare(b.filename);
+      });
+
+      return files;
+    } catch (err) {
+      console.error("[refine] Failed to load skill files:", err);
+      return null;
+    }
+  }
+
+  // --- Select a skill ---
+  const handleSelectSkill = useCallback(
+    async (skill: SkillSummary) => {
+      if (isRunning) {
+        setPendingSwitchSkill(skill);
+        return;
+      }
+
+      const store = useRefineStore.getState();
+      store.selectSkill(skill);
+      store.setLoadingFiles(true);
+
+      if (effectiveSkillsPath) {
+        const files = await loadSkillFiles(effectiveSkillsPath, skill.name);
+        if (files) {
+          store.setSkillFiles(files);
+          if (files.length > 0) {
+            store.setActiveFileTab(files[0].filename);
+          }
+        } else {
+          store.setLoadingFiles(false);
+          toast.error("Could not load skill files");
+        }
+      }
+    },
+    [isRunning, effectiveSkillsPath],
+  );
+
+  // --- Confirm switch skill while running ---
+  const handleConfirmSwitch = useCallback(() => {
+    if (!pendingSwitchSkill) return;
+    const store = useRefineStore.getState();
+    store.setRunning(false);
+    store.setActiveAgentId(null);
+    setPendingSwitchSkill(null);
+    handleSelectSkill(pendingSwitchSkill);
+  }, [pendingSwitchSkill, handleSelectSkill]);
+
+  // --- Send a message ---
+  const handleSend = useCallback(
+    async (text: string, targetFiles?: string[]) => {
+      if (!selectedSkill || !effectiveSkillsPath) return;
+
+      const store = useRefineStore.getState();
+
+      // Snapshot baseline for diff
+      store.snapshotBaseline();
+
+      // Add user message
+      store.addUserMessage(text, targetFiles);
+
+      // Generate agent ID and session ID
+      const agentId = crypto.randomUUID();
+      let currentSessionId = store.sessionId;
+      if (!currentSessionId) {
+        currentSessionId = crypto.randomUUID();
+        useRefineStore.setState({ sessionId: currentSessionId });
+      }
+
+      // Register run in agent store (without setting global activeAgentId)
+      useAgentStore.getState().registerRun(agentId, preferredModel ?? "sonnet");
+
+      // Add agent turn to chat
+      store.addAgentTurn(agentId);
+      store.setActiveAgentId(agentId);
+      store.setRunning(true);
+
+      // Build prompt
+      const fileConstraint =
+        targetFiles && targetFiles.length > 0
+          ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
+          : "";
+
+      // Build conversation context from previous messages
+      const conversationContext = messages
+        .map((msg) => {
+          if (msg.role === "user") {
+            return `User: ${msg.userText}`;
+          }
+          if (msg.role === "agent" && msg.agentId) {
+            const run = useAgentStore.getState().runs[msg.agentId];
+            if (run && (run.status === "completed" || run.status === "error")) {
+              const lastText = run.messages
+                .filter((m) => m.type === "assistant" && m.content)
+                .map((m) => m.content)
+                .pop();
+              return lastText ? `Assistant: ${lastText}` : null;
+            }
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .join("\n\n");
+
+      const prompt = `You are refining a skill. The skill files are in the current working directory.
+
+${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
+
+Read the relevant files, make the requested changes, and briefly describe what you changed.`;
+
+      const cwd = `${effectiveSkillsPath}/${selectedSkill.name}`;
+
+      try {
+        await startAgent(
+          agentId,
+          prompt,
+          preferredModel ?? "sonnet",
+          cwd,
+          undefined, // allowedTools
+          undefined, // maxTurns
+          currentSessionId,
+          selectedSkill.name,
+          "refine",
+          "refine-skill",
+        );
+      } catch (err) {
+        console.error("[refine] Failed to start agent:", err);
+        store.setRunning(false);
+        store.setActiveAgentId(null);
+        toast.error("Failed to start agent");
+      }
+    },
+    [selectedSkill, effectiveSkillsPath, preferredModel, messages],
+  );
+
   return (
     <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        Refine page — coming soon
+      {/* Top bar with skill picker */}
+      <div className="flex items-center gap-3 border-b px-4 py-2">
+        <SkillPicker
+          skills={refinableSkills}
+          selected={selectedSkill}
+          isLoading={isLoadingSkills}
+          onSelect={handleSelectSkill}
+        />
       </div>
+
+      {/* Main split pane */}
+      <div className="min-h-0 flex-1">
+        <ResizableSplitPane
+          left={
+            <ChatPanel
+              onSend={handleSend}
+              isRunning={isRunning}
+              hasSkill={!!selectedSkill}
+              availableFiles={availableFiles}
+            />
+          }
+          right={<PreviewPanel />}
+        />
+      </div>
+
+      {/* Confirm switch skill dialog */}
+      <Dialog
+        open={!!pendingSwitchSkill}
+        onOpenChange={(open) => !open && setPendingSwitchSkill(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Switch skill?</DialogTitle>
+            <DialogDescription>
+              An agent is currently running. Switching skills will stop it and
+              clear the chat history.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingSwitchSkill(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmSwitch}>Switch</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
