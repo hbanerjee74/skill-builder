@@ -9,6 +9,8 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 - `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, logging rules, git/publishing workflow
 - `CLAUDE-PLUGIN.md` — Plugin structure, agent management, validation hooks
 
+**CLAUDE.md maintenance rule**: These files contain architecture, conventions, and guidelines — not product details. Do not add counts (agent counts, step counts, test counts), feature descriptions, or any fact the agent can discover by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
+
 ## Workflow
 
 The coordinator (`skills/generate-skill/SKILL.md`) defines the full step sequence, resume logic, and human review gates. Read it for workflow details — don't hardcode step counts or names here.
