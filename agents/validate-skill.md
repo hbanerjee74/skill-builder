@@ -46,7 +46,7 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 | Sub-agent | Model | Purpose |
 |---|---|---|
 | `quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness (see `agents/validate-quality.md`) |
-| `test-evaluator` | haiku | Generate and evaluate 5 test prompts against skill content |
+| `test-evaluator` | haiku | Generate and evaluate 5 test prompts against skill content (see `agents/validate-test-evaluator.md`) |
 | `companion-recommender` | sonnet | Recommend companion skills from skipped research dimensions (see `agents/validate-companion-recommender.md`) |
 
 ### Scope Recommendation Guard
@@ -106,12 +106,10 @@ Spawn a **quality sub-agent** (`name: "quality"`, `model: "sonnet"`) via the Tas
 - The **skill type**
 - The **workspace directory** path
 
-Spawn a **test evaluator sub-agent** (`name: "test-evaluator"`, `model: "haiku"`) via the Task tool. Generates 5 test prompts covering all 6 categories, then evaluates each against the skill content. Pass it:
+Spawn a **test evaluator sub-agent** (`name: "test-evaluator"`, `model: "haiku"`) via the Task tool. See `agents/validate-test-evaluator.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
 - `SKILL.md` and all `references/` file paths
 - The **workspace directory** path
-- The prompt categories: core concepts, architecture & design, implementation details, edge cases, cross-functional analysis
-- Scoring criteria: PASS (actionable guidance), PARTIAL (some content but misses key details), FAIL (doesn't address or misleads). For PARTIAL/FAIL: explain expected vs actual coverage and whether the gap is content or organization.
 
 Spawn a **companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`) via the Task tool. See `agents/validate-companion-recommender.md` for the full specification. Pass it:
 - `SKILL.md` and all `references/` file paths
