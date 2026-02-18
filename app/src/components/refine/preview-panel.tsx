@@ -1,8 +1,17 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { GitCompare } from "lucide-react";
+import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRefineStore } from "@/stores/refine-store";
@@ -16,6 +25,8 @@ export function PreviewPanel() {
   const isLoadingFiles = useRefineStore((s) => s.isLoadingFiles);
   const setActiveFileTab = useRefineStore((s) => s.setActiveFileTab);
   const setDiffMode = useRefineStore((s) => s.setDiffMode);
+
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
 
   if (skillFiles.length === 0 && !isLoadingFiles) {
     return (
@@ -41,15 +52,38 @@ export function PreviewPanel() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-3 py-2">
-        <Tabs value={activeFileTab} onValueChange={setActiveFileTab}>
-          <TabsList>
-            {skillFiles.map((f) => (
-              <TabsTrigger key={f.filename} value={f.filename}>
-                {f.filename}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+        <Popover open={filePickerOpen} onOpenChange={setFilePickerOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="max-w-[280px] justify-between gap-1.5">
+              <FileText className="size-3.5 shrink-0" />
+              <span className="truncate">{activeFileTab}</span>
+              <ChevronDown className="ml-1 size-3.5 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search files..." />
+              <CommandList>
+                <CommandEmpty>No files found</CommandEmpty>
+                <CommandGroup>
+                  {skillFiles.map((f) => (
+                    <CommandItem
+                      key={f.filename}
+                      value={f.filename}
+                      onSelect={() => {
+                        setActiveFileTab(f.filename);
+                        setFilePickerOpen(false);
+                      }}
+                    >
+                      <FileText className="mr-2 size-3.5 shrink-0" />
+                      <span className="truncate">{f.filename}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
         <Button
           variant="outline"
           size="sm"
