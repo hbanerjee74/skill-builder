@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearch } from "@tanstack/react-router";
+import { useSearch, useBlocker } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -13,13 +13,14 @@ import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand, SkillFile } from "@/stores/refine-store";
-import { useAgentStore } from "@/stores/agent-store";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import {
   listRefinableSkills,
   getSkillContentForRefine,
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  cleanupSkillSidecar,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
@@ -68,6 +69,38 @@ export default function RefinePage() {
 
   const [pendingSwitchSkill, setPendingSwitchSkill] = useState<SkillSummary | null>(null);
   const autoSelectedRef = useRef(false);
+
+  // --- Navigation guard ---
+  // Block navigation while an agent is running and show a confirmation dialog.
+  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
+    shouldBlockFn: () => useRefineStore.getState().isRunning,
+    enableBeforeUnload: false,
+    withResolver: true,
+  });
+
+  const handleNavStay = useCallback(() => {
+    resetBlocker?.();
+  }, [resetBlocker]);
+
+  const handleNavLeave = useCallback(() => {
+    const store = useRefineStore.getState();
+
+    store.setRunning(false);
+    store.setActiveAgentId(null);
+    useAgentStore.getState().clearRuns();
+
+    // Fire-and-forget: close refine session
+    if (store.sessionId) {
+      closeRefineSession(store.sessionId).catch(() => {});
+    }
+
+    // Fire-and-forget: shut down persistent sidecar for this skill
+    if (store.selectedSkill) {
+      cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+    }
+
+    proceed?.();
+  }, [proceed]);
 
   // Available filenames for @file autocomplete
   const availableFiles = useMemo(
@@ -194,16 +227,27 @@ export default function RefinePage() {
     store.setActiveAgentId(null);
   }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill]);
 
-  // --- Cleanup on unmount ---
+  // --- Safety-net cleanup on unmount ---
+  // Catches cases where the component unmounts without going through the blocker dialog.
   useEffect(() => {
     return () => {
+      flushMessageBuffer();
+
       const store = useRefineStore.getState();
+      if (store.isRunning) {
+        store.setRunning(false);
+        store.setActiveAgentId(null);
+        useAgentStore.getState().clearRuns();
+      }
+
+      // Fire-and-forget: close refine session
       if (store.sessionId) {
         closeRefineSession(store.sessionId).catch(() => {});
       }
-      if (store.isRunning && store.activeAgentId) {
-        store.setRunning(false);
-        store.setActiveAgentId(null);
+
+      // Fire-and-forget: shut down persistent sidecar
+      if (store.selectedSkill) {
+        cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
       }
     };
   }, []);
@@ -297,6 +341,28 @@ export default function RefinePage() {
           right={<PreviewPanel />}
         />
       </div>
+
+      {/* Navigation guard dialog */}
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Agent Running</DialogTitle>
+              <DialogDescription>
+                An agent is still running. Leaving will abandon it and end the session.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Confirm switch skill dialog */}
       <Dialog
