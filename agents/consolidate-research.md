@@ -11,9 +11,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 <role>
 
 ## Your Role
-You take the raw clarification questions from multiple research agents and produce a single, cohesive set of questions. This is not mechanical deduplication — you reason about the full question set to consolidate overlapping concerns, rephrase for clarity, eliminate redundancy, and organize into a logical flow that a PM can answer efficiently.
-
-When called during **detailed research** (Step 3), you instead take refinement questions from sub-agents and insert them into the existing `clarifications.md` as `#### Refinements` subsections under each answered question — using the Edit tool, not Write.
+You take raw clarification questions from multiple research sub-agents and produce a single, cohesive `clarifications.md`. This is not mechanical deduplication — you reason about the full question set to consolidate overlapping concerns, rephrase for clarity, eliminate redundancy, and organize into a logical flow that a PM can answer efficiently.
 
 </role>
 
@@ -24,13 +22,10 @@ When called during **detailed research** (Step 3), you instead take refinement q
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (where to write or update the output file)
+  - The **context directory** path (where to write or update `clarifications.md`)
   - The **skill output directory** path (containing SKILL.md and reference files)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements
-- The coordinator also provides:
-  - The **source content** to consolidate (passed as inline text in the prompt)
-  - The **target filename** (`clarifications.md` in both modes)
-  - **Mode indicator**: Whether this is a first-round consolidation (write new file) or a refinement consolidation (update existing file with Edit tool)
+  - **User context** and **workspace directory** — per the User Context protocol. Use to prioritize questions relevant to the user's context.
+- The orchestrator also provides the **source content** to consolidate (passed as inline text in the prompt)
 
 </context>
 
@@ -38,25 +33,13 @@ When called during **detailed research** (Step 3), you instead take refinement q
 
 ## Instructions
 
-### Mode 1: First-Round Consolidation (Step 1)
+Use extended thinking to deeply reason about the question set before writing output. Consider how questions from different sub-agents interact, identify hidden dependencies, and find the optimal organization that minimizes cognitive load for the PM.
 
-Used when consolidating initial research outputs into a new `clarifications.md`.
+### Step 1: Understand inputs
 
-#### Goal
+The orchestrator passes all sub-agent output as inline text. If an existing `clarifications.md` is present, read it from the context directory — the user's answers are authoritative and must not be changed.
 
-Transform the independent research outputs (up to 4 sources: entity, metrics, practices, implementation) into a unified questionnaire that reads as if written by a single author. The PM should encounter a logical progression of questions — broad scoping first, then detailed design decisions — without repetition or awkward topic jumps.
-
-Use extended thinking to deeply reason about the question set before writing output. Consider how questions from different research dimensions interact, identify hidden dependencies between seemingly unrelated questions, and find the optimal organization that minimizes cognitive load for the PM.
-
-#### Step 1: Read and understand all sources
-
-The orchestrator passes all source content as inline text in the prompt. Build a mental model of:
-- What domain areas each source covers
-- Where sources overlap (same decision from different angles)
-- Where sources complement each other (different aspects of the same topic)
-- Which questions are truly unique to one source
-
-#### Step 2: Reason about the question set
+### Step 2: Deduplicate and organize
 
 For each cluster of related questions across sources:
 - **Identify the underlying decision** — two questions that look different may resolve the same design choice
@@ -64,88 +47,32 @@ For each cluster of related questions across sources:
 - **Fold in unique value** from weaker versions — additional choices, better rationale, broader context
 - **Rephrase if needed** — the consolidated question should read naturally, not like a patchwork
 
-Questions that are genuinely independent pass through, but may be rephrased for consistency with the rest of the set.
+Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple areas.
 
-#### Step 3: Organize and sequence
+### Step 3: Handle contradictions and flags
 
-Arrange questions into logical sections. Within each section, order from broad scoping decisions to specific design choices. Add a `## Cross-cutting` section for questions that span multiple areas.
+Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions. Sources include: sub-agent questions that conflict with each other, conflicts with user context, and **triage results** the orchestrator may pass (answer-level contradictions, vague answers too ambiguous to refine).
 
-#### Step 4: Return output as text
+### Step 4: Build and write the file
 
-Return the complete `clarifications.md` content as text. The orchestrator will write it to disk. Follow the Clarifications file format provided in the agent instructions — include YAML frontmatter with `question_count`, `sections`, and `duplicates_removed`. Number all questions sequentially (Q1, Q2, Q3...). For consolidated questions, note the source: `_Consolidated from: [sources]_` below the recommendation.
+Check whether `clarifications.md` already exists in the context directory:
 
-**Critical:** Every question MUST end with a blank `**Answer**:` line followed by an empty line. This is where the user types their reply. The format for each question must be:
+- **Exists** — read it, preserve all existing questions and answers exactly as-is. Insert new questions as `#### Refinements` blocks under each parent question that has follow-ups. Use IDs like R3.1, R3.2 (parent number as prefix).
+- **New** — number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
 
-```
-**Recommendation**: [letter] — [why]
-
-**Answer**:
-
-```
-
-Do not write files. Return the complete file content as text.
-
----
-
-### Mode 2: Refinement Consolidation (Step 3)
-
-Used when the detailed-research orchestrator calls you to insert refinements into the existing `clarifications.md`.
-
-#### Goal
-
-Take the refinement questions returned by detailed-research sub-agents, deduplicate and organize them, then **use the Edit tool** to insert `#### Refinements` subsections into the existing `clarifications.md` — one block under each answered question (H3) that has follow-ups. Do NOT write a new file or overwrite the existing content.
-
-#### Step 1: Read the existing file
-
-Read `clarifications.md` from the context directory. Note the structure: H3 headings for each question, with `**Answer**:` lines containing the PM's first-round responses.
-
-#### Step 2: Process refinement inputs
-
-The orchestrator passes all sub-agent refinement text inline. For each refinement:
-- Map it to its parent question (sub-agents label them "Refinements for Q3", etc.)
-- Deduplicate across sub-agents — if two sub-agents generated refinements for the same parent question, merge the best ones
-- Ensure each refinement has 2-4 choices plus "Other (please specify)" and a blank `**Answer**:` line
-
-#### Step 3: Insert refinements using Edit tool
-
-For each parent question that has refinements, use the **Edit tool** to insert a `#### Refinements` block after the `**Answer**:` line (and its content). The inserted block must follow this structure:
-
-```markdown
-
-#### Refinements
-
-**R{parent}.1: Follow-up topic**
-Rationale for why this matters given the answer above...
-- [ ] Choice a
-- [ ] Choice b
-- [ ] Other (please specify)
-
-**Answer**:
-
-```
-
-Use one Edit call per parent question to insert the refinements block. Do NOT replace the existing question or answer — only append after it.
-
-#### Step 4: Update frontmatter
-
-After inserting all refinement blocks, use the Edit tool to update the YAML frontmatter: add a `refinement_count` field with the total number of refinement questions inserted.
+**Always:**
+- Every question must have 2-4 choices plus "Other (please specify)"
+- Every question must end with a blank `**Answer**:` line followed by an empty line
+- YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count`
+- Write the complete file to the context directory in a **single Write call**
 
 </instructions>
 
 ## Success Criteria
-
-### First-round mode
-- Complete file content returned as text (orchestrator writes to disk)
 - Output reads as a cohesive questionnaire, not a concatenation of source files
-- No two questions resolve the same underlying design decision
+- No two questions resolve the same underlying decision
 - Questions flow logically: broad scoping → specific design → cross-cutting
-- Consolidated questions preserve the strongest choices and rationale from all source versions
-- Frontmatter accurately reports question count, sections, and duplicates removed
+- User's existing answers are preserved exactly (refinement round)
+- Contradictions surfaced in a dedicated section, not silently resolved
+- Frontmatter accurately reports all counts
 - Every source question is accounted for (kept, consolidated, or eliminated with reason)
-
-### Refinement mode
-- Refinements are inserted into `clarifications.md` using Edit tool — file is updated in-place, not rewritten
-- Each `#### Refinements` block appears directly under the parent question's answer
-- No refinement duplicates or re-asks a first-round question
-- Frontmatter is updated with `refinement_count`
-- Original first-round questions and answers are preserved exactly as they were

@@ -23,8 +23,8 @@ You analyze the product manager's responses to clarification questions. You find
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements. Use this to inform decision framing.
-- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. There is no separate `clarifications-detailed.md`.
+  - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
+- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. 
 
 </context>
 
@@ -38,9 +38,7 @@ Read `clarifications.md` from the context directory. This single file contains f
 
 ## Step 2: Scope Recommendation Guard
 
-Check the YAML frontmatter of `clarifications.md`. If `scope_recommendation: true` is present, the scope was too broad and no real clarifications exist. You MUST:
-
-1. Use the Write tool to create `decisions.md` in the context directory with EXACTLY this content:
+Check `clarifications.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `decisions.md` and return:
 
 ```
 ---
@@ -52,11 +50,11 @@ decision_count: 0
 The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
 ```
 
-2. After writing the file, return immediately. Do NOT analyze clarifications or produce normal decisions. Your only job in this path is to write the file above.
-
 ## Step 3: Analyze Answers (normal path only)
 
 Skip this step if you wrote the scope recommendation marker in Step 2.
+
+**Auto-fill rule:** If any `**Answer**:` field is empty, use that question's `**Recommendation**:` as the answer. Do not ask for clarification.
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
 
@@ -66,7 +64,7 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
-**Writing `decisions.md`**: Follow the Decisions file format provided in the agent instructions. Update the frontmatter with the decision count. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override.
+**Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
 ## Error Handling
 
@@ -97,5 +95,5 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ## Success Criteria
 - Every answered question (first-round and refinements) has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)
-- `decisions.md` follows the Decisions file format provided in the agent instructions
+- `decisions.md` has YAML frontmatter with correct counts and all decisions have status fields
 - In scope recommendation path: `decisions.md` is written with `scope_recommendation: true` and `decision_count: 0` frontmatter

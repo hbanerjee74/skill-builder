@@ -31,7 +31,6 @@ export function AppLayout() {
         skillsPath: s.skills_path,
         preferredModel: s.preferred_model,
         logLevel: s.log_level,
-        extendedContext: s.extended_context,
         extendedThinking: s.extended_thinking,
         githubOauthToken: s.github_oauth_token,
         githubUserLogin: s.github_user_login,
