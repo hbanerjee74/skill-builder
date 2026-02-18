@@ -72,37 +72,61 @@ pub fn list_refinable_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillSummary>, String> {
     log::info!("[list_refinable_skills]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = crate::db::read_settings(&conn).map_err(|e| {
-        log::error!("[list_refinable_skills] Failed to read settings: {}", e);
-        e
-    })?;
-    let skills_path = settings
-        .skills_path
-        .unwrap_or_else(|| workspace_path.clone());
-    list_refinable_skills_inner(&workspace_path, &skills_path, &conn)
+
+    // Hold the DB lock only for DB reads; release before filesystem I/O.
+    let (skills_path, completed) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings(&conn).map_err(|e| {
+            log::error!("[list_refinable_skills] Failed to read settings: {}", e);
+            e
+        })?;
+        let skills_path = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
+        let all = list_skills_inner(&workspace_path, &conn)?;
+        let completed: Vec<SkillSummary> = all
+            .into_iter()
+            .filter(|s| s.status.as_deref() == Some("completed"))
+            .collect();
+        (skills_path, completed)
+    }; // conn lock released here
+
+    // Filesystem existence checks happen outside the DB lock.
+    Ok(filter_by_skill_md_exists(&skills_path, completed))
 }
 
+/// Filter completed skills to only those with a SKILL.md on disk.
+/// Separated from DB access so the Tauri command can release the DB lock first.
+fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) -> Vec<SkillSummary> {
+    completed
+        .into_iter()
+        .filter(|s| {
+            Path::new(skills_path)
+                .join(&s.name)
+                .join("SKILL.md")
+                .exists()
+        })
+        .collect()
+}
+
+/// Testable inner function: queries the DB for completed skills, then filters
+/// by SKILL.md existence on disk. In production, the Tauri command splits these
+/// two phases across a lock boundary; this function combines them for tests.
+#[cfg(test)]
 fn list_refinable_skills_inner(
     workspace_path: &str,
     skills_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
     let all = list_skills_inner(workspace_path, conn)?;
-    let refinable = all
+    let completed: Vec<SkillSummary> = all
         .into_iter()
-        .filter(|s| {
-            s.status.as_deref() == Some("completed")
-                && Path::new(skills_path)
-                    .join(&s.name)
-                    .join("SKILL.md")
-                    .exists()
-        })
+        .filter(|s| s.status.as_deref() == Some("completed"))
         .collect();
-    Ok(refinable)
+    Ok(filter_by_skill_md_exists(skills_path, completed))
 }
 
 #[allow(clippy::too_many_arguments)]

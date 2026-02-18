@@ -77,8 +77,22 @@ export function ResizableSplitPane({
         {left}
       </div>
       <div
-        className="w-1 flex-shrink-0 cursor-col-resize bg-border hover:bg-primary/30"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panels"
+        tabIndex={0}
+        className="w-1 flex-shrink-0 cursor-col-resize bg-border hover:bg-primary/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onMouseDown={onMouseDown}
+        onKeyDown={(e) => {
+          const step = 2; // 2% per keypress
+          if (e.key === "ArrowLeft") {
+            e.preventDefault();
+            setLeftPercent((prev) => Math.max(20, prev - step));
+          } else if (e.key === "ArrowRight") {
+            e.preventDefault();
+            setLeftPercent((prev) => Math.min(80, prev + step));
+          }
+        }}
       />
       <div className="min-w-0 flex-1 overflow-hidden">
         {right}

@@ -166,7 +166,7 @@ export default function RefinePage() {
       autoSelectedRef.current = true;
       handleSelectSkill(match);
     }
-  }, [skillParam, refinableSkills]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [skillParam, refinableSkills, handleSelectSkill]);
 
   // --- Watch agent completion (only re-runs when status changes, not every message) ---
   useEffect(() => {
@@ -267,6 +267,7 @@ export default function RefinePage() {
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       if (!selectedSkill || !effectiveSkillsPath) return;
+      if (isRunning) return; // guard against double-submission race
 
       console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
 
@@ -331,7 +332,7 @@ export default function RefinePage() {
         toast.error("Failed to start agent");
       }
     },
-    [selectedSkill, effectiveSkillsPath, preferredModel],
+    [selectedSkill, effectiveSkillsPath, preferredModel, isRunning],
   );
 
   return (
