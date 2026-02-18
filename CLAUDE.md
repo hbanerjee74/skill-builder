@@ -6,29 +6,10 @@ Multi-agent workflow for creating domain-specific Claude skills. Two frontends (
 @import CLAUDE-PLUGIN.md
 
 **Companion files** (imported above, must be reviewed together with this file):
-- `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, logging rules, git/publishing workflow
+- `CLAUDE-APP.md` — Desktop app architecture, Rust/frontend conventions, git/publishing workflow
 - `CLAUDE-PLUGIN.md` — Plugin structure, agent management, validation hooks
 
 **CLAUDE.md maintenance rule**: These files contain architecture, conventions, and guidelines — not product details. Do not add counts (agent counts, step counts, test counts), feature descriptions, or any fact the agent can discover by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
-
-## Workflow
-
-The coordinator (`skills/generate-skill/SKILL.md`) defines the full step sequence, resume logic, and human review gates. Read it for workflow details — don't hardcode step counts or names here.
-
-## Model Tiers
-
-Model tiers are defined per-agent in frontmatter (`agents/*.md`). Run `./scripts/validate.sh` to verify tiers match expectations.
-
-The app overrides this with a global user preference in Settings. The plugin uses per-agent model tiers defined in agent frontmatter.
-
-## Extended Thinking
-
-Agent prompts are optimized for thinking mode using goal-oriented patterns (not step-by-step prescriptions). When Claude Code adds `thinking` or `effort` as frontmatter fields, update:
-- confirm-decisions agent: `effort: max`
-- generate-skill agents: `effort: high`
-- research orchestrators: `effort: high`
-- validate-skill agents: `effort: medium`
-- consolidate-research agent: `effort: high`
 
 ## Dev Commands
 
@@ -57,11 +38,7 @@ cd app/src-tauri && cargo test           # Rust tests
 claude --plugin-dir .                    # Load plugin locally
 
 # Skill evaluation (LLM-as-judge, run from repo root)
-./scripts/eval/eval-skill-quality.sh --help                        # Usage and options
-./scripts/eval/eval-skill-quality.sh --baseline path/to/SKILL.md \ # Skill vs no-skill
-  --prompts scripts/eval/prompts/data-engineering.txt
-./scripts/eval/eval-skill-quality.sh --compare v1/SKILL.md v2/SKILL.md \ # Skill vs skill
-  --prompts scripts/eval/prompts/data-engineering.txt
+./scripts/eval/eval-skill-quality.sh --help              # Usage, modes, and options
 ```
 
 ## Testing
@@ -93,13 +70,12 @@ Before writing any test code, read existing tests for the files you changed:
 
 **Rust:** Run `cargo test --manifest-path app/src-tauri/Cargo.toml <module>` for the module you changed. If the command is UI-facing, also run the cross-layer E2E tag from `app/tests/TEST_MANIFEST.md`.
 
-**Sidecar:** `cd app/sidecar && npx vitest run`
-
 **Shared infrastructure** (`src/lib/tauri.ts`, test mocks, config files): Run `app/tests/run.sh` (all levels). See the manifest for the full list.
 
 **App quick rules:**
 - Changed a store/hook/component/page? → `npm run test:changed`
 - Changed a Rust command? → `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md`
+- Changed sidecar code? → `cd app/sidecar && npx vitest run`
 - Changed `src/lib/tauri.ts` or test mocks? → `app/tests/run.sh` (all levels)
 - Unsure? → `app/tests/run.sh` runs everything
 
@@ -127,6 +103,25 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 
 - Granular commits: one concern per commit, run tests before each
 
+## Logging
+
+Every new feature must include logging. The app uses `log` crate (Rust) and `console.*` (frontend, bridged to Rust via `attachConsole()`). Sidecar has its own JSONL log system — no changes needed there.
+
+### Log levels
+
+| Level | When to use | Examples |
+|---|---|---|
+| **error** | Operation failed, user impact likely | DB write failed, API call returned 5xx, file not found when expected, deserialization error |
+| **warn** | Unexpected but recoverable, or user did something questionable | Retrying after transient failure, config value missing (using default), skill already exists on import |
+| **info** | Key lifecycle events and operations a developer would want in production logs | Command invoked with key params, skill created/deleted/imported, agent started/completed, settings changed, auth login/logout |
+| **debug** | Internal details useful only when troubleshooting | Full request/response payloads, intermediate state, cache hits/misses, branch logic taken, SQL queries |
+
+### Rules
+
+- **Rust commands:** Every `#[tauri::command]` function logs `info!` on entry (with key params) and `error!` on failure. Use `debug!` for intermediate steps. Never log secrets (API keys, tokens).
+- **Frontend:** Use `console.error()` for caught errors, `console.warn()` for unexpected states, `console.log()` for significant user actions (navigation, form submissions). Don't log render cycles or state reads.
+- **Format:** Include context — `info!("import_github_skills: importing {} skills from {}", count, repo)` not just `info!("importing skills")`.
+
 ## Gotchas
 
 - **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
@@ -135,8 +130,8 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 ## Shared Components
 
 Both frontends use the same files — no conversion needed:
-- `agents/` — agent prompts (flat directory). Agent count is validated by `./scripts/validate.sh`.
-- `agent-sources/workspace/CLAUDE.md` — agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh`
+- `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
+- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK). The plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh` — run this script after modifying the file.
 
 ## Issue Management
 
