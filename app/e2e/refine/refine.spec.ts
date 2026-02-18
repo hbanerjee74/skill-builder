@@ -73,14 +73,14 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await page.getByRole("button", { name: /Select a skill/ }).click();
 
     // Both skills should be visible in the dropdown
-    await expect(page.getByRole("option", { name: /Test Skill/ })).toBeVisible();
-    await expect(page.getByRole("option", { name: /Analytics/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /test-skill/ })).toBeVisible();
+    await expect(page.getByRole("option", { name: /analytics-skill/ })).toBeVisible();
 
-    // Select Test Skill
-    await page.getByRole("option", { name: /Test Skill/ }).click();
+    // Select test-skill
+    await page.getByRole("option", { name: /test-skill/ }).click();
 
-    // Skill picker now shows "Test Skill"
-    await expect(page.getByText("Test Skill").first()).toBeVisible();
+    // Skill picker now shows the skill name
+    await expect(page.getByText("test-skill").first()).toBeVisible();
 
     // Preview panel should load — file picker shows SKILL.md
     await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
