@@ -106,6 +106,23 @@ function buildConversationContext(
     .join("\n\n");
 }
 
+/** Load skill files from disk, returning null on failure. */
+async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
+  try {
+    const contents = await getSkillContentForRefine(skillName, basePath);
+    return contents
+      .map((c): SkillFile => ({ filename: c.path, content: c.content }))
+      .sort((a, b) => {
+        if (a.filename === "SKILL.md") return -1;
+        if (b.filename === "SKILL.md") return 1;
+        return a.filename.localeCompare(b.filename);
+      });
+  } catch (err) {
+    console.error("[refine] Failed to load skill files:", err);
+    return null;
+  }
+}
+
 export default function RefinePage() {
   const { skill: skillParam } = useSearch({ from: "/refine" });
 
@@ -156,24 +173,6 @@ export default function RefinePage() {
         toast.error("Failed to load skills", { duration: Infinity });
       });
   }, [workspacePath]);
-
-  // --- Load skill files from disk ---
-  async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
-    try {
-      const contents = await getSkillContentForRefine(skillName, basePath);
-      return contents
-        .map((c): SkillFile => ({ filename: c.path, content: c.content }))
-        .sort((a, b) => {
-          // Ensure SKILL.md is first
-          if (a.filename === "SKILL.md") return -1;
-          if (b.filename === "SKILL.md") return 1;
-          return a.filename.localeCompare(b.filename);
-        });
-    } catch (err) {
-      console.error("[refine] Failed to load skill files:", err);
-      return null;
-    }
-  }
 
   // --- Select a skill ---
   const handleSelectSkill = useCallback(
@@ -272,6 +271,7 @@ export default function RefinePage() {
       console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
 
       const store = useRefineStore.getState();
+      const model = preferredModel ?? "sonnet";
 
       // Snapshot baseline for diff
       store.snapshotBaseline();
@@ -288,7 +288,7 @@ export default function RefinePage() {
       }
 
       // Register run in agent store (without setting global activeAgentId)
-      useAgentStore.getState().registerRun(agentId, preferredModel ?? "sonnet", selectedSkill.name);
+      useAgentStore.getState().registerRun(agentId, model, selectedSkill.name);
 
       // Add agent turn to chat
       store.addAgentTurn(agentId);
@@ -316,7 +316,7 @@ export default function RefinePage() {
         await startAgent(
           agentId,
           prompt,
-          preferredModel ?? "sonnet",
+          model,
           cwd,
           undefined, // allowedTools
           undefined, // maxTurns
