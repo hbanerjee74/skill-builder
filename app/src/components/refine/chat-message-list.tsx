@@ -45,9 +45,11 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
                     ))}
                   </div>
                 )}
-                <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2 text-primary-foreground">
-                  {msg.userText}
-                </div>
+                {msg.userText && (
+                  <div className="max-w-[80%] rounded-2xl bg-primary px-4 py-2 text-primary-foreground">
+                    {msg.userText}
+                  </div>
+                )}
               </div>
             );
           }
