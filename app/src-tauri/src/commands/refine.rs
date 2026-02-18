@@ -45,22 +45,20 @@ impl RefineSessionManager {
 
 /// Build a SidecarConfig for a refine session message.
 /// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
-#[allow(clippy::too_many_arguments)]
 fn build_refine_config(
-    message: String,
+    prompt: String,
     conversation_history: Vec<ConversationMessage>,
     skill_name: &str,
     workspace_path: &str,
     api_key: String,
     model: String,
     extended_thinking: bool,
-    agent_name: Option<&str>,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
     // .claude/agents/ and .claude/CLAUDE.md. Skill files are accessed via
-    // absolute paths embedded in the prompt by the frontend.
+    // absolute paths embedded in the prompt.
     let cwd = workspace_path.to_string();
     let agent_id = format!(
         "refine-{}-{}",
@@ -68,10 +66,8 @@ fn build_refine_config(
         chrono::Utc::now().timestamp_millis()
     );
 
-    let effective_agent_name = agent_name.unwrap_or(REFINE_AGENT_NAME);
-
     let config = SidecarConfig {
-        prompt: message,
+        prompt,
         betas: crate::commands::workflow::build_betas(thinking_budget, &model),
         model: Some(model),
         api_key,
@@ -85,7 +81,7 @@ fn build_refine_config(
         session_id: None,
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
-        agent_name: Some(effective_agent_name.to_string()),
+        agent_name: Some(REFINE_AGENT_NAME.to_string()),
         conversation_history: (!conversation_history.is_empty()).then(|| {
             conversation_history
                 .into_iter()
@@ -95,6 +91,63 @@ fn build_refine_config(
     };
 
     (config, agent_id)
+}
+
+/// Build the refine agent prompt with all runtime fields.
+/// Matches the workflow pattern in `workflow.rs::build_prompt` — provides skill directory,
+/// context directory, workspace directory, skill type, command, and user context.
+fn build_refine_prompt(
+    skill_name: &str,
+    domain: &str,
+    skill_type: &str,
+    workspace_path: &str,
+    skills_path: &str,
+    user_message: &str,
+    target_files: Option<&[String]>,
+    command: Option<&str>,
+    user_context: Option<&str>,
+) -> String {
+    let skill_dir = Path::new(skills_path).join(skill_name);
+    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let workspace_dir = Path::new(workspace_path).join(skill_name);
+
+    let effective_command = command.unwrap_or("refine");
+
+    let mut prompt = format!(
+        "The skill name is: {}. The domain is: {}. The skill type is: {}. The command is: {}. \
+         The skill directory is: {}. The context directory is: {}. The workspace directory is: {}. \
+         All directories already exist — never create directories with mkdir or any other method.",
+        skill_name,
+        domain,
+        skill_type,
+        effective_command,
+        skill_dir.display(),
+        context_dir.display(),
+        workspace_dir.display(),
+    );
+
+    // File constraint: restrict edits to specific files if @file targets were specified
+    if let Some(files) = target_files {
+        if !files.is_empty() {
+            let abs_files: Vec<String> = files
+                .iter()
+                .map(|f| format!("{}/{}", skill_dir.display(), f))
+                .collect();
+            prompt.push_str(&format!(
+                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
+                abs_files.join(", ")
+            ));
+        }
+    }
+
+    prompt.push_str(&format!("\n\nCurrent request: {}", user_message));
+
+    if let Some(ctx) = user_context {
+        prompt.push_str("\n\n");
+        prompt.push_str(ctx);
+    }
+
+    prompt
 }
 
 fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
@@ -371,6 +424,10 @@ pub async fn start_refine_session(
 
 /// Send a user message to the refine agent and stream responses back.
 ///
+/// Builds the full agent prompt server-side with all 3 directory paths (skill dir,
+/// context dir, workspace dir), skill type, command, and user context — matching
+/// the workflow pattern in `workflow.rs::build_prompt`.
+///
 /// Returns the `agent_id` so the frontend can listen for `agent-message` and
 /// `agent-exit` events scoped to this request. Actual content streams via
 /// Tauri events (same mechanism as workflow agents).
@@ -378,16 +435,21 @@ pub async fn start_refine_session(
 #[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
     session_id: String,
-    message: String,
+    user_message: String,
     conversation_history: Vec<ConversationMessage>,
     workspace_path: String,
-    agent_name: Option<String>,
+    target_files: Option<Vec<String>>,
+    command: Option<String>,
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
     db: tauri::State<'_, Db>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!("[send_refine_message] session={}", session_id);
+    log::info!(
+        "[send_refine_message] session={} command={:?}",
+        session_id,
+        command
+    );
 
     // 1. Look up session
     let skill_name = {
@@ -404,8 +466,8 @@ pub async fn send_refine_message(
     };
     log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
 
-    // 2. Read settings and user context from DB in a single lock
-    let (api_key, extended_thinking, model, user_context) = {
+    // 2. Read settings, workflow run data, and user context from DB in a single lock
+    let (api_key, extended_thinking, model, skills_path, domain, skill_type, user_context) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -422,8 +484,22 @@ pub async fn send_refine_message(
             .preferred_model
             .unwrap_or_else(|| "sonnet".to_string());
 
-        // Build inline user context (shared with workflow's build_prompt)
+        let skills_path = settings
+            .skills_path
+            .unwrap_or_else(|| workspace_path.clone());
+
+        // Get domain and skill_type from workflow_run
         let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
+        let domain = run_row
+            .as_ref()
+            .map(|r| r.domain.clone())
+            .unwrap_or_else(|| skill_name.clone());
+        let skill_type = run_row
+            .as_ref()
+            .map(|r| r.skill_type.clone())
+            .unwrap_or_else(|| "domain".to_string());
+
+        // Build inline user context (shared with workflow's build_prompt)
         let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
         let ctx = crate::commands::workflow::format_user_context(
             settings.industry.as_deref(),
@@ -431,22 +507,29 @@ pub async fn send_refine_message(
             intake_json.as_deref(),
         );
 
-        (key, settings.extended_thinking, model, ctx)
+        (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
     };
 
-    // 3. Append user context to message (same pattern as workflow build_prompt)
-    let prompt = if let Some(ref ctx) = user_context {
-        log::info!(
-            "[send_refine_message] appending user context ({} chars) to prompt for skill '{}'",
-            ctx.len(),
-            skill_name
-        );
-        log::debug!("[send_refine_message] user context:\n{}", ctx);
-        format!("{}\n\n{}", message, ctx)
-    } else {
-        log::info!("[send_refine_message] no user context available for skill '{}'", skill_name);
-        message
-    };
+    // 3. Build full prompt with all paths, metadata, and user context
+    let prompt = build_refine_prompt(
+        &skill_name,
+        &domain,
+        &skill_type,
+        &workspace_path,
+        &skills_path,
+        &user_message,
+        target_files.as_deref(),
+        command.as_deref(),
+        user_context.as_deref(),
+    );
+    log::debug!(
+        "[send_refine_message] prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
+        prompt.len(),
+        skill_name,
+        skill_type,
+        command,
+        prompt
+    );
 
     // 4. Build config and agent_id — CWD is workspace_path (.vibedata),
     //    not skills_path, so the sidecar can find .claude/agents/ and CLAUDE.md.
@@ -458,17 +541,15 @@ pub async fn send_refine_message(
         api_key,
         model,
         extended_thinking,
-        agent_name.as_deref(),
     );
 
     log::debug!(
-        "[send_refine_message] spawning agent {} in cwd={} with agent_name={}",
+        "[send_refine_message] spawning agent {} in cwd={}",
         agent_id,
         config.cwd,
-        config.agent_name.as_deref().unwrap_or("none")
     );
 
-    // 4. Spawn via pool — events stream automatically to frontend
+    // 5. Spawn via pool — events stream automatically to frontend
     sidecar::spawn_sidecar(
         agent_id.clone(),
         config,
@@ -759,24 +840,24 @@ mod tests {
     // ===== build_refine_config tests =====
 
     fn base_refine_config(
-        message: &str,
+        prompt: &str,
         history: Vec<ConversationMessage>,
     ) -> (SidecarConfig, String) {
         build_refine_config(
-            message.to_string(),
+            prompt.to_string(),
             history,
             "my-skill",
             "/home/user/.vibedata",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
-            None,
         )
     }
 
     #[test]
-    fn test_refine_config_agent_name_matches_agent_prompt() {
-        // agent_name must match agents/refine-skill.md so the sidecar loads the correct prompt
+    fn test_refine_config_always_uses_refine_skill_agent() {
+        // agent_name must always be "refine-skill" — it handles /rewrite and /validate
+        // as magic commands internally
         let (config, _) = base_refine_config("improve metrics", vec![]);
         assert_eq!(config.agent_name.as_deref(), Some("refine-skill"));
     }
@@ -784,7 +865,7 @@ mod tests {
     #[test]
     fn test_refine_config_includes_task_tool_for_magic_commands() {
         // /rewrite and /validate magic commands spawn sub-agents via Task
-        let (config, _) = base_refine_config("/rewrite", vec![]);
+        let (config, _) = base_refine_config("test prompt", vec![]);
         let tools = config.allowed_tools.unwrap();
         assert!(
             tools.contains(&"Task".to_string()),
@@ -818,7 +899,6 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
-            None,
         );
         assert_eq!(config.cwd, "/home/user/.vibedata");
     }
@@ -841,31 +921,6 @@ mod tests {
     fn test_refine_config_empty_history_becomes_none() {
         let (config, _) = base_refine_config("first message", vec![]);
         assert!(config.conversation_history.is_none());
-    }
-
-    #[test]
-    fn test_refine_config_rewrite_command_passthrough() {
-        // /rewrite is passed as the prompt — the agent interprets it
-        let (config, _) = base_refine_config("/rewrite", vec![]);
-        assert_eq!(config.prompt, "/rewrite");
-    }
-
-    #[test]
-    fn test_refine_config_validate_command_passthrough() {
-        // /validate is passed as the prompt — the agent interprets it
-        let (config, _) = base_refine_config("/validate", vec![]);
-        assert_eq!(config.prompt, "/validate");
-    }
-
-    #[test]
-    fn test_refine_config_file_targeting_passthrough() {
-        // @file targeting is part of the message — the agent interprets it
-        let (config, _) =
-            base_refine_config("@references/metrics.md Add SLA thresholds", vec![]);
-        assert_eq!(
-            config.prompt,
-            "@references/metrics.md Add SLA thresholds"
-        );
     }
 
     #[test]
@@ -892,24 +947,8 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             true, // extended_thinking enabled
-            None,
         );
         assert_eq!(config.max_thinking_tokens, Some(16_000));
-    }
-
-    #[test]
-    fn test_refine_config_custom_agent_name_overrides_default() {
-        let (config, _) = build_refine_config(
-            "test".to_string(),
-            vec![],
-            "my-skill",
-            "/skills",
-            "sk-key".to_string(),
-            "sonnet".to_string(),
-            false,
-            Some("rewrite-skill"),
-        );
-        assert_eq!(config.agent_name.as_deref(), Some("rewrite-skill"));
     }
 
     #[test]
@@ -925,13 +964,13 @@ mod tests {
             ConversationMessage { role: "user".into(), content: "First request".into() },
             ConversationMessage { role: "assistant".into(), content: "Done".into() },
         ];
-        let (config, _) = base_refine_config("@SKILL.md Update overview", history);
+        let (config, _) = base_refine_config("full prompt here", history);
 
         let json = serde_json::to_string(&config).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         // Verify camelCase field names match sidecar's SidecarConfig interface
-        assert_eq!(parsed["prompt"], "@SKILL.md Update overview");
+        assert_eq!(parsed["prompt"], "full prompt here");
         assert_eq!(parsed["agentName"], "refine-skill");
         assert_eq!(parsed["maxTurns"], REFINE_MAX_TURNS);
         assert!(parsed["allowedTools"]
@@ -953,6 +992,109 @@ mod tests {
         assert!(parsed.get("conversationHistory").is_none());
         assert!(parsed.get("maxThinkingTokens").is_none());
         assert!(parsed.get("permissionMode").is_none());
+    }
+
+    // ===== build_refine_prompt tests =====
+
+    #[test]
+    fn test_refine_prompt_includes_all_three_paths() {
+        let prompt = build_refine_prompt(
+            "my-skill", "Data Engineering", "data-engineering",
+            "/home/user/.vibedata", "/home/user/skills",
+            "Add metrics section", None, None, None,
+        );
+        assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
+        assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
+        assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
+    }
+
+    #[test]
+    fn test_refine_prompt_includes_metadata() {
+        let prompt = build_refine_prompt(
+            "my-skill", "Data Engineering", "data-engineering",
+            "/ws", "/skills",
+            "Fix overview", None, None, None,
+        );
+        assert!(prompt.contains("The skill name is: my-skill"));
+        assert!(prompt.contains("The domain is: Data Engineering"));
+        assert!(prompt.contains("The skill type is: data-engineering"));
+    }
+
+    #[test]
+    fn test_refine_prompt_default_command_is_refine() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "edit something", None, None, None,
+        );
+        assert!(prompt.contains("The command is: refine"));
+    }
+
+    #[test]
+    fn test_refine_prompt_rewrite_command() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "improve clarity", None, Some("rewrite"), None,
+        );
+        assert!(prompt.contains("The command is: rewrite"));
+    }
+
+    #[test]
+    fn test_refine_prompt_validate_command() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "", None, Some("validate"), None,
+        );
+        assert!(prompt.contains("The command is: validate"));
+    }
+
+    #[test]
+    fn test_refine_prompt_file_targeting() {
+        let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
+        let prompt = build_refine_prompt(
+            "my-skill", "d", "domain", "/ws", "/skills",
+            "update these", Some(&files), None, None,
+        );
+        assert!(prompt.contains("IMPORTANT: Only edit these files:"));
+        assert!(prompt.contains("/skills/my-skill/SKILL.md"));
+        assert!(prompt.contains("/skills/my-skill/references/metrics.md"));
+    }
+
+    #[test]
+    fn test_refine_prompt_no_file_constraint_when_empty() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "edit freely", None, None, None,
+        );
+        assert!(!prompt.contains("Only edit these files"));
+    }
+
+    #[test]
+    fn test_refine_prompt_includes_user_message() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "Add SLA metrics to the overview", None, None, None,
+        );
+        assert!(prompt.contains("Current request: Add SLA metrics to the overview"));
+    }
+
+    #[test]
+    fn test_refine_prompt_appends_user_context() {
+        let ctx = "## User Context\n**Industry**: Healthcare";
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "edit", None, None, Some(ctx),
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Healthcare"));
+    }
+
+    #[test]
+    fn test_refine_prompt_no_user_context_when_none() {
+        let prompt = build_refine_prompt(
+            "s", "d", "domain", "/ws", "/sk",
+            "edit", None, None, None,
+        );
+        assert!(!prompt.contains("User Context"));
     }
 
     #[test]
