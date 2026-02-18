@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
+import type { RefineCommand, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
@@ -29,34 +29,6 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
-
-/**
- * Build structured conversation history for the sidecar's conversationHistory parameter.
- * Includes all previous messages (user + agent) so the sidecar has full context.
- */
-function buildConversationHistory(
-  messages: RefineMessage[],
-  runs: Record<string, { messages: { type: string; content?: string }[] }>,
-): Array<{ role: "user" | "assistant"; content: string }> {
-  const history: Array<{ role: "user" | "assistant"; content: string }> = [];
-  for (const msg of messages) {
-    if (msg.role === "user" && msg.userText) {
-      history.push({ role: "user", content: msg.userText });
-    } else if (msg.role === "agent" && msg.agentId) {
-      const agentRun = runs[msg.agentId];
-      if (agentRun) {
-        const lastText = agentRun.messages
-          .filter((m) => m.type === "assistant" && m.content)
-          .map((m) => m.content)
-          .pop();
-        if (lastText) {
-          history.push({ role: "assistant", content: lastText });
-        }
-      }
-    }
-  }
-  return history;
-}
 
 /** Load skill files from disk, returning null on failure. */
 async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
@@ -197,6 +169,19 @@ export default function RefinePage() {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
+    // Check for session exhaustion — the SDK ran out of turns
+    const agentRun = useAgentStore.getState().runs[activeAgentId];
+    if (agentRun) {
+      const hasExhausted = agentRun.messages.some(
+        (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
+      );
+      if (hasExhausted) {
+        console.warn("[refine] session exhausted for agent %s", activeAgentId);
+        useRefineStore.getState().setSessionExhausted(true);
+        toast.info("This refine session has reached its limit. Please start a new session to continue.");
+      }
+    }
+
     // Re-read skill files to capture any changes the agent made
     const store = useRefineStore.getState();
     if (workspacePath && selectedSkill) {
@@ -248,12 +233,6 @@ export default function RefinePage() {
 
       const model = preferredModel ?? "sonnet";
 
-      // Build structured conversation history BEFORE adding the new message
-      const conversationHistory = buildConversationHistory(
-        store.messages,
-        useAgentStore.getState().runs,
-      );
-
       // Snapshot baseline for diff
       store.snapshotBaseline();
 
@@ -265,11 +244,11 @@ export default function RefinePage() {
 
       try {
         // sendRefineMessage builds the full prompt server-side with all 3 paths,
-        // skill type, command, and user context. We pass raw user input.
+        // skill type, command, and user context. SDK maintains conversation state
+        // across turns via streaming input mode.
         const agentId = await sendRefineMessage(
           sessionId,
           text,
-          conversationHistory,
           workspacePath,
           targetFiles,
           command,
