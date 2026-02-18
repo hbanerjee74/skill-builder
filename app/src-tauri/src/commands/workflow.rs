@@ -456,20 +456,16 @@ fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &
     phase.to_string()
 }
 
-/// Write `user-context.md` to the context directory so that sub-agents
-/// spawned by orchestrator agents can read it from disk.
-/// This file captures industry, function/role, and intake responses
-/// (audience, challenges, scope) provided by the user.
-/// Non-fatal: logs a warning on failure rather than blocking the workflow.
-fn write_user_context_file(
-    workspace_path: &str,
-    skill_name: &str,
+/// Format user context fields into a `## User Context` markdown block.
+///
+/// Returns `None` if all fields are empty. Used by workflow (inline in prompt +
+/// written to disk) and refine (inline in prompt only).
+pub fn format_user_context(
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
-) {
+) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
-
     if let Some(ind) = industry {
         if !ind.is_empty() {
             parts.push(format!("- **Industry**: {}", ind));
@@ -482,37 +478,41 @@ fn write_user_context_file(
     }
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
-            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
-                if !a.is_empty() {
-                    parts.push(format!("- **Target Audience**: {}", a));
-                }
-            }
-            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
-                if !c.is_empty() {
-                    parts.push(format!("- **Key Challenges**: {}", c));
-                }
-            }
-            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    parts.push(format!("- **Scope**: {}", s));
-                }
-            }
-            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
-                if !u.is_empty() {
-                    parts.push(format!("- **What Makes This Setup Unique**: {}", u));
-                }
-            }
-            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
-                if !m.is_empty() {
-                    parts.push(format!("- **What Claude Gets Wrong**: {}", m));
+            for (key, label) in [
+                ("audience", "Target Audience"),
+                ("challenges", "Key Challenges"),
+                ("scope", "Scope"),
+                ("unique_setup", "What Makes This Setup Unique"),
+                ("claude_mistakes", "What Claude Gets Wrong"),
+            ] {
+                if let Some(v) = intake.get(key).and_then(|v| v.as_str()) {
+                    if !v.is_empty() {
+                        parts.push(format!("- **{}**: {}", label, v));
+                    }
                 }
             }
         }
     }
-
     if parts.is_empty() {
-        return;
+        None
+    } else {
+        Some(format!("## User Context\n{}", parts.join("\n")))
     }
+}
+
+/// Write `user-context.md` to the workspace directory so that sub-agents
+/// spawned by orchestrator agents can read it from disk.
+/// Non-fatal: logs a warning on failure rather than blocking the workflow.
+fn write_user_context_file(
+    workspace_path: &str,
+    skill_name: &str,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
+) {
+    let Some(ctx) = format_user_context(industry, function_role, intake_json) else {
+        return;
+    };
 
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     // Safety net: create directory if missing
@@ -525,7 +525,9 @@ fn write_user_context_file(
         return;
     }
     let file_path = workspace_dir.join("user-context.md");
-    let content = format!("# User Context\n\n{}\n", parts.join("\n"));
+    // ctx already has "## User Context\n..." — promote to h1 for the standalone file
+    let content = format!("# User Context\n\n{}\n",
+        ctx.strip_prefix("## User Context\n").unwrap_or(&ctx));
 
     match std::fs::write(&file_path, &content) {
         Ok(()) => {
@@ -591,51 +593,9 @@ fn build_prompt(
 
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
 
-    // Inject user context if any fields are present
-    let mut ctx_parts: Vec<String> = Vec::new();
-    if let Some(ind) = industry {
-        if !ind.is_empty() {
-            ctx_parts.push(format!("- **Industry**: {}", ind));
-        }
-    }
-    if let Some(fr) = function_role {
-        if !fr.is_empty() {
-            ctx_parts.push(format!("- **Function**: {}", fr));
-        }
-    }
-    // Parse intake_json and add audience/challenges/scope
-    if let Some(ij) = intake_json {
-        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
-            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
-                if !a.is_empty() {
-                    ctx_parts.push(format!("- **Target Audience**: {}", a));
-                }
-            }
-            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
-                if !c.is_empty() {
-                    ctx_parts.push(format!("- **Key Challenges**: {}", c));
-                }
-            }
-            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    ctx_parts.push(format!("- **Scope**: {}", s));
-                }
-            }
-            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
-                if !u.is_empty() {
-                    ctx_parts.push(format!("- **What Makes This Setup Unique**: {}", u));
-                }
-            }
-            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
-                if !m.is_empty() {
-                    ctx_parts.push(format!("- **What Claude Gets Wrong**: {}", m));
-                }
-            }
-        }
-    }
-    if !ctx_parts.is_empty() {
-        prompt.push_str("\n\n## User Context\n");
-        prompt.push_str(&ctx_parts.join("\n"));
+    if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&ctx);
     }
 
     prompt
@@ -2244,6 +2204,62 @@ mod tests {
         use std::io::Write as _;
         writeln!(f, "# Just a regular markdown file\nNo frontmatter here.").unwrap();
         assert!(!parse_scope_recommendation(f.path()));
+    }
+
+    // --- format_user_context tests ---
+
+    #[test]
+    fn test_format_user_context_all_fields() {
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
+        let result = format_user_context(Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+        let ctx = result.unwrap();
+        assert!(ctx.starts_with("## User Context\n"));
+        assert!(ctx.contains("**Industry**: Healthcare"));
+        assert!(ctx.contains("**Function**: Analytics Lead"));
+        assert!(ctx.contains("**Target Audience**: Data engineers"));
+        assert!(ctx.contains("**Key Challenges**: Legacy systems"));
+        assert!(ctx.contains("**Scope**: ETL pipelines"));
+        assert!(ctx.contains("**What Makes This Setup Unique**: Multi-cloud"));
+        assert!(ctx.contains("**What Claude Gets Wrong**: Assumes AWS"));
+    }
+
+    #[test]
+    fn test_format_user_context_partial_fields() {
+        let result = format_user_context(Some("Fintech"), None, None);
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Industry**: Fintech"));
+        assert!(!ctx.contains("**Function**"));
+    }
+
+    #[test]
+    fn test_format_user_context_empty_strings_skipped() {
+        let result = format_user_context(Some(""), Some(""), None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_format_user_context_all_none() {
+        let result = format_user_context(None, None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_format_user_context_invalid_json_ignored() {
+        let result = format_user_context(Some("Tech"), None, Some("not json"));
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Industry**: Tech"));
+        // Invalid JSON intake is silently ignored
+        assert!(!ctx.contains("Target Audience"));
+    }
+
+    #[test]
+    fn test_format_user_context_partial_intake() {
+        let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
+        let result = format_user_context(None, None, Some(intake));
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Target Audience**: Engineers"));
+        assert!(ctx.contains("**Scope**: APIs"));
+        assert!(!ctx.contains("**Key Challenges**"));
     }
 
 }

@@ -11,6 +11,8 @@ The user's `user-context.md` file (in the workspace directory) contains their in
 
 **Orchestrator responsibility:** Read `user-context.md` early (Phase 0) and embed inline in every sub-agent prompt. Pass the workspace directory path as fallback.
 
+**Workspace directory contents:** The workspace directory only contains `user-context.md`. Do not read or list any other files or subdirectories (e.g. `logs/`).
+
 ### Scope Recommendation Guard
 
 When `scope_recommendation: true` appears in the YAML frontmatter of `clarifications.md` or `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
