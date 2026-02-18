@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
+use crate::agents::sidecar::{self, SidecarConfig};
+use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -9,21 +11,17 @@ use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileConte
 
 /// In-memory state for a single refine session.
 ///
-/// ## VD-701 TODO: Complete session lifecycle
-/// When the sidecar refine mode lands (VD-701), this struct needs:
-/// - Populate `conversation` in `send_refine_message` (append user + assistant turns)
-/// - Track the sidecar child process handle for cleanup
-/// - Add a `status` field (active / completed / error)
-///
-/// The session is created by `start_refine_session` and used by `send_refine_message`.
-/// Each invocation of `send_refine_message` passes the full conversation history to the
-/// sidecar (the sidecar is stateless — history is replayed per-call).
-#[allow(dead_code)] // Fields used when VD-701 lands
+/// Created by `start_refine_session`, used by `send_refine_message`.
+/// Each invocation of `send_refine_message` passes the full conversation history
+/// to the sidecar (the sidecar is stateless — history is replayed per-call).
 pub struct RefineSession {
+    #[allow(dead_code)] // stored for future session-list/cleanup commands
     pub session_id: String,
     pub skill_name: String,
+    #[allow(dead_code)] // stored for future session-list command
     pub created_at: String,
     /// In-memory conversation history: `[{ "role": "user"|"assistant", "content": "..." }]`
+    #[allow(dead_code)] // stored for future server-side history tracking
     pub conversation: Vec<serde_json::Value>,
 }
 
@@ -33,7 +31,6 @@ pub struct RefineSession {
 /// ## Concurrency rule
 /// Only one refine session per skill_name is allowed at a time.
 /// `start_refine_session` must check this before creating a new session.
-#[allow(dead_code)] // Inner field used when VD-701 lands
 pub struct RefineSessionManager(pub Mutex<HashMap<String, RefineSession>>);
 
 impl RefineSessionManager {
@@ -269,100 +266,191 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
     Ok(RefineDiff { stat, files })
 }
 
-// ─── start_refine_session (STUBBED — blocked on VD-701) ──────────────────────
+// ─── start_refine_session ─────────────────────────────────────────────────────
 
 /// Initialize a refine session for a skill.
 ///
-/// ## VD-701 TODO: Implement when sidecar refine mode lands
-///
-/// Implementation steps:
-/// 1. Resolve skills_path from DB settings
-/// 2. Verify SKILL.md exists at `skills_path/<skill_name>/SKILL.md`
-/// 3. Check `RefineSessionManager` — reject if a session already exists for this skill_name
-/// 4. Generate a UUID session_id
-/// 5. Create a `RefineSession` entry in the manager
-/// 6. Return `RefineSessionInfo { session_id, skill_name, created_at }`
-///
 /// No sidecar is spawned here — the sidecar is spawned per-message in `send_refine_message`.
-///
-/// ## Inputs
-/// - `skill_name`: name of the skill directory (e.g. "data-engineering")
-/// - `workspace_path`: workspace root (used to resolve skills_path from DB)
-///
-/// ## Returns
-/// `RefineSessionInfo` with the new session_id
 #[tauri::command]
 pub async fn start_refine_session(
     skill_name: String,
     workspace_path: String,
-    _sessions: tauri::State<'_, RefineSessionManager>,
-    _db: tauri::State<'_, Db>,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
-    log::info!(
-        "[start_refine_session] skill={} [VD-701 STUB]",
+    log::info!("[start_refine_session] skill={}", skill_name);
+
+    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+        log::error!("[start_refine_session] Failed to resolve skills path: {}", e);
+        e
+    })?;
+
+    // Verify SKILL.md exists
+    let skill_md = Path::new(&skills_path).join(&skill_name).join("SKILL.md");
+    if !skill_md.exists() {
+        let msg = format!("SKILL.md not found at {}", skill_md.display());
+        log::error!("[start_refine_session] {}", msg);
+        return Err(msg);
+    }
+
+    let mut map = sessions.0.lock().map_err(|e| {
+        log::error!("[start_refine_session] Failed to acquire session lock: {}", e);
+        e.to_string()
+    })?;
+
+    // Only one session per skill at a time
+    if map.values().any(|s| s.skill_name == skill_name) {
+        let msg = format!("A refine session already exists for skill '{}'", skill_name);
+        log::error!("[start_refine_session] {}", msg);
+        return Err(msg);
+    }
+
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let created_at = chrono::Utc::now().to_rfc3339();
+    log::debug!(
+        "[start_refine_session] creating session {} for skill '{}'",
+        session_id,
         skill_name
     );
-    // TODO(VD-701): Implement when sidecar refine mode lands.
-    // See docstring above for the implementation steps.
-    let _ = workspace_path;
-    Err(
-        "start_refine_session is not yet implemented (blocked on VD-701: sidecar refine mode)"
-            .to_string(),
-    )
+
+    map.insert(
+        session_id.clone(),
+        RefineSession {
+            session_id: session_id.clone(),
+            skill_name: skill_name.clone(),
+            created_at: created_at.clone(),
+            conversation: Vec::new(),
+        },
+    );
+
+    Ok(RefineSessionInfo {
+        session_id,
+        skill_name,
+        created_at,
+    })
 }
 
-// ─── send_refine_message (STUBBED — blocked on VD-701) ───────────────────────
+// ─── send_refine_message ──────────────────────────────────────────────────────
 
 /// Send a user message to the refine agent and stream responses back.
 ///
-/// ## VD-701 TODO: Implement when sidecar refine mode lands
-///
-/// Implementation steps:
-/// 1. Look up the session in `RefineSessionManager` — reject if not found
-/// 2. Build a `SidecarConfig` for refine mode:
-///    - `prompt`: the user's message
-///    - `cwd`: `skills_path/<skill_name>/` (so the agent can Read/Edit skill files)
-///    - `allowed_tools`: ["Read", "Edit", "Write", "Glob", "Grep"] (file operations only)
-///    - `max_turns`: configurable, default ~20
-///    - `conversation_history`: the full history array passed by the frontend
-/// 3. Spawn sidecar via `SidecarPool` or direct `sidecar::spawn_sidecar()`
-/// 4. Stream `agent-message` Tauri events with the session_id as scope
-/// 5. On completion, emit `agent-complete` event
-/// 6. On error, emit `agent-error` event and clean up
-/// 7. Append the assistant's response to `RefineSession.conversation`
-///
-/// ## Event format (same as workflow agents)
-/// - `agent-message`: `{ agent_id, session_id, type, content }`
-/// - `agent-complete`: `{ agent_id, session_id }`
-/// - `agent-error`: `{ agent_id, session_id, error }`
-///
-/// ## Inputs
-/// - `session_id`: from `start_refine_session`
-/// - `message`: the user's chat message
-/// - `conversation_history`: `[{ role: "user"|"assistant", content: "..." }]`
-///
-/// ## Returns
-/// `Ok("done")` on success (actual content is streamed via events)
+/// Returns the `agent_id` so the frontend can listen for `agent-message` and
+/// `agent-exit` events scoped to this request. Actual content streams via
+/// Tauri events (same mechanism as workflow agents).
 #[tauri::command]
 pub async fn send_refine_message(
     session_id: String,
     message: String,
     conversation_history: Vec<serde_json::Value>,
-    _sessions: tauri::State<'_, RefineSessionManager>,
-    _pool: tauri::State<'_, crate::agents::sidecar_pool::SidecarPool>,
-    _app: tauri::AppHandle,
+    workspace_path: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    app: tauri::AppHandle,
 ) -> Result<String, String> {
-    log::info!(
-        "[send_refine_message] session={} [VD-701 STUB]",
-        session_id
+    log::info!("[send_refine_message] session={}", session_id);
+
+    // 1. Look up session
+    let skill_name = {
+        let map = sessions.0.lock().map_err(|e| {
+            log::error!("[send_refine_message] Failed to acquire session lock: {}", e);
+            e.to_string()
+        })?;
+        let session = map.get(&session_id).ok_or_else(|| {
+            let msg = format!("No refine session found for id '{}'", session_id);
+            log::error!("[send_refine_message] {}", msg);
+            msg
+        })?;
+        session.skill_name.clone()
+    };
+
+    // 2. Read settings (API key, model prefs, extended thinking)
+    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+        log::error!("[send_refine_message] Failed to resolve skills path: {}", e);
+        e
+    })?;
+
+    let (api_key, extended_context, extended_thinking, model) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+            log::error!("[send_refine_message] Failed to read settings: {}", e);
+            e
+        })?;
+        let key = settings
+            .anthropic_api_key
+            .ok_or_else(|| {
+                log::error!("[send_refine_message] Anthropic API key not configured");
+                "Anthropic API key not configured".to_string()
+            })?;
+        let model = settings
+            .preferred_model
+            .unwrap_or_else(|| "sonnet".to_string());
+        (key, settings.extended_context, settings.extended_thinking, model)
+    };
+
+    let thinking_budget: Option<u32> = if extended_thinking {
+        Some(16_000)
+    } else {
+        None
+    };
+
+    let cwd = format!("{}/{}", skills_path, skill_name);
+    let agent_id = format!("refine-{}-{}", skill_name, chrono::Utc::now().timestamp_millis());
+
+    log::debug!(
+        "[send_refine_message] spawning agent {} in cwd={} with {} history messages",
+        agent_id,
+        cwd,
+        conversation_history.len()
     );
-    // TODO(VD-701): Implement when sidecar refine mode lands.
-    // See docstring above for the implementation steps.
-    let _ = (message, conversation_history);
-    Err(
-        "send_refine_message is not yet implemented (blocked on VD-701: sidecar refine mode)"
-            .to_string(),
+
+    // 3. Build SidecarConfig
+    let history = if conversation_history.is_empty() {
+        None
+    } else {
+        Some(conversation_history)
+    };
+
+    let config = SidecarConfig {
+        prompt: message,
+        model: Some(model.clone()),
+        api_key,
+        cwd,
+        allowed_tools: Some(vec![
+            "Read".to_string(),
+            "Edit".to_string(),
+            "Write".to_string(),
+            "Glob".to_string(),
+            "Grep".to_string(),
+        ]),
+        max_turns: Some(20),
+        permission_mode: None,
+        session_id: Some(session_id),
+        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        max_thinking_tokens: thinking_budget,
+        path_to_claude_code_executable: None,
+        agent_name: Some("refine-skill".to_string()),
+        conversation_history: history,
+    };
+
+    // 4. Spawn via pool — events stream automatically to frontend
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app,
+        skill_name,
     )
+    .await
+    .map_err(|e| {
+        log::error!("[send_refine_message] Failed to spawn sidecar: {}", e);
+        e
+    })?;
+
+    Ok(agent_id)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -554,5 +642,130 @@ mod tests {
         let manager = RefineSessionManager::new();
         let sessions = manager.0.lock().unwrap();
         assert!(sessions.is_empty());
+    }
+
+    // ===== session lifecycle tests =====
+
+    #[test]
+    fn test_session_create_and_lookup() {
+        let manager = RefineSessionManager::new();
+        let session_id = "test-session-1".to_string();
+
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                session_id.clone(),
+                RefineSession {
+                    session_id: session_id.clone(),
+                    skill_name: "my-skill".to_string(),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                    conversation: Vec::new(),
+                },
+            );
+        }
+
+        let map = manager.0.lock().unwrap();
+        let session = map.get(&session_id).unwrap();
+        assert_eq!(session.skill_name, "my-skill");
+    }
+
+    #[test]
+    fn test_session_conflict_detection() {
+        let manager = RefineSessionManager::new();
+
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                "session-1".to_string(),
+                RefineSession {
+                    session_id: "session-1".to_string(),
+                    skill_name: "my-skill".to_string(),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                    conversation: Vec::new(),
+                },
+            );
+        }
+
+        // Check that a second session for the same skill is detected
+        let map = manager.0.lock().unwrap();
+        let has_conflict = map.values().any(|s| s.skill_name == "my-skill");
+        assert!(has_conflict);
+
+        // Different skill should not conflict
+        let no_conflict = map.values().any(|s| s.skill_name == "other-skill");
+        assert!(!no_conflict);
+    }
+
+    #[test]
+    fn test_session_not_found_returns_none() {
+        let manager = RefineSessionManager::new();
+        let map = manager.0.lock().unwrap();
+        assert!(map.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_conversation_history_serialization() {
+        // Verify the conversation history format matches what the sidecar expects
+        let history = vec![
+            serde_json::json!({"role": "user", "content": "Make it better"}),
+            serde_json::json!({"role": "assistant", "content": "I've updated the file."}),
+        ];
+
+        let config = SidecarConfig {
+            prompt: "Add examples".to_string(),
+            model: Some("sonnet".to_string()),
+            api_key: "sk-test".to_string(),
+            cwd: "/tmp/skills/my-skill".to_string(),
+            allowed_tools: Some(vec![
+                "Read".to_string(),
+                "Edit".to_string(),
+                "Write".to_string(),
+                "Glob".to_string(),
+                "Grep".to_string(),
+            ]),
+            max_turns: Some(20),
+            permission_mode: None,
+            session_id: Some("session-123".to_string()),
+            betas: None,
+            max_thinking_tokens: None,
+            path_to_claude_code_executable: None,
+            agent_name: Some("refine-skill".to_string()),
+            conversation_history: Some(history),
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Verify conversationHistory is present and correctly serialized
+        let ch = parsed.get("conversationHistory").unwrap();
+        assert!(ch.is_array());
+        assert_eq!(ch.as_array().unwrap().len(), 2);
+        assert_eq!(ch[0]["role"], "user");
+        assert_eq!(ch[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_conversation_history_none_omitted() {
+        let config = SidecarConfig {
+            prompt: "test".to_string(),
+            model: None,
+            api_key: "sk-test".to_string(),
+            cwd: "/tmp".to_string(),
+            allowed_tools: None,
+            max_turns: None,
+            permission_mode: None,
+            session_id: None,
+            betas: None,
+            max_thinking_tokens: None,
+            path_to_claude_code_executable: None,
+            agent_name: None,
+            conversation_history: None,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // conversationHistory should be absent when None
+        assert!(parsed.get("conversationHistory").is_none());
     }
 }

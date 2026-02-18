@@ -68,6 +68,28 @@ export interface SkillSummary {
   intake_json: string | null
 }
 
+export interface SkillFileContent {
+  path: string
+  content: string
+}
+
+export interface RefineFileDiff {
+  path: string
+  status: string
+  diff: string
+}
+
+export interface RefineDiff {
+  stat: string
+  files: RefineFileDiff[]
+}
+
+export interface RefineSessionInfo {
+  session_id: string
+  skill_name: string
+  created_at: string
+}
+
 export const INTAKE_PLACEHOLDERS: Record<string, { audience: string; challenges: string; scope: string }> = {
   platform: {
     audience: "e.g., Data engineers building ELT pipelines, platform admins managing environments",
