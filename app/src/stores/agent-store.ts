@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { useSettingsStore } from "./settings-store";
 import { useWorkflowStore } from "./workflow-store";
 import { persistAgentRun } from "@/lib/tauri";
 
@@ -223,7 +222,6 @@ export const useAgentStore = create<AgentState>((set) => ({
 
     set((state) => {
       const existing = state.runs[agentId];
-      const extendedContext = useSettingsStore.getState().extendedContext;
       return {
         runs: {
           ...state.runs,
@@ -238,7 +236,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 messages: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: extendedContext ? 1_000_000 : 200_000,
+                contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
               },
@@ -267,7 +265,6 @@ export const useAgentStore = create<AgentState>((set) => ({
   registerRun: (agentId, model, skillName?) =>
     set((state) => {
       const existing = state.runs[agentId];
-      const extendedContext = useSettingsStore.getState().extendedContext;
       return {
         runs: {
           ...state.runs,
@@ -281,7 +278,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 messages: [],
                 startTime: Date.now(),
                 contextHistory: [],
-                contextWindow: extendedContext ? 1_000_000 : 200_000,
+                contextWindow: 200_000,
                 compactionEvents: [],
                 thinkingEnabled: false,
               },
@@ -410,7 +407,6 @@ export const useAgentStore = create<AgentState>((set) => ({
 
   _applyMessageBatch: (batch) =>
     set((state) => {
-      const extendedContext = useSettingsStore.getState().extendedContext;
       const updatedRuns = { ...state.runs };
 
       for (const { agentId, message } of batch) {
@@ -422,7 +418,7 @@ export const useAgentStore = create<AgentState>((set) => ({
           messages: [],
           startTime: Date.now(),
           contextHistory: [],
-          contextWindow: extendedContext ? 1_000_000 : 200_000,
+          contextWindow: 200_000,
           compactionEvents: [],
           thinkingEnabled: false,
         };

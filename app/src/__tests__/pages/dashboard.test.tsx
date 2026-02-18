@@ -74,7 +74,6 @@ const sampleSkills: SkillSummary[] = [
     skill_type: "platform",
     author_login: null,
     author_avatar: null,
-    display_name: null,
     intake_json: null,
   },
   {
@@ -87,7 +86,6 @@ const sampleSkills: SkillSummary[] = [
     skill_type: "domain",
     author_login: null,
     author_avatar: null,
-    display_name: null,
     intake_json: null,
   },
 ];
@@ -369,7 +367,6 @@ describe("DashboardPage", () => {
           skill_type: "platform",
           author_login: null,
           author_avatar: null,
-          display_name: null,
           intake_json: null,
         },
       ],

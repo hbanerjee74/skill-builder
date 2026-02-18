@@ -73,14 +73,11 @@ trim_trailing() {
 
 # --- Extract sections ---
 
-# protocols.md: ## Protocols → ## Skill Users
-protocols=$(extract_sections "## Protocols" "## Skill Users" | trim_trailing)
+# protocols.md: ## Protocols → ## Content Principles
+protocols=$(extract_sections "## Protocols" "## Content Principles" | trim_trailing)
 
-# content-guidelines.md: ## Skill Users through ## Output Paths (before ## File Formats)
-content_guidelines=$(extract_sections "## Skill Users" "## File Formats" | trim_trailing)
-
-# file-formats.md: ## File Formats → ## Skill Best Practices
-file_formats=$(extract_sections "## File Formats" "## Skill Best Practices" | trim_trailing)
+# content-guidelines.md: ## Content Principles through ## Output Paths (before ## Skill Best Practices)
+content_guidelines=$(extract_sections "## Content Principles" "## Skill Best Practices" | trim_trailing)
 
 # best-practices.md: ## Skill Best Practices → ## Customization
 best_practices=$(extract_sections "## Skill Best Practices" "## Customization" | trim_trailing)
@@ -95,7 +92,6 @@ fi
 stale=0
 generate_file "$REFS_DIR/protocols.md" "$protocols" || stale=$((stale + 1))
 generate_file "$REFS_DIR/content-guidelines.md" "$content_guidelines" || stale=$((stale + 1))
-generate_file "$REFS_DIR/file-formats.md" "$file_formats" || stale=$((stale + 1))
 generate_file "$REFS_DIR/best-practices.md" "$best_practices" || stale=$((stale + 1))
 
 if $CHECK_MODE; then
@@ -107,5 +103,5 @@ if $CHECK_MODE; then
         exit 0
     fi
 else
-    echo "Done — 4 reference files in skills/generate-skill/references/"
+    echo "Done — 3 reference files in skills/generate-skill/references/"
 fi

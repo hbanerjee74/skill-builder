@@ -128,7 +128,6 @@ export default function DashboardPage() {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
-          (s.display_name && s.display_name.toLowerCase().includes(q)) ||
           (s.domain && s.domain.toLowerCase().includes(q)) ||
           (s.skill_type && (SKILL_TYPE_LABELS[s.skill_type as keyof typeof SKILL_TYPE_LABELS] || s.skill_type).toLowerCase().includes(q))
       )

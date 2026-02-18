@@ -497,6 +497,16 @@ fn write_user_context_file(
                     parts.push(format!("- **Scope**: {}", s));
                 }
             }
+            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
+                if !u.is_empty() {
+                    parts.push(format!("- **What Makes This Setup Unique**: {}", u));
+                }
+            }
+            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
+                if !m.is_empty() {
+                    parts.push(format!("- **What Claude Gets Wrong**: {}", m));
+                }
+            }
         }
     }
 
@@ -611,6 +621,16 @@ fn build_prompt(
                     ctx_parts.push(format!("- **Scope**: {}", s));
                 }
             }
+            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
+                if !u.is_empty() {
+                    ctx_parts.push(format!("- **What Makes This Setup Unique**: {}", u));
+                }
+            }
+            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
+                if !m.is_empty() {
+                    ctx_parts.push(format!("- **What Claude Gets Wrong**: {}", m));
+                }
+            }
         }
     }
     if !ctx_parts.is_empty() {
@@ -698,11 +718,8 @@ fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     }
 }
 
-pub fn build_betas(extended_context: bool, thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
+pub fn build_betas(thinking_budget: Option<u32>, model: &str) -> Option<Vec<String>> {
     let mut betas = Vec::new();
-    if extended_context {
-        betas.push("context-1m-2025-08-07".to_string());
-    }
     if thinking_budget.is_some() && !model.contains("opus") {
         betas.push("interleaved-thinking-2025-05-14".to_string());
     }
@@ -755,7 +772,6 @@ fn validate_decisions_exist_inner(
 struct WorkflowSettings {
     skills_path: String,
     api_key: String,
-    extended_context: bool,
     extended_thinking: bool,
     skill_type: String,
     author_login: Option<String>,
@@ -781,7 +797,6 @@ fn read_workflow_settings(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-    let extended_context = settings.extended_context;
     let extended_thinking = settings.extended_thinking;
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
@@ -806,7 +821,6 @@ fn read_workflow_settings(
     Ok(WorkflowSettings {
         skills_path,
         api_key,
-        extended_context,
         extended_thinking,
         skill_type,
         author_login,
@@ -878,7 +892,7 @@ async fn run_workflow_step_inner(
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
-        betas: build_betas(settings.extended_context, thinking_budget, &model),
+        betas: build_betas(thinking_budget, &model),
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
@@ -2102,36 +2116,21 @@ mod tests {
     }
 
     #[test]
-    fn test_build_betas_context_only() {
-        let betas = build_betas(true, None, "claude-sonnet-4-5-20250929");
-        assert_eq!(betas, Some(vec!["context-1m-2025-08-07".to_string()]));
-    }
-
-    #[test]
     fn test_build_betas_thinking_non_opus() {
-        let betas = build_betas(false, Some(32000), "claude-sonnet-4-5-20250929");
+        let betas = build_betas(Some(32000), "claude-sonnet-4-5-20250929");
         assert_eq!(betas, Some(vec!["interleaved-thinking-2025-05-14".to_string()]));
     }
 
     #[test]
     fn test_build_betas_thinking_opus() {
         // Opus natively supports thinking — no interleaved-thinking beta needed
-        let betas = build_betas(false, Some(32000), "claude-opus-4-6");
+        let betas = build_betas(Some(32000), "claude-opus-4-6");
         assert_eq!(betas, None);
     }
 
     #[test]
-    fn test_build_betas_both() {
-        let betas = build_betas(true, Some(32000), "claude-sonnet-4-5-20250929");
-        assert_eq!(betas, Some(vec![
-            "context-1m-2025-08-07".to_string(),
-            "interleaved-thinking-2025-05-14".to_string(),
-        ]));
-    }
-
-    #[test]
     fn test_build_betas_none() {
-        let betas = build_betas(false, None, "claude-sonnet-4-5-20250929");
+        let betas = build_betas(None, "claude-sonnet-4-5-20250929");
         assert_eq!(betas, None);
     }
 

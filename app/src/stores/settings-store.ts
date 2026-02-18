@@ -6,7 +6,6 @@ interface SettingsState {
   skillsPath: string | null;
   preferredModel: string | null;
   logLevel: string;
-  extendedContext: boolean;
   extendedThinking: boolean;
   githubOauthToken: string | null;
   githubUserLogin: string | null;
@@ -28,7 +27,6 @@ const initialState = {
   skillsPath: null,
   preferredModel: null,
   logLevel: "info",
-  extendedContext: false,
   extendedThinking: false,
   githubOauthToken: null,
   githubUserLogin: null,

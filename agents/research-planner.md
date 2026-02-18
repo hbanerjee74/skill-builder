@@ -26,8 +26,8 @@ You do NOT launch dimension agents -- the orchestrator handles that based on you
   - The **context directory** path (where to write `research-plan.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
 - The orchestrator also passes:
-  - **User context** -- any additional context the user provided during init (may be empty)
-  - **Type-scoped dimension catalog** -- 5-6 dimensions pre-filtered by skill type, each with slug and default focus
+  - **User context** and **workspace directory** — per the User Context protocol
+  - **Type-scoped dimension catalog** -- Dimensions pre-filtered by skill type, each with slug and default focus
 
 </context>
 
@@ -117,7 +117,7 @@ selected: [slug1, slug2, slug3]
 ### Guidelines
 
 1. **Tailor focus lines to the domain.** "Identify sales pipeline metrics like coverage ratio, win rate, velocity, and where standard formulas diverge from company-specific definitions" is better than "Identify key business metrics."
-2. **Focus lines are the only input dimension agents receive.** Include enough domain context in each focus line for the agent to start researching immediately -- entity examples, metric names, pattern types, platform specifics. The agent has no other source of domain context.
+2. **Focus lines are a key input for dimension agents.** Include enough domain context in each focus line for the agent to start researching immediately -- entity examples, metric names, pattern types, platform specifics. Dimension agents also receive user context inline, but the focus line should be self-contained.
 3. **Keep reasoning concise.** One sentence per dimension.
 
 </instructions>

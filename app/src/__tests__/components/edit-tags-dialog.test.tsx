@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { toast } from "sonner";
+import { useSettingsStore } from "@/stores/settings-store";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -22,15 +23,26 @@ const sampleSkill: SkillSummary = {
   skill_type: "domain",
   author_login: null,
   author_avatar: null,
-  display_name: null,
   intake_json: null,
 };
+
+/** Navigate to the given step by clicking Next buttons */
+async function goToStep(user: ReturnType<typeof userEvent.setup>, target: 2 | 3) {
+  if (target >= 2) {
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+  }
+  if (target >= 3) {
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+  }
+}
 
 describe("EditSkillDialog", () => {
   beforeEach(() => {
     resetTauriMocks();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
+    useSettingsStore.getState().reset();
+    useSettingsStore.getState().setSettings({ workspacePath: "/test/workspace" });
   });
 
   it("renders dialog title when open", () => {
@@ -46,7 +58,7 @@ describe("EditSkillDialog", () => {
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
   });
 
-  it("renders skill name in description", () => {
+  it("shows step 1 description by default", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -56,7 +68,8 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
-    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+    expect(screen.getByText("Update name and type.")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
   });
 
   it("does not render when open is false", () => {
@@ -72,7 +85,8 @@ describe("EditSkillDialog", () => {
     expect(screen.queryByText("Edit Skill")).not.toBeInTheDocument();
   });
 
-  it("shows existing tags as badges", () => {
+  it("shows existing tags as badges on step 2", async () => {
+    const user = userEvent.setup();
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -82,11 +96,12 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
+    await goToStep(user, 2);
     expect(screen.getByText("analytics")).toBeInTheDocument();
     expect(screen.getByText("crm")).toBeInTheDocument();
   });
 
-  it("has Cancel and Save buttons", () => {
+  it("has Cancel and Next buttons on step 1", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -97,7 +112,41 @@ describe("EditSkillDialog", () => {
       />
     );
     expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
+  });
+
+  it("has Back, Next, and Save buttons on step 2", async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    await goToStep(user, 2);
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
+  });
+
+  it("has Back and Save buttons on step 3", async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    await goToStep(user, 3);
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Next/i })).not.toBeInTheDocument();
   });
 
   it("calls onOpenChange(false) when Cancel is clicked", async () => {
@@ -118,7 +167,42 @@ describe("EditSkillDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  it("calls update_skill_metadata and callbacks on successful save", async () => {
+  it("navigates between steps with Next and Back", async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+
+    // Step 1
+    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Skill Name")).toBeInTheDocument();
+
+    // Go to step 2
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("What does this skill cover?")).toBeInTheDocument();
+
+    // Go to step 3
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+
+    // Go back to step 2
+    await user.click(screen.getByRole("button", { name: /Back/i }));
+    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+
+    // Go back to step 1
+    await user.click(screen.getByRole("button", { name: /Back/i }));
+    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+  });
+
+  it("calls update_skill_metadata and callbacks on successful save from step 2", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     const onSaved = vi.fn();
@@ -134,12 +218,13 @@ describe("EditSkillDialog", () => {
       />
     );
 
+    await goToStep(user, 2);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        displayName: null,
+        domain: "sales",
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: null,
@@ -167,6 +252,7 @@ describe("EditSkillDialog", () => {
       />
     );
 
+    await goToStep(user, 2);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
@@ -190,7 +276,7 @@ describe("EditSkillDialog", () => {
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
   });
 
-  it("shows display name input", () => {
+  it("shows skill name input pre-filled with current name", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -200,10 +286,10 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
-    expect(screen.getByLabelText("Display Name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Skill Name")).toHaveValue("sales-pipeline");
   });
 
-  it("shows skill type radio group", () => {
+  it("shows skill type radio group on step 1", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -217,24 +303,7 @@ describe("EditSkillDialog", () => {
     expect(radios).toHaveLength(4);
   });
 
-  it("pre-fills display name from skill", () => {
-    const skillWithName: SkillSummary = {
-      ...sampleSkill,
-      display_name: "Sales Pipeline Analytics",
-    };
-    render(
-      <EditSkillDialog
-        skill={skillWithName}
-        open={true}
-        onOpenChange={vi.fn()}
-        onSaved={vi.fn()}
-        availableTags={[]}
-      />
-    );
-    expect(screen.getByLabelText("Display Name")).toHaveValue("Sales Pipeline Analytics");
-  });
-
-  it("shows intake textarea fields", () => {
+  it("shows skill type descriptions on step 1", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -244,12 +313,45 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
-    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
-    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
-    expect(screen.getByLabelText("Scope")).toBeInTheDocument();
+    expect(screen.getByText(/Business domain knowledge/)).toBeInTheDocument();
+    expect(screen.getByText(/Source system extraction/)).toBeInTheDocument();
   });
 
-  it("pre-fills intake fields from intake_json", () => {
+  it("shows domain input pre-filled on step 2", async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    await goToStep(user, 2);
+    expect(screen.getByPlaceholderText("What does this skill cover?")).toHaveValue("sales");
+  });
+
+  it("shows intake textarea fields on step 3", async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSkillDialog
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        availableTags={[]}
+      />
+    );
+    await goToStep(user, 3);
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
+    expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
+    expect(screen.getByLabelText("What does Claude get wrong?")).toBeInTheDocument();
+  });
+
+  it("pre-fills intake fields from intake_json on step 3", async () => {
+    const user = userEvent.setup();
     const skillWithIntake: SkillSummary = {
       ...sampleSkill,
       intake_json: JSON.stringify({
@@ -267,9 +369,9 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
+    await goToStep(user, 3);
     expect(screen.getByLabelText("Target Audience")).toHaveValue("Revenue analysts");
     expect(screen.getByLabelText("Key Challenges")).toHaveValue("ASC 606 issues");
-    expect(screen.getByLabelText("Scope")).toHaveValue("B2B SaaS only");
   });
 
   it("sends intake_json on save when intake fields are filled", async () => {
@@ -292,16 +394,151 @@ describe("EditSkillDialog", () => {
       />
     );
 
+    // Save from step 2
+    await goToStep(user, 2);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        displayName: null,
+        domain: "sales",
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: JSON.stringify({ audience: "Analysts" }),
       });
+    });
+  });
+
+  describe("rename flow", () => {
+    it("calls rename_skill before update_skill_metadata when name changes", async () => {
+      const user = userEvent.setup();
+      const onSaved = vi.fn();
+      mockInvoke.mockResolvedValue(undefined);
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={onSaved}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      await user.clear(nameInput);
+      await user.type(nameInput, "revenue-tracker");
+
+      // Navigate to step 2 to access Save
+      await goToStep(user, 2);
+      await user.click(screen.getByRole("button", { name: /Save/i }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("rename_skill", {
+          oldName: "sales-pipeline",
+          newName: "revenue-tracker",
+          workspacePath: "/test/workspace",
+        });
+      });
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
+          skillName: "revenue-tracker",
+          domain: "sales",
+          skillType: "domain",
+          tags: ["analytics", "crm"],
+          intakeJson: null,
+        });
+      });
+
+      // Verify rename_skill was called before update_skill_metadata
+      const calls = mockInvoke.mock.calls.map((c) => c[0]);
+      const renameIndex = calls.indexOf("rename_skill");
+      const updateIndex = calls.indexOf("update_skill_metadata");
+      expect(renameIndex).toBeLessThan(updateIndex);
+    });
+
+    it("shows rename warning when skill name is changed", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      await user.clear(nameInput);
+      await user.type(nameInput, "revenue-tracker");
+
+      expect(
+        screen.getByText("Renaming will move the skill directory")
+      ).toBeInTheDocument();
+    });
+
+    it("disables Next when skill name is invalid kebab-case", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      const nextButton = screen.getByRole("button", { name: /Next/i });
+
+      // Initially valid
+      expect(nextButton).toBeEnabled();
+
+      // Clear and type a name with trailing hyphen (invalid kebab-case)
+      await user.clear(nameInput);
+      await user.type(nameInput, "my-skill-");
+
+      expect(nextButton).toBeDisabled();
+    });
+
+    it("does not call rename_skill when name is unchanged", async () => {
+      const user = userEvent.setup();
+      const onSaved = vi.fn();
+      mockInvoke.mockResolvedValue(undefined);
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={onSaved}
+          availableTags={[]}
+        />
+      );
+
+      // Navigate to step 2 and save
+      await goToStep(user, 2);
+      await user.click(screen.getByRole("button", { name: /Save/i }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
+          skillName: "sales-pipeline",
+          domain: "sales",
+          skillType: "domain",
+          tags: ["analytics", "crm"],
+          intakeJson: null,
+        });
+      });
+
+      expect(mockInvoke).not.toHaveBeenCalledWith(
+        "rename_skill",
+        expect.anything()
+      );
     });
   });
 });

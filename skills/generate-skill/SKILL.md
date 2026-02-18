@@ -141,7 +141,6 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      <agent-instructions>
      {content of references/protocols.md}
-     {content of references/file-formats.md}
      </agent-instructions>
 
      Return a 5-10 bullet summary of the key questions you generated."
@@ -177,7 +176,6 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      <agent-instructions>
      {content of references/protocols.md}
-     {content of references/file-formats.md}
      </agent-instructions>
 
      Read the answered clarifications.md and insert #### Refinements subsections for questions that need deeper exploration based on the user's answers.
@@ -207,10 +205,6 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      Skill type: <skill_type>
      Context directory: ./<skillname>/context/
-
-     <agent-instructions>
-     {content of references/file-formats.md}
-     </agent-instructions>
 
      Analyze all answered clarifications and produce decisions.
      Think thoroughly about contradictions, gaps, and implications across all provided answers.
@@ -326,13 +320,12 @@ At the start of each step, display progress to the user:
 
 ## Reference Files
 
-Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/generate-skill/references/`. These contain the protocols, file formats, content guidelines, and best practices that agents need during execution.
+Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/generate-skill/references/`. These contain the protocols, content guidelines, and best practices that agents need during execution.
 
 | File | Contains | Used by steps |
 |------|----------|---------------|
 | `protocols.md` | Sub-agent spawning rules, output handling | 1, 3, 6, 7 |
-| `file-formats.md` | Clarifications and Decisions file format specs | 1, 3, 5 |
-| `content-guidelines.md` | Skill Users, Content Principles, Output Paths | 6, 7 |
+| `content-guidelines.md` | Content Principles, Output Paths | 6, 7 |
 | `best-practices.md` | Skill structure rules, validation checklist, anti-patterns | 6, 7 |
 
 ## Passing Agent Instructions
@@ -347,7 +340,6 @@ Task(
 
   <agent-instructions>
   {content of references/protocols.md}
-  {content of references/file-formats.md}
   </agent-instructions>
 
   Return ...")

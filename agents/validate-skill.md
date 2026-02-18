@@ -33,7 +33,7 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements. Use this to verify the skill addresses the user's stated audience and challenges. Pass the workspace directory to sub-agents.
+  - **User context** and **workspace directory** — per the User Context protocol. Use to verify the skill addresses the user's stated audience and challenges.
 
 </context>
 
@@ -53,10 +53,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 Before running any validation, check if `decisions.md` exists in the context directory. If it does not exist (common when called from refine context), skip this guard and proceed to Phase 1.
 
-If `decisions.md` exists and its YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
+If `decisions.md` exists, check it per the Scope Recommendation Guard protocol. If detected, write these stubs and return:
 
-1. Use the Write tool to create `agent-validation-log.md` in the context directory with EXACTLY this content:
-
+**`agent-validation-log.md`:**
 ```
 ---
 scope_recommendation: true
@@ -66,8 +65,7 @@ scope_recommendation: true
 Scope recommendation is active. No skill was generated, so no validation was performed.
 ```
 
-2. Use the Write tool to create `test-skill.md` in the context directory with EXACTLY this content:
-
+**`test-skill.md`:**
 ```
 ---
 scope_recommendation: true
@@ -100,7 +98,7 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Phase 2: Spawn All Sub-agents in Parallel
 
-Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files.
+Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol).
 
 Spawn a **quality sub-agent** (`name: "validate-quality"`, `model: "sonnet"`) via the Task tool. See `agents/validate-quality.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
