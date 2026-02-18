@@ -74,13 +74,6 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
-function formatSkillName(name: string): string {
-  return name
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ")
-}
-
 function formatRelativeTime(dateString: string | null): string {
   if (!dateString) return ""
   try {
@@ -144,11 +137,11 @@ export default function SkillCard({
   const canDownload = isWorkflowComplete(skill)
 
   const cardContent = (
-    <Card className={cn("flex flex-col", isLocked && "opacity-50 pointer-events-none")}>
+    <Card className={cn("flex flex-col min-w-0", isLocked && "opacity-50 pointer-events-none")}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
-            {formatSkillName(skill.name)}
+            {skill.name}
           </CardTitle>
           <div className="flex items-center gap-1.5 shrink-0">
             {isLocked && <Lock className="size-3.5 text-muted-foreground" />}
