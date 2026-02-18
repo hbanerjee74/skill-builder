@@ -83,9 +83,11 @@ Keep the explanation concise — focus on what changed, not what stayed the same
 
 ## Magic Commands
 
-The user may send these commands instead of a free-form request. Magic commands delegate to specialized agents so skill quality rules stay in one place.
+The user may send these commands instead of a free-form request.
 
-**`/rewrite`** — Full coherence pass. After many surgical edits, a skill can become patchy. This delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
+**`/rewrite`** — Rewrite for coherence. Behavior depends on whether `@` file targets are present:
+
+**`/rewrite` (no `@` targets)** — Full skill rewrite. Delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
 1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
    - The skill type, domain name (read from SKILL.md frontmatter), and skill name
@@ -101,7 +103,16 @@ The user may send these commands instead of a free-form request. Magic commands 
    - Mode: `bypassPermissions`
 3. Summarize what changed: report the generate-skill agent's output and the validation results.
 
-**`/validate`** — Re-run validation only (no rewrite). Useful after a series of edits to check quality.
+**`/rewrite @file1 @file2 ...`** — Scoped rewrite. Rewrite only the targeted files for coherence without changing the overall skill structure. Handle this yourself (do not spawn generate-skill):
+
+1. Read `SKILL.md` and all targeted files to understand the full context
+2. Rewrite each targeted file from scratch using the Write tool — preserve all domain knowledge but improve clarity, flow, and consistency with the rest of the skill
+3. If a targeted reference file's scope changed, update its pointer in SKILL.md
+4. Update the `modified` date in SKILL.md frontmatter
+5. Follow the Skill Best Practices and Content Principles from the agent instructions
+6. Explain what changed in each file
+
+**`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
 
 1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite`.
 2. Report the validation results to the user.
