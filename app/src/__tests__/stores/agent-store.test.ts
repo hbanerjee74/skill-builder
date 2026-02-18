@@ -4,7 +4,6 @@ import {
   useAgentStore,
   flushMessageBuffer,
   type AgentMessage,
-  type ModelUsageBreakdown,
   formatModelName,
   formatTokenCount,
   getLatestContextTokens,
@@ -933,19 +932,20 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
     useAgentStore.getState().completeRun("agent-1", true);
 
     // Should have been called twice — once per model
-    const persistCalls = mockInvoke.mock.calls.filter(
-      ([cmd]: [string]) => cmd === "persist_agent_run"
+    const allCalls = mockInvoke.mock.calls as [string, Record<string, unknown>][];
+    const persistCalls = allCalls.filter(
+      ([cmd]) => cmd === "persist_agent_run"
     );
     expect(persistCalls).toHaveLength(2);
 
     // Verify model-specific data is passed correctly
-    const models = persistCalls.map(([, args]: [string, Record<string, unknown>]) => args.model);
+    const models = persistCalls.map(([, args]) => args.model);
     expect(models).toContain("claude-sonnet-4-5-20250929");
     expect(models).toContain("claude-haiku-4-5-20251001");
 
     // Check sonnet row details
     const sonnetCall = persistCalls.find(
-      ([, args]: [string, Record<string, unknown>]) => args.model === "claude-sonnet-4-5-20250929"
+      ([, args]) => args.model === "claude-sonnet-4-5-20250929"
     );
     expect(sonnetCall).toBeDefined();
     const sonnetArgs = sonnetCall![1] as Record<string, unknown>;
@@ -958,7 +958,7 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
 
     // Check haiku row details
     const haikuCall = persistCalls.find(
-      ([, args]: [string, Record<string, unknown>]) => args.model === "claude-haiku-4-5-20251001"
+      ([, args]) => args.model === "claude-haiku-4-5-20251001"
     );
     expect(haikuCall).toBeDefined();
     const haikuArgs = haikuCall![1] as Record<string, unknown>;
@@ -985,12 +985,12 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
 
     useAgentStore.getState().completeRun("agent-1", true);
 
-    const persistCalls = mockInvoke.mock.calls.filter(
-      ([cmd]: [string]) => cmd === "persist_agent_run"
+    const fallbackCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run"
     );
-    expect(persistCalls).toHaveLength(1);
+    expect(fallbackCalls).toHaveLength(1);
 
-    const args = persistCalls[0][1] as Record<string, unknown>;
+    const args = fallbackCalls[0][1] as Record<string, unknown>;
     expect(args.model).toBe("sonnet");
     expect(args.inputTokens).toBe(1500);
     expect(args.outputTokens).toBe(500);
@@ -1028,13 +1028,13 @@ describe("completeRun persistence with modelUsageBreakdown", () => {
 
     useAgentStore.getState().completeRun("agent-1", false);
 
-    const persistCalls = mockInvoke.mock.calls.filter(
-      ([cmd]: [string]) => cmd === "persist_agent_run"
+    const sharedCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run"
     );
-    expect(persistCalls).toHaveLength(2);
+    expect(sharedCalls).toHaveLength(2);
 
     // Both rows should share agentId, status=error, numTurns, stopReason
-    for (const [, args] of persistCalls) {
+    for (const [, args] of sharedCalls) {
       const a = args as Record<string, unknown>;
       expect(a.agentId).toBe("agent-1");
       expect(a.status).toBe("error");
