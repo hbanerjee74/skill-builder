@@ -63,8 +63,14 @@ pub fn get_skill_content_for_refine(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
     log::info!("[get_skill_content_for_refine] skill={}", skill_name);
-    let skills_path = resolve_skills_path(&db, &workspace_path)?;
-    get_skill_content_inner(&skill_name, &skills_path)
+    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+        log::error!("[get_skill_content_for_refine] Failed to resolve skills path: {}", e);
+        e
+    })?;
+    get_skill_content_inner(&skill_name, &skills_path).map_err(|e| {
+        log::error!("[get_skill_content_for_refine] {}", e);
+        e
+    })
 }
 
 fn get_skill_content_inner(
@@ -80,6 +86,7 @@ fn get_skill_content_inner(
         ));
     }
 
+    log::debug!("[get_skill_content_for_refine] reading from {}", skill_root.display());
     let mut files = Vec::new();
 
     // 1. SKILL.md (the main skill file)
@@ -119,6 +126,7 @@ fn get_skill_content_inner(
         }
     }
 
+    log::debug!("[get_skill_content_for_refine] returning {} files", files.len());
     Ok(files)
 }
 
@@ -137,8 +145,14 @@ pub fn get_refine_diff(
     db: tauri::State<'_, Db>,
 ) -> Result<RefineDiff, String> {
     log::info!("[get_refine_diff] skill={}", skill_name);
-    let skills_path = resolve_skills_path(&db, &workspace_path)?;
-    get_refine_diff_inner(&skill_name, &skills_path)
+    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
+        log::error!("[get_refine_diff] Failed to resolve skills path: {}", e);
+        e
+    })?;
+    get_refine_diff_inner(&skill_name, &skills_path).map_err(|e| {
+        log::error!("[get_refine_diff] {}", e);
+        e
+    })
 }
 
 fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDiff, String> {
@@ -146,6 +160,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     let repo_path = Path::new(skills_path);
     if !repo_path.join(".git").exists() {
+        log::debug!("[get_refine_diff] no .git at {}, returning empty", repo_path.display());
         return Ok(RefineDiff {
             stat: "no git repository".to_string(),
             files: vec![],
@@ -156,6 +171,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
         Repository::open(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
     let prefix = format!("{}/", skill_name);
+    log::debug!("[get_refine_diff] computing diff for prefix '{}'", prefix);
     let mut opts = DiffOptions::new();
     opts.pathspec(&prefix);
 
@@ -227,6 +243,7 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
     }
 
     if file_map.is_empty() {
+        log::debug!("[get_refine_diff] no changes for '{}'", skill_name);
         return Ok(RefineDiff {
             stat: "no changes".to_string(),
             files: vec![],
