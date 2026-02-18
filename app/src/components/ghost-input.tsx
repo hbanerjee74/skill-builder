@@ -1,4 +1,4 @@
-import { useCallback } from "react"
+import { useCallback, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -29,6 +29,8 @@ export function GhostInput({
   ...inputProps
 }: GhostInputProps) {
   const showGhost = shouldShowGhost(value, suggestion)
+  const onKeyDownRef = useRef(inputProps.onKeyDown)
+  onKeyDownRef.current = inputProps.onKeyDown
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -36,9 +38,9 @@ export function GhostInput({
         e.preventDefault()
         onAccept?.(suggestion)
       }
-      inputProps.onKeyDown?.(e)
+      onKeyDownRef.current?.(e)
     },
-    [showGhost, suggestion, onAccept, inputProps.onKeyDown],
+    [showGhost, suggestion, onAccept],
   )
 
   return (
@@ -68,6 +70,8 @@ export function GhostTextarea({
   ...textareaProps
 }: GhostTextareaProps) {
   const showGhost = shouldShowGhost(value, suggestion)
+  const onKeyDownRef = useRef(textareaProps.onKeyDown)
+  onKeyDownRef.current = textareaProps.onKeyDown
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -75,9 +79,9 @@ export function GhostTextarea({
         e.preventDefault()
         onAccept?.(suggestion)
       }
-      textareaProps.onKeyDown?.(e)
+      onKeyDownRef.current?.(e)
     },
-    [showGhost, suggestion, onAccept, textareaProps.onKeyDown],
+    [showGhost, suggestion, onAccept],
   )
 
   return (

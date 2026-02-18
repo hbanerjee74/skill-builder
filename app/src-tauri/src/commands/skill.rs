@@ -493,32 +493,7 @@ fn rename_skill_inner(
         return Err(format!("Skill '{}' already exists", new_name));
     }
 
-    // Move directories on disk
-    let workspace_old = Path::new(workspace_path).join(old_name);
-    let workspace_new = Path::new(workspace_path).join(new_name);
-    if workspace_old.exists() {
-        fs::rename(&workspace_old, &workspace_new).map_err(|e| {
-            log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
-            format!("Failed to rename workspace directory: {}", e)
-        })?;
-    }
-
-    if let Some(sp) = skills_path {
-        let skills_old = Path::new(sp).join(old_name);
-        let skills_new = Path::new(sp).join(new_name);
-        if skills_old.exists() {
-            fs::rename(&skills_old, &skills_new).map_err(|e| {
-                log::error!("[rename_skill] Failed to rename skills dir: {}", e);
-                // Rollback workspace rename
-                if workspace_new.exists() {
-                    let _ = fs::rename(&workspace_new, &workspace_old);
-                }
-                format!("Failed to rename skills directory: {}", e)
-            })?;
-        }
-    }
-
-    // Update all DB tables in a transaction
+    // DB first, then disk — DB failures abort cleanly without leaving orphaned directories
     let tx_result = (|| -> Result<(), String> {
         conn.execute_batch("BEGIN TRANSACTION").map_err(|e| e.to_string())?;
 
@@ -576,21 +551,33 @@ fn rename_skill_inner(
 
     if let Err(e) = tx_result {
         let _ = conn.execute_batch("ROLLBACK");
-        // Rollback disk changes
-        let workspace_new = Path::new(workspace_path).join(new_name);
-        let workspace_old = Path::new(workspace_path).join(old_name);
-        if workspace_new.exists() {
-            let _ = fs::rename(&workspace_new, &workspace_old);
-        }
-        if let Some(sp) = skills_path {
-            let skills_new = Path::new(sp).join(new_name);
-            let skills_old = Path::new(sp).join(old_name);
-            if skills_new.exists() {
-                let _ = fs::rename(&skills_new, &skills_old);
-            }
-        }
         log::error!("[rename_skill] DB transaction failed: {}", e);
         return Err(format!("Failed to rename skill in database: {}", e));
+    }
+
+    // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
+    let workspace_old = Path::new(workspace_path).join(old_name);
+    let workspace_new = Path::new(workspace_path).join(new_name);
+    if workspace_old.exists() {
+        fs::rename(&workspace_old, &workspace_new).map_err(|e| {
+            log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
+            format!("Failed to rename workspace directory: {}", e)
+        })?;
+    }
+
+    if let Some(sp) = skills_path {
+        let skills_old = Path::new(sp).join(old_name);
+        let skills_new = Path::new(sp).join(new_name);
+        if skills_old.exists() {
+            fs::rename(&skills_old, &skills_new).map_err(|e| {
+                log::error!("[rename_skill] Failed to rename skills dir: {}", e);
+                // Rollback workspace rename to keep disk consistent
+                if workspace_new.exists() {
+                    let _ = fs::rename(&workspace_new, &workspace_old);
+                }
+                format!("Failed to rename skills directory: {}", e)
+            })?;
+        }
     }
 
     Ok(())
@@ -682,7 +669,7 @@ pub async fn generate_suggestions(
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
         log::error!("[generate_suggestions] API error ({}): {}", status, body);
-        return Err(format!("Anthropic API error ({}): {}", status, body));
+        return Err(format!("Anthropic API error ({})", status));
     }
 
     let body: serde_json::Value = resp.json().await.map_err(|e| {
