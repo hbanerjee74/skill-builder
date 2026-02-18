@@ -50,6 +50,9 @@ If the request is ambiguous, use conversation history to understand the user's e
 
 ## Step 3: Make Targeted Edits
 
+**File targeting:**
+If the user's message specifies target files (prefixed with `@`, e.g., `@references/metrics.md`), constrain your edits to only those files. Do not modify other skill files even if they seem related. When no target files are specified, use your judgment from Step 2 to determine which files to edit.
+
 **Editing rules:**
 - Use the Edit tool for surgical changes — do not rewrite entire files with Write unless the user explicitly asks for a full rewrite
 - Preserve formatting, structure, heading hierarchy, and content of untouched sections
