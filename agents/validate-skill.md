@@ -156,30 +156,14 @@ Returns the result as text using this format:
 
 The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files.
 
-This sub-agent checks whether the generated skill contains content that belongs to a different skill type. Use the dimension assignment matrix:
+This sub-agent checks whether the generated skill contains content that belongs to a different skill type. Use the type-scoped dimension sets to determine which dimensions belong to each type:
 
-| Dimension | domain | data-eng | platform | source |
-|-----------|:------:|:--------:|:--------:|:------:|
-| entities | x | x | x | x |
-| data-quality | - | x | - | x |
-| metrics | x | - | - | - |
-| business-rules | x | - | - | - |
-| segmentation-and-periods | x | - | - | - |
-| modeling-patterns | x | - | - | - |
-| pattern-interactions | - | x | - | - |
-| load-merge-patterns | - | x | - | - |
-| historization | - | x | - | - |
-| layer-design | - | x | - | - |
-| platform-behavioral-overrides | - | - | x | - |
-| config-patterns | - | - | x | - |
-| integration-orchestration | - | - | x | - |
-| operational-failure-modes | - | - | x | - |
-| extraction | - | - | - | x |
-| field-semantics | - | - | - | x |
-| lifecycle-and-state | - | - | - | x |
-| reconciliation | - | - | - | x |
+- **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
+- **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
+- **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
+- **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
 
-For each section and reference file in the skill, classify which dimension(s) it covers. If content maps to a dimension NOT assigned to this skill type, flag it as a boundary violation.
+For each section and reference file in the skill, classify which dimension(s) it covers. If content maps to a dimension NOT in the current skill type's set, flag it as a boundary violation.
 
 **Threshold**: Brief incidental mentions of concepts from other types are not violations — only flag substantial content sections that belong to another type.
 
