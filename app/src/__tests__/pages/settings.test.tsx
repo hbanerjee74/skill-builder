@@ -39,6 +39,14 @@ vi.mock("@/components/github-login-dialog", () => ({
   GitHubLoginDialog: () => null,
 }));
 
+vi.mock("@/pages/skills", () => ({
+  default: () => <div data-testid="skills-page">Skills Library Content</div>,
+}));
+
+vi.mock("@/components/feedback-dialog", () => ({
+  FeedbackDialog: () => null,
+}));
+
 // Import after mocks are set up
 import SettingsPage from "@/pages/settings";
 
@@ -108,7 +116,7 @@ describe("SettingsPage", () => {
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
   });
 
-  it("renders all 4 sections in left nav", async () => {
+  it("renders all 5 sections in left nav", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -118,6 +126,7 @@ describe("SettingsPage", () => {
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Skills Library/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });
@@ -301,7 +310,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      const matches = screen.getAllByText("Skill Builder v0.1.0");
+      const matches = screen.getAllByText("v0.1.0");
       expect(matches.length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -313,7 +322,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      const matches = screen.getAllByText("Skill Builder vdev");
+      const matches = screen.getAllByText("vdev");
       expect(matches.length).toBeGreaterThanOrEqual(1);
     });
   });

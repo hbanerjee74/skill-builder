@@ -3,8 +3,9 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle, Search } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle, Search, ArrowLeft } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -27,10 +28,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
+import { FeedbackDialog } from "@/components/feedback-dialog"
+import SkillsPage from "./skills"
 
 const sections = [
   { id: "general", label: "General" },
   { id: "skill-building", label: "Skill Building" },
+  { id: "skills-library", label: "Skills Library" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
 ] as const
@@ -38,6 +42,7 @@ const sections = [
 type SectionId = typeof sections[number]["id"]
 
 export default function SettingsPage() {
+  const navigate = useNavigate()
   const [activeSection, setActiveSection] = useState<SectionId>("general")
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
@@ -287,29 +292,39 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <span className="text-sm text-muted-foreground">Skill Builder v{appVersion}</span>
-        {saved && (
-          <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
-            <CheckCircle2 className="size-3.5" />
-            Saved
-          </span>
-        )}
-      </div>
+    <div className="flex h-full flex-col">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b px-6">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => navigate({ to: "/" })}
+            title="Back to Dashboard"
+          >
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h1 className="text-lg font-semibold">Settings</h1>
+          <span className="text-sm text-muted-foreground">v{appVersion}</span>
+          {saved && (
+            <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
+              <CheckCircle2 className="size-3.5" />
+              Saved
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <FeedbackDialog />
+        </div>
+      </header>
 
-      <div className="flex gap-8">
-        <nav className="flex w-44 shrink-0 flex-col space-y-1">
+      {loading ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+      <div className="flex flex-1 overflow-hidden">
+        <nav className="flex w-48 shrink-0 flex-col space-y-1 overflow-y-auto border-r p-4">
           {sections.map(({ id, label }) => (
             <button
               key={id}
@@ -326,9 +341,9 @@ export default function SettingsPage() {
           ))}
         </nav>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 overflow-y-auto">
           {activeSection === "general" && (
-          <div className="space-y-6">
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
                 <CardTitle>API Configuration</CardTitle>
@@ -448,7 +463,7 @@ export default function SettingsPage() {
           )}
 
           {activeSection === "skill-building" && (
-          <div className="space-y-6">
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
                 <CardTitle>Agent Features</CardTitle>
@@ -503,8 +518,10 @@ export default function SettingsPage() {
           </div>
           )}
 
+          {activeSection === "skills-library" && <SkillsPage />}
+
           {activeSection === "github" && (
-          <div className="space-y-6">
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
                 <CardTitle>GitHub Account</CardTitle>
@@ -686,7 +703,7 @@ export default function SettingsPage() {
           )}
 
           {activeSection === "advanced" && (
-          <div className="space-y-6">
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
                 <CardTitle>Logging</CardTitle>
@@ -801,6 +818,8 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      )}
 
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
