@@ -21,14 +21,7 @@ import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
-import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
-
-const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
-  platform: "Tools and platform-specific skills (dbt, Fabric, Databricks)",
-  domain: "Business domain knowledge (Finance, Marketing, HR)",
-  source: "Source system extraction patterns (Salesforce, SAP, Workday)",
-  "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
-}
+import { SKILL_TYPES, SKILL_TYPE_LABELS, SKILL_TYPE_DESCRIPTIONS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
 const STEP_DESCRIPTIONS: Record<number, string> = {
   1: "Name your skill and choose its type.",

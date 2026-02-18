@@ -8,6 +8,13 @@ export const SKILL_TYPE_LABELS: Record<SkillType, string> = {
   "data-engineering": "Data Engineering",
 };
 
+export const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
+  platform: "Tools and platform-specific skills (dbt, Fabric, Databricks)",
+  domain: "Business domain knowledge (Finance, Marketing, HR)",
+  source: "Source system extraction patterns (Salesforce, SAP, Workday)",
+  "data-engineering": "Technical patterns and practices (SCD, Incremental Loads)",
+};
+
 export const SKILL_TYPE_COLORS: Record<SkillType, string> = {
   platform: "bg-[#E8F4F5] text-[#0E7C86] dark:bg-[#0E7C86]/15 dark:text-[#2EC4B6]",
   domain: "bg-[#EBF3EC] text-[#2D7A35] dark:bg-[#2D7A35]/15 dark:text-[#5D9B62]",
