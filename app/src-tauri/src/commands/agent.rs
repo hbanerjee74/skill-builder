@@ -23,7 +23,7 @@ pub async fn start_agent(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
         agent_id, model, skill_name, agent_name
     );
-    let (api_key, extended_context, extended_thinking) = {
+    let (api_key, extended_thinking) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[start_agent] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -32,7 +32,7 @@ pub async fn start_agent(
         let key = settings
             .anthropic_api_key
             .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-        (key, settings.extended_context, settings.extended_thinking)
+        (key, settings.extended_thinking)
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
@@ -50,7 +50,7 @@ pub async fn start_agent(
         max_turns,
         permission_mode: None,
         session_id,
-        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name,

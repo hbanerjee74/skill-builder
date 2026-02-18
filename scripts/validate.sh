@@ -27,7 +27,7 @@ if [ -f ".claude-plugin/plugin.json" ]; then
     fail "plugin.json is not valid JSON"
   fi
 
-  for field in name version description; do
+  for field in name version description skills; do
     if python3 -c "import json; d=json.load(open('.claude-plugin/plugin.json')); assert '$field' in d" 2>/dev/null; then
       pass "plugin.json has '$field'"
     else
@@ -186,11 +186,11 @@ else
   warn ".gitignore not found"
 fi
 
-# ---------- T3.4: Coordinator content checks ----------
+# ---------- T1.8: Coordinator content checks ----------
 echo "=== Coordinator Content ==="
 if [ -f "skills/generate-skill/SKILL.md" ]; then
   content=$(cat "skills/generate-skill/SKILL.md")
-  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "skill-builder:"; do
+  for keyword in "TeamCreate" "TeamDelete" "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/protocols.md"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"
     else

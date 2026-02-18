@@ -12,7 +12,7 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 
 **Backend:** Tauri 2, rusqlite, git2, reqwest, notify, pulldown-cmark, tauri-plugin-shell, tokio
 
-**Agent Runtime:** Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar process)
+**Agent Runtime:** Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar process). **No hot-reload** — restart `npm run dev` after editing `app/sidecar/` files.
 
 **Runtime Dependency:** Node.js 18-24 (checked on startup; Node 25+ causes SDK crashes)
 
@@ -68,7 +68,7 @@ Set `MOCK_AGENTS=true` to skip real SDK `query()` calls. The sidecar replays bun
 
 - **Activation:** `MOCK_AGENTS=true npm run dev` (env var, not a config setting)
 - **Implementation:** `app/sidecar/mock-agent.ts` — checks `process.env.MOCK_AGENTS` at the top of `runAgentRequest()`, maps agent names to step templates, streams pre-recorded messages with short delays
-- **Templates:** `app/sidecar/mock-templates/` — 5 JSONL replay files (`step0-research.jsonl` through `step6-validate-skill.jsonl`) plus `outputs/` with mock files per step (clarifications.md, decisions.md, SKILL.md, etc.)
+- **Templates:** `app/sidecar/mock-templates/` — JSONL replay files (see directory for current set) plus `outputs/` with mock files per step (clarifications.md, decisions.md, SKILL.md, etc.)
 - **Agent name mapping:** All research sub-agents and orchestrators map to `step0-research`; shared agents (`detailed-research`, `confirm-decisions`, `validate-skill`) and generate-skill agents map to their respective step templates. Same templates are used regardless of skill type.
 - **Build:** `build.js` copies `mock-templates/` into `dist/` (with `rmSync` clean before copy to prevent stale files)
 

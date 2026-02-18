@@ -35,7 +35,6 @@ export default function SettingsPage() {
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [logLevel, setLogLevel] = useState("info")
-  const [extendedContext, setExtendedContext] = useState(false)
   const [extendedThinking, setExtendedThinking] = useState(false)
   const [maxDimensions, setMaxDimensions] = useState(5)
   const [industry, setIndustry] = useState("")
@@ -74,7 +73,6 @@ export default function SettingsPage() {
             setSkillsPath(result.skills_path)
             setPreferredModel(result.preferred_model || "sonnet")
             setLogLevel(result.log_level ?? "info")
-            setExtendedContext(result.extended_context ?? false)
             setExtendedThinking(result.extended_thinking ?? false)
             setMaxDimensions(result.max_dimensions ?? 5)
             setIndustry(result.industry ?? "")
@@ -121,7 +119,6 @@ export default function SettingsPage() {
     skillsPath: string | null;
     preferredModel: string;
     logLevel: string;
-    extendedContext: boolean;
     extendedThinking: boolean;
     maxDimensions: number;
     remoteRepoOwner: string | null;
@@ -135,7 +132,7 @@ export default function SettingsPage() {
       skills_path: overrides.skillsPath !== undefined ? overrides.skillsPath : skillsPath,
       preferred_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
-      extended_context: overrides.extendedContext !== undefined ? overrides.extendedContext : extendedContext,
+      extended_context: false,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
       max_dimensions: overrides.maxDimensions !== undefined ? overrides.maxDimensions : maxDimensions,
       splash_shown: false,
@@ -158,7 +155,6 @@ export default function SettingsPage() {
         skillsPath: settings.skills_path,
         preferredModel: settings.preferred_model,
         logLevel: settings.log_level,
-        extendedContext: settings.extended_context,
         extendedThinking: settings.extended_thinking,
         maxDimensions: settings.max_dimensions,
         remoteRepoOwner: settings.remote_repo_owner,
@@ -441,17 +437,6 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-0.5">
-                    <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
-                    <span className="text-sm text-muted-foreground">Enable 1M token context window for all agents. Requires a compatible API plan.</span>
-                  </div>
-                  <Switch
-                    id="extended-context"
-                    checked={extendedContext}
-                    onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
-                  />
-                </div>
                 <div className="flex items-center justify-between">
                   <div className="flex flex-col gap-0.5">
                     <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
