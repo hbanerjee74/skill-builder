@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, DollarSign, MessageSquare, Github, LogOut } from "lucide-react";
+import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, BookOpen, DollarSign, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,6 @@ import { useAuthStore } from "@/stores/auth-store";
 const navItems = [
   { to: "/" as const, label: "Dashboard", icon: Home },
   { to: "/skills" as const, label: "Skills Library", icon: BookOpen },
-  { to: "/refine" as const, label: "Refine", icon: MessageSquare },
   { to: "/prompts" as const, label: "Prompts", icon: FileText },
   { to: "/usage" as const, label: "Usage", icon: DollarSign },
   { to: "/settings" as const, label: "Settings", icon: Settings },

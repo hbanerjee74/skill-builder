@@ -118,21 +118,18 @@ export default function SkillCard({
           </div>
         )}
       </CardHeader>
-      <CardFooter className="mt-auto flex items-center gap-3">
-        <div className="flex items-center gap-1.5 shrink-0">
+      <CardFooter className="mt-auto flex flex-col gap-2">
+        <div className="flex w-full items-center gap-2">
+          <Progress value={progress} className="flex-1" />
+          <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
+        </div>
+        <div className="flex w-full items-center gap-1.5">
           <Button size="sm" onClick={() => onContinue(skill)}>
             <Play className="size-3" />
             Continue
           </Button>
           {canDownload && onRefine && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRefine(skill);
-              }}
-            >
+            <Button size="sm" variant="outline" onClick={() => onRefine(skill)}>
               <MessageSquare className="size-3" />
               Refine
             </Button>
@@ -146,10 +143,6 @@ export default function SkillCard({
           >
             <Trash2 className="size-3" />
           </Button>
-        </div>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Progress value={progress} className="flex-1" />
-          <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
         </div>
       </CardFooter>
     </Card>
