@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearch, useBlocker } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -67,7 +67,6 @@ export default function RefinePage() {
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
 
-  const [pendingSwitchSkill, setPendingSwitchSkill] = useState<SkillSummary | null>(null);
   const autoSelectedRef = useRef(false);
 
   // --- Navigation guard ---
@@ -130,11 +129,6 @@ export default function RefinePage() {
   // --- Select a skill ---
   const handleSelectSkill = useCallback(
     async (skill: SkillSummary) => {
-      if (isRunning) {
-        setPendingSwitchSkill(skill);
-        return;
-      }
-
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
@@ -175,7 +169,7 @@ export default function RefinePage() {
         store.setLoadingFiles(false);
       }
     },
-    [isRunning, workspacePath],
+    [workspacePath],
   );
 
   // --- Auto-select skill from search param ---
@@ -252,19 +246,6 @@ export default function RefinePage() {
     };
   }, []);
 
-  // --- Confirm switch skill while running ---
-  const handleConfirmSwitch = useCallback(() => {
-    if (!pendingSwitchSkill) return;
-    const store = useRefineStore.getState();
-    if (store.sessionId) {
-      closeRefineSession(store.sessionId).catch(() => {});
-    }
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-    setPendingSwitchSkill(null);
-    handleSelectSkill(pendingSwitchSkill);
-  }, [pendingSwitchSkill, handleSelectSkill]);
-
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
@@ -323,6 +304,7 @@ export default function RefinePage() {
           skills={refinableSkills}
           selected={selectedSkill}
           isLoading={isLoadingSkills}
+          disabled={isRunning}
           onSelect={handleSelectSkill}
         />
       </div>
@@ -364,27 +346,6 @@ export default function RefinePage() {
         </Dialog>
       )}
 
-      {/* Confirm switch skill dialog */}
-      <Dialog
-        open={!!pendingSwitchSkill}
-        onOpenChange={(open) => !open && setPendingSwitchSkill(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Switch skill?</DialogTitle>
-            <DialogDescription>
-              An agent is currently running. Switching skills will stop it and
-              clear the chat history.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPendingSwitchSkill(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmSwitch}>Switch</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
