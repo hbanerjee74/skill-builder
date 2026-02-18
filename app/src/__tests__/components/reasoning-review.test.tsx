@@ -174,7 +174,7 @@ describe("ReasoningReview", () => {
 
     await waitFor(() => {
       expect(mockRunWorkflowStep).toHaveBeenCalledWith(
-        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace", false,
+        "saas-revenue", 4, "SaaS Revenue Analytics", "/workspace",
       );
     });
 
