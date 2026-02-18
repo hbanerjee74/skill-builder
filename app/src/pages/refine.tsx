@@ -288,7 +288,7 @@ export default function RefinePage() {
       }
 
       // Register run in agent store (without setting global activeAgentId)
-      useAgentStore.getState().registerRun(agentId, preferredModel ?? "sonnet");
+      useAgentStore.getState().registerRun(agentId, preferredModel ?? "sonnet", selectedSkill.name);
 
       // Add agent turn to chat
       store.addAgentTurn(agentId);
