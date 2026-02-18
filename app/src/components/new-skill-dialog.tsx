@@ -188,13 +188,7 @@ export default function NewSkillDialog({
             {[1, 2, 3].map((s) => (
               <div
                 key={s}
-                className={`size-2 rounded-full transition-colors ${
-                  s === step
-                    ? "bg-primary"
-                    : s < step
-                      ? "bg-primary/40"
-                      : "bg-muted-foreground/20"
-                }`}
+                className={`size-2 rounded-full transition-colors ${stepDotColor(s)}`}
               />
             ))}
             <span className="ml-2 text-xs text-muted-foreground">

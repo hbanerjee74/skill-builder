@@ -18,3 +18,13 @@ export function toKebabChars(str: string): string {
     .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-");
 }
+
+/** Build intake JSON from optional form fields. Returns null if all fields are empty. */
+export function buildIntakeJson(fields: Record<string, string>): string | null {
+  const data: Record<string, string> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    const trimmed = value.trim();
+    if (trimmed) data[key] = trimmed;
+  }
+  return Object.keys(data).length > 0 ? JSON.stringify(data) : null;
+}

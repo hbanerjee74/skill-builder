@@ -17,7 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import { renameSkill, updateSkillMetadata } from "@/lib/tauri"
 import { useSettingsStore } from "@/stores/settings-store"
-import { isValidKebab, toKebabChars } from "@/lib/utils"
+import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
@@ -31,7 +31,7 @@ interface EditSkillDialogProps {
 
 const EMPTY_INTAKE = { audience: "", challenges: "", scope: "", unique_setup: "", claude_mistakes: "" }
 
-function parseIntake(json: string | null | undefined): { audience: string; challenges: string; scope: string; unique_setup: string; claude_mistakes: string } {
+function parseIntake(json: string | null | undefined): typeof EMPTY_INTAKE {
   if (!json) return EMPTY_INTAKE
   try {
     const obj = JSON.parse(json)
@@ -111,19 +111,15 @@ export default function EditSkillDialog({
         await renameSkill(skill.name, skillName, workspacePath)
       }
 
-      const intakeData: Record<string, string> = {}
-      if (audience.trim()) intakeData.audience = audience.trim()
-      if (challenges.trim()) intakeData.challenges = challenges.trim()
-      if (scope.trim()) intakeData.scope = scope.trim()
-      if (uniqueSetup.trim()) intakeData.unique_setup = uniqueSetup.trim()
-      if (claudeMistakes.trim()) intakeData.claude_mistakes = claudeMistakes.trim()
-
       await updateSkillMetadata(
         nameChanged ? skillName : skill.name,
         domain.trim() || null,
         skillType || null,
         tags,
-        Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
+        buildIntakeJson({
+          audience, challenges, scope,
+          unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
+        }),
       )
       toast.success("Skill updated")
       onOpenChange(false)

@@ -20,6 +20,28 @@ function shouldShowGhost(value: string, suggestion: string | null): boolean {
   return value === "" && suggestion != null && suggestion !== ""
 }
 
+/** Shared Tab-to-accept key handler for ghost fields. */
+function useGhostKeyDown<E extends HTMLElement>(
+  showGhost: boolean,
+  suggestion: string | null,
+  onAccept: ((suggestion: string) => void) | undefined,
+  forwardedOnKeyDown: ((e: React.KeyboardEvent<E>) => void) | undefined,
+): (e: React.KeyboardEvent<E>) => void {
+  const onKeyDownRef = useRef(forwardedOnKeyDown)
+  onKeyDownRef.current = forwardedOnKeyDown
+
+  return useCallback(
+    (e: React.KeyboardEvent<E>) => {
+      if (e.key === "Tab" && showGhost && suggestion) {
+        e.preventDefault()
+        onAccept?.(suggestion)
+      }
+      onKeyDownRef.current?.(e)
+    },
+    [showGhost, suggestion, onAccept],
+  )
+}
+
 export function GhostInput({
   suggestion,
   value,
@@ -29,19 +51,7 @@ export function GhostInput({
   ...inputProps
 }: GhostInputProps) {
   const showGhost = shouldShowGhost(value, suggestion)
-  const onKeyDownRef = useRef(inputProps.onKeyDown)
-  onKeyDownRef.current = inputProps.onKeyDown
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Tab" && showGhost && suggestion) {
-        e.preventDefault()
-        onAccept?.(suggestion)
-      }
-      onKeyDownRef.current?.(e)
-    },
-    [showGhost, suggestion, onAccept],
-  )
+  const handleKeyDown = useGhostKeyDown(showGhost, suggestion, onAccept, inputProps.onKeyDown)
 
   return (
     <div className="relative">
@@ -70,19 +80,7 @@ export function GhostTextarea({
   ...textareaProps
 }: GhostTextareaProps) {
   const showGhost = shouldShowGhost(value, suggestion)
-  const onKeyDownRef = useRef(textareaProps.onKeyDown)
-  onKeyDownRef.current = textareaProps.onKeyDown
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Tab" && showGhost && suggestion) {
-        e.preventDefault()
-        onAccept?.(suggestion)
-      }
-      onKeyDownRef.current?.(e)
-    },
-    [showGhost, suggestion, onAccept],
-  )
+  const handleKeyDown = useGhostKeyDown(showGhost, suggestion, onAccept, textareaProps.onKeyDown)
 
   return (
     <div className="relative">
