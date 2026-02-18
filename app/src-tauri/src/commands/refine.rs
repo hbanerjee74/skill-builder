@@ -149,23 +149,25 @@ fn get_skill_content_inner(
         });
     }
 
-    // 2. references/*.md (sorted alphabetically for stable ordering)
-    let references_dir = skill_root.join("references");
-    if references_dir.is_dir() {
-        let mut refs: Vec<_> = std::fs::read_dir(&references_dir)
-            .map_err(|e| format!("Failed to read references dir: {}", e))?
-            .flatten()
-            .filter(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("md" | "txt")))
-            .collect();
-        refs.sort_by_key(|e| e.file_name());
-        for entry in refs {
-            let rel = format!("references/{}", entry.file_name().to_string_lossy());
-            let content = std::fs::read_to_string(entry.path())
-                .map_err(|e| format!("Failed to read {}: {}", rel, e))?;
-            files.push(SkillFileContent {
-                path: rel,
-                content,
-            });
+    // 2. references/*.md and context/*.md (sorted alphabetically for stable ordering)
+    for subdir in &["references", "context"] {
+        let dir = skill_root.join(subdir);
+        if dir.is_dir() {
+            let mut entries: Vec<_> = std::fs::read_dir(&dir)
+                .map_err(|e| format!("Failed to read {} dir: {}", subdir, e))?
+                .flatten()
+                .filter(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("md" | "txt")))
+                .collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let rel = format!("{}/{}", subdir, entry.file_name().to_string_lossy());
+                let content = std::fs::read_to_string(entry.path())
+                    .map_err(|e| format!("Failed to read {}: {}", rel, e))?;
+                files.push(SkillFileContent {
+                    path: rel,
+                    content,
+                });
+            }
         }
     }
 
@@ -396,8 +398,8 @@ pub async fn send_refine_message(
     };
     log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
 
-    // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
-    let (skills_path, api_key, extended_thinking, model) = {
+    // 2. Read settings and user context from DB in a single lock
+    let (skills_path, api_key, extended_thinking, model, user_context) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -417,12 +419,31 @@ pub async fn send_refine_message(
         let model = settings
             .preferred_model
             .unwrap_or_else(|| "sonnet".to_string());
-        (skills_path, key, settings.extended_thinking, model)
+
+        // Build inline user context (shared with workflow's build_prompt)
+        let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
+        let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+        let ctx = crate::commands::workflow::format_user_context(
+            settings.industry.as_deref(),
+            settings.function_role.as_deref(),
+            intake_json.as_deref(),
+        );
+
+        (skills_path, key, settings.extended_thinking, model, ctx)
     };
 
-    // 3. Build config and agent_id
+    // 3. Append user context to message (same pattern as workflow build_prompt)
+    let prompt = if let Some(ctx) = user_context {
+        log::debug!("[send_refine_message] appending inline user context to prompt");
+        format!("{}\n\n{}", message, ctx)
+    } else {
+        log::debug!("[send_refine_message] no user context available");
+        message
+    };
+
+    // 4. Build config and agent_id
     let (config, agent_id) = build_refine_config(
-        message,
+        prompt,
         conversation_history,
         session_id,
         &skill_name,
@@ -1007,6 +1028,42 @@ mod tests {
         assert!(validate_skill_name("../bad").is_err());
         assert!(validate_skill_name("bad/name").is_err());
         assert!(validate_skill_name("").is_err());
+    }
+
+    // ===== user context embedding tests =====
+    // Tests the prompt assembly pattern used in send_refine_message
+
+    #[test]
+    fn test_user_context_appended_to_prompt() {
+        // Simulates the prompt assembly in send_refine_message
+        let message = "Add SLA metrics to the skill".to_string();
+        let user_context = crate::commands::workflow::format_user_context(
+            Some("Healthcare"),
+            Some("Analytics Lead"),
+            Some(r#"{"audience":"Data engineers","challenges":"Legacy ETL"}"#),
+        );
+        let prompt = if let Some(ctx) = user_context {
+            format!("{}\n\n{}", message, ctx)
+        } else {
+            message
+        };
+        assert!(prompt.starts_with("Add SLA metrics to the skill"));
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Healthcare"));
+        assert!(prompt.contains("**Target Audience**: Data engineers"));
+    }
+
+    #[test]
+    fn test_prompt_unchanged_without_user_context() {
+        // When no user context fields exist, prompt passes through unchanged
+        let message = "Fix the overview".to_string();
+        let user_context = crate::commands::workflow::format_user_context(None, None, None);
+        let prompt = if let Some(ctx) = user_context {
+            format!("{}\n\n{}", message, ctx)
+        } else {
+            message.clone()
+        };
+        assert_eq!(prompt, "Fix the overview");
     }
 
 }

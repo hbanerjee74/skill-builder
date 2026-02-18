@@ -457,19 +457,17 @@ fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &
 }
 
 /// Write `user-context.md` to the context directory so that sub-agents
-/// spawned by orchestrator agents can read it from disk.
-/// This file captures industry, function/role, and intake responses
-/// (audience, challenges, scope) provided by the user.
-/// Non-fatal: logs a warning on failure rather than blocking the workflow.
-fn write_user_context_file(
-    workspace_path: &str,
-    skill_name: &str,
+/// Format user context fields into a `## User Context` markdown block.
+///
+/// Shared by `write_user_context_file` (for file-based agents) and
+/// `build_prompt` / refine's `send_refine_message` (for inline embedding).
+/// Returns `None` when all fields are empty.
+pub fn format_user_context(
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
-) {
+) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
-
     if let Some(ind) = industry {
         if !ind.is_empty() {
             parts.push(format!("- **Industry**: {}", ind));
@@ -482,37 +480,42 @@ fn write_user_context_file(
     }
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
-            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
-                if !a.is_empty() {
-                    parts.push(format!("- **Target Audience**: {}", a));
-                }
-            }
-            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
-                if !c.is_empty() {
-                    parts.push(format!("- **Key Challenges**: {}", c));
-                }
-            }
-            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    parts.push(format!("- **Scope**: {}", s));
-                }
-            }
-            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
-                if !u.is_empty() {
-                    parts.push(format!("- **What Makes This Setup Unique**: {}", u));
-                }
-            }
-            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
-                if !m.is_empty() {
-                    parts.push(format!("- **What Claude Gets Wrong**: {}", m));
+            for (key, label) in [
+                ("audience", "Target Audience"),
+                ("challenges", "Key Challenges"),
+                ("scope", "Scope"),
+                ("unique_setup", "What Makes This Setup Unique"),
+                ("claude_mistakes", "What Claude Gets Wrong"),
+            ] {
+                if let Some(v) = intake.get(key).and_then(|v| v.as_str()) {
+                    if !v.is_empty() {
+                        parts.push(format!("- **{}**: {}", label, v));
+                    }
                 }
             }
         }
     }
-
     if parts.is_empty() {
-        return;
+        None
+    } else {
+        Some(format!("## User Context\n{}", parts.join("\n")))
     }
+}
+
+/// spawned by orchestrator agents can read it from disk.
+/// This file captures industry, function/role, and intake responses
+/// (audience, challenges, scope) provided by the user.
+/// Non-fatal: logs a warning on failure rather than blocking the workflow.
+fn write_user_context_file(
+    workspace_path: &str,
+    skill_name: &str,
+    industry: Option<&str>,
+    function_role: Option<&str>,
+    intake_json: Option<&str>,
+) {
+    let Some(ctx) = format_user_context(industry, function_role, intake_json) else {
+        return;
+    };
 
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     // Safety net: create directory if missing
@@ -525,7 +528,10 @@ fn write_user_context_file(
         return;
     }
     let file_path = workspace_dir.join("user-context.md");
-    let content = format!("# User Context\n\n{}\n", parts.join("\n"));
+    let content = format!(
+        "# User Context\n\n{}\n",
+        ctx.strip_prefix("## User Context\n").unwrap_or(&ctx)
+    );
 
     match std::fs::write(&file_path, &content) {
         Ok(()) => {
@@ -591,51 +597,11 @@ fn build_prompt(
 
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
 
-    // Inject user context if any fields are present
-    let mut ctx_parts: Vec<String> = Vec::new();
-    if let Some(ind) = industry {
-        if !ind.is_empty() {
-            ctx_parts.push(format!("- **Industry**: {}", ind));
-        }
-    }
-    if let Some(fr) = function_role {
-        if !fr.is_empty() {
-            ctx_parts.push(format!("- **Function**: {}", fr));
-        }
-    }
-    // Parse intake_json and add audience/challenges/scope
-    if let Some(ij) = intake_json {
-        if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
-            if let Some(a) = intake.get("audience").and_then(|v| v.as_str()) {
-                if !a.is_empty() {
-                    ctx_parts.push(format!("- **Target Audience**: {}", a));
-                }
-            }
-            if let Some(c) = intake.get("challenges").and_then(|v| v.as_str()) {
-                if !c.is_empty() {
-                    ctx_parts.push(format!("- **Key Challenges**: {}", c));
-                }
-            }
-            if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    ctx_parts.push(format!("- **Scope**: {}", s));
-                }
-            }
-            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
-                if !u.is_empty() {
-                    ctx_parts.push(format!("- **What Makes This Setup Unique**: {}", u));
-                }
-            }
-            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
-                if !m.is_empty() {
-                    ctx_parts.push(format!("- **What Claude Gets Wrong**: {}", m));
-                }
-            }
-        }
-    }
-    if !ctx_parts.is_empty() {
-        prompt.push_str("\n\n## User Context\n");
-        prompt.push_str(&ctx_parts.join("\n"));
+    prompt.push_str(" The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+
+    if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&ctx);
     }
 
     prompt
