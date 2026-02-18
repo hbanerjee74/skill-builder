@@ -157,53 +157,6 @@ export default function RefinePage() {
       });
   }, [workspacePath]);
 
-  // --- Auto-select skill from search param ---
-  useEffect(() => {
-    if (!skillParam || autoSelectedRef.current || refinableSkills.length === 0) return;
-
-    const match = refinableSkills.find((s) => s.name === skillParam);
-    if (match) {
-      autoSelectedRef.current = true;
-      handleSelectSkill(match);
-    }
-  }, [skillParam, refinableSkills, handleSelectSkill]);
-
-  // --- Watch agent completion (only re-runs when status changes, not every message) ---
-  useEffect(() => {
-    if (!activeAgentId || !activeRunStatus) return;
-
-    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
-    if (!isTerminal) return;
-
-    console.log("[refine] agent %s finished: status=%s", activeAgentId, activeRunStatus);
-
-    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
-      toast.error("Agent failed — check the chat for details", { duration: Infinity });
-    }
-
-    // Re-read skill files to capture any changes the agent made
-    const store = useRefineStore.getState();
-    if (effectiveSkillsPath && selectedSkill) {
-      loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
-        if (files) store.updateSkillFiles(files);
-      });
-    }
-
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-  }, [activeAgentId, activeRunStatus, effectiveSkillsPath, selectedSkill]);
-
-  // --- Cleanup on unmount ---
-  useEffect(() => {
-    return () => {
-      const store = useRefineStore.getState();
-      if (store.isRunning && store.activeAgentId) {
-        store.setRunning(false);
-        store.setActiveAgentId(null);
-      }
-    };
-  }, []);
-
   // --- Load skill files from disk ---
   async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
     try {
@@ -252,6 +205,53 @@ export default function RefinePage() {
     },
     [isRunning, effectiveSkillsPath],
   );
+
+  // --- Auto-select skill from search param ---
+  useEffect(() => {
+    if (!skillParam || autoSelectedRef.current || refinableSkills.length === 0) return;
+
+    const match = refinableSkills.find((s) => s.name === skillParam);
+    if (match) {
+      autoSelectedRef.current = true;
+      handleSelectSkill(match);
+    }
+  }, [skillParam, refinableSkills, handleSelectSkill]);
+
+  // --- Watch agent completion (only re-runs when status changes, not every message) ---
+  useEffect(() => {
+    if (!activeAgentId || !activeRunStatus) return;
+
+    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
+    if (!isTerminal) return;
+
+    console.log("[refine] agent %s finished: status=%s", activeAgentId, activeRunStatus);
+
+    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
+      toast.error("Agent failed — check the chat for details", { duration: Infinity });
+    }
+
+    // Re-read skill files to capture any changes the agent made
+    const store = useRefineStore.getState();
+    if (effectiveSkillsPath && selectedSkill) {
+      loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
+        if (files) store.updateSkillFiles(files);
+      });
+    }
+
+    store.setRunning(false);
+    store.setActiveAgentId(null);
+  }, [activeAgentId, activeRunStatus, effectiveSkillsPath, selectedSkill]);
+
+  // --- Cleanup on unmount ---
+  useEffect(() => {
+    return () => {
+      const store = useRefineStore.getState();
+      if (store.isRunning && store.activeAgentId) {
+        store.setRunning(false);
+        store.setActiveAgentId(null);
+      }
+    };
+  }, []);
 
   // --- Confirm switch skill while running ---
   const handleConfirmSwitch = useCallback(() => {
