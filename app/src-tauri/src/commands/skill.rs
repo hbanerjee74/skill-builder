@@ -559,6 +559,12 @@ fn rename_skill_inner(
     let workspace_old = Path::new(workspace_path).join(old_name);
     let workspace_new = Path::new(workspace_path).join(new_name);
     if workspace_old.exists() {
+        // Guard against directory traversal
+        let canonical_workspace = fs::canonicalize(workspace_path).map_err(|e| e.to_string())?;
+        let canonical_old = fs::canonicalize(&workspace_old).map_err(|e| e.to_string())?;
+        if !canonical_old.starts_with(&canonical_workspace) {
+            return Err("Invalid skill path".to_string());
+        }
         fs::rename(&workspace_old, &workspace_new).map_err(|e| {
             log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
             format!("Failed to rename workspace directory: {}", e)
@@ -569,6 +575,11 @@ fn rename_skill_inner(
         let skills_old = Path::new(sp).join(old_name);
         let skills_new = Path::new(sp).join(new_name);
         if skills_old.exists() {
+            let canonical_skills = fs::canonicalize(sp).map_err(|e| e.to_string())?;
+            let canonical_old = fs::canonicalize(&skills_old).map_err(|e| e.to_string())?;
+            if !canonical_old.starts_with(&canonical_skills) {
+                return Err("Invalid skill path".to_string());
+            }
             fs::rename(&skills_old, &skills_new).map_err(|e| {
                 log::error!("[rename_skill] Failed to rename skills dir: {}", e);
                 // Rollback workspace rename to keep disk consistent
