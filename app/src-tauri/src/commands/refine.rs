@@ -939,6 +939,68 @@ mod tests {
     }
 
     #[test]
+    fn test_get_refine_diff_produces_valid_unified_diff() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "line1\nline2\nline3\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "line1\nchanged\nline3\n").unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        let diff = &result.files[0].diff;
+
+        // Unified diff must have hunk headers, context, additions, and deletions
+        assert!(diff.contains("@@"), "missing hunk header");
+        assert!(diff.contains("-line2"), "missing deletion");
+        assert!(diff.contains("+changed"), "missing addition");
+        assert!(diff.contains(" line1"), "missing context line");
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_counts_insertions_deletions() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "old\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "new\nextra\n").unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        // 1 file changed, 2 insertions (new + extra), 1 deletion (old)
+        assert!(result.stat.contains("1 file(s) changed"));
+        assert!(result.stat.contains("2 insertion(s)(+)"));
+        assert!(result.stat.contains("1 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_refine_config_conversation_message_type_safety() {
+        // ConversationMessage struct enforces typed role+content at the IPC boundary
+        let history = vec![
+            ConversationMessage { role: "user".into(), content: "request".into() },
+            ConversationMessage { role: "assistant".into(), content: "response".into() },
+        ];
+        let (config, _) = base_refine_config("follow-up", history);
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let ch = parsed["conversationHistory"].as_array().unwrap();
+        // Verify exact shape matches sidecar's expected { role, content } objects
+        assert_eq!(ch[0]["role"], "user");
+        assert_eq!(ch[0]["content"], "request");
+        assert_eq!(ch[1]["role"], "assistant");
+        assert_eq!(ch[1]["content"], "response");
+        // No extra fields
+        assert_eq!(ch[0].as_object().unwrap().len(), 2);
+    }
+
+    #[test]
     fn test_skill_name_validation_rejects_traversal() {
         assert!(validate_skill_name("good-name").is_ok());
         assert!(validate_skill_name("../bad").is_err());
