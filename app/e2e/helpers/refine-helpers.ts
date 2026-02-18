@@ -37,12 +37,10 @@ export const REFINE_OVERRIDES: Record<string, unknown> = {
       skill_type: "source",
     },
   ],
-  list_skill_files: [
-    { relative_path: "SKILL.md" },
-    { relative_path: "references/glossary.md" },
+  get_skill_content_for_refine: [
+    { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+    { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
   ],
-  read_file:
-    "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps...",
   start_agent: "agent-refine-001",
 };
 

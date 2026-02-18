@@ -16,8 +16,7 @@ import type { RefineCommand } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
-  listSkillFiles,
-  readFile,
+  getSkillContentForRefine,
   startAgent,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
@@ -131,16 +130,11 @@ export default function RefinePage() {
   // --- Load skill files from disk ---
   async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
     try {
-      const entries = await listSkillFiles(basePath, skillName);
-      const files: SkillFile[] = [];
-
-      for (const entry of entries) {
-        if (entry.relative_path.endsWith(".md")) {
-          const fullPath = `${basePath}/${skillName}/${entry.relative_path}`;
-          const content = await readFile(fullPath);
-          files.push({ filename: entry.relative_path, content });
-        }
-      }
+      const contents = await getSkillContentForRefine(skillName, basePath);
+      const files: SkillFile[] = contents.map((c) => ({
+        filename: c.path,
+        content: c.content,
+      }));
 
       // Ensure SKILL.md is first
       files.sort((a, b) => {

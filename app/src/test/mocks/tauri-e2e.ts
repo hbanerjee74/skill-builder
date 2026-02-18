@@ -99,9 +99,9 @@ const mockResponses: Record<string, unknown> = {
       skill_type: "domain",
     },
   ],
-  list_skill_files: [
-    { relative_path: "SKILL.md" },
-    { relative_path: "references/glossary.md" },
+  get_skill_content_for_refine: [
+    { path: "SKILL.md", content: "# Test Skill\n\nA skill for testing.\n\n## Instructions\n\nFollow these steps..." },
+    { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
   ],
   // Auth
   github_get_user: null,
