@@ -49,7 +49,7 @@ export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPick
         <Button variant="outline" className="w-64 justify-between">
           {selected ? (
             <span className="flex items-center gap-2 truncate">
-              <span className="truncate">{selected.display_name ?? selected.name}</span>
+              <span className="truncate">{selected.name}</span>
               {selected.skill_type && <SkillTypeBadge skillType={selected.skill_type} />}
             </span>
           ) : (
@@ -67,13 +67,13 @@ export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPick
               {skills.map((skill) => (
                 <CommandItem
                   key={skill.name}
-                  value={skill.display_name ?? skill.name}
+                  value={skill.name}
                   onSelect={() => {
                     onSelect(skill);
                     setOpen(false);
                   }}
                 >
-                  <span className="truncate">{skill.display_name ?? skill.name}</span>
+                  <span className="truncate">{skill.name}</span>
                   {skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className="ml-auto" />}
                 </CommandItem>
               ))}
