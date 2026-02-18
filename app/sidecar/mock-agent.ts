@@ -22,8 +22,6 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   if (agentName === "validate-skill") return "step6-validate-skill";
   if (agentName === "refine-skill") return "refine";
   if (agentName === "rewrite-skill") return "rewrite-skill";
-  // Note: "validate-skill" agent name is caught by exact match above (step6-validate-skill)
-  // For refine /validate command, the agent name is "validate-skill" which maps to step6 template
 
   // All research-related agents (orchestrator, planner, dimension agents, consolidate, scope-advisor)
   if (

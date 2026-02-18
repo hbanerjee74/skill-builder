@@ -1181,7 +1181,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
-        6 => vec!["context/agent-validation-log.md", "context/test-skill.md"],
+        6 => vec!["context/agent-validation-log.md", "context/test-skill.md", "context/companion-skills.md"],
         _ => vec![],
     }
 }
@@ -1656,6 +1656,7 @@ mod tests {
         // Create files for step 6 (validate)
         std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("context/companion-skills.md"), "step6").unwrap();
 
         // Reset from step 6 onwards should clean up step 6 (validate)
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
@@ -1663,6 +1664,7 @@ mod tests {
         // Step 6 outputs should be deleted
         assert!(!skill_dir.join("context/agent-validation-log.md").exists());
         assert!(!skill_dir.join("context/test-skill.md").exists());
+        assert!(!skill_dir.join("context/companion-skills.md").exists());
     }
 
     #[test]

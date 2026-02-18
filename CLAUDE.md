@@ -134,7 +134,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 | Tier | Name | What it tests | Cost |
 |---|---|---|---|
-| **T1** | Structural Validation | Plugin manifest, agent count (27), frontmatter, model tiers | Free |
+| **T1** | Structural Validation | Plugin manifest, agent count (30), frontmatter, model tiers | Free |
 | **T2** | Plugin Loading | Plugin loads into `claude -p`, skill trigger responds | ~$0.05 |
 | **T3** | Start Mode Detection | Modes A/B/C detected correctly using fixtures | ~$0.25 |
 | **T4** | Agent Smoke Tests | Consolidate-research produces cohesive output, confirm-decisions produces decisions, generate-skill creates SKILL.md | ~$0.50 |
@@ -185,7 +185,7 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/` -- 27 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill + refine-skill)
+- `agents/` -- 30 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill + validate-quality + test-skill + companion-recommender + refine-skill)
 - `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh`
 
 ## Skill Configuration
@@ -196,18 +196,18 @@ Both frontends use the same files -- no conversion needed:
 
 ## Custom Skills
 
-### /create-issue
-When the user runs /create-issue or asks to create a Linear issue, log a bug, file a ticket,
+### /create-linear-issue
+When the user runs /create-linear-issue or asks to create a Linear issue, log a bug, file a ticket,
 track a feature idea, break down a large issue, or decompose an issue into smaller ones
 (e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
 read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
-### /implement-issue
-When the user runs /implement-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
-"work on VD-452", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
+### /implement-linear-issue
+When the user runs /implement-linear-issue, or mentions a Linear issue identifier (e.g. "VD-123", "implement VD-123",
+"work on VD-452", "working on VD-100", "build VD-100", "fix VD-99"), or asks to implement, build, fix, or work on a Linear issue,
 read and follow the skill at `.claude/skills/implement-linear-issue/SKILL.md`.
 
-### /close-issue
-When the user runs /close-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
+### /close-linear-issue
+When the user runs /close-linear-issue, or asks to close, complete, merge, or ship a Linear issue (e.g. "close VD-123",
 "merge VD-453", "ship VD-100", "complete VD-99"), read and follow the skill at
 `.claude/skills/close-linear-issue/SKILL.md`.

@@ -26,7 +26,7 @@ skill-builder/
 │           ├── file-formats.md      # Clarifications + Decisions file specs
 │           ├── content-guidelines.md # Skill Users, Content Principles, Output Paths
 │           └── best-practices.md    # Skill structure rules, validation checklist
-├── agents/                          # 27 agent prompts (flat directory, see CLAUDE.md for layout)
+├── agents/                          # 30 agent prompts (flat directory, see CLAUDE.md for layout)
 └── agent-sources/
     └── workspace/
         └── CLAUDE.md                # Agent instructions (app: auto-loaded; plugin: packaged as reference files)
@@ -46,7 +46,7 @@ Three layers:
 
 ### Adding/modifying an agent
 
-Agent files live in `agents/` (flat directory, 27 agents). Edit them directly.
+Agent files live in `agents/` (flat directory, 30 agents). Edit them directly.
 
 ### Modifying the workflow
 

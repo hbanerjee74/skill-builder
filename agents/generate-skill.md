@@ -37,6 +37,13 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
 
 <instructions>
 
+### Sub-agent Index
+
+| Sub-agent | Model | Purpose |
+|---|---|---|
+| `writer-<topic>` | sonnet | Write one reference file covering a specific topic area |
+| `reviewer` | sonnet | Cross-check decisions against all output files and fix gaps |
+
 ## Mode Detection
 
 Check if the prompt contains `/rewrite`. This determines how each phase operates:
