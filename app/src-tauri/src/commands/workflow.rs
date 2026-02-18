@@ -2234,4 +2234,111 @@ mod tests {
         assert!(!parse_scope_recommendation(f.path()));
     }
 
+    // --- format_user_context tests ---
+
+    #[test]
+    fn test_format_user_context_all_fields() {
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
+        let result = format_user_context(Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+        let ctx = result.unwrap();
+        assert!(ctx.starts_with("## User Context\n"));
+        assert!(ctx.contains("**Industry**: Healthcare"));
+        assert!(ctx.contains("**Function**: Analytics Lead"));
+        assert!(ctx.contains("**Target Audience**: Data engineers"));
+        assert!(ctx.contains("**Key Challenges**: Legacy systems"));
+        assert!(ctx.contains("**Scope**: ETL pipelines"));
+        assert!(ctx.contains("**What Makes This Setup Unique**: Multi-cloud"));
+        assert!(ctx.contains("**What Claude Gets Wrong**: Assumes AWS"));
+    }
+
+    #[test]
+    fn test_format_user_context_partial_fields() {
+        let result = format_user_context(Some("Fintech"), None, None);
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Industry**: Fintech"));
+        assert!(!ctx.contains("**Function**"));
+    }
+
+    #[test]
+    fn test_format_user_context_empty_strings_skipped() {
+        let result = format_user_context(Some(""), Some(""), None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_format_user_context_all_none() {
+        let result = format_user_context(None, None, None);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_format_user_context_invalid_json_ignored() {
+        let result = format_user_context(Some("Tech"), None, Some("not json"));
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Industry**: Tech"));
+        assert!(!ctx.contains("Target Audience"));
+    }
+
+    #[test]
+    fn test_format_user_context_partial_intake() {
+        let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
+        let result = format_user_context(None, None, Some(intake));
+        let ctx = result.unwrap();
+        assert!(ctx.contains("**Target Audience**: Engineers"));
+        assert!(ctx.contains("**Scope**: APIs"));
+        assert!(!ctx.contains("**Key Challenges**"));
+    }
+
+    // --- build_prompt user context integration tests ---
+
+    #[test]
+    fn test_build_prompt_includes_user_context() {
+        let intake = r#"{"audience":"Data engineers","challenges":"Legacy ETL","scope":"Pipelines"}"#;
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Healthcare"));
+        assert!(prompt.contains("**Function**: Analytics Lead"));
+        assert!(prompt.contains("**Target Audience**: Data engineers"));
+        assert!(prompt.contains("**Key Challenges**: Legacy ETL"));
+        assert!(prompt.contains("**Scope**: Pipelines"));
+    }
+
+    #[test]
+    fn test_build_prompt_without_user_context() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+        );
+        assert!(!prompt.contains("## User Context"));
+        assert!(prompt.contains("test-skill"));
+        assert!(prompt.contains("sales"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_only_industry() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, Some("Fintech"), None, None,
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Industry**: Fintech"));
+        assert!(!prompt.contains("**Function**"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_only_intake() {
+        let intake = r#"{"audience":"Analysts","unique_setup":"Multi-region","claude_mistakes":"Assumes single tenant"}"#;
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, Some(intake),
+        );
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Target Audience**: Analysts"));
+        assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
+        assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
+    }
+
 }
