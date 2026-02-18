@@ -51,7 +51,6 @@ Exception: sub-agents may write files directly when the orchestrator explicitly 
 
 The coordinator provides **context directory** and **skill output directory** paths.
 - All directories already exist — never run `mkdir`
-- Never run `ls` — read only the specific files named in your instructions
 - Write directly to the provided paths
 - Skill output structure: `SKILL.md` at root + `references/` subfolder
 
