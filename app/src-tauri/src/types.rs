@@ -423,6 +423,16 @@ pub struct RefineSessionInfo {
     pub created_at: String,
 }
 
+/// A single message in a refine conversation history.
+/// Typed struct ensures Tauri IPC rejects malformed payloads at the boundary
+/// rather than silently forwarding broken JSON to the sidecar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConversationMessage {
+    pub role: String,
+    pub content: String,
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

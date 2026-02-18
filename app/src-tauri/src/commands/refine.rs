@@ -6,7 +6,7 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
-use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
+use crate::types::{ConversationMessage, RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
 /// Tools available to the refine-skill agent. Matches the agent's frontmatter
 /// `tools: Read, Edit, Write, Glob, Grep, Task`. Task is required for the
@@ -22,16 +22,9 @@ const REFINE_MAX_TURNS: u32 = 20;
 ///
 /// Created by `start_refine_session`, used by `send_refine_message`.
 /// Each invocation of `send_refine_message` passes the full conversation history
-/// to the sidecar (the sidecar is stateless — history is replayed per-call).
+/// to the sidecar (the sidecar is stateless -- history is replayed per-call).
 pub struct RefineSession {
-    #[allow(dead_code)] // stored for future session-list/cleanup commands
-    pub session_id: String,
     pub skill_name: String,
-    #[allow(dead_code)] // stored for future session-list command
-    pub created_at: String,
-    /// In-memory conversation history: `[{ "role": "user"|"assistant", "content": "..." }]`
-    #[allow(dead_code)] // stored for future server-side history tracking
-    pub conversation: Vec<serde_json::Value>,
 }
 
 /// Manages active refine sessions. Registered as Tauri managed state.
@@ -52,9 +45,10 @@ impl RefineSessionManager {
 
 /// Build a SidecarConfig for a refine session message.
 /// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
+#[allow(clippy::too_many_arguments)]
 fn build_refine_config(
     message: String,
-    conversation_history: Vec<serde_json::Value>,
+    conversation_history: Vec<ConversationMessage>,
     session_id: String,
     skill_name: &str,
     skills_path: &str,
@@ -87,7 +81,12 @@ fn build_refine_config(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        conversation_history: (!conversation_history.is_empty()).then_some(conversation_history),
+        conversation_history: (!conversation_history.is_empty()).then(|| {
+            conversation_history
+                .into_iter()
+                .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
+                .collect()
+        }),
     };
 
     (config, agent_id)
@@ -230,10 +229,8 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Collect per-file diffs using print() which provides a single mutable callback
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();
-    let mut current_file: Option<String> = None;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-        // Track the current file from delta
         let path = delta
             .new_file()
             .path()
@@ -241,31 +238,30 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        // Ensure file entry exists
-        if current_file.as_deref() != Some(&path) {
-            let status = match delta.status() {
-                Delta::Added => "added",
-                Delta::Deleted => "deleted",
-                _ => "modified",
-            };
-            file_map
-                .entry(path.clone())
-                .or_insert_with(|| RefineFileDiff {
-                    path: path.clone(),
-                    status: status.to_string(),
-                    diff: String::new(),
-                });
-            current_file = Some(path.clone());
-        }
+        let status = match delta.status() {
+            Delta::Added => "added",
+            Delta::Deleted => "deleted",
+            _ => "modified",
+        };
+        let entry = file_map.entry(path.clone()).or_insert_with(|| RefineFileDiff {
+            path,
+            status: status.to_string(),
+            diff: String::new(),
+        });
 
-        // Append diff content (context, additions, deletions only)
+        // Append diff content: hunk headers, context, additions, deletions
         let origin = line.origin();
-        if matches!(origin, '+' | '-' | ' ') {
-            if let (Ok(s), Some(entry)) =
-                (std::str::from_utf8(line.content()), file_map.get_mut(&path))
-            {
-                entry.diff.push(origin);
-                entry.diff.push_str(s);
+        if let Ok(s) = std::str::from_utf8(line.content()) {
+            match origin {
+                '+' | '-' | ' ' => {
+                    entry.diff.push(origin);
+                    entry.diff.push_str(s);
+                }
+                'H' => {
+                    // Hunk header (@@) — content already includes the @@ prefix
+                    entry.diff.push_str(s);
+                }
+                _ => {}
             }
         }
 
@@ -353,10 +349,7 @@ pub async fn start_refine_session(
     map.insert(
         session_id.clone(),
         RefineSession {
-            session_id: session_id.clone(),
             skill_name: skill_name.clone(),
-            created_at: created_at.clone(),
-            conversation: Vec::new(),
         },
     );
 
@@ -375,10 +368,11 @@ pub async fn start_refine_session(
 /// `agent-exit` events scoped to this request. Actual content streams via
 /// Tauri events (same mechanism as workflow agents).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
     session_id: String,
     message: String,
-    conversation_history: Vec<serde_json::Value>,
+    conversation_history: Vec<ConversationMessage>,
     workspace_path: String,
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
@@ -400,6 +394,7 @@ pub async fn send_refine_message(
         })?;
         session.skill_name.clone()
     };
+    log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
 
     // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
     let (skills_path, api_key, extended_thinking, model) = {
@@ -612,6 +607,8 @@ mod tests {
             .unwrap();
         assert_eq!(skill_file.status, "modified");
         assert!(!skill_file.diff.is_empty());
+        // Verify hunk headers are included for valid unified diff format
+        assert!(skill_file.diff.contains("@@"), "diff should include hunk headers");
     }
 
     #[test]
@@ -689,10 +686,7 @@ mod tests {
             map.insert(
                 session_id.clone(),
                 RefineSession {
-                    session_id: session_id.clone(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
         }
@@ -711,10 +705,7 @@ mod tests {
             map.insert(
                 "session-1".to_string(),
                 RefineSession {
-                    session_id: "session-1".to_string(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
         }
@@ -740,7 +731,7 @@ mod tests {
 
     fn base_refine_config(
         message: &str,
-        history: Vec<serde_json::Value>,
+        history: Vec<ConversationMessage>,
     ) -> (SidecarConfig, String) {
         build_refine_config(
             message.to_string(),
@@ -805,8 +796,8 @@ mod tests {
     fn test_refine_config_passes_conversation_history() {
         // Multi-turn history is passed to the sidecar for context
         let history = vec![
-            serde_json::json!({"role": "user", "content": "Add metrics section"}),
-            serde_json::json!({"role": "assistant", "content": "Done. I added..."}),
+            ConversationMessage { role: "user".into(), content: "Add metrics section".into() },
+            ConversationMessage { role: "assistant".into(), content: "Done. I added...".into() },
         ];
         let (config, _) = base_refine_config("Now add examples", history);
         let ch = config.conversation_history.unwrap();
@@ -883,8 +874,8 @@ mod tests {
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
         let history = vec![
-            serde_json::json!({"role": "user", "content": "First request"}),
-            serde_json::json!({"role": "assistant", "content": "Done"}),
+            ConversationMessage { role: "user".into(), content: "First request".into() },
+            ConversationMessage { role: "assistant".into(), content: "Done".into() },
         ];
         let (config, _) = base_refine_config("@SKILL.md Update overview", history);
 
@@ -925,10 +916,7 @@ mod tests {
             map.insert(
                 session_id.clone(),
                 RefineSession {
-                    session_id: session_id.clone(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
             assert_eq!(map.len(), 1);
@@ -952,6 +940,68 @@ mod tests {
     }
 
     #[test]
+    fn test_get_refine_diff_produces_valid_unified_diff() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "line1\nline2\nline3\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "line1\nchanged\nline3\n").unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        let diff = &result.files[0].diff;
+
+        // Unified diff must have hunk headers, context, additions, and deletions
+        assert!(diff.contains("@@"), "missing hunk header");
+        assert!(diff.contains("-line2"), "missing deletion");
+        assert!(diff.contains("+changed"), "missing addition");
+        assert!(diff.contains(" line1"), "missing context line");
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_counts_insertions_deletions() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "old\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "new\nextra\n").unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        // 1 file changed, 2 insertions (new + extra), 1 deletion (old)
+        assert!(result.stat.contains("1 file(s) changed"));
+        assert!(result.stat.contains("2 insertion(s)(+)"));
+        assert!(result.stat.contains("1 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_refine_config_conversation_message_type_safety() {
+        // ConversationMessage struct enforces typed role+content at the IPC boundary
+        let history = vec![
+            ConversationMessage { role: "user".into(), content: "request".into() },
+            ConversationMessage { role: "assistant".into(), content: "response".into() },
+        ];
+        let (config, _) = base_refine_config("follow-up", history);
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        let ch = parsed["conversationHistory"].as_array().unwrap();
+        // Verify exact shape matches sidecar's expected { role, content } objects
+        assert_eq!(ch[0]["role"], "user");
+        assert_eq!(ch[0]["content"], "request");
+        assert_eq!(ch[1]["role"], "assistant");
+        assert_eq!(ch[1]["content"], "response");
+        // No extra fields
+        assert_eq!(ch[0].as_object().unwrap().len(), 2);
+    }
+
+    #[test]
     fn test_skill_name_validation_rejects_traversal() {
         assert!(validate_skill_name("good-name").is_ok());
         assert!(validate_skill_name("../bad").is_err());
@@ -959,28 +1009,4 @@ mod tests {
         assert!(validate_skill_name("").is_err());
     }
 
-    #[test]
-    fn test_conversation_history_none_omitted() {
-        let config = SidecarConfig {
-            prompt: "test".to_string(),
-            model: None,
-            api_key: "sk-test".to_string(),
-            cwd: "/tmp".to_string(),
-            allowed_tools: None,
-            max_turns: None,
-            permission_mode: None,
-            session_id: None,
-            betas: None,
-            max_thinking_tokens: None,
-            path_to_claude_code_executable: None,
-            agent_name: None,
-            conversation_history: None,
-        };
-
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // conversationHistory should be absent when None
-        assert!(parsed.get("conversationHistory").is_none());
-    }
 }
