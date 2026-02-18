@@ -437,11 +437,16 @@ pub async fn send_refine_message(
     };
 
     // 3. Append user context to message (same pattern as workflow build_prompt)
-    let prompt = if let Some(ctx) = user_context {
-        log::debug!("[send_refine_message] appending inline user context to prompt");
+    let prompt = if let Some(ref ctx) = user_context {
+        log::info!(
+            "[send_refine_message] appending user context ({} chars) to prompt for skill '{}'",
+            ctx.len(),
+            skill_name
+        );
+        log::debug!("[send_refine_message] user context:\n{}", ctx);
         format!("{}\n\n{}", message, ctx)
     } else {
-        log::debug!("[send_refine_message] no user context available");
+        log::info!("[send_refine_message] no user context available for skill '{}'", skill_name);
         message
     };
 
