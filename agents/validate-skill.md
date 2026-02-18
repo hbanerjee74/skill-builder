@@ -45,8 +45,8 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 | Sub-agent | Model | Purpose |
 |---|---|---|
-| `quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness checks across SKILL.md and all reference files |
-| `test-evaluator` | haiku | Evaluate 5 test prompts against skill content |
+| `quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness (see `agents/validate-quality.md`) |
+| `test-evaluator` | haiku | Generate and evaluate 5 test prompts against skill content |
 | `companion-recommender` | sonnet | Recommend companion skills from skipped research dimensions (see `agents/validate-companion-recommender.md`) |
 
 ### Scope Recommendation Guard
@@ -104,104 +104,26 @@ All sub-agents **return text** — they do not write files.
 
 ### `quality` (sonnet)
 
-Comprehensive quality gate for the entire skill. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Performs four passes in a single agent:
-
-**1. Coverage & structure** — Maps every decision and answered clarification to a specific file and section (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files. Verifies SKILL.md uses the correct architectural pattern for the skill type:
-- **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
-- **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
-
-Report architectural pattern as CORRECT or MISMATCH with details.
-
-**2. Content quality** — Scores each section of SKILL.md AND every reference file on the Quality Dimensions. Flags anti-patterns. Returns PASS/FAIL per section with improvement suggestions for any FAIL.
-
-**3. Boundary check** — Checks whether the skill contains content that belongs to a different skill type. The coordinator passes the **skill type** — pass it through. Use the type-scoped dimension sets:
-- **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
-- **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
-- **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
-- **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
-
-For each section and reference file, classify which dimension(s) it covers. Content mapping to a dimension outside the current skill type's set is a boundary violation. Brief incidental mentions are acceptable — only substantial content sections that belong to another type are violations.
-
-**4. Prescriptiveness check** — Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
-
-Patterns to detect:
-- Imperative directives: "always", "never", "must", "shall", "do not"
-- Step-by-step instructions: "step 1", "first...then...finally", "follow these steps"
-- Prescriptive mandates: "you should", "it is required", "ensure that"
-- Absolutes without context: "the only way", "the correct approach", "best practice is"
-
-False positive exclusions — do NOT flag content inside code blocks/inline code, quoted error messages, field/API parameter names (e.g., `must_match`), or references to external documentation requirements.
-
-For each detected pattern, suggest an informational rewrite that provides the same guidance with rationale and exceptions instead of imperative tone.
-
-Returns combined findings as text:
-```
-### Coverage & Structure Results
-- **Decisions covered**: X/Y | **Clarifications covered**: X/Y
-- **Architectural pattern**: CORRECT | MISMATCH — [details]
-- **Orphaned files**: [list or "none"]
-
-### D1: [title] — COVERED ([file:section]) | MISSING
-...
-
-### Content Quality Results
-
-#### SKILL.md
-##### [Section name] — PASS | FAIL
-- [Quality dimension scores and suggestions]
-
-#### references/[filename]
-##### [Section name] — PASS | FAIL
-- [Quality dimension scores and suggestions]
-
-### Boundary Check Results
-- **Skill type**: [type]
-- **Violations found**: N
-
-#### Violation 1: [section/file]
-- **Content**: [brief quote]
-- **Maps to dimension**: [dimension name]
-- **Belongs to type**: [correct type]
-- **Suggested fix**: [how to remove or restructure]
-
-### Prescriptiveness Check Results
-- **Patterns found**: N
-- **Files affected**: N
-
-#### Pattern 1: [file:section]
-- **Original**: "[exact text]"
-- **Issue**: [which pattern type]
-- **Suggested rewrite**: "[informational alternative]"
-```
+See `agents/validate-quality.md` for the full specification. Pass these inputs:
+- `decisions.md` and `clarifications.md` paths
+- `SKILL.md` and all `references/` file paths
+- The **skill type**
+- The **workspace directory** path
 
 ### `test-evaluator` (haiku)
 
 Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Generates 5 test prompts covering all 6 categories, then evaluates each against the skill content.
 
-**Prompt generation** — 5 prompts covering these categories:
-- **Core concepts** (1 prompt) — "What are the key entities/patterns in [domain]?"
-- **Architecture & design** (1 prompt) — "How should I structure/model [specific aspect]?"
-- **Implementation details** (1 prompt) — "What's the recommended approach for [specific decision]?"
-- **Edge cases** (1 prompt) — domain-specific tricky scenario the skill handles
-- **Cross-functional analysis** (1 prompt) — question spanning multiple areas, including configuration/setup
+**Prompt categories** — 5 prompts across these 6 categories:
+- **Core concepts** — "What are the key entities/patterns in [domain]?"
+- **Architecture & design** — "How should I structure/model [specific aspect]?"
+- **Implementation details** — "What's the recommended approach for [specific decision]?"
+- **Edge cases** — domain-specific tricky scenario the skill handles
+- **Cross-functional analysis** — question spanning multiple areas, including configuration/setup
 
 Each prompt targets something a real engineer would ask, grounded in the decisions and clarifications.
 
-**Evaluation** — Scoring per prompt:
-- **PASS** — skill directly addresses the question with actionable guidance
-- **PARTIAL** — some relevant content but misses key details or is vague
-- **FAIL** — skill doesn't address the question or gives misleading guidance
-
-For PARTIAL/FAIL results: explain what the engineer would expect, what the skill provides, and whether the gap is content-related or organizational.
-
-Returns all results as text using this format (one block per test):
-```
-### Test N: [prompt text]
-- **Category**: [category]
-- **Result**: PASS | PARTIAL | FAIL
-- **Skill coverage**: [what the skill provides]
-- **Gap**: [what's missing, if any — write "None" for PASS]
-```
+**Scoring** — PASS (actionable guidance), PARTIAL (some content but misses key details), FAIL (doesn't address or misleads). For PARTIAL/FAIL: explain expected vs actual coverage and whether the gap is content or organization.
 
 ### `companion-recommender` (sonnet)
 
@@ -234,86 +156,13 @@ After all sub-agents return their text, handle consolidation directly:
 
 <output_format>
 
-**`agent-validation-log.md` format:**
-```
-# Validation Log
-## Summary
-- **Decisions covered**: X/Y | **Clarifications covered**: X/Y
-- **Structural checks**: X passed, Y failed | **Content checks**: X passed, Y failed
-- **Auto-fixed**: N issues | **Needs manual review**: N issues
-## Coverage Results
-### D1: [title] — COVERED ([file:section]) | MISSING
-## Structural Results
-### [Check name] — PASS | FIXED | NEEDS REVIEW — [details]
-## Content Results
-### [File name] — PASS | FIXED | NEEDS REVIEW — [details]
-## Boundary Check
-- **Skill type**: [type] | **Violations**: N
-### [section/file] — VIOLATION | OK
-- Maps to: [dimension] | Belongs to: [type] | Fix: [suggestion]
-## Prescriptiveness Rewrites
-- **Patterns found**: N | **Rewrites applied**: N
-### [file:section] — REWRITTEN | KEPT (with justification)
-- Original: "[text]" -> Revised: "[text]"
-## Items Needing Manual Review
-```
+The orchestrator writes three files. Each has a structured format that the app UI renders as markdown.
 
-**`test-skill.md` format:**
-```
-# Skill Test Report
-## Summary
-- **Total**: N | **Passed**: N | **Partial**: N | **Failed**: N
-## Test Results
-### Test 1: [prompt text]
-- **Category**: [category] | **Result**: PASS | PARTIAL | FAIL
-- **Skill coverage**: [what the skill provides]
-- **Gap**: [what's missing, or "None"]
-## Skill Content Issues
-## Suggested PM Prompts
-```
+**`agent-validation-log.md`** — Summary (decisions covered X/Y, structural checks, content checks, auto-fixed count, manual review count), then sections for coverage results, structural results, content results, boundary check, prescriptiveness rewrites, and items needing manual review.
 
-**`companion-skills.md` format:**
+**`test-skill.md`** — Summary (total/passed/partial/failed counts), test results (prompt, category, result, coverage, gap per test), skill content issues, and suggested PM prompts.
 
-This file uses YAML frontmatter with structured data (for future UI parsing) followed by a markdown body with detailed reasoning.
-
-```yaml
----
-skill_name: [current skill name]
-skill_type: [current skill type]
-companions:
-  - name: [companion name]
-    slug: [kebab-case identifier]
-    type: [domain | source | platform | data-engineering]
-    dimension: [skipped dimension slug]
-    dimension_score: [2-3]
-    priority: [high | medium | low]
-    reason: "[why this companion fills the gap]"
-    trigger_description: "[draft description field for companion SKILL.md]"
-    template_match: null
----
-# Companion Skill Recommendations
-
-[Introductory paragraph explaining which dimensions were skipped and why companions are recommended]
-
-## 1. [Companion name] ([type] skill)
-**Priority**: [High | Medium | Low] | **Dimension**: [dimension] (score: [N])
-
-**Why**: [detailed reasoning referencing the skipped dimension]
-**Suggested trigger**: [trigger description]
-**Template match**: No matching template found
-```
-
-If the companion recommender failed or returned no recommendations, write:
-```yaml
----
-skill_name: [current skill name]
-skill_type: [current skill type]
-companions: []
----
-# Companion Skill Recommendations
-
-No companion recommendations available.
-```
+**`companion-skills.md`** — YAML frontmatter with structured companion data (for UI parsing) plus markdown body with detailed reasoning per recommendation. See `agents/validate-companion-recommender.md` for the YAML schema. If no recommendations, use `companions: []`.
 
 ### Short Example
 
