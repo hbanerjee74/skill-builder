@@ -19,7 +19,6 @@ When `scope_recommendation: true` appears in the YAML frontmatter of `clarificat
 
 All 18 research dimension agents share these rules:
 
-- Follow the Clarifications file format (see File Formats below)
 - Always include "Other (please specify)" as a choice
 - Return the clarification text (do not write files)
 - Every question must present choices where different answers change the skill's design
