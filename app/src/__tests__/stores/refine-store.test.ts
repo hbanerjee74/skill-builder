@@ -136,6 +136,23 @@ describe("useRefineStore", () => {
     expect(useRefineStore.getState().messages).toHaveLength(1);
   });
 
+  it("addUserMessage with command stores the command on the message", () => {
+    const msg = useRefineStore.getState().addUserMessage("improve structure", undefined, "rewrite");
+
+    expect(msg.command).toBe("rewrite");
+    expect(msg.userText).toBe("improve structure");
+    expect(msg.targetFiles).toBeUndefined();
+  });
+
+  it("addUserMessage with command and targetFiles stores both", () => {
+    const targets = ["SKILL.md"];
+    const msg = useRefineStore.getState().addUserMessage("check quality", targets, "validate");
+
+    expect(msg.command).toBe("validate");
+    expect(msg.targetFiles).toEqual(targets);
+    expect(msg.userText).toBe("check quality");
+  });
+
   it("addAgentTurn appends an agent message with id, role, agentId, timestamp", () => {
     const msg = useRefineStore.getState().addAgentTurn("agent-abc");
 

@@ -96,6 +96,8 @@ export default function RefinePage() {
     const isTerminal = run?.status === "completed" || run?.status === "error" || run?.status === "shutdown";
     if (!run || !isTerminal) return;
 
+    console.log("[refine] agent %s finished: status=%s", activeAgentId, run.status);
+
     if (run.status === "error" || run.status === "shutdown") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
@@ -159,6 +161,7 @@ export default function RefinePage() {
         return;
       }
 
+      console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
       store.selectSkill(skill);
       store.setLoadingFiles(true);
@@ -236,6 +239,8 @@ Read the relevant files, make the requested changes, and briefly describe what y
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       if (!selectedSkill || !effectiveSkillsPath) return;
+
+      console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
 
       const store = useRefineStore.getState();
 
