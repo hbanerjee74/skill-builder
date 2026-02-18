@@ -131,6 +131,42 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
     Ok(Some(oid.to_string()))
 }
 
+/// Return names of top-level directories that exist on disk but are not in the HEAD tree.
+/// Skips dotfile/hidden directories.
+pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
+    let repo = ensure_repo(path)?;
+
+    let head_tree = repo
+        .head()
+        .ok()
+        .and_then(|h| h.peel_to_tree().ok());
+
+    let entries = std::fs::read_dir(path)
+        .map_err(|e| format!("Failed to read dir: {e}"))?;
+
+    let mut untracked = Vec::new();
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let is_tracked = head_tree
+            .as_ref()
+            .map(|tree| tree.get_name(&name).is_some())
+            .unwrap_or(false);
+
+        if !is_tracked {
+            untracked.push(name);
+        }
+    }
+
+    Ok(untracked)
+}
+
 /// Get commit history for a specific skill (filtered by path prefix).
 pub fn get_history(
     repo_path: &Path,

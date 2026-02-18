@@ -495,7 +495,7 @@ pub fn write_manifest_to_dir(
 // --- Internal Helpers ---
 
 /// Write the .skill-builder manifest JSON file into a skill directory.
-fn write_manifest_file(
+pub(crate) fn write_manifest_file(
     skill_dir: &Path,
     creator: Option<&str>,
     app_version: &str,
