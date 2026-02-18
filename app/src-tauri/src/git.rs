@@ -134,7 +134,11 @@ pub fn commit_all(path: &Path, message: &str) -> Result<Option<String>, String> 
 /// Return names of top-level directories that exist on disk but are not in the HEAD tree.
 /// Skips dotfile/hidden directories.
 pub fn get_untracked_dirs(path: &Path) -> Result<Vec<String>, String> {
-    let repo = ensure_repo(path)?;
+    if !path.join(".git").exists() {
+        return Ok(vec![]);
+    }
+    let repo = Repository::open(path)
+        .map_err(|e| format!("Failed to open git repo: {}", e))?;
 
     let head_tree = repo
         .head()

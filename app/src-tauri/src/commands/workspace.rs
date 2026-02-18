@@ -172,6 +172,7 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
     let skills_path = settings.skills_path;
+    let github_login = settings.github_user_login;
 
     // Reconcile orphaned workflow sessions from crashed instances
     match crate::db::reconcile_orphaned_sessions(&conn) {
@@ -208,8 +209,6 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
         }
 
         // Pass 2: Create .skill-builder manifests for folders missing them
-        let settings_for_manifest = crate::db::read_settings(&conn).ok();
-        let github_login = settings_for_manifest.as_ref().and_then(|s| s.github_user_login.as_deref());
         let mut manifests_created = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(output_path) {
@@ -223,7 +222,7 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
                     continue;
                 }
                 if !path.join(".skill-builder").exists() {
-                    if let Err(e) = super::github_push::write_manifest_file(&path, github_login, &app_version) {
+                    if let Err(e) = super::github_push::write_manifest_file(&path, github_login.as_deref(), &app_version) {
                         log::warn!("[reconcile_startup] Failed to create manifest for '{}': {}", name, e);
                         continue;
                     }
