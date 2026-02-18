@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
-use crate::db::Db;
+use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
 // ─── Session management scaffolding ──────────────────────────────────────────
@@ -43,7 +43,7 @@ impl RefineSessionManager {
 
 fn resolve_skills_path(db: &Db, workspace_path: &str) -> Result<String, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let settings = crate::db::read_settings(&conn)?;
+    let settings = db::read_settings(&conn)?;
     Ok(settings
         .skills_path
         .unwrap_or_else(|| workspace_path.to_string()))
@@ -364,31 +364,28 @@ pub async fn send_refine_message(
         session.skill_name.clone()
     };
 
-    // 2. Read settings (API key, model prefs, extended thinking)
-    let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
-        log::error!("[send_refine_message] Failed to resolve skills path: {}", e);
-        e
-    })?;
-
-    let (api_key, extended_context, extended_thinking, model) = {
+    // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
+    let (skills_path, api_key, extended_context, extended_thinking, model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+        let settings = db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("[send_refine_message] Failed to read settings: {}", e);
             e
         })?;
-        let key = settings
-            .anthropic_api_key
-            .ok_or_else(|| {
-                log::error!("[send_refine_message] Anthropic API key not configured");
-                "Anthropic API key not configured".to_string()
-            })?;
+        let skills_path = settings
+            .skills_path
+            .clone()
+            .unwrap_or_else(|| workspace_path.clone());
+        let key = settings.anthropic_api_key.ok_or_else(|| {
+            log::error!("[send_refine_message] Anthropic API key not configured");
+            "Anthropic API key not configured".to_string()
+        })?;
         let model = settings
             .preferred_model
             .unwrap_or_else(|| "sonnet".to_string());
-        (key, settings.extended_context, settings.extended_thinking, model)
+        (skills_path, key, settings.extended_context, settings.extended_thinking, model)
     };
 
     let thinking_budget: Option<u32> = if extended_thinking {
@@ -408,15 +405,10 @@ pub async fn send_refine_message(
     );
 
     // 3. Build SidecarConfig
-    let history = if conversation_history.is_empty() {
-        None
-    } else {
-        Some(conversation_history)
-    };
-
     let config = SidecarConfig {
         prompt: message,
-        model: Some(model.clone()),
+        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        model: Some(model),
         api_key,
         cwd,
         allowed_tools: Some(vec![
@@ -429,11 +421,14 @@ pub async fn send_refine_message(
         max_turns: Some(20),
         permission_mode: None,
         session_id: Some(session_id),
-        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some("refine-skill".to_string()),
-        conversation_history: history,
+        conversation_history: if conversation_history.is_empty() {
+            None
+        } else {
+            Some(conversation_history)
+        },
     };
 
     // 4. Spawn via pool — events stream automatically to frontend
