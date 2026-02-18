@@ -223,70 +223,56 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Get HEAD tree (may not exist in a fresh repo)
     let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
-    let index = repo
-        .index()
-        .map_err(|e| format!("Failed to get index: {}", e))?;
 
-    // HEAD→index (staged changes)
-    let staged = repo
-        .diff_tree_to_index(head_tree.as_ref(), Some(&index), Some(&mut opts))
-        .map_err(|e| format!("Failed to compute staged diff: {}", e))?;
-
-    // index→workdir (unstaged changes)
-    let mut wt_opts = DiffOptions::new();
-    wt_opts.pathspec(&prefix);
-    let unstaged = repo
-        .diff_index_to_workdir(Some(&index), Some(&mut wt_opts))
-        .map_err(|e| format!("Failed to compute unstaged diff: {}", e))?;
+    // Combined HEAD→workdir diff (staged + unstaged in one pass, no double-counting)
+    let diff = repo
+        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut opts))
+        .map_err(|e| format!("Failed to compute diff: {}", e))?;
 
     // Collect per-file diffs using print() which provides a single mutable callback
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();
     let mut current_file: Option<String> = None;
 
-    for diff in [&staged, &unstaged] {
-        diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-            // Track the current file from delta
-            let path = delta
-                .new_file()
-                .path()
-                .or_else(|| delta.old_file().path())
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
+    diff.print(DiffFormat::Patch, |delta, _hunk, line| {
+        // Track the current file from delta
+        let path = delta
+            .new_file()
+            .path()
+            .or_else(|| delta.old_file().path())
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
 
-            // Ensure file entry exists
-            if current_file.as_deref() != Some(&path) {
-                let status = match delta.status() {
-                    Delta::Added => "added",
-                    Delta::Deleted => "deleted",
-                    _ => "modified",
-                };
-                file_map
-                    .entry(path.clone())
-                    .or_insert_with(|| RefineFileDiff {
-                        path: path.clone(),
-                        status: status.to_string(),
-                        diff: String::new(),
-                    });
-                current_file = Some(path.clone());
+        // Ensure file entry exists
+        if current_file.as_deref() != Some(&path) {
+            let status = match delta.status() {
+                Delta::Added => "added",
+                Delta::Deleted => "deleted",
+                _ => "modified",
+            };
+            file_map
+                .entry(path.clone())
+                .or_insert_with(|| RefineFileDiff {
+                    path: path.clone(),
+                    status: status.to_string(),
+                    diff: String::new(),
+                });
+            current_file = Some(path.clone());
+        }
+
+        // Append diff content (context, additions, deletions only)
+        let origin = line.origin();
+        if matches!(origin, '+' | '-' | ' ') {
+            if let (Ok(s), Some(entry)) =
+                (std::str::from_utf8(line.content()), file_map.get_mut(&path))
+            {
+                entry.diff.push(origin);
+                entry.diff.push_str(s);
             }
+        }
 
-            // Append diff content (context, additions, deletions only)
-            let origin = line.origin();
-            if matches!(origin, '+' | '-' | ' ') {
-                if let (Ok(s), Some(entry)) =
-                    (std::str::from_utf8(line.content()), file_map.get_mut(&path))
-                {
-                    entry.diff.push(origin);
-                    entry.diff.push_str(s);
-                }
-            }
-
-            true
-        })
-        .map_err(|e| format!("Failed to print diff: {}", e))?;
-
-        current_file = None;
-    }
+        true
+    })
+    .map_err(|e| format!("Failed to print diff: {}", e))?;
 
     if file_map.is_empty() {
         log::debug!("[get_refine_diff] no changes for '{}'", skill_name);
