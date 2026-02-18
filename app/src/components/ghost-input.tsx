@@ -56,7 +56,7 @@ export function GhostInput({
   return (
     <div className="relative">
       {showGhost && (
-        <div className="absolute inset-0 px-3 py-2 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
+        <div className="absolute inset-px px-3 py-1 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
           {suggestion}
         </div>
       )}
@@ -85,7 +85,7 @@ export function GhostTextarea({
   return (
     <div className="relative">
       {showGhost && (
-        <div className="absolute inset-0 px-3 py-2 text-sm text-muted-foreground/50 italic pointer-events-none whitespace-pre-wrap overflow-hidden">
+        <div className="absolute inset-px px-3 py-2 text-sm text-muted-foreground/50 italic pointer-events-none whitespace-pre-wrap overflow-hidden">
           {suggestion}
         </div>
       )}
