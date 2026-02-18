@@ -698,6 +698,31 @@ async fn generate_changelog(
         .ok_or_else(|| "No text in changelog response".to_string())
 }
 
+/// Ensure the `push-target` remote points to the given URL.
+/// Creates the remote if missing, or deletes and recreates it if the URL changed.
+fn ensure_push_remote<'repo>(
+    repo: &'repo git2::Repository,
+    url: &str,
+) -> Result<git2::Remote<'repo>, String> {
+    let remote_name = "push-target";
+    match repo.find_remote(remote_name) {
+        Ok(r) => {
+            if r.url() != Some(url) {
+                drop(r);
+                repo.remote_delete(remote_name)
+                    .map_err(|e| format!("Failed to delete stale remote '{}': {e}", remote_name))?;
+                repo.remote(remote_name, url)
+                    .map_err(|e| format!("Failed to create remote '{}': {e}", remote_name))
+            } else {
+                Ok(r)
+            }
+        }
+        Err(_) => repo
+            .remote(remote_name, url)
+            .map_err(|e| format!("Failed to create remote '{}': {e}", remote_name)),
+    }
+}
+
 /// Create or update a local branch and force-push it to the remote.
 ///
 /// The branch is based on the remote's default branch (fetched first) so that
@@ -717,25 +742,7 @@ fn push_branch_to_remote(
 ) -> Result<(), String> {
     let remote_url = format!("https://github.com/{}/{}.git", owner, repo_name);
 
-    // Find or create a remote. Use "push-target" to avoid conflicts with existing "origin".
-    let remote_name = "push-target";
-    let mut remote = match repo.find_remote(remote_name) {
-        Ok(r) => {
-            // Verify URL matches; if not, delete and recreate
-            if r.url() != Some(&remote_url) {
-                drop(r);
-                repo.remote_delete(remote_name)
-                    .map_err(|e| format!("Failed to delete stale remote '{}': {e}", remote_name))?;
-                repo.remote(remote_name, &remote_url)
-                    .map_err(|e| format!("Failed to create remote '{}': {e}", remote_name))?
-            } else {
-                r
-            }
-        }
-        Err(_) => repo
-            .remote(remote_name, &remote_url)
-            .map_err(|e| format!("Failed to create remote '{}': {e}", remote_name))?,
-    };
+    let mut remote = ensure_push_remote(repo, &remote_url)?;
 
     // Fetch the remote's default branch so we share history
     {
@@ -753,7 +760,7 @@ fn push_branch_to_remote(
     }
 
     // Resolve the fetched default branch commit
-    let remote_ref_name = format!("refs/remotes/{}/{}", remote_name, default_branch);
+    let remote_ref_name = format!("refs/remotes/push-target/{}", default_branch);
     let remote_commit = repo
         .find_reference(&remote_ref_name)
         .or_else(|_| {
@@ -1377,6 +1384,50 @@ mod tests {
     }
 
     // --- reconcile: creates missing manifests ---
+
+    // --- ensure_push_remote ---
+
+    #[test]
+    fn test_ensure_push_remote_creates_when_missing() {
+        let (_dir, repo) = init_test_repo();
+        let url = "https://github.com/owner/repo-a.git";
+
+        let remote = ensure_push_remote(&repo, url).unwrap();
+        assert_eq!(remote.url(), Some(url));
+    }
+
+    #[test]
+    fn test_ensure_push_remote_keeps_matching_url() {
+        let (_dir, repo) = init_test_repo();
+        let url = "https://github.com/owner/repo-a.git";
+
+        // Create the remote first
+        repo.remote("push-target", url).unwrap();
+
+        // Should reuse it
+        let remote = ensure_push_remote(&repo, url).unwrap();
+        assert_eq!(remote.url(), Some(url));
+    }
+
+    #[test]
+    fn test_ensure_push_remote_recreates_on_url_change() {
+        let (_dir, repo) = init_test_repo();
+        let old_url = "https://github.com/owner/repo-a.git";
+        let new_url = "https://github.com/owner/repo-b.git";
+
+        // Create remote with old URL
+        repo.remote("push-target", old_url).unwrap();
+
+        // Should delete and recreate with new URL
+        let remote = ensure_push_remote(&repo, new_url).unwrap();
+        assert_eq!(remote.url(), Some(new_url));
+
+        // Verify only one push-target remote exists
+        let found = repo.find_remote("push-target").unwrap();
+        assert_eq!(found.url(), Some(new_url));
+    }
+
+    // --- reconcile ---
 
     #[test]
     fn test_reconcile_creates_manifest_for_existing_skill() {
