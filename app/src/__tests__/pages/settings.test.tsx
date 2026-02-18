@@ -122,7 +122,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });
 
-  it("renders General tab card sections by default", async () => {
+  it("renders General section card sections by default", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
