@@ -59,8 +59,9 @@ auditability, and returns scored YAML with the `selected` list of top 3-5 dimens
 If the planner fails, the orchestrator falls back to launching `entities` and the
 second dimension from the type-scoped set with default focus lines.
 
-**Phase 1 — Parallel Research.** The orchestrator parses the `selected` list from the scored YAML output and
-spawns all selected dimension agents in a single turn via the Task tool. Each agent
+**Phase 1 — Parallel Research.** The orchestrator parses the `selected` list from the
+scored YAML output and spawns all selected dimension agents in a single turn via the
+Task tool. Each agent
 receives the domain name and its tailored focus line. Agents return clarification
 questions as text -- they write no files.
 

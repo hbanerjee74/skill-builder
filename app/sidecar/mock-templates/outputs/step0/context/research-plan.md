@@ -17,7 +17,7 @@ dimensions_selected: 4
 | load-merge-patterns | 4 | Dimension load strategies and fact table merge patterns interact with historization choices | |
 | pattern-interactions | 4 | Constraint chains between SCD type, merge strategy, and key design are non-obvious | |
 | data-quality | 2 | Quality gates are important but largely covered by standard dbt testing patterns | Consider a companion data quality skill for complex pipeline monitoring |
-| layer-design | 2 | Silver/gold boundary is secondary to core dimensional patterns for this domain | |
+| layer-design | 2 | Silver/gold boundary is secondary to core dimensional patterns for this domain | Consider a companion layer design skill for complex multi-hop lineage |
 
 ## Selected Dimensions
 

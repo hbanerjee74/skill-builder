@@ -127,4 +127,3 @@ selected: [slug1, slug2, slug3]
 - Focus lines are tailored to the domain, not generic copies of defaults
 - Return text uses the scored YAML format so the orchestrator can parse it
 - `context/research-plan.md` is written for auditability
-</output>
