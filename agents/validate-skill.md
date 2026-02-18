@@ -67,7 +67,21 @@ scope_recommendation: true
 Scope recommendation is active. No skill was generated, so no tests were run.
 ```
 
-3. After writing both files, return immediately. Do NOT run any validation or test generation.
+3. Use the Write tool to create `companion-skills.md` in the context directory with EXACTLY this content:
+
+```
+---
+scope_recommendation: true
+skill_name: [skill name]
+skill_type: [skill type]
+companions: []
+---
+## Companion Recommendations Skipped
+
+Scope recommendation is active. No skill was generated, so no companion recommendations were produced.
+```
+
+4. After writing all three files, return immediately. Do NOT run any validation or test generation.
 
 ## Phase 1: Inventory and Prepare
 

@@ -1655,6 +1655,7 @@ mod tests {
         // Create files for step 6 (validate)
         std::fs::write(skill_dir.join("context/agent-validation-log.md"), "step6").unwrap();
         std::fs::write(skill_dir.join("context/test-skill.md"), "step6").unwrap();
+        std::fs::write(skill_dir.join("context/companion-skills.md"), "step6").unwrap();
 
         // Reset from step 6 onwards should clean up step 6 (validate)
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 6, None);
@@ -1662,6 +1663,7 @@ mod tests {
         // Step 6 outputs should be deleted
         assert!(!skill_dir.join("context/agent-validation-log.md").exists());
         assert!(!skill_dir.join("context/test-skill.md").exists());
+        assert!(!skill_dir.join("context/companion-skills.md").exists());
     }
 
     #[test]
