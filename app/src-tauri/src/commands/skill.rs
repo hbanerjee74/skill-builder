@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::types::SkillSummary;
+use serde::Serialize;
 use std::fs;
 use std::path::Path;
 
@@ -73,11 +74,10 @@ pub fn create_skill(
     domain: String,
     tags: Option<Vec<String>>,
     skill_type: Option<String>,
-    display_name: Option<String>,
     intake_json: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[create_skill] name={} domain={} skill_type={:?} display_name={:?} tags={:?} intake={}", name, domain, skill_type, display_name, tags, intake_json.is_some());
+    log::info!("[create_skill] name={} domain={} skill_type={:?} tags={:?} intake={}", name, domain, skill_type, tags, intake_json.is_some());
     let conn = db.0.lock().ok();
     // Read settings from DB
     let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
@@ -105,7 +105,6 @@ pub fn create_skill(
         author_login.as_deref(),
         author_avatar.as_deref(),
         &app_version,
-        display_name.as_deref(),
         intake_json.as_deref(),
     )
 }
@@ -122,7 +121,6 @@ fn create_skill_inner(
     author_login: Option<&str>,
     author_avatar: Option<&str>,
     app_version: &str,
-    display_name: Option<&str>,
     intake_json: Option<&str>,
 ) -> Result<(), String> {
     // Check for collision in workspace_path (working directory)
@@ -173,9 +171,6 @@ fn create_skill_inner(
             let _ = crate::db::set_skill_author(conn, name, login, author_avatar);
         }
 
-        if let Some(dn) = display_name {
-            let _ = crate::db::set_skill_display_name(conn, name, Some(dn));
-        }
         if let Some(ij) = intake_json {
             let _ = crate::db::set_skill_intake(conn, name, Some(ij));
         }
@@ -384,22 +379,25 @@ pub fn check_lock(
 #[tauri::command]
 pub fn update_skill_metadata(
     skill_name: String,
-    display_name: Option<String>,
+    domain: Option<String>,
     skill_type: Option<String>,
     tags: Option<Vec<String>>,
     intake_json: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[update_skill_metadata] skill={} display_name={:?} skill_type={:?} tags={:?} intake={}", skill_name, display_name, skill_type, tags, intake_json.is_some());
+    log::info!("[update_skill_metadata] skill={} domain={:?} skill_type={:?} tags={:?} intake={}", skill_name, domain, skill_type, tags, intake_json.is_some());
     let conn = db.0.lock().map_err(|e| {
         log::error!("[update_skill_metadata] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
 
-    if let Some(dn) = &display_name {
-        crate::db::set_skill_display_name(&conn, &skill_name, Some(dn)).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to set display_name: {}", e);
-            e
+    if let Some(d) = &domain {
+        conn.execute(
+            "UPDATE workflow_runs SET domain = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params![skill_name, d],
+        ).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to update domain: {}", e);
+            e.to_string()
         })?;
     }
     if let Some(st) = &skill_type {
@@ -424,6 +422,266 @@ pub fn update_skill_metadata(
         })?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn rename_skill(
+    old_name: String,
+    new_name: String,
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("[rename_skill] old={} new={}", old_name, new_name);
+
+    // Validate kebab-case: lowercase alphanumeric segments separated by single hyphens
+    let is_kebab = !new_name.is_empty()
+        && !new_name.starts_with('-')
+        && !new_name.ends_with('-')
+        && !new_name.contains("--")
+        && new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !is_kebab {
+        return Err("Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string());
+    }
+
+    if old_name == new_name {
+        return Ok(());
+    }
+
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[rename_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+
+    // Check new name doesn't already exist
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM workflow_runs WHERE skill_name = ?1",
+            rusqlite::params![new_name],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if exists {
+        return Err(format!("Skill '{}' already exists", new_name));
+    }
+
+    // Read settings for skills_path
+    let settings = crate::db::read_settings(&conn).ok();
+    let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
+
+    // Move directories on disk
+    let workspace_old = Path::new(&workspace_path).join(&old_name);
+    let workspace_new = Path::new(&workspace_path).join(&new_name);
+    if workspace_old.exists() {
+        fs::rename(&workspace_old, &workspace_new).map_err(|e| {
+            format!("Failed to rename workspace directory: {}", e)
+        })?;
+    }
+
+    if let Some(ref sp) = skills_path {
+        let skills_old = Path::new(sp).join(&old_name);
+        let skills_new = Path::new(sp).join(&new_name);
+        if skills_old.exists() {
+            fs::rename(&skills_old, &skills_new).map_err(|e| {
+                // Rollback workspace rename
+                if workspace_new.exists() {
+                    let _ = fs::rename(&workspace_new, &workspace_old);
+                }
+                format!("Failed to rename skills directory: {}", e)
+            })?;
+        }
+    }
+
+    // Update all DB tables in a transaction
+    let tx_result = (|| -> Result<(), String> {
+        conn.execute_batch("BEGIN TRANSACTION").map_err(|e| e.to_string())?;
+
+        // workflow_runs: PK change — insert new, delete old
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json)
+             SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json
+             FROM workflow_runs WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM workflow_runs WHERE skill_name = ?1",
+            rusqlite::params![old_name],
+        ).map_err(|e| e.to_string())?;
+
+        // workflow_steps
+        conn.execute(
+            "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        // skill_tags
+        conn.execute(
+            "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        // agent_runs
+        conn.execute(
+            "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        // workflow_artifacts
+        conn.execute(
+            "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        // skill_locks
+        conn.execute(
+            "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        // workflow_sessions
+        conn.execute(
+            "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(|e| e.to_string())?;
+
+        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+
+    if let Err(e) = tx_result {
+        let _ = conn.execute_batch("ROLLBACK");
+        // Rollback disk changes
+        let workspace_new = Path::new(&workspace_path).join(&new_name);
+        let workspace_old = Path::new(&workspace_path).join(&old_name);
+        if workspace_new.exists() {
+            let _ = fs::rename(&workspace_new, &workspace_old);
+        }
+        if let Some(ref sp) = skills_path {
+            let skills_new = Path::new(sp).join(&new_name);
+            let skills_old = Path::new(sp).join(&old_name);
+            if skills_new.exists() {
+                let _ = fs::rename(&skills_new, &skills_old);
+            }
+        }
+        return Err(format!("Failed to rename skill in database: {}", e));
+    }
+
+    // Auto-commit: skill renamed
+    if let Some(ref sp) = skills_path {
+        let msg = format!("{}: renamed from {}", new_name, old_name);
+        if let Err(e) = crate::git::commit_all(Path::new(sp), &msg) {
+            log::warn!("Git auto-commit failed ({}): {}", msg, e);
+        }
+    }
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct FieldSuggestions {
+    pub domain: String,
+    pub audience: String,
+    pub challenges: String,
+    pub scope: String,
+}
+
+#[tauri::command]
+pub async fn generate_suggestions(
+    skill_name: String,
+    skill_type: String,
+    industry: Option<String>,
+    function_role: Option<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<FieldSuggestions, String> {
+    log::info!("[generate_suggestions] skill={} type={}", skill_name, skill_type);
+
+    let api_key = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        settings
+            .anthropic_api_key
+            .ok_or_else(|| "API key not configured".to_string())?
+    };
+
+    let readable_name = skill_name.replace('-', " ");
+
+    let mut context_parts = Vec::new();
+    if let Some(ref ind) = industry {
+        if !ind.is_empty() {
+            context_parts.push(format!("Industry: {}", ind));
+        }
+    }
+    if let Some(ref fr) = function_role {
+        if !fr.is_empty() {
+            context_parts.push(format!("Role: {}", fr));
+        }
+    }
+    let context = if context_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" User context: {}.", context_parts.join(", "))
+    };
+
+    let prompt = format!(
+        "Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}\n\n\
+         Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
+         Respond in exactly this JSON format (no markdown, no extra text):\n\
+         {{\"domain\": \"<1 sentence domain description>\", \
+         \"audience\": \"<1 sentence target audience>\", \
+         \"challenges\": \"<1 sentence key challenges>\", \
+         \"scope\": \"<1 sentence scope>\"}}"
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post("https://api.anthropic.com/v1/messages")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .header("content-type", "application/json")
+        .body(
+            serde_json::json!({
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 300,
+                "messages": [{"role": "user", "content": prompt}]
+            })
+            .to_string(),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("API request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Anthropic API error ({}): {}", status, body));
+    }
+
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let text = body["content"][0]["text"]
+        .as_str()
+        .ok_or_else(|| "No text in API response".to_string())?;
+
+    // Parse the JSON response
+    let suggestions: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("Failed to parse suggestions: {}", e))?;
+
+    Ok(FieldSuggestions {
+        domain: suggestions["domain"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        audience: suggestions["audience"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        challenges: suggestions["challenges"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        scope: suggestions["scope"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -543,7 +801,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0", None, None)
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0", None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -558,8 +816,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None, None);
+        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None).unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -572,7 +830,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None, None)
+        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -608,7 +866,6 @@ mod tests {
             None,
             None,
             "0.1.0",
-            None,
             None,
         )
         .unwrap();
@@ -648,7 +905,6 @@ mod tests {
             None,
             None,
             "0.1.0",
-            None,
             None,
         )
         .unwrap();
@@ -762,7 +1018,7 @@ mod tests {
         // Create a symlink or sibling that the ".." traversal would resolve to
         // The workspace has a dir that resolves outside via ".."
         // workspace/legit is a real skill
-        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
+        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0", None).unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         // This creates workspace/../outside-target which resolves to outside_dir
@@ -810,7 +1066,6 @@ mod tests {
             None,
             "0.1.0",
             None,
-            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -840,7 +1095,6 @@ mod tests {
             None,
             "0.1.0",
             None,
-            None,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -868,7 +1122,6 @@ mod tests {
             None,
             "0.1.0",
             None,
-            None,
         );
         assert!(result.is_ok());
 
@@ -887,7 +1140,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0", None, None).unwrap();
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0", None).unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");

@@ -28,11 +28,36 @@ export const updateSkillTags = (skillName: string, tags: string[]) =>
 
 export const updateSkillMetadata = (
   skillName: string,
-  displayName: string | null,
+  domain: string | null,
   skillType: string | null,
   tags: string[] | null,
   intakeJson: string | null,
-) => invoke("update_skill_metadata", { skillName, displayName, skillType, tags, intakeJson });
+) => invoke("update_skill_metadata", { skillName, domain, skillType, tags, intakeJson });
+
+export const renameSkill = (
+  oldName: string,
+  newName: string,
+  workspacePath: string,
+) => invoke("rename_skill", { oldName, newName, workspacePath });
+
+export interface FieldSuggestions {
+  domain: string;
+  audience: string;
+  challenges: string;
+  scope: string;
+}
+
+export const generateSuggestions = (
+  skillName: string,
+  skillType: string,
+  industry?: string | null,
+  functionRole?: string | null,
+) => invoke<FieldSuggestions>("generate_suggestions", {
+  skillName,
+  skillType,
+  industry: industry ?? null,
+  functionRole: functionRole ?? null,
+});
 
 // --- Agent ---
 
