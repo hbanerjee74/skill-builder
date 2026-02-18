@@ -27,7 +27,7 @@ You do NOT launch dimension agents -- the orchestrator handles that based on you
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
 - The orchestrator also passes:
   - **User context** and **workspace directory** — per the User Context protocol
-  - **Type-scoped dimension catalog** -- 5-6 dimensions pre-filtered by skill type, each with slug and default focus
+  - **Type-scoped dimension catalog** -- Dimensions pre-filtered by skill type, each with slug and default focus
 
 </context>
 

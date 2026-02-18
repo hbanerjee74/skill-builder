@@ -43,18 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate configuration options that are syntactically valid but produce wrong runtime behavior, focusing on multi-axis compatibility (core version x adapter version x runtime version). Look for settings with non-obvious defaults that cause silent failures, version boundaries where configuration options change meaning or become invalid, and configuration combinations where individually correct settings interact to produce unexpected behavior.
 
-**Constraints**:
-- Follow the Clarifications file format provided in the agent instructions
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-
-## Error Handling
-
-- **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
-
+Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
 
 </instructions>
 

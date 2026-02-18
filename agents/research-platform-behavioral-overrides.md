@@ -43,18 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate platform features that silently degrade or behave differently than documented in the customer's specific environment and version. Look for features that work in one environment mode but not another (e.g., warehouse vs. lakehouse), data type edge cases where implicit conversions cause silent data corruption, and SQL dialect features that are documented as supported but produce incorrect results under specific conditions.
 
-**Constraints**:
-- Follow the Clarifications file format provided in the agent instructions
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-
-## Error Handling
-
-- **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
-
+Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
 
 </instructions>
 

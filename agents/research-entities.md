@@ -43,18 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Start from the topic examples in the focus line and map out the full entity landscape for the domain. Probe for custom objects, managed package extensions, and non-obvious relationships that deviate from the standard model. Investigate entity classification decisions (dimension vs. fact, reference vs. transactional), grain choices at each entity level, and cross-entity join patterns that the skill must understand to produce correct output.
 
-**Constraints**:
-- Follow the Clarifications file format provided in the agent instructions
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-
-## Error Handling
-
-- **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
-
+Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
 
 </instructions>
 

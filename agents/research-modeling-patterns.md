@@ -43,18 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the modeling patterns relevant to this business domain by focusing on grain choices and their downstream consequences. Determine whether the domain's primary analysis patterns favor event-level grain, periodic snapshots, or accumulating snapshots, and how that choice affects query performance and complexity. Probe for field coverage decisions -- which source fields are important enough to surface at each layer -- and identify where the standard Kimball approach needs domain-specific adaptation.
 
-**Constraints**:
-- Follow the Clarifications file format provided in the agent instructions
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-
-## Error Handling
-
-- **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
-
+Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
 
 </instructions>
 

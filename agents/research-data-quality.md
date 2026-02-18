@@ -43,18 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate where generic quality patterns break down for this specific domain. Look for pattern-specific checks that go beyond textbook data quality -- per-layer validation rules, cross-layer reconciliation that must account for row multiplication, quality gate thresholds that determine halt vs. quarantine vs. continue behavior. Also probe for org-specific known quality issues: fields that are commonly null or unreliable, validation rules that force incorrect data entry, and data cleanup jobs or compensating controls that downstream consumers depend on.
 
-**Constraints**:
-- Follow the Clarifications file format provided in the agent instructions
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-
-## Error Handling
-
-- **If the domain is unclear or too broad:** Ask for clarification by returning a message explaining what additional context would help. Do not guess.
-- **If the Clarifications file format is not provided in the agent instructions:** Use numbered questions with choices, recommendation, answer field.
-
+Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
 
 </instructions>
 
