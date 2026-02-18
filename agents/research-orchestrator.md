@@ -102,10 +102,7 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
 **If len(selected) > max_dimensions:**
 
 1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
-2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Include this directive in the prompt:
-   > Do not provide progress updates. Return your complete output as text. Do not write files. List outcomes, not process.
-
-   Pass it:
+2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Pass it:
    - The **domain name**, **skill name**, **skill type**
    - The full text of `research-plan.md` (the planner's output)
    - The **dimension threshold** and **number of dimensions chosen**
@@ -117,12 +114,7 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
 
 ## Phase 3: Parallel Research
 
-Use the `selected` list from the planner's scored YAML output. For each selected dimension, spawn the corresponding agent (`research-{slug}`) via the Task tool. Launch ALL dimension agents **in the same turn** for parallel execution.
-
-Include this directive in each prompt:
-> Do not provide progress updates. Return your complete output as text. Do not write files. List outcomes, not process.
-
-Pass each agent:
+Use the `selected` list from the planner's scored YAML output. For each selected dimension, spawn the corresponding agent (`research-{slug}`) via the Task tool. Launch ALL dimension agents **in the same turn** for parallel execution. Pass each agent:
 - The **domain** name
 - The planner's **tailored focus line** for that dimension (the planner embeds entity examples, metric names, and other specifics directly in the focus line)
 - **User context** and **workspace directory** (per protocol)
