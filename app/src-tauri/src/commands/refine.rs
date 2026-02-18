@@ -60,7 +60,6 @@ fn build_refine_config(
     skills_path: &str,
     api_key: String,
     model: String,
-    extended_context: bool,
     extended_thinking: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
@@ -77,7 +76,7 @@ fn build_refine_config(
 
     let config = SidecarConfig {
         prompt: message,
-        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
         model: Some(model),
         api_key,
         cwd,
@@ -403,7 +402,7 @@ pub async fn send_refine_message(
     };
 
     // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
-    let (skills_path, api_key, extended_context, extended_thinking, model) = {
+    let (skills_path, api_key, extended_thinking, model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -423,7 +422,7 @@ pub async fn send_refine_message(
         let model = settings
             .preferred_model
             .unwrap_or_else(|| "sonnet".to_string());
-        (skills_path, key, settings.extended_context, settings.extended_thinking, model)
+        (skills_path, key, settings.extended_thinking, model)
     };
 
     // 3. Build config and agent_id
@@ -435,7 +434,6 @@ pub async fn send_refine_message(
         &skills_path,
         api_key,
         model,
-        extended_context,
         extended_thinking,
     );
 
@@ -753,7 +751,6 @@ mod tests {
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
-            false,
         )
     }
 
@@ -799,7 +796,6 @@ mod tests {
             "/home/user/skills",
             "sk-key".to_string(),
             "sonnet".to_string(),
-            false,
             false,
         );
         assert_eq!(config.cwd, "/home/user/skills/data-engineering");
@@ -872,7 +868,6 @@ mod tests {
             "/skills",
             "sk-key".to_string(),
             "sonnet".to_string(),
-            false,
             true, // extended_thinking enabled
         );
         assert_eq!(config.max_thinking_tokens, Some(16_000));
