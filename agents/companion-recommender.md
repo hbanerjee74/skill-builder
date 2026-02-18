@@ -39,8 +39,6 @@ Use the research planner's dimension scores to identify companion skill candidat
 
 Recommendations span **all skill types** (domain, source, platform, data-engineering) — not limited to the current skill's type.
 
-Platform recommendations are limited to **dbt, dlt, and Fabric** — the only supported platforms.
-
 ## Recommendation Format
 
 Target 2-4 recommendations. At least one recommendation needs to be contextually specific to the user's domain and stack (not generic like "you should also build a source skill").
