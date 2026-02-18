@@ -4,13 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import type { RefineCommand } from "@/stores/refine-store";
 
 const COMMANDS: { value: RefineCommand; label: string; icon: typeof RefreshCw }[] = [
@@ -233,35 +226,46 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
               rows={1}
             />
           </PopoverAnchor>
-          <PopoverContent className="w-56 p-0" align="start" side="top">
-            <Command value={pickerValue} onValueChange={setPickerValue}>
-              <CommandList>
-                {showCommandPicker && (
-                  <CommandGroup heading="Commands">
-                    {COMMANDS.map((cmd) => (
-                      <CommandItem
-                        key={cmd.value}
-                        value={cmd.value}
-                        onSelect={() => selectCommand(cmd.value)}
-                      >
-                        <cmd.icon className="mr-2 size-3.5" />
-                        {cmd.label}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
+          <PopoverContent className="w-56 p-1" align="start" side="top">
+            {showCommandPicker && (
+              <div role="listbox" aria-label="Commands">
+                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Commands</div>
+                {COMMANDS.map((cmd) => (
+                  <div
+                    key={cmd.value}
+                    role="option"
+                    aria-selected={pickerValue === cmd.value}
+                    data-selected={pickerValue === cmd.value || undefined}
+                    className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
+                    onClick={() => selectCommand(cmd.value)}
+                  >
+                    <cmd.icon className="size-3.5" />
+                    {cmd.label}
+                  </div>
+                ))}
+              </div>
+            )}
+            {showFilePicker && (
+              <div role="listbox" aria-label="Files">
+                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Files</div>
+                {availableFiles.length === 0 ? (
+                  <div className="py-6 text-center text-sm text-muted-foreground">No files available</div>
+                ) : (
+                  availableFiles.map((f) => (
+                    <div
+                      key={f}
+                      role="option"
+                      aria-selected={pickerValue === f}
+                      data-selected={pickerValue === f || undefined}
+                      className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
+                      onClick={() => selectFile(f)}
+                    >
+                      {f}
+                    </div>
+                  ))
                 )}
-                {showFilePicker && (
-                  <CommandGroup heading="Files">
-                    <CommandEmpty>No files available</CommandEmpty>
-                    {availableFiles.map((f) => (
-                      <CommandItem key={f} value={f} onSelect={() => selectFile(f)}>
-                        {f}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-              </CommandList>
-            </Command>
+              </div>
+            )}
           </PopoverContent>
         </Popover>
         <Button
