@@ -64,6 +64,7 @@ export default function NewSkillDialog({
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fetchVersionRef = useRef(0)
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
@@ -75,10 +76,11 @@ export default function NewSkillDialog({
         setSuggestions(null)
         return
       }
+      const version = ++fetchVersionRef.current
       debounceRef.current = setTimeout(async () => {
         try {
           const result = await generateSuggestions(skillName, type, industry, functionRole)
-          setSuggestions(result)
+          if (version === fetchVersionRef.current) setSuggestions(result)
         } catch (err) {
           console.warn("[new-skill] Ghost suggestion fetch failed:", err)
         }
@@ -156,6 +158,7 @@ export default function NewSkillDialog({
     setClaudeMistakes("")
     setSuggestions(null)
     setError(null)
+    fetchVersionRef.current++
   }
 
   const canAdvanceStep1 = name.trim() !== "" && isValidKebab(name.trim()) && skillType !== ""
