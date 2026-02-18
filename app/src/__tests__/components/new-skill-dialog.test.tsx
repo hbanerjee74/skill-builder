@@ -45,11 +45,11 @@ describe("NewSkillDialog", () => {
 
     expect(screen.getByText("Create New Skill")).toBeInTheDocument();
     expect(
-      screen.getByText("Define the functional domain for your new skill.")
+      screen.getByText("Define the scope and context for your new skill.")
     ).toBeInTheDocument();
   });
 
-  it("renders domain and skill name inputs in dialog", async () => {
+  it("renders skill name and domain inputs in dialog", async () => {
     const user = userEvent.setup();
     render(
       <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
@@ -57,26 +57,26 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
     expect(screen.getByLabelText("Skill Name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
   });
 
-  it("auto-generates kebab-case name from domain input", async () => {
+  it("enforces kebab-case on skill name input", async () => {
     const user = userEvent.setup();
     render(
       <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
-
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Sales Pipeline");
 
     const nameInput = screen.getByLabelText("Skill Name");
-    expect(nameInput).toHaveValue("sales-pipeline");
+    await user.type(nameInput, "Sales Pipeline");
+
+    // toKebabChars strips non-[a-z0-9-] chars (spaces removed, uppercase lowered)
+    expect(nameInput).toHaveValue("salespipeline");
   });
 
-  it("disables Create button when domain is empty", async () => {
+  it("disables Create button when name is empty", async () => {
     const user = userEvent.setup();
     render(
       <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
@@ -88,7 +88,7 @@ describe("NewSkillDialog", () => {
     expect(createButton).toBeDisabled();
   });
 
-  it("enables Create button when domain has text and skill type is selected", async () => {
+  it("enables Create button when name and skill type are set", async () => {
     const user = userEvent.setup();
     render(
       <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
@@ -96,11 +96,10 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    // Select a skill type
-    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test-skill");
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test Domain");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     expect(createButton).toBeEnabled();
@@ -114,8 +113,8 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test Domain");
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test-skill");
 
     // No skill type selected
     const createButton = screen.getByRole("button", { name: /^Create$/i });
@@ -133,11 +132,10 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    // Select skill type
-    await user.click(screen.getByRole("radio", { name: /Domain/i }));
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "sales-pipeline");
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Sales Pipeline");
+    await user.click(screen.getByRole("radio", { name: /Domain/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -146,10 +144,9 @@ describe("NewSkillDialog", () => {
       expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
         workspacePath: "/workspace",
         name: "sales-pipeline",
-        domain: "Sales Pipeline",
+        domain: "sales pipeline",
         tags: null,
         skillType: "domain",
-        displayName: null,
         intakeJson: null,
       });
     });
@@ -173,10 +170,10 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    await user.click(screen.getByRole("radio", { name: /Domain/i }));
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "sales-pipeline");
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Sales Pipeline");
+    await user.click(screen.getByRole("radio", { name: /Domain/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -200,10 +197,11 @@ describe("NewSkillDialog", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
-    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test Skill");
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test-skill");
+
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -225,10 +223,10 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test-skill");
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test Skill");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -264,7 +262,6 @@ describe("NewSkillDialog", () => {
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
     expect(screen.getByText("Tags")).toBeInTheDocument();
-    expect(screen.getByText("Optional tags for categorization")).toBeInTheDocument();
   });
 
   it("passes tags to invoke when tags are added", async () => {
@@ -277,10 +274,10 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    await user.click(screen.getByRole("radio", { name: /Source/i }));
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test-domain");
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test Domain");
+    await user.click(screen.getByRole("radio", { name: /Source/i }));
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "analytics{Enter}");
@@ -293,31 +290,12 @@ describe("NewSkillDialog", () => {
       expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
         workspacePath: "/workspace",
         name: "test-domain",
-        domain: "Test Domain",
+        domain: "test domain",
         tags: ["analytics", "salesforce"],
         skillType: "source",
-        displayName: null,
         intakeJson: null,
       });
     });
-  });
-
-  it("allows editing the skill name independently", async () => {
-    const user = userEvent.setup();
-    render(
-      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
-    );
-
-    await user.click(screen.getByRole("button", { name: /New Skill/i }));
-
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "My Domain");
-
-    const nameInput = screen.getByLabelText("Skill Name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "custom-name");
-
-    expect(nameInput).toHaveValue("custom-name");
   });
 
   it("renders skill type radio group with 4 options", async () => {
@@ -332,7 +310,6 @@ describe("NewSkillDialog", () => {
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(4);
     expect(screen.getByText("Platform")).toBeInTheDocument();
-    // "Domain" appears both as radio label and input label, so verify via radio count
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("Data Engineering")).toBeInTheDocument();
     // Verify the Domain radio option exists by its description
@@ -348,10 +325,11 @@ describe("NewSkillDialog", () => {
     );
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
-    await user.click(screen.getByRole("radio", { name: /Data Engineering/i }));
 
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "ETL Patterns");
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "etl-patterns");
+
+    await user.click(screen.getByRole("radio", { name: /Data Engineering/i }));
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -360,10 +338,42 @@ describe("NewSkillDialog", () => {
       expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
         workspacePath: "/workspace",
         name: "etl-patterns",
-        domain: "ETL Patterns",
+        domain: "etl patterns",
         tags: null,
         skillType: "data-engineering",
-        displayName: null,
+        intakeJson: null,
+      });
+    });
+  });
+
+  it("uses explicit domain when provided", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockResolvedValue(undefined);
+
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "sales-pipeline");
+
+    await user.click(screen.getByRole("radio", { name: /Domain/i }));
+
+    const domainInput = screen.getByLabelText("Domain");
+    await user.type(domainInput, "Revenue Pipeline Analysis");
+
+    const createButton = screen.getByRole("button", { name: /^Create$/i });
+    await user.click(createButton);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
+        workspacePath: "/workspace",
+        name: "sales-pipeline",
+        domain: "Revenue Pipeline Analysis",
+        tags: null,
+        skillType: "domain",
         intakeJson: null,
       });
     });
@@ -404,10 +414,11 @@ describe("NewSkillDialog", () => {
 
     await user.click(screen.getByRole("button", { name: /New Skill/i }));
 
-    // Select skill type and fill domain so we can submit later
+    // Fill required fields first
+    const nameInput = screen.getByLabelText("Skill Name");
+    await user.type(nameInput, "test");
+
     await user.click(screen.getByRole("radio", { name: /Platform/i }));
-    const domainInput = screen.getByLabelText("Domain");
-    await user.type(domainInput, "Test");
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");
@@ -433,10 +444,9 @@ describe("NewSkillDialog", () => {
       expect(mockInvoke).toHaveBeenCalledWith("create_skill", {
         workspacePath: "/workspace",
         name: "test",
-        domain: "Test",
+        domain: "test",
         tags: ["salesforce"],
         skillType: "platform",
-        displayName: null,
         intakeJson: null,
       });
     });
@@ -487,5 +497,25 @@ describe("NewSkillDialog", () => {
     const options = screen.getAllByRole("option");
     expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent("anomaly");
+  });
+
+  it("shows More options section when toggled", async () => {
+    const user = userEvent.setup();
+    render(
+      <NewSkillDialog workspacePath="/workspace" onCreated={vi.fn<() => Promise<void>>().mockResolvedValue(undefined)} />
+    );
+
+    await user.click(screen.getByRole("button", { name: /New Skill/i }));
+
+    // Level 2 fields should not be visible initially
+    expect(screen.queryByLabelText("Target Audience")).not.toBeInTheDocument();
+
+    // Click "More options" expander
+    await user.click(screen.getByText("More options"));
+
+    // Level 2 fields should now be visible
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scope")).toBeInTheDocument();
   });
 });

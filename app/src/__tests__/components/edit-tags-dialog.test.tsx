@@ -22,7 +22,6 @@ const sampleSkill: SkillSummary = {
   skill_type: "domain",
   author_login: null,
   author_avatar: null,
-  display_name: null,
   intake_json: null,
 };
 
@@ -139,7 +138,7 @@ describe("EditSkillDialog", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        displayName: null,
+        domain: "sales",
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: null,
@@ -190,7 +189,7 @@ describe("EditSkillDialog", () => {
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
   });
 
-  it("shows display name input", () => {
+  it("shows skill name input pre-filled with current name", () => {
     render(
       <EditSkillDialog
         skill={sampleSkill}
@@ -200,7 +199,7 @@ describe("EditSkillDialog", () => {
         availableTags={[]}
       />
     );
-    expect(screen.getByLabelText("Display Name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Skill Name")).toHaveValue("sales-pipeline");
   });
 
   it("shows skill type radio group", () => {
@@ -217,21 +216,18 @@ describe("EditSkillDialog", () => {
     expect(radios).toHaveLength(4);
   });
 
-  it("pre-fills display name from skill", () => {
-    const skillWithName: SkillSummary = {
-      ...sampleSkill,
-      display_name: "Sales Pipeline Analytics",
-    };
+  it("shows domain input pre-filled with current domain", () => {
     render(
       <EditSkillDialog
-        skill={skillWithName}
+        skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
         availableTags={[]}
       />
     );
-    expect(screen.getByLabelText("Display Name")).toHaveValue("Sales Pipeline Analytics");
+    // Use id selector since "Domain" label matches both the input and the radio option
+    expect(screen.getByPlaceholderText("What does this skill cover?")).toHaveValue("sales");
   });
 
   it("shows intake textarea fields", () => {
@@ -297,7 +293,7 @@ describe("EditSkillDialog", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        displayName: null,
+        domain: "sales",
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: JSON.stringify({ audience: "Analysts" }),
