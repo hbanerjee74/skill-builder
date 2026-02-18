@@ -20,8 +20,12 @@ cd app
 # Run E2E tests by feature area
 ./tests/run.sh e2e --tag @dashboard
 ./tests/run.sh e2e --tag @settings
+./tests/run.sh e2e --tag @workflow
 ./tests/run.sh e2e --tag @workflow-agent
 ./tests/run.sh e2e --tag @navigation
+./tests/run.sh e2e --tag @prompts
+./tests/run.sh e2e --tag @skills
+./tests/run.sh e2e --tag @usage
 
 # Run plugin tests by tag
 ./tests/run.sh plugin --tag @agents
@@ -40,6 +44,9 @@ npm run test:e2e:dashboard
 npm run test:e2e:settings
 npm run test:e2e:workflow
 npm run test:e2e:navigation
+npm run test:e2e:prompts
+npm run test:e2e:skills
+npm run test:e2e:usage
 ```
 
 ## Test Levels
@@ -68,7 +75,7 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 | Runtime | Command | Location |
 |---|---|---|
-| Playwright | `npm run test:e2e` | `e2e/dashboard/`, `e2e/settings/`, `e2e/workflow/`, `e2e/navigation/` |
+| Playwright | `npm run test:e2e` | `e2e/dashboard/`, `e2e/settings/`, `e2e/workflow/`, `e2e/navigation/`, `e2e/prompts/`, `e2e/skills/`, `e2e/usage/` |
 
 ### Level 4: Plugin Tests
 
@@ -103,8 +110,12 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 |---|---|---|---|
 | Dashboard | `@dashboard` | `./tests/run.sh e2e --tag @dashboard` | `dashboard.spec.ts`, `dashboard-states.spec.ts`, `skill-crud.spec.ts` |
 | Settings | `@settings` | `./tests/run.sh e2e --tag @settings` | `settings.spec.ts` |
+| Workflow (steps) | `@workflow` | `./tests/run.sh e2e --tag @workflow` | `workflow-steps.spec.ts`, `workflow-navigation.spec.ts` |
 | Workflow (agent) | `@workflow-agent` | `./tests/run.sh e2e --tag @workflow-agent` | `workflow-agent.spec.ts` |
 | Navigation | `@navigation` | `./tests/run.sh e2e --tag @navigation` | `navigation.spec.ts` |
+| Prompts | `@prompts` | `./tests/run.sh e2e --tag @prompts` | `prompts.spec.ts` |
+| Skills Library | `@skills` | `./tests/run.sh e2e --tag @skills` | `skills.spec.ts` |
+| Usage | `@usage` | `./tests/run.sh e2e --tag @usage` | `usage.spec.ts` |
 
 ## Test Inventory
 
@@ -112,11 +123,11 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 |---|---|---|---|
 | Frontend unit | 9 | ~154 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
 | Frontend integration | 26 | ~490 | `src/__tests__/components/`, `src/__tests__/pages/` |
-| E2E (Playwright) | 6 | ~25 | `e2e/` subdirectories |
+| E2E (Playwright) | 11 | 70 | `e2e/` subdirectories |
 | Rust (cargo) | 13 | ~260 | `src-tauri/src/` inline modules |
 | Sidecar | 6 | ~91 | `sidecar/__tests__/` |
 | Eval harness | 1 | 19 | `scripts/eval/test-eval-harness.sh` |
-| **Total** | **61** | **~1039** | |
+| **Total** | **66** | **~1084** | |
 
 ## Adding Tests
 
@@ -143,7 +154,7 @@ test.describe("Feature Name", { tag: "@area" }, () => {
 });
 ```
 
-Available tags: `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`.
+Available tags: `@dashboard`, `@navigation`, `@prompts`, `@settings`, `@skills`, `@usage`, `@workflow`, `@workflow-agent`.
 
 ### Naming conventions
 
