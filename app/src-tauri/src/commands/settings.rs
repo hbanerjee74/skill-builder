@@ -52,7 +52,6 @@ pub fn save_settings(
     db: tauri::State<'_, Db>,
     settings: AppSettings,
 ) -> Result<(), String> {
-    log::info!("[save_settings]");
     let mut settings = settings;
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
@@ -68,8 +67,59 @@ pub fn save_settings(
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
 
+    // Log what changed
+    let changes = diff_settings(&old_settings, &settings);
+    if changes.is_empty() {
+        log::info!("[save_settings] no changes");
+    } else {
+        log::info!("[save_settings] {}", changes.join(", "));
+    }
+
     crate::db::write_settings(&conn, &settings)?;
     Ok(())
+}
+
+/// Compare old and new settings, returning a list of human-readable changes.
+/// Skips sensitive fields (API key, OAuth token) and auth-managed fields.
+fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
+    let mut changes = Vec::new();
+    macro_rules! cmp_opt {
+        ($field:ident, $label:expr) => {
+            if old.$field != new.$field {
+                changes.push(format!(
+                    "{}={}",
+                    $label,
+                    new.$field.as_deref().unwrap_or("(none)")
+                ));
+            }
+        };
+    }
+    macro_rules! cmp_bool {
+        ($field:ident, $label:expr) => {
+            if old.$field != new.$field {
+                changes.push(format!("{}={}", $label, new.$field));
+            }
+        };
+    }
+    macro_rules! cmp_val {
+        ($field:ident, $label:expr) => {
+            if old.$field != new.$field {
+                changes.push(format!("{}={}", $label, new.$field));
+            }
+        };
+    }
+    // Skip: anthropic_api_key (sensitive), github_oauth_token/login/avatar/email (auth-managed)
+    cmp_opt!(skills_path, "skills_path");
+    cmp_opt!(preferred_model, "preferred_model");
+    cmp_val!(log_level, "log_level");
+    cmp_bool!(extended_context, "extended_context");
+    cmp_bool!(extended_thinking, "extended_thinking");
+    cmp_opt!(remote_repo_owner, "remote_repo_owner");
+    cmp_opt!(remote_repo_name, "remote_repo_name");
+    cmp_val!(max_dimensions, "max_dimensions");
+    cmp_opt!(industry, "industry");
+    cmp_opt!(function_role, "function_role");
+    changes
 }
 
 /// Handle skills_path init or move when the setting changes.
