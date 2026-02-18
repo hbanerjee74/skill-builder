@@ -28,6 +28,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     run_trigger_text_migration(&conn)?;
     run_agent_stats_migration(&conn)?;
     run_intake_migration(&conn)?;
+    run_composite_pk_migration(&conn)?;
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -200,6 +201,71 @@ fn run_intake_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+/// Migrate agent_runs from PRIMARY KEY (agent_id) to composite PRIMARY KEY (agent_id, model).
+/// This allows multiple rows per agent when sub-agents use different models.
+fn run_composite_pk_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Check if the table's PRIMARY KEY already includes `model` by inspecting
+    // the CREATE TABLE statement stored in sqlite_master.
+    let create_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_runs'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+
+    // After migration the DDL contains "PRIMARY KEY (agent_id, model)".
+    // Before migration it has "agent_id TEXT PRIMARY KEY" (inline PK on one column).
+    if create_sql.contains("agent_id, model") {
+        return Ok(());
+    }
+
+    // Recreate the table with composite PK
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS agent_runs_new;
+
+        CREATE TABLE agent_runs_new (
+            agent_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            step_id INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            input_tokens INTEGER,
+            output_tokens INTEGER,
+            total_cost REAL,
+            session_id TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            completed_at TEXT,
+            cache_read_tokens INTEGER DEFAULT 0,
+            cache_write_tokens INTEGER DEFAULT 0,
+            duration_ms INTEGER,
+            reset_marker TEXT,
+            workflow_session_id TEXT,
+            num_turns INTEGER DEFAULT 0,
+            stop_reason TEXT,
+            duration_api_ms INTEGER,
+            tool_use_count INTEGER DEFAULT 0,
+            compaction_count INTEGER DEFAULT 0,
+            PRIMARY KEY (agent_id, model)
+        );
+
+        INSERT INTO agent_runs_new
+            SELECT agent_id, skill_name, step_id, model, status,
+                   input_tokens, output_tokens, total_cost, session_id,
+                   started_at, completed_at,
+                   cache_read_tokens, cache_write_tokens, duration_ms,
+                   reset_marker, workflow_session_id,
+                   num_turns, stop_reason, duration_api_ms,
+                   tool_use_count, compaction_count
+            FROM agent_runs;
+
+        DROP TABLE agent_runs;
+        ALTER TABLE agent_runs_new RENAME TO agent_runs;",
+    )?;
+
+    Ok(())
+}
+
 fn run_author_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     let has_author = conn
         .prepare("PRAGMA table_info(workflow_runs)")
@@ -334,8 +400,8 @@ pub fn persist_agent_run(
     if status == "shutdown" {
         let existing_status: Option<String> = conn
             .query_row(
-                "SELECT status FROM agent_runs WHERE agent_id = ?1",
-                rusqlite::params![agent_id],
+                "SELECT status FROM agent_runs WHERE agent_id = ?1 AND model = ?2",
+                rusqlite::params![agent_id, model],
                 |row| row.get(0),
             )
             .ok();
@@ -353,7 +419,7 @@ pub fn persist_agent_run(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                  ?12, ?13, ?14, ?15, ?16,
                  ?17, ?18,
-                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1), datetime('now') || 'Z'),
+                 COALESCE((SELECT started_at FROM agent_runs WHERE agent_id = ?1 AND model = ?4), datetime('now') || 'Z'),
                  datetime('now') || 'Z')",
         rusqlite::params![
             agent_id,
@@ -382,7 +448,7 @@ pub fn persist_agent_run(
 
 pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
     let having = if hide_cancelled {
-        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0"
+        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
     } else {
         ""
     };
@@ -467,7 +533,7 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
                 COALESCE(MIN(ar.step_id), 0),
                 COALESCE(MAX(ar.step_id), 0),
                 COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
-                COUNT(ar.agent_id),
+                COUNT(DISTINCT ar.agent_id),
                 COALESCE(SUM(ar.total_cost), 0.0),
                 COALESCE(SUM(ar.input_tokens), 0),
                 COALESCE(SUM(ar.output_tokens), 0),
@@ -481,7 +547,7 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
                                 AND ar.reset_marker IS NULL
          WHERE ws.reset_marker IS NULL
          GROUP BY ws.session_id
-         HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(ar.agent_id) = 0
+         HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0
          ORDER BY ws.started_at DESC
          LIMIT ?1"
     } else {
@@ -490,7 +556,7 @@ pub fn get_recent_workflow_sessions(conn: &Connection, limit: usize, hide_cancel
                 COALESCE(MIN(ar.step_id), 0),
                 COALESCE(MAX(ar.step_id), 0),
                 COALESCE(GROUP_CONCAT(DISTINCT ar.step_id), ''),
-                COUNT(ar.agent_id),
+                COUNT(DISTINCT ar.agent_id),
                 COALESCE(SUM(ar.total_cost), 0.0),
                 COALESCE(SUM(ar.input_tokens), 0),
                 COALESCE(SUM(ar.output_tokens), 0),
@@ -1550,6 +1616,7 @@ mod tests {
         run_trigger_text_migration(&conn).unwrap();
         run_agent_stats_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
         conn
     }
 
@@ -2388,6 +2455,138 @@ mod tests {
 
         let by_model = get_usage_by_model(&conn, false).unwrap();
         assert!(by_model.is_empty());
+    }
+
+    // --- Composite PK (agent_id, model) tests ---
+
+    #[test]
+    fn test_composite_pk_allows_same_agent_different_models() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-cpk");
+        create_workflow_session(&conn, "wf-session-cpk", "skill-a", 1000).unwrap();
+
+        // Insert same agent_id with two different models (simulates sub-agent spawning)
+        persist_agent_run(
+            &conn, "orchestrator-1", "skill-a", 1, "opus", "completed",
+            2000, 1000, 0, 0, 0.50, 10000,
+            3, Some("end_turn"), Some(8000), 5, 0,
+            Some("sess-1"), ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "orchestrator-1", "skill-a", 1, "sonnet", "completed",
+            800, 400, 0, 0, 0.08, 4000,
+            2, Some("end_turn"), Some(3000), 3, 0,
+            Some("sess-1"), ws,
+        )
+        .unwrap();
+
+        // Both rows should exist
+        let runs = get_session_agent_runs(&conn, "wf-session-cpk").unwrap();
+        assert_eq!(runs.len(), 2);
+
+        // Verify distinct models
+        let models: Vec<&str> = runs.iter().map(|r| r.model.as_str()).collect();
+        assert!(models.contains(&"opus"));
+        assert!(models.contains(&"sonnet"));
+
+        // Both should have the same agent_id
+        assert!(runs.iter().all(|r| r.agent_id == "orchestrator-1"));
+
+        // get_usage_by_model should aggregate correctly
+        let by_model = get_usage_by_model(&conn, false).unwrap();
+        assert_eq!(by_model.len(), 2);
+
+        let opus = by_model.iter().find(|m| m.model == "opus").unwrap();
+        assert!((opus.total_cost - 0.50).abs() < 1e-10);
+        assert_eq!(opus.run_count, 1);
+
+        let sonnet = by_model.iter().find(|m| m.model == "sonnet").unwrap();
+        assert!((sonnet.total_cost - 0.08).abs() < 1e-10);
+        assert_eq!(sonnet.run_count, 1);
+    }
+
+    #[test]
+    fn test_composite_pk_upsert_same_agent_and_model() {
+        let conn = create_test_db();
+
+        // Insert then update same agent_id + model — should replace, not duplicate
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "running",
+            0, 0, 0, 0, 0.0, 0,
+            0, None, None, 0, 0,
+            None, None,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            1000, 500, 0, 0, 0.10, 5000,
+            3, Some("end_turn"), Some(4000), 5, 1,
+            None, None,
+        )
+        .unwrap();
+
+        let runs = get_recent_runs(&conn, 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, "completed");
+        assert_eq!(runs[0].input_tokens, 1000);
+    }
+
+    #[test]
+    fn test_composite_pk_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        // Running again should not error
+        run_composite_pk_migration(&conn).unwrap();
+    }
+
+    #[test]
+    fn test_composite_pk_session_agent_count_uses_distinct() {
+        let conn = create_test_db();
+        let ws = Some("wf-session-distinct");
+        create_workflow_session(&conn, "wf-session-distinct", "skill-a", 1000).unwrap();
+
+        // Same agent uses two models
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "opus", "completed",
+            2000, 1000, 0, 0, 0.50, 10000,
+            0, None, None, 0, 0,
+            None, ws,
+        )
+        .unwrap();
+        persist_agent_run(
+            &conn, "agent-1", "skill-a", 1, "sonnet", "completed",
+            800, 400, 0, 0, 0.08, 4000,
+            0, None, None, 0, 0,
+            None, ws,
+        )
+        .unwrap();
+
+        // Different agent, one model
+        persist_agent_run(
+            &conn, "agent-2", "skill-a", 1, "sonnet", "completed",
+            500, 200, 0, 0, 0.05, 3000,
+            0, None, None, 0, 0,
+            None, ws,
+        )
+        .unwrap();
+
+        let sessions = get_recent_workflow_sessions(&conn, 10, false).unwrap();
+        assert_eq!(sessions.len(), 1);
+        // agent_count should be 2 (distinct agents), not 3 (rows)
+        assert_eq!(sessions[0].agent_count, 2);
+        // Total cost should sum all three rows
+        assert!((sessions[0].total_cost - 0.63).abs() < 1e-10);
     }
 
     #[test]

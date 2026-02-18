@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { mockInvoke } from "@/test/mocks/tauri";
 import {
   useAgentStore,
   flushMessageBuffer,
@@ -763,5 +764,282 @@ describe("result message metadata", () => {
     expect(run.resultSubtype).toBeUndefined();
     expect(run.stopReason).toBeUndefined();
     expect(run.resultErrors).toBeUndefined();
+  });
+});
+
+describe("modelUsageBreakdown", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    vi.restoreAllMocks();
+  });
+
+  it("extracts per-model breakdown from result message with multi-model modelUsage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    const resultMsg: AgentMessage = {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 3000, output_tokens: 1000 },
+        total_cost_usd: 0.15,
+        modelUsage: {
+          "claude-sonnet-4-5-20250929": {
+            inputTokens: 2000,
+            outputTokens: 800,
+            cacheReadInputTokens: 500,
+            cacheCreationInputTokens: 100,
+            cost: 0.05,
+            contextWindow: 200000,
+          },
+          "claude-haiku-4-5-20251001": {
+            inputTokens: 1000,
+            outputTokens: 200,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            cost: 0.10,
+            contextWindow: 200000,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    };
+
+    useAgentStore.getState().addMessage("agent-1", resultMsg);
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.modelUsageBreakdown).toBeDefined();
+    expect(run.modelUsageBreakdown).toHaveLength(2);
+
+    const sonnet = run.modelUsageBreakdown!.find(
+      (m) => m.model === "claude-sonnet-4-5-20250929"
+    );
+    expect(sonnet).toEqual({
+      model: "claude-sonnet-4-5-20250929",
+      inputTokens: 2000,
+      outputTokens: 800,
+      cacheReadTokens: 500,
+      cacheWriteTokens: 100,
+      cost: 0.05,
+    });
+
+    const haiku = run.modelUsageBreakdown!.find(
+      (m) => m.model === "claude-haiku-4-5-20251001"
+    );
+    expect(haiku).toEqual({
+      model: "claude-haiku-4-5-20251001",
+      inputTokens: 1000,
+      outputTokens: 200,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      cost: 0.10,
+    });
+  });
+
+  it("leaves modelUsageBreakdown undefined when result has no modelUsage", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 100, output_tokens: 50 },
+        total_cost_usd: 0.01,
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.modelUsageBreakdown).toBeUndefined();
+  });
+
+  it("defaults missing fields to 0 in modelUsage entries", () => {
+    useAgentStore.getState().startRun("agent-1", "opus");
+
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 500, output_tokens: 100 },
+        total_cost_usd: 0.02,
+        modelUsage: {
+          "claude-opus-4-6": {
+            // Only inputTokens provided — rest should default to 0
+            inputTokens: 500,
+            contextWindow: 200000,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    const run = useAgentStore.getState().runs["agent-1"];
+    expect(run.modelUsageBreakdown).toHaveLength(1);
+    expect(run.modelUsageBreakdown![0]).toEqual({
+      model: "claude-opus-4-6",
+      inputTokens: 500,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      cost: 0,
+    });
+  });
+});
+
+describe("completeRun persistence with modelUsageBreakdown", () => {
+  beforeEach(() => {
+    useAgentStore.getState().clearRuns();
+    mockInvoke.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("calls persistAgentRun once per model when breakdown has 2+ models", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    // Clear the startRun persist call
+    mockInvoke.mockClear();
+
+    // Add a result message with multi-model usage
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 3000, output_tokens: 1000 },
+        total_cost_usd: 0.15,
+        modelUsage: {
+          "claude-sonnet-4-5-20250929": {
+            inputTokens: 2000,
+            outputTokens: 800,
+            cacheReadInputTokens: 500,
+            cacheCreationInputTokens: 100,
+            cost: 0.05,
+            contextWindow: 200000,
+          },
+          "claude-haiku-4-5-20251001": {
+            inputTokens: 1000,
+            outputTokens: 200,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            cost: 0.10,
+            contextWindow: 200000,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    useAgentStore.getState().completeRun("agent-1", true);
+
+    // Should have been called twice — once per model
+    const allCalls = mockInvoke.mock.calls as [string, Record<string, unknown>][];
+    const persistCalls = allCalls.filter(
+      ([cmd]) => cmd === "persist_agent_run"
+    );
+    expect(persistCalls).toHaveLength(2);
+
+    // Verify model-specific data is passed correctly
+    const models = persistCalls.map(([, args]) => args.model);
+    expect(models).toContain("claude-sonnet-4-5-20250929");
+    expect(models).toContain("claude-haiku-4-5-20251001");
+
+    // Check sonnet row details
+    const sonnetCall = persistCalls.find(
+      ([, args]) => args.model === "claude-sonnet-4-5-20250929"
+    );
+    expect(sonnetCall).toBeDefined();
+    const sonnetArgs = sonnetCall![1] as Record<string, unknown>;
+    expect(sonnetArgs.inputTokens).toBe(2000);
+    expect(sonnetArgs.outputTokens).toBe(800);
+    expect(sonnetArgs.cacheReadTokens).toBe(500);
+    expect(sonnetArgs.cacheWriteTokens).toBe(100);
+    expect(sonnetArgs.totalCost).toBe(0.05);
+    expect(sonnetArgs.status).toBe("completed");
+
+    // Check haiku row details
+    const haikuCall = persistCalls.find(
+      ([, args]) => args.model === "claude-haiku-4-5-20251001"
+    );
+    expect(haikuCall).toBeDefined();
+    const haikuArgs = haikuCall![1] as Record<string, unknown>;
+    expect(haikuArgs.inputTokens).toBe(1000);
+    expect(haikuArgs.outputTokens).toBe(200);
+    expect(haikuArgs.totalCost).toBe(0.10);
+  });
+
+  it("falls back to single-model persist when no modelUsageBreakdown", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    mockInvoke.mockClear();
+
+    // Add result WITHOUT modelUsage
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 1500, output_tokens: 500 },
+        total_cost_usd: 0.042,
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    useAgentStore.getState().completeRun("agent-1", true);
+
+    const fallbackCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run"
+    );
+    expect(fallbackCalls).toHaveLength(1);
+
+    const args = fallbackCalls[0][1] as Record<string, unknown>;
+    expect(args.model).toBe("sonnet");
+    expect(args.inputTokens).toBe(1500);
+    expect(args.outputTokens).toBe(500);
+    expect(args.totalCost).toBe(0.042);
+  });
+
+  it("passes shared params (agentId, status, etc.) to each per-model row", () => {
+    useAgentStore.getState().startRun("agent-1", "sonnet");
+    mockInvoke.mockClear();
+
+    useAgentStore.getState().addMessage("agent-1", {
+      type: "result",
+      content: "Done",
+      raw: {
+        usage: { input_tokens: 2000, output_tokens: 500 },
+        total_cost_usd: 0.10,
+        num_turns: 5,
+        stop_reason: "end_turn",
+        modelUsage: {
+          "claude-sonnet-4-5-20250929": {
+            inputTokens: 1500,
+            outputTokens: 400,
+            cost: 0.07,
+          },
+          "claude-haiku-4-5-20251001": {
+            inputTokens: 500,
+            outputTokens: 100,
+            cost: 0.03,
+          },
+        },
+      },
+      timestamp: Date.now(),
+    });
+    flushMessageBuffer();
+
+    useAgentStore.getState().completeRun("agent-1", false);
+
+    const sharedCalls = (mockInvoke.mock.calls as [string, Record<string, unknown>][]).filter(
+      ([cmd]) => cmd === "persist_agent_run"
+    );
+    expect(sharedCalls).toHaveLength(2);
+
+    // Both rows should share agentId, status=error, numTurns, stopReason
+    for (const [, args] of sharedCalls) {
+      const a = args as Record<string, unknown>;
+      expect(a.agentId).toBe("agent-1");
+      expect(a.status).toBe("error");
+      expect(a.numTurns).toBe(5);
+      expect(a.stopReason).toBe("end_turn");
+    }
   });
 });
