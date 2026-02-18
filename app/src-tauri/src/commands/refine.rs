@@ -58,10 +58,10 @@ fn build_refine_config(
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
-    let cwd = Path::new(skills_path)
-        .join(skill_name)
-        .to_string_lossy()
-        .to_string();
+    // CWD is the workspace root (.vibedata), not the skill subdirectory.
+    // This matches workflow agents and ensures JSONL logs land at
+    // {skills_path}/{skill_name}/logs/ (not doubled).
+    let cwd = skills_path.to_string();
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
@@ -809,8 +809,9 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_cwd_points_to_skill_directory() {
-        // cwd must be skills_path/skill_name so the agent can Read/Edit skill files
+    fn test_refine_config_cwd_points_to_workspace_root() {
+        // cwd must be skills_path (workspace root), not skills_path/skill_name.
+        // This matches workflow agents and ensures logs land at {skills_path}/{skill_name}/logs/.
         let (config, _) = build_refine_config(
             "test".to_string(),
             vec![],
@@ -821,7 +822,7 @@ mod tests {
             false,
             None,
         );
-        assert_eq!(config.cwd, "/home/user/skills/data-engineering");
+        assert_eq!(config.cwd, "/home/user/skills");
     }
 
     #[test]

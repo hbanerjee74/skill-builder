@@ -37,16 +37,19 @@ function resolveAgentName(command?: RefineCommand): string {
   return "refine-skill";
 }
 
-/** Build the prompt sent to the sidecar agent. */
+/** Build the prompt sent to the sidecar agent.
+ *  CWD is the workspace root (.vibedata), so skill files are in {skillName}/.
+ */
 function buildPrompt(
   text: string,
+  skillName: string,
   fileConstraint: string,
   command?: RefineCommand,
 ): string {
   if (command === "rewrite") {
-    return `You are rewriting a completed skill. The skill files are in the current working directory.
+    return `You are rewriting a completed skill. The skill files are in the ${skillName}/ directory.
 
-Read ALL existing skill files (SKILL.md and everything in references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
+Read ALL existing skill files (${skillName}/SKILL.md and everything in ${skillName}/references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
 
 ${text ? `Additional instructions: ${text}` : ""}${fileConstraint}
 
@@ -56,9 +59,9 @@ Briefly describe what you rewrote and why.`;
   }
 
   if (command === "validate") {
-    return `You are validating a completed skill. The skill files are in the current working directory.
+    return `You are validating a completed skill. The skill files are in the ${skillName}/ directory.
 
-Read ALL existing skill files (SKILL.md and everything in references/), then evaluate:
+Read ALL existing skill files (${skillName}/SKILL.md and everything in ${skillName}/references/), then evaluate:
 - Coverage: Do files address all aspects from the skill description?
 - Structure: Is progressive disclosure used well? Sections logically organized?
 - Actionability: Are instructions specific enough to follow?
@@ -71,7 +74,7 @@ ${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
 
   // Default refine prompt — conversation context is passed separately
   // via the sidecar's conversationHistory parameter
-  return `You are refining a skill. The skill files are in the current working directory.
+  return `You are refining a skill. The skill files are in the ${skillName}/ directory.
 
 Current request: ${text}${fileConstraint}
 
@@ -317,7 +320,7 @@ export default function RefinePage() {
           ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
           : "";
 
-      const message = buildPrompt(text, fileConstraint, command);
+      const message = buildPrompt(text, selectedSkill.name, fileConstraint, command);
       const agentName = resolveAgentName(command);
 
       // Mark running before async call to prevent double-submission
