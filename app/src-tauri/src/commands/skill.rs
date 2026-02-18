@@ -64,6 +64,44 @@ fn list_skills_inner(
     Ok(skills)
 }
 
+/// Returns skills that have completed their build (status = 'completed') and
+/// have a SKILL.md on disk. These are eligible for the refine workflow.
+#[tauri::command]
+pub fn list_refinable_skills(
+    workspace_path: String,
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<SkillSummary>, String> {
+    log::info!("[list_refinable_skills]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[list_refinable_skills] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = crate::db::read_settings(&conn)?;
+    let skills_path = settings
+        .skills_path
+        .unwrap_or_else(|| workspace_path.clone());
+    list_refinable_skills_inner(&workspace_path, &skills_path, &conn)
+}
+
+fn list_refinable_skills_inner(
+    workspace_path: &str,
+    skills_path: &str,
+    conn: &rusqlite::Connection,
+) -> Result<Vec<SkillSummary>, String> {
+    let all = list_skills_inner(workspace_path, conn)?;
+    let refinable = all
+        .into_iter()
+        .filter(|s| {
+            s.status.as_deref() == Some("completed")
+                && Path::new(skills_path)
+                    .join(&s.name)
+                    .join("SKILL.md")
+                    .exists()
+        })
+        .collect();
+    Ok(refinable)
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
@@ -985,6 +1023,61 @@ mod tests {
 
         let tags = crate::db::get_tags_for_skills(&conn, &["full-meta".into()]).unwrap();
         assert_eq!(tags.get("full-meta").unwrap(), &["api", "rest"]);
+    }
+
+    // ===== list_refinable_skills_inner tests =====
+
+    #[test]
+    fn test_list_refinable_skills_returns_only_completed_with_skill_md() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create a completed skill with SKILL.md on disk
+        crate::db::save_workflow_run(&conn, "ready-skill", "analytics", 7, "completed", "domain")
+            .unwrap();
+        let skill_dir = dir.path().join("ready-skill");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# Ready").unwrap();
+
+        // Create an in-progress skill (should be excluded)
+        crate::db::save_workflow_run(
+            &conn,
+            "wip-skill",
+            "marketing",
+            3,
+            "in_progress",
+            "domain",
+        )
+        .unwrap();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "ready-skill");
+    }
+
+    #[test]
+    fn test_list_refinable_skills_excludes_completed_without_skill_md() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Completed in DB but no SKILL.md on disk
+        crate::db::save_workflow_run(&conn, "no-file", "domain", 7, "completed", "domain")
+            .unwrap();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_list_refinable_skills_empty_db() {
+        let dir = tempdir().unwrap();
+        let skills_path = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]
