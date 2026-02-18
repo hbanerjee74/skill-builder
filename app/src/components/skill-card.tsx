@@ -137,7 +137,7 @@ export default function SkillCard({
   const canDownload = isWorkflowComplete(skill)
 
   const cardContent = (
-    <Card className={cn("flex flex-col min-w-0", isLocked && "opacity-50 pointer-events-none")}>
+    <Card className={cn("flex flex-col min-w-0 overflow-hidden", isLocked && "opacity-50 pointer-events-none")}>
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
@@ -151,7 +151,7 @@ export default function SkillCard({
           </div>
         </div>
         {skill.domain && (
-          <Badge variant="outline" className="w-fit text-xs">
+          <Badge variant="outline" className="max-w-full truncate text-xs">
             {skill.domain}
           </Badge>
         )}
