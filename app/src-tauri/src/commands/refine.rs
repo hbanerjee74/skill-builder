@@ -45,6 +45,7 @@ impl RefineSessionManager {
 
 /// Build a SidecarConfig for a refine session message.
 /// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
+#[allow(clippy::too_many_arguments)]
 fn build_refine_config(
     message: String,
     conversation_history: Vec<ConversationMessage>,
@@ -367,6 +368,7 @@ pub async fn start_refine_session(
 /// `agent-exit` events scoped to this request. Actual content streams via
 /// Tauri events (same mechanism as workflow agents).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_refine_message(
     session_id: String,
     message: String,
