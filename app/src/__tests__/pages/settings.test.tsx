@@ -23,6 +23,12 @@ vi.mock("next-themes", () => ({
   useTheme: () => ({ theme: "system", setTheme: mockSetTheme }),
 }));
 
+// Mock @tanstack/react-router
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 
 // Mock @/lib/tauri functions that the settings page imports
 vi.mock("@/lib/tauri", () => ({
@@ -116,8 +122,22 @@ async function switchToSection(sectionName: RegExp | string) {
 describe("SettingsPage", () => {
   beforeEach(() => {
     resetTauriMocks();
+    mockNavigate.mockClear();
     // Default to logged-out state
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
+  });
+
+  it("back button navigates to dashboard", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /back to dashboard/i }));
+    expect(mockNavigate).toHaveBeenCalledWith({ to: "/" });
   });
 
   it("renders all 6 sections in left nav", async () => {
