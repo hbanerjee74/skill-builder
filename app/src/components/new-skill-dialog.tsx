@@ -141,6 +141,7 @@ export default function NewSkillDialog({
       setOpen(false)
       resetForm()
     } catch (err) {
+      console.error("[new-skill] Failed to create skill:", err)
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
       toast.error("Failed to create skill", { duration: Infinity })

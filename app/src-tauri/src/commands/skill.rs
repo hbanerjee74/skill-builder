@@ -440,6 +440,7 @@ pub fn rename_skill(
         && !new_name.contains("--")
         && new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
     if !is_kebab {
+        log::error!("[rename_skill] Invalid kebab-case name: {}", new_name);
         return Err("Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string());
     }
 
@@ -461,6 +462,7 @@ pub fn rename_skill(
         )
         .map_err(|e| e.to_string())?;
     if exists {
+        log::error!("[rename_skill] Skill '{}' already exists", new_name);
         return Err(format!("Skill '{}' already exists", new_name));
     }
 
@@ -473,6 +475,7 @@ pub fn rename_skill(
     let workspace_new = Path::new(&workspace_path).join(&new_name);
     if workspace_old.exists() {
         fs::rename(&workspace_old, &workspace_new).map_err(|e| {
+            log::error!("[rename_skill] Failed to rename workspace dir: {}", e);
             format!("Failed to rename workspace directory: {}", e)
         })?;
     }
@@ -482,6 +485,7 @@ pub fn rename_skill(
         let skills_new = Path::new(sp).join(&new_name);
         if skills_old.exists() {
             fs::rename(&skills_old, &skills_new).map_err(|e| {
+                log::error!("[rename_skill] Failed to rename skills dir: {}", e);
                 // Rollback workspace rename
                 if workspace_new.exists() {
                     let _ = fs::rename(&workspace_new, &workspace_old);
@@ -562,6 +566,7 @@ pub fn rename_skill(
                 let _ = fs::rename(&skills_new, &skills_old);
             }
         }
+        log::error!("[rename_skill] DB transaction failed: {}", e);
         return Err(format!("Failed to rename skill in database: {}", e));
     }
 
@@ -595,11 +600,20 @@ pub async fn generate_suggestions(
     log::info!("[generate_suggestions] skill={} type={}", skill_name, skill_type);
 
     let api_key = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[generate_suggestions] Failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+            log::error!("[generate_suggestions] Failed to read settings: {}", e);
+            e
+        })?;
         settings
             .anthropic_api_key
-            .ok_or_else(|| "API key not configured".to_string())?
+            .ok_or_else(|| {
+                log::error!("[generate_suggestions] API key not configured");
+                "API key not configured".to_string()
+            })?
     };
 
     let readable_name = skill_name.replace('-', " ");
@@ -647,22 +661,35 @@ pub async fn generate_suggestions(
         )
         .send()
         .await
-        .map_err(|e| format!("API request failed: {}", e))?;
+        .map_err(|e| {
+            log::error!("[generate_suggestions] API request failed: {}", e);
+            format!("API request failed: {}", e)
+        })?;
 
     if !resp.status().is_success() {
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
+        log::error!("[generate_suggestions] API error ({}): {}", status, body);
         return Err(format!("Anthropic API error ({}): {}", status, body));
     }
 
-    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let body: serde_json::Value = resp.json().await.map_err(|e| {
+        log::error!("[generate_suggestions] Failed to parse response JSON: {}", e);
+        e.to_string()
+    })?;
     let text = body["content"][0]["text"]
         .as_str()
-        .ok_or_else(|| "No text in API response".to_string())?;
+        .ok_or_else(|| {
+            log::error!("[generate_suggestions] No text in API response");
+            "No text in API response".to_string()
+        })?;
 
     // Parse the JSON response
     let suggestions: serde_json::Value =
-        serde_json::from_str(text).map_err(|e| format!("Failed to parse suggestions: {}", e))?;
+        serde_json::from_str(text).map_err(|e| {
+            log::error!("[generate_suggestions] Failed to parse suggestions: {}", e);
+            format!("Failed to parse suggestions: {}", e)
+        })?;
 
     Ok(FieldSuggestions {
         domain: suggestions["domain"]

@@ -130,6 +130,7 @@ export default function EditSkillDialog({
       onOpenChange(false)
       onSaved()
     } catch (err) {
+      console.error("[edit-skill] Failed to update skill:", err)
       toast.error(
         `Failed to update skill: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
