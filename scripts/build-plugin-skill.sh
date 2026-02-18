@@ -73,11 +73,11 @@ trim_trailing() {
 
 # --- Extract sections ---
 
-# protocols.md: ## Protocols → ## Skill Users
-protocols=$(extract_sections "## Protocols" "## Skill Users" | trim_trailing)
+# protocols.md: ## Protocols → ## Content Principles
+protocols=$(extract_sections "## Protocols" "## Content Principles" | trim_trailing)
 
-# content-guidelines.md: ## Skill Users through ## Output Paths (before ## File Formats)
-content_guidelines=$(extract_sections "## Skill Users" "## File Formats" | trim_trailing)
+# content-guidelines.md: ## Content Principles through ## Output Paths (before ## File Formats)
+content_guidelines=$(extract_sections "## Content Principles" "## File Formats" | trim_trailing)
 
 # file-formats.md: ## File Formats → ## Skill Best Practices
 file_formats=$(extract_sections "## File Formats" "## Skill Best Practices" | trim_trailing)

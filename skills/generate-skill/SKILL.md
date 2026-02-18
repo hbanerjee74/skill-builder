@@ -332,7 +332,7 @@ Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/gener
 |------|----------|---------------|
 | `protocols.md` | Sub-agent spawning rules, output handling | 1, 3, 6, 7 |
 | `file-formats.md` | Clarifications and Decisions file format specs | 1, 3, 5 |
-| `content-guidelines.md` | Skill Users, Content Principles, Output Paths | 6, 7 |
+| `content-guidelines.md` | Content Principles, Output Paths | 6, 7 |
 | `best-practices.md` | Skill structure rules, validation checklist, anti-patterns | 6, 7 |
 
 ## Passing Agent Instructions
