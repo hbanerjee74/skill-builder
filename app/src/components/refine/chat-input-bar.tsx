@@ -31,6 +31,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [showCommandPicker, setShowCommandPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const commandRef = useRef<HTMLDivElement>(null);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -47,13 +48,28 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // If a picker is open, Escape closes it — let Enter also close it
-      if (e.key === "Enter" && !e.shiftKey && (showFilePicker || showCommandPicker)) {
+      const pickerOpen = showFilePicker || showCommandPicker;
+
+      // Forward navigation keys to cmdk when a picker is open
+      if (pickerOpen && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter")) {
+        e.preventDefault();
+        commandRef.current?.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: e.key,
+            bubbles: true,
+          }),
+        );
+        return;
+      }
+
+      // Escape closes the picker
+      if (pickerOpen && e.key === "Escape") {
         e.preventDefault();
         setShowFilePicker(false);
         setShowCommandPicker(false);
         return;
       }
+
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -174,7 +190,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
             />
           </PopoverAnchor>
           <PopoverContent className="w-56 p-0" align="start" side="top">
-            <Command>
+            <Command ref={commandRef}>
               <CommandList>
                 {showCommandPicker && (
                   <CommandGroup heading="Commands">
