@@ -96,14 +96,7 @@ After all sub-agents return, spawn the **consolidate-research** agent (`name: "c
 - The triage results (CONTRADICTION and VAGUE items with rationale)
 - The context directory path
 - **User context** and **workspace directory** (per protocol)
-- Explicit instruction: **build the full updated file in memory and Write once**
-
-The consolidation agent:
-1. Preserves all existing questions and answers exactly as-is
-2. Inserts `#### Refinements` under SOLID answers that have follow-ups
-3. Adds a `## Needs Clarification` section for CONTRADICTION and VAGUE items, with clear explanations of what needs resolution
-4. Updates frontmatter counts
-5. Writes the complete file in a single Write call
+- Explicit instruction: this is a **refinement round** (existing file with user answers)
 
 ## Error Handling
 

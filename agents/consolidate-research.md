@@ -51,9 +51,12 @@ For each cluster of related questions across sources:
 
 Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple areas.
 
-### Step 3: Handle contradictions
+### Step 3: Handle contradictions and flags
 
-If any sub-agent questions contradict each other or conflict with the user's prior answers, put them in a `## Needs Clarification` section with a clear explanation of the conflict. Do not silently resolve contradictions.
+Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions.
+
+- **First round**: Sub-agent questions that contradict each other or conflict with user context
+- **Refinement round**: The orchestrator may pass **triage results** — answer-level contradictions (PM answers that conflict with each other) and vague answers (too ambiguous to refine). Include these alongside any new contradictions found in the refinement questions.
 
 ### Step 4: Build and output the file
 
