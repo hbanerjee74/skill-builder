@@ -22,16 +22,9 @@ const REFINE_MAX_TURNS: u32 = 20;
 ///
 /// Created by `start_refine_session`, used by `send_refine_message`.
 /// Each invocation of `send_refine_message` passes the full conversation history
-/// to the sidecar (the sidecar is stateless — history is replayed per-call).
+/// to the sidecar (the sidecar is stateless -- history is replayed per-call).
 pub struct RefineSession {
-    #[allow(dead_code)] // stored for future session-list/cleanup commands
-    pub session_id: String,
     pub skill_name: String,
-    #[allow(dead_code)] // stored for future session-list command
-    pub created_at: String,
-    /// In-memory conversation history: `[{ "role": "user"|"assistant", "content": "..." }]`
-    #[allow(dead_code)] // stored for future server-side history tracking
-    pub conversation: Vec<serde_json::Value>,
 }
 
 /// Manages active refine sessions. Registered as Tauri managed state.
@@ -231,10 +224,8 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Collect per-file diffs using print() which provides a single mutable callback
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();
-    let mut current_file: Option<String> = None;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
-        // Track the current file from delta
         let path = delta
             .new_file()
             .path()
@@ -242,29 +233,21 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        // Ensure file entry exists
-        if current_file.as_deref() != Some(&path) {
-            let status = match delta.status() {
-                Delta::Added => "added",
-                Delta::Deleted => "deleted",
-                _ => "modified",
-            };
-            file_map
-                .entry(path.clone())
-                .or_insert_with(|| RefineFileDiff {
-                    path: path.clone(),
-                    status: status.to_string(),
-                    diff: String::new(),
-                });
-            current_file = Some(path.clone());
-        }
+        let status = match delta.status() {
+            Delta::Added => "added",
+            Delta::Deleted => "deleted",
+            _ => "modified",
+        };
+        let entry = file_map.entry(path.clone()).or_insert_with(|| RefineFileDiff {
+            path,
+            status: status.to_string(),
+            diff: String::new(),
+        });
 
         // Append diff content (context, additions, deletions only)
         let origin = line.origin();
         if matches!(origin, '+' | '-' | ' ') {
-            if let (Ok(s), Some(entry)) =
-                (std::str::from_utf8(line.content()), file_map.get_mut(&path))
-            {
+            if let Ok(s) = std::str::from_utf8(line.content()) {
                 entry.diff.push(origin);
                 entry.diff.push_str(s);
             }
@@ -354,10 +337,7 @@ pub async fn start_refine_session(
     map.insert(
         session_id.clone(),
         RefineSession {
-            session_id: session_id.clone(),
             skill_name: skill_name.clone(),
-            created_at: created_at.clone(),
-            conversation: Vec::new(),
         },
     );
 
@@ -691,10 +671,7 @@ mod tests {
             map.insert(
                 session_id.clone(),
                 RefineSession {
-                    session_id: session_id.clone(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
         }
@@ -713,10 +690,7 @@ mod tests {
             map.insert(
                 "session-1".to_string(),
                 RefineSession {
-                    session_id: "session-1".to_string(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
         }
@@ -930,10 +904,7 @@ mod tests {
             map.insert(
                 session_id.clone(),
                 RefineSession {
-                    session_id: session_id.clone(),
                     skill_name: "my-skill".to_string(),
-                    created_at: "2026-01-01T00:00:00Z".to_string(),
-                    conversation: Vec::new(),
                 },
             );
             assert_eq!(map.len(), 1);
@@ -964,28 +935,4 @@ mod tests {
         assert!(validate_skill_name("").is_err());
     }
 
-    #[test]
-    fn test_conversation_history_none_omitted() {
-        let config = SidecarConfig {
-            prompt: "test".to_string(),
-            model: None,
-            api_key: "sk-test".to_string(),
-            cwd: "/tmp".to_string(),
-            allowed_tools: None,
-            max_turns: None,
-            permission_mode: None,
-            session_id: None,
-            betas: None,
-            max_thinking_tokens: None,
-            path_to_claude_code_executable: None,
-            agent_name: None,
-            conversation_history: None,
-        };
-
-        let json = serde_json::to_string(&config).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // conversationHistory should be absent when None
-        assert!(parsed.get("conversationHistory").is_none());
-    }
 }
