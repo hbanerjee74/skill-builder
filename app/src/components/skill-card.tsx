@@ -146,7 +146,7 @@ export default function SkillCard({
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
-            {skill.display_name || formatSkillName(skill.name)}
+            {formatSkillName(skill.name)}
           </CardTitle>
           <div className="flex items-center gap-1.5 shrink-0">
             {isLocked && <Lock className="size-3.5 text-muted-foreground" />}

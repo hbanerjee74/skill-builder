@@ -79,7 +79,7 @@ export default function OrphanResolutionDialog({
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium">{orphan.skill_name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {orphan.domain} &middot; {displayType(orphan.skill_type)}
+                  {orphan.domain ?? orphan.skill_name} &middot; {displayType(orphan.skill_type)}
                 </span>
               </div>
               <div className="flex gap-2">

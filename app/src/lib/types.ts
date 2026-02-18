@@ -56,7 +56,6 @@ export type GitHubAuthResult =
 
 export interface SkillSummary {
   name: string
-  display_name: string | null
   domain: string | null
   current_step: string | null
   status: string | null
@@ -117,7 +116,7 @@ export interface PackageResult {
 
 export interface OrphanSkill {
   skill_name: string
-  domain: string
+  domain?: string
   skill_type: string
 }
 
