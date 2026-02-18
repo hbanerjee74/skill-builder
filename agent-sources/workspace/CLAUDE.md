@@ -38,7 +38,7 @@ All 18 research dimension agents share these rules:
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Standard sub-agent config: `model: "sonnet"`, `mode: "bypassPermissions"`. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
 
 Sub-agents return their complete output as text — they do not write files. The **orchestrator** is responsible for writing all output files to disk. Include this directive in every sub-agent prompt:
-> Do not provide progress updates. Return your complete output as text. Do not write files.
+> Do not provide progress updates. Return your complete output as text. Do not write files. List outcomes, not process — omit reasoning steps, search narratives, and intermediate analysis.
 
 Exception: sub-agents that use the **Write tool** to write a complete updated file in a single call (e.g., consolidating refinements into `clarifications.md`) may write files directly when the orchestrator explicitly delegates this.
 

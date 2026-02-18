@@ -59,7 +59,7 @@ Record the triage as a list: question ID, category, and a one-line rationale. Th
 
 Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section **that has at least one SOLID answer** (`name: "detailed-<section-slug>"`). Skip sections with only CONTRADICTION, VAGUE, or COMPLETE answers.
 
-All sub-agents **return text** — they do not write files. Each receives:
+All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol). Each receives:
 - The PM's answered `clarifications.md` content (pass the text in the prompt)
 - The triage results for their section (which questions are SOLID and what sub-decisions they open)
 - Which section to drill into

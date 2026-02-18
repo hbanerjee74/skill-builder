@@ -98,7 +98,7 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Phase 2: Spawn All Sub-agents in Parallel
 
-Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files.
+Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol).
 
 Spawn a **quality sub-agent** (`name: "validate-quality"`, `model: "sonnet"`) via the Task tool. See `agents/validate-quality.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
