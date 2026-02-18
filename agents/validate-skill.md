@@ -104,13 +104,13 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Phase 2: Spawn ALL Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch validation sub-agents (A + B + C1..CN), test evaluator sub-agents (T1..T10), boundary checker (D), and companion recommender (E) — all in the same turn. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
+Follow the Sub-agent Spawning protocol. Launch all sub-agents in the same turn: coverage-structure checker, SKILL.md quality reviewer, per-reference-file reviewers, test evaluators, boundary checker, companion recommender, and prescriptiveness checker. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
 
 ### Validation Sub-agents
 
 All sub-agents **return text** — they do not write files.
 
-**Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
+**Coverage & Structure Checker** (`name: "coverage-structure"`)
 
 Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files.
 
@@ -122,17 +122,17 @@ Report architectural pattern as CORRECT or MISMATCH with details.
 
 Returns findings as text.
 
-**Sub-agent B: SKILL.md Quality Review** (`name: "reviewer-skill-md"`)
+**SKILL.md Quality Reviewer** (`name: "reviewer-skill-md"`)
 
-Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — Sub-agent A handles that). Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
+Reads `SKILL.md` and `decisions.md`. Focuses on content quality (not structure — the coverage-structure checker handles that). Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section and improvement suggestions for any FAIL as text.
 
-**Sub-agents C1..CN: One per reference file** (`name: "reviewer-<filename>"`)
+**Reference File Reviewers — one per file** (`name: "reviewer-<filename>"`)
 
-Same approach as Sub-agent B, but for each file in `references/`. Returns findings as text.
+Same approach as the SKILL.md quality reviewer, but for each file in `references/`. Returns findings as text.
 
 ### Test Evaluator Sub-agents
 
-**Sub-agents T1..T10: One per test prompt** (`name: "tester-N"`, `model: "haiku"`)
+**Test Evaluators — one per test prompt** (`name: "tester-N"`, `model: "haiku"`)
 
 Each reads `SKILL.md` and all `references/` files, then evaluates one test prompt. Scoring:
 - **PASS** — skill directly addresses the question with actionable guidance
@@ -150,9 +150,9 @@ Returns the result as text using this format:
 - **Gap**: [what's missing, if any — write "None" for PASS]
 ```
 
-### Boundary and Companion Sub-agents
+### Quality Gate Sub-agents
 
-**Sub-agent D: Skill Type Boundary Check** (`name: "boundary-checker"`, `model: "haiku"`)
+**Boundary Checker** (`name: "boundary-checker"`, `model: "haiku"`)
 
 The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files.
 
@@ -180,7 +180,7 @@ Returns findings as text:
 - **Suggested fix**: [how to remove or restructure]
 ```
 
-**Sub-agent E: Companion Skill Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
+**Companion Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
 
 Reads SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Uses the research planner's dimension scores to identify companion skill candidates -- dimensions scored 2-3 that were skipped represent knowledge gaps that companion skills could fill. Analyzes the skill's content and recommends complementary skills that would compose well with it. Recommends companions across **all skill types** (domain, source, platform, data-engineering) — not limited to the current skill's type.
 
@@ -210,7 +210,7 @@ Returns findings as text using this format:
 - **Template match**: null
 ```
 
-**Sub-agent F: Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
+**Prescriptiveness Checker** (`name: "prescriptiveness-checker"`, `model: "haiku"`)
 
 Reads SKILL.md and all `references/` files. Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
 
@@ -244,16 +244,16 @@ Returns findings as text:
 
 After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
 
-Pass the returned text from all validation sub-agents (A, B, C1..CN), all test evaluator sub-agents (T1..T10), the boundary checker (D), the companion recommender (E), and the prescriptiveness checker (F) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
+Pass the returned text from all sub-agents (coverage-structure checker, SKILL.md quality reviewer, reference file reviewers, test evaluators, boundary checker, companion recommender, and prescriptiveness checker) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
 
 Prompt it to:
 1. Review all validation and test results (passed in the prompt)
 2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
 3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
-4. **Boundary violations:** Review boundary check results (Sub-agent D). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
+4. **Boundary violations:** Review boundary checker results. For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
 5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-6. **Companion skill report:** Write companion skill recommendations (Sub-agent E) as a standalone `companion-skills.md` file in the context directory. Use YAML frontmatter with structured companion data (for future UI parsing) plus a markdown body with detailed reasoning. See format below.
-7. **Prescriptiveness rewrites:** Review prescriptiveness checker results (Sub-agent F). Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
+6. **Companion skill report:** Write companion recommender results as a standalone `companion-skills.md` file in the context directory. Use YAML frontmatter with structured companion data (for future UI parsing) plus a markdown body with detailed reasoning. See format below.
+7. **Prescriptiveness rewrites:** Review prescriptiveness checker results. Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
 8. Suggest 5-8 additional test prompt categories for future evaluation
 9. Write THREE output files to the context directory (formats below)
 
