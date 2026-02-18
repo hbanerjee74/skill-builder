@@ -31,7 +31,7 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 import "@/hooks/use-agent-stream";
 
 /** Map a refine command to the corresponding sidecar agent name. */
-function resolveAgentName(command?: RefineCommand): string {
+export function resolveAgentName(command?: RefineCommand): string {
   if (command === "rewrite") return "rewrite-skill";
   if (command === "validate") return "validate-skill";
   return "refine-skill";
@@ -41,7 +41,7 @@ function resolveAgentName(command?: RefineCommand): string {
  *  CWD is the workspace root (.vibedata). Skill files are referenced via
  *  absolute paths so the agent can find them regardless of CWD.
  */
-function buildPrompt(
+export function buildPrompt(
   text: string,
   skillDir: string,
   fileConstraint: string,
