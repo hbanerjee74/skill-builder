@@ -30,11 +30,11 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
 
+    // Fill skill name (kebab-case, typed directly)
+    await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
+
     // Select a skill type (required for the Create button to be enabled)
     await page.getByRole("radio", { name: /Domain/ }).click();
-
-    await page.getByRole("textbox", { name: "Domain" }).fill("HR analytics");
-    await expect(page.getByRole("textbox", { name: "Skill Name" })).toHaveValue("hr-analytics");
 
     // Submit
     const createButton = page.getByRole("button", { name: "Create" });
