@@ -549,7 +549,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("renders log file path and Open button in Logging card", async () => {
+  it("renders log file path in Logging card", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -561,27 +561,6 @@ describe("SettingsPage", () => {
 
     expect(screen.getByText("Logging")).toBeInTheDocument();
     expect(screen.getByText("/tmp/com.skillbuilder.app/skill-builder.log")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Open/i })).toBeInTheDocument();
-  });
-
-  it("opens log directory when Open button is clicked", async () => {
-    const { mockRevealItemInDir } = await import("@/test/mocks/tauri");
-    const user = userEvent.setup();
-    setupDefaultMocks();
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-    });
-
-    await switchToTab(/Advanced/i);
-
-    const openButton = screen.getByRole("button", { name: /Open/i });
-    await user.click(openButton);
-
-    await waitFor(() => {
-      expect(mockRevealItemInDir).toHaveBeenCalledWith("/tmp/com.skillbuilder.app/skill-builder.log");
-    });
   });
 
   it("shows 'Not available' when log file path is not set", async () => {
@@ -600,7 +579,6 @@ describe("SettingsPage", () => {
     await switchToTab(/Advanced/i);
 
     expect(screen.getByText("Not available")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Open/i })).toBeDisabled();
   });
 
   it("renders Appearance card with theme buttons", async () => {

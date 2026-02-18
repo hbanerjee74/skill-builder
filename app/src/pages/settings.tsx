@@ -3,8 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { revealItemInDir } from "@tauri-apps/plugin-opener"
-import { Loader2, Eye, EyeOff, CheckCircle2, ExternalLink, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle, Search } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, AlertCircle, Search } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import {
@@ -715,21 +714,6 @@ export default function SettingsPage() {
                   <code className="text-sm text-muted-foreground flex-1">
                     {logFilePath || "Not available"}
                   </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (logFilePath) {
-                        revealItemInDir(logFilePath).catch(() => {
-                          toast.error("Failed to open log directory")
-                        })
-                      }
-                    }}
-                    disabled={!logFilePath}
-                  >
-                    <ExternalLink className="size-4" />
-                    Open
-                  </Button>
                 </div>
               </CardContent>
             </Card>
