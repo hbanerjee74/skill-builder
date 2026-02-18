@@ -1,9 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import type { RefineCommand } from "@/stores/refine-store";
 
 const COMMANDS: { value: RefineCommand; label: string; icon: typeof RefreshCw }[] = [
@@ -31,18 +30,17 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
   const [activeCommand, setActiveCommand] = useState<RefineCommand | undefined>();
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [showCommandPicker, setShowCommandPicker] = useState(false);
-  const [pickerValue, _setPickerValue] = useState("");
+  const [pickerValue, setPickerValue] = useState("");
   const pickerValueRef = useRef("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-  /** Update picker value in both state (for rendering) and ref (for synchronous reads in event handlers). */
-  const setPickerValue = useCallback((valOrFn: string | ((prev: string) => string)) => {
-    _setPickerValue((prev) => {
-      const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      pickerValueRef.current = next;
-      return next;
-    });
-  }, []);
+  // Keep ref in sync with state for synchronous reads in event handlers
+  useEffect(() => {
+    pickerValueRef.current = pickerValue;
+  }, [pickerValue]);
+
+  const pickerOpen = showFilePicker || showCommandPicker;
 
   // Item values for the currently open picker (used for arrow key cycling)
   const pickerItems = useMemo(() => {
@@ -50,6 +48,19 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
     if (showFilePicker) return availableFiles;
     return [];
   }, [showCommandPicker, showFilePicker, availableFiles]);
+
+  // Close picker on outside click
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setShowFilePicker(false);
+        setShowCommandPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [pickerOpen]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -108,23 +119,28 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const pickerOpen = showFilePicker || showCommandPicker;
-
       if (pickerOpen) {
-        // Arrow keys cycle through picker items via controlled value
+        // Arrow keys cycle through picker items
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setPickerValue((prev) => cycleValue(pickerItems, prev, 1));
+          setPickerValue((prev) => {
+            const next = cycleValue(pickerItems, prev, 1);
+            pickerValueRef.current = next;
+            return next;
+          });
           return;
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setPickerValue((prev) => cycleValue(pickerItems, prev, -1));
+          setPickerValue((prev) => {
+            const next = cycleValue(pickerItems, prev, -1);
+            pickerValueRef.current = next;
+            return next;
+          });
           return;
         }
 
-        // Enter confirms the currently highlighted picker item.
-        // Read from ref to avoid stale closure when ArrowDown+Enter fire in the same render cycle.
+        // Enter confirms the currently highlighted picker item
         if (e.key === "Enter") {
           e.preventDefault();
           const current = pickerValueRef.current;
@@ -154,13 +170,15 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
       if (e.key === "@" && availableFiles.length > 0 && !showFilePicker) {
         setShowFilePicker(true);
         setPickerValue(availableFiles[0] ?? "");
+        pickerValueRef.current = availableFiles[0] ?? "";
       }
       if (e.key === "/" && !activeCommand && !showCommandPicker) {
         setShowCommandPicker(true);
         setPickerValue(COMMANDS[0]?.value ?? "");
+        pickerValueRef.current = COMMANDS[0]?.value ?? "";
       }
     },
-    [handleSend, selectFile, selectCommand, availableFiles, activeCommand, showFilePicker, showCommandPicker, pickerItems],
+    [handleSend, selectFile, selectCommand, availableFiles, activeCommand, showFilePicker, showCommandPicker, pickerOpen, pickerItems],
   );
 
   const removeFile = useCallback((filename: string) => {
@@ -203,71 +221,69 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2">
-        <Popover
-          open={showFilePicker || showCommandPicker}
-          onOpenChange={(open) => {
-            if (!open) {
-              setShowFilePicker(false);
-              setShowCommandPicker(false);
-            }
-          }}
-        >
-          <PopoverAnchor asChild>
-            <Textarea
-              ref={textareaRef}
-              data-testid="refine-chat-input"
-              value={text}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              placeholder={activeCommand ? `Describe what to ${activeCommand}...` : "Describe what to change..."}
-              disabled={isRunning}
-              className="min-h-10 resize-none"
-              rows={1}
-            />
-          </PopoverAnchor>
-          <PopoverContent className="w-56 p-1" align="start" side="top">
-            {showCommandPicker && (
-              <div role="listbox" aria-label="Commands">
-                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Commands</div>
-                {COMMANDS.map((cmd) => (
-                  <div
-                    key={cmd.value}
-                    role="option"
-                    aria-selected={pickerValue === cmd.value}
-                    data-selected={pickerValue === cmd.value || undefined}
-                    className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
-                    onClick={() => selectCommand(cmd.value)}
-                  >
-                    <cmd.icon className="size-3.5" />
-                    {cmd.label}
-                  </div>
-                ))}
-              </div>
-            )}
-            {showFilePicker && (
-              <div role="listbox" aria-label="Files">
-                <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Files</div>
-                {availableFiles.length === 0 ? (
-                  <div className="py-6 text-center text-sm text-muted-foreground">No files available</div>
-                ) : (
-                  availableFiles.map((f) => (
+      <div ref={wrapperRef} className="relative flex items-end gap-2">
+        <div className="relative flex-1">
+          <Textarea
+            ref={textareaRef}
+            data-testid="refine-chat-input"
+            value={text}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder={activeCommand ? `Describe what to ${activeCommand}...` : "Describe what to change..."}
+            disabled={isRunning}
+            className="min-h-10 resize-none"
+            rows={1}
+          />
+          {pickerOpen && (
+            <div className="absolute bottom-full left-0 z-50 mb-1 w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+              {showCommandPicker && (
+                <div role="listbox" aria-label="Commands">
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Commands</div>
+                  {COMMANDS.map((cmd) => (
                     <div
-                      key={f}
+                      key={cmd.value}
                       role="option"
-                      aria-selected={pickerValue === f}
-                      data-selected={pickerValue === f || undefined}
+                      aria-selected={pickerValue === cmd.value}
+                      data-selected={pickerValue === cmd.value || undefined}
                       className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
-                      onClick={() => selectFile(f)}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // keep focus on textarea
+                        selectCommand(cmd.value);
+                      }}
                     >
-                      {f}
+                      <cmd.icon className="size-3.5" />
+                      {cmd.label}
                     </div>
-                  ))
-                )}
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
+                  ))}
+                </div>
+              )}
+              {showFilePicker && (
+                <div role="listbox" aria-label="Files">
+                  <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Files</div>
+                  {availableFiles.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">No files available</div>
+                  ) : (
+                    availableFiles.map((f) => (
+                      <div
+                        key={f}
+                        role="option"
+                        aria-selected={pickerValue === f}
+                        data-selected={pickerValue === f || undefined}
+                        className="relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none data-[selected]:bg-accent data-[selected]:text-accent-foreground"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // keep focus on textarea
+                          selectFile(f);
+                        }}
+                      >
+                        {f}
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <Button
           data-testid="refine-send-button"
           size="icon"
