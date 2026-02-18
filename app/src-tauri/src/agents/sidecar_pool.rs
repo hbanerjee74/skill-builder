@@ -886,16 +886,9 @@ impl SidecarPool {
                                             skill_name_stdout,
                                             request_id,
                                         );
-                                        // Emit the exhausted message as an agent-message so
-                                        // the frontend can detect it in the event payload.
-                                        events::handle_sidecar_message(
-                                            &app_handle_stdout,
-                                            request_id,
-                                            &serde_json::json!({
-                                                "type": "session_exhausted",
-                                                "session_id": msg.get("session_id").and_then(|s| s.as_str()).unwrap_or(""),
-                                            }).to_string(),
-                                        );
+                                        // The raw line was already forwarded at line 808,
+                                        // so the frontend already has the session_exhausted message.
+                                        // Just remove from pending and emit exit.
                                         {
                                             let mut pending = stdout_pending.lock().await;
                                             pending.remove(request_id);
