@@ -1,6 +1,6 @@
 ---
 name: validate-skill
-description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
+description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found. Also called via /validate or after /rewrite from the refine-skill agent to re-validate an edited skill.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -51,7 +51,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 ### Scope Recommendation Guard
 
-Before running any validation, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
+Before running any validation, check if `decisions.md` exists in the context directory. If it does not exist (common when called from refine context), skip this guard and proceed to Phase 1.
+
+If `decisions.md` exists and its YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
 
 1. Use the Write tool to create `agent-validation-log.md` in the context directory with EXACTLY this content:
 
@@ -159,7 +161,7 @@ The orchestrator writes three files. Each has a structured format that the app U
 ## Success Criteria
 
 ### Validation
-- Every decision and answered clarification is mapped to a specific file and section
+- Every decision and answered clarification is mapped to a specific file and section (when `decisions.md` is available)
 - All Skill Best Practices checks pass (per your system prompt)
 - Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified

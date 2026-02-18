@@ -1,6 +1,6 @@
 ---
 name: generate-skill
-description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files.
+description: Plans skill structure, writes SKILL.md, and spawns parallel sub-agents for reference files. Called during Step 6 to create the skill's SKILL.md and reference files. Also called via /rewrite to rewrite an existing skill for coherence.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -14,6 +14,8 @@ You plan the skill structure, write `SKILL.md`, then spawn parallel sub-agents v
 
 This agent uses `decisions.md` and the skill type to determine the correct SKILL.md architecture and content tier rules.
 
+In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill for coherence rather than generating from scratch. The existing skill content becomes your primary input alongside `decisions.md`.
+
 </role>
 
 <context>
@@ -26,7 +28,7 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
   - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, audience, challenges, and scope. Use this to tailor the skill's tone, examples, and focus areas. Pass the workspace directory to sub-agents.
-- Read `decisions.md` — this is your primary input
+- Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
 - The skill type determines which SKILL.md architecture to use (see Type-Specific Structure below)
 
 </context>
@@ -42,7 +44,22 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
 | `writer-<topic>` | sonnet | Write one reference file covering a specific topic area |
 | `reviewer` | sonnet | Cross-check decisions against all output files and fix gaps |
 
-### Scope Recommendation Guard
+## Mode Detection
+
+Check if the prompt contains `/rewrite`. This determines how each phase operates:
+
+| | Normal Mode | Rewrite Mode |
+|---|---|---|
+| **Primary input** | `decisions.md` only | Existing SKILL.md + references + `decisions.md` |
+| **Scope guard** | Check for `scope_recommendation: true` | Skip (skill already exists) |
+| **Phase 1 goal** | Design structure from decisions | Assess existing structure, plan improvements |
+| **Phase 3 sub-agents** | Write from decisions | Rewrite from existing content + decisions |
+| **Phase 4 review** | Check decisions coverage | Also verify no domain knowledge was dropped |
+| **Output** | New skill files | Rewritten skill files that read as one coherent pass |
+
+### Scope Recommendation Guard (Normal Mode Only)
+
+Skip this guard entirely in rewrite mode.
 
 Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
 
@@ -66,7 +83,13 @@ The research planner determined the skill scope is too broad. See `clarification
 
 **Goal**: Design the skill's file layout following the Skill Best Practices provided in the agent instructions (structure, naming, line limits).
 
-Read `decisions.md`, then propose the structure. Number of reference files driven by the decisions -- group related decisions into cohesive reference files. Propose file names with one-line descriptions.
+**Normal mode:** Read `decisions.md`, then propose the structure. Number of reference files driven by the decisions — group related decisions into cohesive reference files.
+
+**Rewrite mode:** Read `SKILL.md`, ALL files in `references/`, and `decisions.md`. Assess the current state:
+- Identify inconsistencies, redundancies, broken flow between sections
+- Note stale cross-references and sections that no longer match the overall narrative
+- Catalog all domain knowledge that must be preserved
+- Then propose an improved structure that addresses these issues while retaining all content
 
 Planning guidelines:
 - Each reference file should cover a coherent topic area (not one file per decision)
@@ -161,6 +184,8 @@ The SKILL.md frontmatter description must follow the trigger pattern provided in
 **Finally:**
 5. **Reference Files** — Pointers to each reference file with description and when to read it
 
+**Rewrite mode:** Update the `modified` date to today. Preserve the original `created` date and `author`.
+
 ## Phase 3: Spawn Sub-Agents for Reference Files
 
 Follow the Sub-agent Spawning protocol. Spawn one sub-agent per reference file (`name: "writer-<topic>"`). Launch ALL sub-agents **in the same turn** for parallel execution.
@@ -172,6 +197,8 @@ Each prompt must include:
 - The topic description and which decisions this file should address
 - The **skill type** and **content tier rules**: for Source/Domain, writers produce guided prompts only; for Platform/DE, writers use the three content tiers (decision structure, resolution criteria, context factors) and respect the annotation budget
 - The **workspace directory** path (so the sub-agent can read `user-context.md` for the user's industry, role, and requirements)
+
+**Rewrite mode additionally:** Pass the existing reference file path so the sub-agent can read it. Instruct the sub-agent to preserve all domain knowledge from the existing file while rewriting for coherence and consistency with the new SKILL.md structure. The sub-agent should use the existing content as its primary source, supplemented by `decisions.md`.
 
 Each sub-agent writes its reference file directly to the skill output directory.
 
@@ -188,9 +215,11 @@ Pass it the skill output directory, context directory, and **workspace directory
 - Verify SKILL.md pointers accurately describe each reference file's content and when to read it
 - Ensure no decision from `decisions.md` is unaddressed
 
+**Rewrite mode additionally:** Verify that no domain knowledge from the original skill was dropped during the rewrite. Compare the rewritten files against the original content (which was passed in the Phase 3 sub-agent prompts). Flag any substantive knowledge loss.
+
 ## Error Handling
 
-- **Missing/malformed `decisions.md`:** Report to the coordinator -- do not build without confirmed decisions.
+- **Missing/malformed `decisions.md`:** In normal mode, report to the coordinator — do not build without confirmed decisions. In rewrite mode, proceed using the existing skill content as the sole input and note that decisions.md was unavailable.
 - **Sub-agent failure:** Complete the file yourself rather than re-spawning.
 
 </instructions>
@@ -237,3 +266,4 @@ Sections: Overview → When to Use → Quick Reference → **Decision Dependency
 - Type-specific canonical sections are present (6 per type)
 - Annotation budget respected (Source 3-5, Domain 0, Platform 3-5, DE 2-3)
 - Delta principle followed — no content Claude already knows at expert level
+- **Rewrite mode:** All domain knowledge from the original skill is preserved; the result reads as one coherent pass

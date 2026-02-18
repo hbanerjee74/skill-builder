@@ -6,7 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgentRequest, emitSystemEvent } from "../run-agent.js";
+import { runAgentRequest, emitSystemEvent, buildRefinePrompt } from "../run-agent.js";
 import type { SidecarConfig } from "../config.js";
 
 const mockQuery = vi.mocked(query);
@@ -303,5 +303,68 @@ describe("emitSystemEvent", () => {
     const timestamp = messages[0].timestamp as number;
     expect(timestamp).toBeGreaterThanOrEqual(before);
     expect(timestamp).toBeLessThanOrEqual(after);
+  });
+});
+
+describe("buildRefinePrompt", () => {
+  it("formats conversation history with current request", () => {
+    const history: { role: "user" | "assistant"; content: string }[] = [
+      { role: "user", content: "Make the metrics section more specific" },
+      { role: "assistant", content: "I've updated the metrics section." },
+    ];
+    const result = buildRefinePrompt("Add examples to each metric", history);
+
+    expect(result).toContain("## Conversation History");
+    expect(result).toContain("**User**: Make the metrics section more specific");
+    expect(result).toContain("**Assistant**: I've updated the metrics section.");
+    expect(result).toContain("## Current Request");
+    expect(result).toContain("Add examples to each metric");
+  });
+
+  it("returns prompt as-is when history is empty", () => {
+    const result = buildRefinePrompt("Do something", []);
+    expect(result).toBe("Do something");
+  });
+});
+
+describe("runAgentRequest with conversation history", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes formatted prompt to query when conversationHistory is present", async () => {
+    async function* fakeConversation() {
+      yield { type: "result", content: "done" };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    await runAgentRequest(
+      baseConfig({
+        prompt: "Update the overview",
+        conversationHistory: [
+          { role: "user", content: "First request" },
+          { role: "assistant", content: "Done" },
+        ],
+      }),
+      vi.fn(),
+    );
+
+    const callArgs = mockQuery.mock.calls[0][0];
+    expect(callArgs.prompt).toContain("## Conversation History");
+    expect(callArgs.prompt).toContain("First request");
+    expect(callArgs.prompt).toContain("## Current Request");
+    expect(callArgs.prompt).toContain("Update the overview");
+  });
+
+  it("passes prompt unchanged when no conversationHistory", async () => {
+    async function* fakeConversation() {
+      yield { type: "result", content: "done" };
+    }
+    mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
+
+    await runAgentRequest(baseConfig({ prompt: "plain prompt" }), vi.fn());
+
+    const callArgs = mockQuery.mock.calls[0][0];
+    expect(callArgs.prompt).toBe("plain prompt");
   });
 });
