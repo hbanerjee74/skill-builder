@@ -1394,33 +1394,12 @@ impl SidecarPool {
         user_message: &str,
         app_handle: &tauri::AppHandle,
     ) -> Result<(), String> {
-        // Create JSONL transcript for this turn
+        // Verify sidecar exists before sending
         {
             let pool = self.sidecars.lock().await;
-            if let Some(sidecar) = pool.get(skill_name) {
-                let _ = sidecar.pid; // just verify sidecar exists
-            } else {
+            if !pool.contains_key(skill_name) {
                 return Err(format!("Sidecar for '{}' not found", skill_name));
             }
-        }
-
-        // Create JSONL log for this turn
-        {
-            let step_label = extract_step_label(agent_id, skill_name);
-            let now = chrono::Local::now();
-            let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-            // Use the CWD from the first turn — it's the same workspace path.
-            // We extract it from the agent_id prefix (skill_name).
-            let log_dir_candidates = {
-                let logs = self.request_logs.lock().await;
-                // Find any existing log path for this skill to determine cwd
-                logs.keys()
-                    .find(|k| k.starts_with(&format!("{}-", skill_name)) || k.starts_with(&format!("refine-{}-", skill_name)))
-                    .cloned()
-            };
-            // We don't have access to the CWD here, so skip log creation for follow-up turns.
-            // The stdout reader still captures all messages via the per-request log.
-            let _ = (step_label, ts, log_dir_candidates);
         }
 
         // Register as pending

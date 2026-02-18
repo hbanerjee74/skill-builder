@@ -1,7 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { buildQueryOptions } from "./options.js";
-import { createAbortState } from "./shutdown.js";
+import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import { emitSystemEvent } from "./run-agent.js";
 
 /** Sentinel used to close the async generator cleanly. */
@@ -81,21 +81,8 @@ export class StreamSession {
     }
 
     const state = createAbortState();
-
     if (externalSignal) {
-      if (externalSignal.aborted) {
-        state.aborted = true;
-        state.abortController.abort();
-      } else {
-        externalSignal.addEventListener(
-          "abort",
-          () => {
-            state.aborted = true;
-            state.abortController.abort();
-          },
-          { once: true },
-        );
-      }
+      linkExternalSignal(state, externalSignal);
     }
 
     // Route SDK stderr through onMessage for JSONL transcripts
@@ -169,11 +156,8 @@ export class StreamSession {
         onMessage(this.currentRequestId, msg);
 
         // Detect turn completion: assistant message with stop_reason "end_turn"
-        if (
-          msg.type === "assistant" &&
-          (msg as Record<string, unknown>).message
-        ) {
-          const innerMsg = (msg as Record<string, Record<string, unknown>>).message;
+        if (msg.type === "assistant" && msg.message) {
+          const innerMsg = msg.message as Record<string, unknown>;
           if (innerMsg.stop_reason === "end_turn") {
             onMessage(this.currentRequestId, { type: "turn_complete" });
           }

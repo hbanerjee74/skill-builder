@@ -2,7 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SidecarConfig } from "./config.js";
 import { runMockAgent } from "./mock-agent.js";
 import { buildQueryOptions } from "./options.js";
-import { createAbortState } from "./shutdown.js";
+import { createAbortState, linkExternalSignal } from "./shutdown.js";
 
 /**
  * Emit a system-level progress event (not an SDK message).
@@ -42,22 +42,8 @@ export async function runAgentRequest(
   }
 
   const state = createAbortState();
-
-  // Link external signal to internal abort so callers can cancel us
   if (externalSignal) {
-    if (externalSignal.aborted) {
-      state.aborted = true;
-      state.abortController.abort();
-    } else {
-      externalSignal.addEventListener(
-        "abort",
-        () => {
-          state.aborted = true;
-          state.abortController.abort();
-        },
-        { once: true },
-      );
-    }
+    linkExternalSignal(state, externalSignal);
   }
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
