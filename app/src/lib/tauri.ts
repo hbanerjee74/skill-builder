@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
 export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo } from "@/lib/types";
@@ -335,7 +335,7 @@ export const importTeamRepoSkill = (skillPath: string, skillName: string, force:
 // --- Refine ---
 
 export const listRefinableSkills = (workspacePath: string) =>
-  invoke<import("@/lib/types").SkillSummary[]>("list_refinable_skills", { workspacePath })
+  invoke<SkillSummary[]>("list_refinable_skills", { workspacePath })
 
 export const getSkillContentForRefine = (skillName: string, workspacePath: string) =>
   invoke<SkillFileContent[]>("get_skill_content_for_refine", { skillName, workspacePath })
