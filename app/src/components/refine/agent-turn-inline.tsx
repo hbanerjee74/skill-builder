@@ -1,11 +1,10 @@
 import { Fragment, useMemo } from "react";
+import { Loader2 } from "lucide-react";
 import { useAgentStore } from "@/stores/agent-store";
-import { AgentStatusHeader } from "@/components/agent-status-header";
 import {
   computeMessageGroups,
   computeToolCallGroups,
   spacingClasses,
-  TurnMarker,
   ToolCallGroup,
   MessageItem,
 } from "@/components/agent-output-panel";
@@ -44,11 +43,19 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
 
   if (!run) return null;
 
+  // Typing indicator while agent is running with no messages yet
+  if (run.status === "running" && run.messages.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 py-2 text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" />
+        <span className="text-sm">Thinking...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col">
-      <AgentStatusHeader agentId={agentId} />
       {run.messages.map((msg, i) => {
-        const turn = turnMap.get(i) ?? 0;
         const spacing = spacingClasses[messageGroups[i]];
 
         // Skip group members (rendered by group leader)
@@ -65,11 +72,15 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
 
         return (
           <Fragment key={`${msg.timestamp}-${i}`}>
-            {turn > 0 && <TurnMarker turn={turn} />}
             <div className={spacing}>{content}</div>
           </Fragment>
         );
       })}
+      {run.status === "running" && run.messages.length > 0 && (
+        <div className="flex items-center gap-1.5 py-1 text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+        </div>
+      )}
     </div>
   );
 }

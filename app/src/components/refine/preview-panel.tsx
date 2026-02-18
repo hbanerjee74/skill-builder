@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 import { ChevronDown, FileText, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -103,8 +104,8 @@ export function PreviewPanel() {
           />
         ) : (
           <ScrollArea className="h-full">
-            <div className="prose dark:prose-invert max-w-none p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            <div className="markdown-body max-w-none p-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                 {activeFile?.content ?? ""}
               </ReactMarkdown>
             </div>

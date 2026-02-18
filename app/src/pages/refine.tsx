@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
+import type { RefineCommand } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
@@ -190,9 +191,50 @@ export default function RefinePage() {
     handleSelectSkill(pendingSwitchSkill);
   }, [pendingSwitchSkill, handleSelectSkill]);
 
+  // --- Build command-specific prompts ---
+  function buildPrompt(
+    text: string,
+    conversationContext: string,
+    fileConstraint: string,
+    command?: RefineCommand,
+  ): string {
+    if (command === "rewrite") {
+      return `You are rewriting a completed skill. The skill files are in the current working directory.
+
+Read ALL existing skill files (SKILL.md and everything in references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
+
+${text ? `Additional instructions: ${text}` : ""}${fileConstraint}
+
+Focus on: clear progressive disclosure, actionable guidance, proper frontmatter, well-organized reference files. Preserve domain expertise but improve presentation.
+
+Briefly describe what you rewrote and why.`;
+    }
+
+    if (command === "validate") {
+      return `You are validating a completed skill. The skill files are in the current working directory.
+
+Read ALL existing skill files (SKILL.md and everything in references/), then evaluate:
+- Coverage: Do files address all aspects from the skill description?
+- Structure: Is progressive disclosure used well? Sections logically organized?
+- Actionability: Are instructions specific enough to follow?
+- Quality: Are code examples correct? References properly linked?
+
+Fix any issues you find. Provide a brief validation report: what you checked, what you fixed.
+
+${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
+    }
+
+    // Default refine prompt
+    return `You are refining a skill. The skill files are in the current working directory.
+
+${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
+
+Read the relevant files, make the requested changes, and briefly describe what you changed.`;
+  }
+
   // --- Send a message ---
   const handleSend = useCallback(
-    async (text: string, targetFiles?: string[]) => {
+    async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       if (!selectedSkill || !effectiveSkillsPath) return;
 
       const store = useRefineStore.getState();
@@ -201,7 +243,7 @@ export default function RefinePage() {
       store.snapshotBaseline();
 
       // Add user message
-      store.addUserMessage(text, targetFiles);
+      store.addUserMessage(text, targetFiles, command);
 
       // Generate agent ID and session ID
       const agentId = crypto.randomUUID();
@@ -249,12 +291,16 @@ export default function RefinePage() {
         .filter(Boolean)
         .join("\n\n");
 
-      const prompt = `You are refining a skill. The skill files are in the current working directory.
+      const prompt = buildPrompt(text, conversationContext, fileConstraint, command);
 
-${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
+      // Route agent name based on command
+      const agentName = command === "rewrite"
+        ? "rewrite-skill"
+        : command === "validate"
+          ? "validate-skill"
+          : "refine-skill";
 
-Read the relevant files, make the requested changes, and briefly describe what you changed.`;
-
+      const stepLabel = command ?? "refine";
       const cwd = `${effectiveSkillsPath}/${selectedSkill.name}`;
 
       try {
@@ -267,8 +313,8 @@ Read the relevant files, make the requested changes, and briefly describe what y
           undefined, // maxTurns
           currentSessionId,
           selectedSkill.name,
-          "refine",
-          "refine-skill",
+          stepLabel,
+          agentName,
         );
       } catch (err) {
         console.error("[refine] Failed to start agent:", err);

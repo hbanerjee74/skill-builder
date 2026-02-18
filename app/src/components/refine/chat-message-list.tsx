@@ -25,15 +25,20 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="h-0 flex-1">
       <div className="flex flex-col gap-3 p-4">
         {messages.map((msg) => {
           if (msg.role === "user") {
             return (
               <div key={msg.id} className="flex flex-col items-end gap-1">
-                {msg.targetFiles && msg.targetFiles.length > 0 && (
+                {(msg.command || (msg.targetFiles && msg.targetFiles.length > 0)) && (
                   <div className="flex gap-1">
-                    {msg.targetFiles.map((f) => (
+                    {msg.command && (
+                      <Badge variant="default" className="text-xs">
+                        /{msg.command}
+                      </Badge>
+                    )}
+                    {msg.targetFiles?.map((f) => (
                       <Badge key={f} variant="outline" className="text-xs">
                         {f}
                       </Badge>

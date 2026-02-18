@@ -7,6 +7,7 @@ export interface SkillFile {
 }
 
 export type RefineMessageRole = "user" | "agent";
+export type RefineCommand = "rewrite" | "validate";
 
 export interface RefineMessage {
   id: string;
@@ -14,6 +15,7 @@ export interface RefineMessage {
   agentId?: string; // set for "agent" role — links to agent-store run
   userText?: string; // set for "user" role
   targetFiles?: string[]; // files targeted with @mentions
+  command?: RefineCommand; // slash command used (e.g., /rewrite, /validate)
   timestamp: number;
 }
 
@@ -49,7 +51,7 @@ interface RefineState {
   setActiveFileTab: (filename: string) => void;
   setDiffMode: (v: boolean) => void;
   snapshotBaseline: () => void;
-  addUserMessage: (text: string, targetFiles?: string[]) => RefineMessage;
+  addUserMessage: (text: string, targetFiles?: string[], command?: RefineCommand) => RefineMessage;
   addAgentTurn: (agentId: string) => RefineMessage;
   updateSkillFiles: (files: SkillFile[]) => void;
   setActiveAgentId: (id: string | null) => void;
@@ -99,12 +101,13 @@ export const useRefineStore = create<RefineState>((set, get) => ({
     set({ baselineFiles: skillFiles.map((f) => ({ ...f })) });
   },
 
-  addUserMessage: (text, targetFiles) => {
+  addUserMessage: (text, targetFiles, command) => {
     const message: RefineMessage = {
       id: crypto.randomUUID(),
       role: "user",
       userText: text,
       targetFiles,
+      command,
       timestamp: Date.now(),
     };
     set((state) => ({ messages: [...state.messages, message] }));

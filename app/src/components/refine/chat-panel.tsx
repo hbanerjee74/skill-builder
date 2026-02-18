@@ -1,9 +1,10 @@
 import { useRefineStore } from "@/stores/refine-store";
+import type { RefineCommand } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
 import { ChatInputBar } from "./chat-input-bar";
 
 interface ChatPanelProps {
-  onSend: (text: string, targetFiles?: string[]) => void;
+  onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
   isRunning: boolean;
   hasSkill: boolean;
   availableFiles: string[];

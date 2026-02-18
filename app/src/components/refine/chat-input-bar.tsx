@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { SendHorizontal, X } from "lucide-react";
+import { RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +11,15 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import type { RefineCommand } from "@/stores/refine-store";
+
+const COMMANDS: { value: RefineCommand; label: string; icon: typeof RefreshCw }[] = [
+  { value: "rewrite", label: "Rewrite skill", icon: RefreshCw },
+  { value: "validate", label: "Validate skill", icon: ShieldCheck },
+];
 
 interface ChatInputBarProps {
-  onSend: (text: string, targetFiles?: string[]) => void;
+  onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
   isRunning: boolean;
   availableFiles: string[];
 }
@@ -21,16 +27,23 @@ interface ChatInputBarProps {
 export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBarProps) {
   const [text, setText] = useState("");
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
+  const [activeCommand, setActiveCommand] = useState<RefineCommand | undefined>();
   const [showFilePicker, setShowFilePicker] = useState(false);
+  const [showCommandPicker, setShowCommandPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed) return;
-    onSend(trimmed, targetFiles.length > 0 ? targetFiles : undefined);
+    if (!trimmed && !activeCommand) return;
+    onSend(
+      trimmed,
+      targetFiles.length > 0 ? targetFiles : undefined,
+      activeCommand,
+    );
     setText("");
     setTargetFiles([]);
-  }, [text, targetFiles, onSend]);
+    setActiveCommand(undefined);
+  }, [text, targetFiles, activeCommand, onSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -41,8 +54,11 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
       if (e.key === "@" && availableFiles.length > 0) {
         setShowFilePicker(true);
       }
+      if (e.key === "/" && !activeCommand) {
+        setShowCommandPicker(true);
+      }
     },
-    [handleSend, availableFiles.length],
+    [handleSend, availableFiles.length, activeCommand],
   );
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -51,6 +67,10 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
     // Close file picker if user deletes the @ trigger
     if (!val.includes("@")) {
       setShowFilePicker(false);
+    }
+    // Close command picker if user deletes the / trigger
+    if (!val.includes("/")) {
+      setShowCommandPicker(false);
     }
   }, []);
 
@@ -69,14 +89,46 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
     textareaRef.current?.focus();
   }, []);
 
+  const selectCommand = useCallback((command: RefineCommand) => {
+    setActiveCommand(command);
+    // Remove the / trigger from text
+    setText((prev) => {
+      const slashIdx = prev.lastIndexOf("/");
+      if (slashIdx >= 0) {
+        return prev.slice(0, slashIdx) + prev.slice(slashIdx + 1);
+      }
+      return prev;
+    });
+    setShowCommandPicker(false);
+    textareaRef.current?.focus();
+  }, []);
+
   const removeFile = useCallback((filename: string) => {
     setTargetFiles((prev) => prev.filter((f) => f !== filename));
   }, []);
 
+  const removeCommand = useCallback(() => {
+    setActiveCommand(undefined);
+  }, []);
+
+  const hasBadges = targetFiles.length > 0 || activeCommand;
+
   return (
     <div className="flex flex-col gap-2 border-t p-3">
-      {targetFiles.length > 0 && (
+      {hasBadges && (
         <div className="flex flex-wrap gap-1">
+          {activeCommand && (
+            <Badge variant="default" className="gap-1 text-xs">
+              /{activeCommand}
+              <button
+                type="button"
+                onClick={removeCommand}
+                className="ml-0.5 hover:text-destructive"
+              >
+                <X className="size-3" />
+              </button>
+            </Badge>
+          )}
           {targetFiles.map((f) => (
             <Badge key={f} variant="secondary" className="gap-1 text-xs">
               @{f}
@@ -92,14 +144,22 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
         </div>
       )}
       <div className="flex items-end gap-2">
-        <Popover open={showFilePicker} onOpenChange={setShowFilePicker}>
+        <Popover
+          open={showFilePicker || showCommandPicker}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowFilePicker(false);
+              setShowCommandPicker(false);
+            }
+          }}
+        >
           <PopoverAnchor asChild>
             <Textarea
               ref={textareaRef}
               value={text}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
-              placeholder="Describe what to change..."
+              placeholder={activeCommand ? `Describe what to ${activeCommand}...` : "Describe what to change..."}
               disabled={isRunning}
               className="min-h-10 resize-none"
               rows={1}
@@ -108,14 +168,30 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
           <PopoverContent className="w-56 p-0" align="start" side="top">
             <Command>
               <CommandList>
-                <CommandEmpty>No files available</CommandEmpty>
-                <CommandGroup>
-                  {availableFiles.map((f) => (
-                    <CommandItem key={f} value={f} onSelect={() => selectFile(f)}>
-                      {f}
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
+                {showCommandPicker && (
+                  <CommandGroup heading="Commands">
+                    {COMMANDS.map((cmd) => (
+                      <CommandItem
+                        key={cmd.value}
+                        value={cmd.value}
+                        onSelect={() => selectCommand(cmd.value)}
+                      >
+                        <cmd.icon className="mr-2 size-3.5" />
+                        {cmd.label}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+                {showFilePicker && (
+                  <CommandGroup heading="Files">
+                    <CommandEmpty>No files available</CommandEmpty>
+                    {availableFiles.map((f) => (
+                      <CommandItem key={f} value={f} onSelect={() => selectFile(f)}>
+                        {f}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
               </CommandList>
             </Command>
           </PopoverContent>
@@ -123,7 +199,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
         <Button
           size="icon"
           onClick={handleSend}
-          disabled={isRunning || !text.trim()}
+          disabled={isRunning || (!text.trim() && !activeCommand)}
         >
           <SendHorizontal className="size-4" />
         </Button>
