@@ -121,34 +121,34 @@ export default function SkillCard({
           {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
         {skill.domain && (
-          <Badge variant="outline" className="max-w-full truncate text-xs">
-            {skill.domain}
+          <Badge variant="outline" className="max-w-full min-w-0 text-xs">
+            <span className="truncate">{skill.domain}</span>
           </Badge>
         )}
         {skill.skill_type && (
-          <Badge className={cn("w-fit text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
-            {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
+          <Badge className={cn("w-fit max-w-full text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
+            <span className="truncate">{SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}</span>
           </Badge>
         )}
         {skill.tags && skill.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {skill.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="text-xs">
-                {tag}
+              <Badge key={tag} variant="secondary" className="text-xs max-w-[120px]">
+                <span className="truncate">{tag}</span>
               </Badge>
             ))}
           </div>
         )}
       </CardHeader>
       <CardContent className="mt-auto flex flex-col gap-2">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{skill.current_step || "Not started"}</span>
-          <span>{progress}%</span>
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span className="truncate min-w-0">{skill.current_step || "Not started"}</span>
+          <span className="shrink-0">{progress}%</span>
         </div>
         <Progress value={progress} />
       </CardContent>
-      <CardFooter className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <CardFooter className="flex flex-wrap items-center justify-between gap-y-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Button size="sm" onClick={() => onContinue(skill)}>
             <Play className="size-3" />
             Continue
@@ -176,7 +176,7 @@ export default function SkillCard({
             <Trash2 className="size-3" />
           </Button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {skill.author_login && (
             <TooltipProvider>
               <Tooltip>
@@ -189,7 +189,7 @@ export default function SkillCard({
                         className="size-4 rounded-full"
                       />
                     ) : (
-                      <span className="text-xs text-muted-foreground">{skill.author_login}</span>
+                      <span className="text-xs text-muted-foreground max-w-[80px] truncate">{skill.author_login}</span>
                     )}
                   </div>
                 </TooltipTrigger>
