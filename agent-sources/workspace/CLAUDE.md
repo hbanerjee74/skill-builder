@@ -4,13 +4,24 @@ Auto-loaded into every agent's system prompt. Do not read manually.
 
 ## Protocols
 
+### User Context
+
+The user's `user-context.md` file (in the workspace directory) contains their industry, role, audience, challenges, scope, unique setup, and what Claude gets wrong. Every agent must use this context to tailor output.
+
+**Resolution order:**
+1. **Inline** — orchestrators embed the full `user-context.md` content in sub-agent prompts under a `## User Context` heading. Use this first.
+2. **File fallback** — if inline content is missing, read `user-context.md` from the workspace directory.
+3. **Report missing** — if both fail, prefix your response with `[USER_CONTEXT_MISSING]` and continue with best effort. Parent orchestrators detect this marker and warn in their output.
+
+**Orchestrator responsibility:** Read `user-context.md` early (Phase 0) and embed inline in every sub-agent prompt. Pass the workspace directory path as fallback.
+
 ### Sub-agent Spawning
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Standard sub-agent config: `model: "sonnet"`, `mode: "bypassPermissions"`. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
 
 Sub-agents return their complete output as text — they do not write files. The **orchestrator** is responsible for writing all output files to disk. Include this directive in every sub-agent prompt:
 > Do not provide progress updates. Return your complete output as text. Do not write files.
 
-Exception: sub-agents that use the **Edit tool** to update an existing file in-place (e.g., inserting refinements into `clarifications.md`) may edit files directly since the orchestrator cannot relay Edit operations.
+Exception: sub-agents that use the **Write tool** to write a complete updated file in a single call (e.g., consolidating refinements into `clarifications.md`) may write files directly when the orchestrator explicitly delegates this.
 
 ---
 
