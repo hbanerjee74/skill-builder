@@ -98,36 +98,22 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 ## Phase 2: Spawn All Sub-agents in Parallel
 
-Launch all 3 sub-agents in the same turn via the Task tool. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
+Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files.
 
-All sub-agents **return text** — they do not write files.
-
-### `quality` (sonnet)
-
-See `agents/validate-quality.md` for the full specification. Pass these inputs:
+Spawn a **quality sub-agent** (`name: "quality"`, `model: "sonnet"`) via the Task tool. See `agents/validate-quality.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
 - `SKILL.md` and all `references/` file paths
 - The **skill type**
 - The **workspace directory** path
 
-### `test-evaluator` (haiku)
+Spawn a **test evaluator sub-agent** (`name: "test-evaluator"`, `model: "haiku"`) via the Task tool. Generates 5 test prompts covering all 6 categories, then evaluates each against the skill content. Pass it:
+- `decisions.md` and `clarifications.md` paths
+- `SKILL.md` and all `references/` file paths
+- The **workspace directory** path
+- The prompt categories: core concepts, architecture & design, implementation details, edge cases, cross-functional analysis
+- Scoring criteria: PASS (actionable guidance), PARTIAL (some content but misses key details), FAIL (doesn't address or misleads). For PARTIAL/FAIL: explain expected vs actual coverage and whether the gap is content or organization.
 
-Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Generates 5 test prompts covering all 6 categories, then evaluates each against the skill content.
-
-**Prompt categories** — 5 prompts across these 6 categories:
-- **Core concepts** — "What are the key entities/patterns in [domain]?"
-- **Architecture & design** — "How should I structure/model [specific aspect]?"
-- **Implementation details** — "What's the recommended approach for [specific decision]?"
-- **Edge cases** — domain-specific tricky scenario the skill handles
-- **Cross-functional analysis** — question spanning multiple areas, including configuration/setup
-
-Each prompt targets something a real engineer would ask, grounded in the decisions and clarifications.
-
-**Scoring** — PASS (actionable guidance), PARTIAL (some content but misses key details), FAIL (doesn't address or misleads). For PARTIAL/FAIL: explain expected vs actual coverage and whether the gap is content or organization.
-
-### `companion-recommender` (sonnet)
-
-See `agents/validate-companion-recommender.md` for the full specification. Pass these inputs:
+Spawn a **companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`) via the Task tool. See `agents/validate-companion-recommender.md` for the full specification. Pass it:
 - `SKILL.md` and all `references/` file paths
 - `decisions.md` and `research-plan.md` paths (from the context directory)
 - The **skill type**
