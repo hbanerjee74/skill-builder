@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { toast } from "sonner";
+import { useSettingsStore } from "@/stores/settings-store";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -30,6 +31,8 @@ describe("EditSkillDialog", () => {
     resetTauriMocks();
     vi.mocked(toast.success).mockReset();
     vi.mocked(toast.error).mockReset();
+    useSettingsStore.getState().reset();
+    useSettingsStore.getState().setSettings({ workspacePath: "/test/workspace" });
   });
 
   it("renders dialog title when open", () => {
@@ -298,6 +301,135 @@ describe("EditSkillDialog", () => {
         tags: ["analytics", "crm"],
         intakeJson: JSON.stringify({ audience: "Analysts" }),
       });
+    });
+  });
+
+  describe("rename flow", () => {
+    it("calls rename_skill before update_skill_metadata when name changes", async () => {
+      const user = userEvent.setup();
+      const onSaved = vi.fn();
+      mockInvoke.mockResolvedValue(undefined);
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={onSaved}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      await user.clear(nameInput);
+      await user.type(nameInput, "revenue-tracker");
+
+      await user.click(screen.getByRole("button", { name: /Save/i }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("rename_skill", {
+          oldName: "sales-pipeline",
+          newName: "revenue-tracker",
+          workspacePath: "/test/workspace",
+        });
+      });
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
+          skillName: "revenue-tracker",
+          domain: "sales",
+          skillType: "domain",
+          tags: ["analytics", "crm"],
+          intakeJson: null,
+        });
+      });
+
+      // Verify rename_skill was called before update_skill_metadata
+      const calls = mockInvoke.mock.calls.map((c) => c[0]);
+      const renameIndex = calls.indexOf("rename_skill");
+      const updateIndex = calls.indexOf("update_skill_metadata");
+      expect(renameIndex).toBeLessThan(updateIndex);
+    });
+
+    it("shows rename warning when skill name is changed", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      await user.clear(nameInput);
+      await user.type(nameInput, "revenue-tracker");
+
+      expect(
+        screen.getByText("Renaming will move the skill directory")
+      ).toBeInTheDocument();
+    });
+
+    it("disables Save when skill name is invalid kebab-case", async () => {
+      const user = userEvent.setup();
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          availableTags={[]}
+        />
+      );
+
+      const nameInput = screen.getByLabelText("Skill Name");
+      const saveButton = screen.getByRole("button", { name: /Save/i });
+
+      // Initially valid
+      expect(saveButton).toBeEnabled();
+
+      // Clear and type a name with trailing hyphen (invalid kebab-case)
+      await user.clear(nameInput);
+      await user.type(nameInput, "my-skill-");
+
+      expect(saveButton).toBeDisabled();
+    });
+
+    it("does not call rename_skill when name is unchanged", async () => {
+      const user = userEvent.setup();
+      const onSaved = vi.fn();
+      mockInvoke.mockResolvedValue(undefined);
+
+      render(
+        <EditSkillDialog
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={onSaved}
+          availableTags={[]}
+        />
+      );
+
+      await user.click(screen.getByRole("button", { name: /Save/i }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
+          skillName: "sales-pipeline",
+          domain: "sales",
+          skillType: "domain",
+          tags: ["analytics", "crm"],
+          intakeJson: null,
+        });
+      });
+
+      expect(mockInvoke).not.toHaveBeenCalledWith(
+        "rename_skill",
+        expect.anything()
+      );
     });
   });
 });
