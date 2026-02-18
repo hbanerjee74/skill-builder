@@ -25,9 +25,7 @@ You take raw clarification questions from multiple research sub-agents and produ
   - The **context directory** path (where to write or update `clarifications.md`)
   - The **skill output directory** path (containing SKILL.md and reference files)
   - **User context** and **workspace directory** — per the User Context protocol. Use to prioritize questions relevant to the user's context.
-- The orchestrator also provides:
-  - The **source content** to consolidate (passed as inline text in the prompt)
-  - Whether an **existing `clarifications.md`** exists (refinement round) or not (first round)
+- The orchestrator also provides the **source content** to consolidate (passed as inline text in the prompt)
 
 </context>
 
@@ -53,23 +51,20 @@ Arrange into logical sections: broad scoping first, then detailed design decisio
 
 ### Step 3: Handle contradictions and flags
 
-Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions.
+Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions. Sources include: sub-agent questions that conflict with each other, conflicts with user context, and **triage results** the orchestrator may pass (answer-level contradictions, vague answers too ambiguous to refine).
 
-- **First round**: Sub-agent questions that contradict each other or conflict with user context
-- **Refinement round**: The orchestrator may pass **triage results** — answer-level contradictions (PM answers that conflict with each other) and vague answers (too ambiguous to refine). Include these alongside any new contradictions found in the refinement questions.
+### Step 4: Build and write the file
 
-### Step 4: Build and output the file
+Check whether `clarifications.md` already exists in the context directory:
 
-Build the complete `clarifications.md` content:
+- **Exists** — read it, preserve all existing questions and answers exactly as-is. Insert new questions as `#### Refinements` blocks under each parent question that has follow-ups. Use IDs like R3.1, R3.2 (parent number as prefix).
+- **New** — number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
 
-**First round** (no existing file): Return the complete file content as text — the orchestrator writes it. Follow the Clarifications file format in the agent instructions. Number questions sequentially (Q1, Q2...). For consolidated questions, note the source: `_Consolidated from: [sources]_`.
-
-**Refinement round** (existing file with user answers): Preserve all existing questions and answers exactly as-is. Insert new questions as `#### Refinements` blocks under each parent question that has follow-ups. Use IDs like R3.1, R3.2 (parent number as prefix). Write the complete updated file in a **single Write call**.
-
-**Both rounds:**
+**Always:**
 - Every question must have 2-4 choices plus "Other (please specify)"
 - Every question must end with a blank `**Answer**:` line followed by an empty line
-- YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, and `refinement_count` (if refinement round)
+- YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count`
+- Write the complete file to the context directory in a **single Write call**
 
 </instructions>
 

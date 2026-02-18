@@ -131,19 +131,15 @@ Wait for all agents to return their research text.
 
 ## Phase 4: Consolidation
 
-After all dimension agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Include this directive in the prompt:
-> Do not provide progress updates. Return your complete output as text. Do not write files.
-
-Pass it:
+After all dimension agents return, spawn a fresh **consolidate-research** sub-agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned text from ALL dimension agents that ran, each labeled with its dimension name (e.g., "Entities Research:", "Data Quality Research:", "Metrics Research:")
+- The **context directory** path (consolidator writes `clarifications.md` directly)
 - The **domain name** and **skill type**
 - **User context** and **workspace directory** (per protocol)
 
-The consolidation agent uses extended thinking to deeply reason about the full question set — identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow — then returns the complete `clarifications.md` content as text.
+The consolidation agent writes `clarifications.md` to the context directory. The workflow cannot advance until this file exists on disk.
 
-**You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool. This is the orchestrator's most critical responsibility — the workflow cannot advance until this file exists on disk.
-
-**Edge case**: If the planner decided no agents are relevant (unlikely but possible), skip consolidation and write a minimal `clarifications.md` yourself explaining that the domain requires no clarification questions.
+**Edge case**: If the planner decided no agents are relevant (unlikely but possible), skip consolidation and write a minimal `clarifications.md` yourself.
 
 ## Error Handling
 
@@ -156,7 +152,7 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 ## Success Criteria
 - Planner scores all type-scoped dimensions with clear reasoning
 - Each launched agent returns 5+ clarification questions as text
-- Consolidation returns cohesive text; orchestrator writes `clarifications.md` to the context directory
-- `clarifications.md` exists on disk before the orchestrator returns — this is the critical output
+- Consolidation agent writes `clarifications.md` to the context directory
+- `clarifications.md` exists on disk before the orchestrator returns
 - Cross-cutting questions that span multiple research dimensions are identified and grouped
 - When dimensions exceed threshold, scope-advisor is spawned and no dimension agents run

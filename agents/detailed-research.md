@@ -94,9 +94,8 @@ Rationale for why this matters given the answer above...
 After all sub-agents return, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned refinement text from all sub-agents directly in the prompt
 - The triage results (CONTRADICTION and VAGUE items with rationale)
-- The context directory path
+- The **context directory** path (consolidator writes the updated `clarifications.md` directly)
 - **User context** and **workspace directory** (per protocol)
-- Explicit instruction: this is a **refinement round** (existing file with user answers)
 
 ## Error Handling
 
