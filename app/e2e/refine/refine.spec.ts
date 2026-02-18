@@ -251,4 +251,68 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await expect(diffToggle).toBeVisible();
     await expect(diffToggle).toBeDisabled();
   });
+
+  test("happy path: select skill, send message, see agent output, verify diff", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+
+    // --- 1. Verify skill loaded ---
+    await expect(page.getByText("Test Skill").first()).toBeVisible();
+    await expect(page.getByTestId("refine-file-picker")).toContainText("SKILL.md");
+
+    // --- 2. Send a refinement message ---
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("add a quick-start section");
+    await page.getByTestId("refine-send-button").click();
+
+    // User message visible in chat
+    await expect(page.getByText("add a quick-start section")).toBeVisible();
+
+    // --- 3. Get agent ID from thinking indicator ---
+    const agentId = await getAgentId(page);
+
+    // --- 4. Swap mock to return modified files (simulates agent edits) ---
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_skill_content_for_refine = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+    });
+
+    // --- 5. Simulate agent run ---
+    await simulateAgentRun(page, {
+      agentId,
+      messages: [
+        "Reading SKILL.md...",
+        "Added a Quick Start section with getting-started steps.",
+      ],
+      result: "Refinement complete.",
+    });
+
+    // --- 6. Verify agent output appears ---
+    await expect(
+      page.getByText("Added a Quick Start section with getting-started steps."),
+    ).toBeVisible();
+
+    // Thinking indicator gone
+    await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+
+    // --- 7. Verify diff toggle is now enabled (baseline was snapshotted) ---
+    const diffToggle = page.getByTestId("refine-diff-toggle");
+    await expect(diffToggle).toBeEnabled();
+
+    // --- 8. Toggle diff mode ---
+    await diffToggle.click();
+
+    // Button label should switch to "Preview" (indicating diff mode is on)
+    await expect(diffToggle).toContainText("Preview");
+
+    // --- 9. Verify diff shows the changes ---
+    // The added "Quick Start" section should appear as added lines (green, + prefix)
+    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await expect(page.locator("text=+ Get started in 3 steps.")).toBeVisible();
+  });
 });
