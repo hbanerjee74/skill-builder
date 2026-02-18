@@ -50,7 +50,7 @@ fn build_refine_config(
     message: String,
     conversation_history: Vec<ConversationMessage>,
     skill_name: &str,
-    skills_path: &str,
+    workspace_path: &str,
     api_key: String,
     model: String,
     extended_thinking: bool,
@@ -58,10 +58,10 @@ fn build_refine_config(
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
-    // CWD is the workspace root (.vibedata), not the skill subdirectory.
-    // This matches workflow agents and ensures JSONL logs land at
-    // {skills_path}/{skill_name}/logs/ (not doubled).
-    let cwd = skills_path.to_string();
+    // CWD is the workspace root (.vibedata) so the sidecar can find
+    // .claude/agents/ and .claude/CLAUDE.md. Skill files are accessed via
+    // absolute paths embedded in the prompt by the frontend.
+    let cwd = workspace_path.to_string();
     let agent_id = format!(
         "refine-{}-{}",
         skill_name,
@@ -405,7 +405,7 @@ pub async fn send_refine_message(
     log::info!("[send_refine_message] session={} skill={}", session_id, skill_name);
 
     // 2. Read settings and user context from DB in a single lock
-    let (skills_path, api_key, extended_thinking, model, user_context) = {
+    let (api_key, extended_thinking, model, user_context) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -414,10 +414,6 @@ pub async fn send_refine_message(
             log::error!("[send_refine_message] Failed to read settings: {}", e);
             e
         })?;
-        let skills_path = settings
-            .skills_path
-            .clone()
-            .unwrap_or_else(|| workspace_path.clone());
         let key = settings.anthropic_api_key.ok_or_else(|| {
             log::error!("[send_refine_message] Anthropic API key not configured");
             "Anthropic API key not configured".to_string()
@@ -435,7 +431,7 @@ pub async fn send_refine_message(
             intake_json.as_deref(),
         );
 
-        (skills_path, key, settings.extended_thinking, model, ctx)
+        (key, settings.extended_thinking, model, ctx)
     };
 
     // 3. Append user context to message (same pattern as workflow build_prompt)
@@ -452,12 +448,13 @@ pub async fn send_refine_message(
         message
     };
 
-    // 4. Build config and agent_id
+    // 4. Build config and agent_id — CWD is workspace_path (.vibedata),
+    //    not skills_path, so the sidecar can find .claude/agents/ and CLAUDE.md.
     let (config, agent_id) = build_refine_config(
         prompt,
         conversation_history,
         &skill_name,
-        &skills_path,
+        &workspace_path,
         api_key,
         model,
         extended_thinking,
@@ -769,7 +766,7 @@ mod tests {
             message.to_string(),
             history,
             "my-skill",
-            "/skills",
+            "/home/user/.vibedata",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
@@ -810,19 +807,20 @@ mod tests {
 
     #[test]
     fn test_refine_config_cwd_points_to_workspace_root() {
-        // cwd must be skills_path (workspace root), not skills_path/skill_name.
-        // This matches workflow agents and ensures logs land at {skills_path}/{skill_name}/logs/.
+        // cwd must be workspace_path (.vibedata), NOT skills_path.
+        // This matches workflow agents — the sidecar needs .claude/agents/ and CLAUDE.md
+        // which are deployed to the workspace root.
         let (config, _) = build_refine_config(
             "test".to_string(),
             vec![],
             "data-engineering",
-            "/home/user/skills",
+            "/home/user/.vibedata",
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
             None,
         );
-        assert_eq!(config.cwd, "/home/user/skills");
+        assert_eq!(config.cwd, "/home/user/.vibedata");
     }
 
     #[test]

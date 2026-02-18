@@ -38,18 +38,19 @@ function resolveAgentName(command?: RefineCommand): string {
 }
 
 /** Build the prompt sent to the sidecar agent.
- *  CWD is the workspace root (.vibedata), so skill files are in {skillName}/.
+ *  CWD is the workspace root (.vibedata). Skill files are referenced via
+ *  absolute paths so the agent can find them regardless of CWD.
  */
 function buildPrompt(
   text: string,
-  skillName: string,
+  skillDir: string,
   fileConstraint: string,
   command?: RefineCommand,
 ): string {
   if (command === "rewrite") {
-    return `You are rewriting a completed skill. The skill files are in the ${skillName}/ directory.
+    return `You are rewriting a completed skill. The skill files are in ${skillDir}/.
 
-Read ALL existing skill files (${skillName}/SKILL.md and everything in ${skillName}/references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
+Read ALL existing skill files (${skillDir}/SKILL.md and everything in ${skillDir}/references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
 
 ${text ? `Additional instructions: ${text}` : ""}${fileConstraint}
 
@@ -59,9 +60,9 @@ Briefly describe what you rewrote and why.`;
   }
 
   if (command === "validate") {
-    return `You are validating a completed skill. The skill files are in the ${skillName}/ directory.
+    return `You are validating a completed skill. The skill files are in ${skillDir}/.
 
-Read ALL existing skill files (${skillName}/SKILL.md and everything in ${skillName}/references/), then evaluate:
+Read ALL existing skill files (${skillDir}/SKILL.md and everything in ${skillDir}/references/), then evaluate:
 - Coverage: Do files address all aspects from the skill description?
 - Structure: Is progressive disclosure used well? Sections logically organized?
 - Actionability: Are instructions specific enough to follow?
@@ -74,7 +75,7 @@ ${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
 
   // Default refine prompt — conversation context is passed separately
   // via the sidecar's conversationHistory parameter
-  return `You are refining a skill. The skill files are in the ${skillName}/ directory.
+  return `You are refining a skill. The skill files are in ${skillDir}/.
 
 Current request: ${text}${fileConstraint}
 
@@ -200,17 +201,18 @@ export default function RefinePage() {
       store.selectSkill(skill);
       store.setLoadingFiles(true);
 
-      if (effectiveSkillsPath) {
-        // Start backend refine session
+      if (workspacePath) {
+        // Start backend refine session — pass workspacePath (.vibedata),
+        // Rust resolves skills_path from DB for file lookups.
         try {
-          const session = await startRefineSession(skill.name, effectiveSkillsPath);
+          const session = await startRefineSession(skill.name, workspacePath);
           useRefineStore.setState({ sessionId: session.session_id });
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session");
         }
 
-        const files = await loadSkillFiles(effectiveSkillsPath, skill.name);
+        const files = await loadSkillFiles(workspacePath, skill.name);
         if (files) {
           store.setSkillFiles(files);
           if (files.length > 0) {
@@ -224,7 +226,7 @@ export default function RefinePage() {
         store.setLoadingFiles(false);
       }
     },
-    [isRunning, effectiveSkillsPath],
+    [isRunning, workspacePath],
   );
 
   // --- Auto-select skill from search param ---
@@ -253,15 +255,15 @@ export default function RefinePage() {
 
     // Re-read skill files to capture any changes the agent made
     const store = useRefineStore.getState();
-    if (effectiveSkillsPath && selectedSkill) {
-      loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
+    if (workspacePath && selectedSkill) {
+      loadSkillFiles(workspacePath, selectedSkill.name).then((files) => {
         if (files) store.updateSkillFiles(files);
       });
     }
 
     store.setRunning(false);
     store.setActiveAgentId(null);
-  }, [activeAgentId, activeRunStatus, effectiveSkillsPath, selectedSkill]);
+  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill]);
 
   // --- Cleanup on unmount ---
   useEffect(() => {
@@ -295,7 +297,7 @@ export default function RefinePage() {
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
       const store = useRefineStore.getState();
       const sessionId = store.sessionId;
-      if (!selectedSkill || !effectiveSkillsPath || !sessionId) return;
+      if (!selectedSkill || !workspacePath || !effectiveSkillsPath || !sessionId) return;
       if (isRunning) return; // guard against double-submission race
 
       console.log("[refine] send: skill=%s command=%s files=%s", selectedSkill.name, command ?? "refine", targetFiles?.join(",") ?? "all");
@@ -314,13 +316,15 @@ export default function RefinePage() {
       // Add user message
       store.addUserMessage(text, targetFiles, command);
 
-      // Build prompt (conversation context is passed separately via conversationHistory)
+      // Build prompt with absolute skill dir path so the agent can find files
+      // regardless of CWD (which is now .vibedata, not the skills folder).
+      const skillDir = `${effectiveSkillsPath}/${selectedSkill.name}`;
       const fileConstraint =
         targetFiles && targetFiles.length > 0
-          ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
+          ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.map((f) => `${skillDir}/${f}`).join(", ")}. Do not modify any other files.`
           : "";
 
-      const message = buildPrompt(text, selectedSkill.name, fileConstraint, command);
+      const message = buildPrompt(text, skillDir, fileConstraint, command);
       const agentName = resolveAgentName(command);
 
       // Mark running before async call to prevent double-submission
@@ -328,11 +332,12 @@ export default function RefinePage() {
 
       try {
         // sendRefineMessage returns the agent_id generated by the backend
+        // Pass workspacePath (.vibedata) — Rust resolves skills_path from DB.
         const agentId = await sendRefineMessage(
           sessionId,
           message,
           conversationHistory,
-          effectiveSkillsPath,
+          workspacePath,
           agentName,
         );
 
@@ -350,7 +355,7 @@ export default function RefinePage() {
         toast.error("Failed to start agent");
       }
     },
-    [selectedSkill, effectiveSkillsPath, preferredModel, isRunning],
+    [selectedSkill, workspacePath, effectiveSkillsPath, preferredModel, isRunning],
   );
 
   return (
