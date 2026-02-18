@@ -424,6 +424,15 @@ pub fn update_skill_metadata(
     Ok(())
 }
 
+/// Validate kebab-case: lowercase alphanumeric segments separated by single hyphens.
+fn is_valid_kebab(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && !name.ends_with('-')
+        && !name.contains("--")
+        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
 #[tauri::command]
 pub fn rename_skill(
     old_name: String,
@@ -433,13 +442,7 @@ pub fn rename_skill(
 ) -> Result<(), String> {
     log::info!("[rename_skill] old={} new={}", old_name, new_name);
 
-    // Validate kebab-case: lowercase alphanumeric segments separated by single hyphens
-    let is_kebab = !new_name.is_empty()
-        && !new_name.starts_with('-')
-        && !new_name.ends_with('-')
-        && !new_name.contains("--")
-        && new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if !is_kebab {
+    if !is_valid_kebab(&new_name) {
         log::error!("[rename_skill] Invalid kebab-case name: {}", new_name);
         return Err("Skill name must be kebab-case (lowercase letters, numbers, hyphens)".to_string());
     }
@@ -630,17 +633,14 @@ pub async fn generate_suggestions(
 
     let readable_name = skill_name.replace('-', " ");
 
-    let mut context_parts = Vec::new();
-    if let Some(ref ind) = industry {
-        if !ind.is_empty() {
-            context_parts.push(format!("Industry: {}", ind));
-        }
-    }
-    if let Some(ref fr) = function_role {
-        if !fr.is_empty() {
-            context_parts.push(format!("Role: {}", fr));
-        }
-    }
+    let context_parts: Vec<String> = [
+        industry.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Industry: {}", s)),
+        function_role.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Role: {}", s)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
     let context = if context_parts.is_empty() {
         String::new()
     } else {
@@ -1371,13 +1371,8 @@ mod tests {
         ];
 
         for name in invalid_names {
-            let is_kebab = !name.is_empty()
-                && !name.starts_with('-')
-                && !name.ends_with('-')
-                && !name.contains("--")
-                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
             assert!(
-                !is_kebab,
+                !is_valid_kebab(name),
                 "Name '{}' should be rejected as non-kebab-case",
                 name
             );
@@ -1386,13 +1381,8 @@ mod tests {
         // Valid kebab-case names should pass
         let valid_names = vec!["my-skill", "a", "skill-123", "a-b-c"];
         for name in valid_names {
-            let is_kebab = !name.is_empty()
-                && !name.starts_with('-')
-                && !name.ends_with('-')
-                && !name.contains("--")
-                && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
             assert!(
-                is_kebab,
+                is_valid_kebab(name),
                 "Name '{}' should be accepted as valid kebab-case",
                 name
             );

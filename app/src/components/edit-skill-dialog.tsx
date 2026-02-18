@@ -17,6 +17,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import { renameSkill, updateSkillMetadata } from "@/lib/tauri"
 import { useSettingsStore } from "@/stores/settings-store"
+import { isValidKebab, toKebabChars } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
@@ -28,8 +29,10 @@ interface EditSkillDialogProps {
   availableTags: string[]
 }
 
+const EMPTY_INTAKE = { audience: "", challenges: "", scope: "" }
+
 function parseIntake(json: string | null | undefined): { audience: string; challenges: string; scope: string } {
-  if (!json) return { audience: "", challenges: "", scope: "" }
+  if (!json) return EMPTY_INTAKE
   try {
     const obj = JSON.parse(json)
     return {
@@ -38,22 +41,8 @@ function parseIntake(json: string | null | undefined): { audience: string; chall
       scope: obj.scope || "",
     }
   } catch {
-    return { audience: "", challenges: "", scope: "" }
+    return EMPTY_INTAKE
   }
-}
-
-/** Validate kebab-case */
-function isValidKebab(str: string): boolean {
-  if (!str) return false
-  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str)
-}
-
-/** Force input to kebab-case characters only */
-function toKebabChars(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
 }
 
 export default function EditSkillDialog({

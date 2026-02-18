@@ -20,6 +20,7 @@ import TagInput from "@/components/tag-input"
 import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
+import { isValidKebab, toKebabChars } from "@/lib/utils"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
 const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -33,20 +34,6 @@ interface NewSkillDialogProps {
   workspacePath: string
   onCreated: () => Promise<void>
   tagSuggestions?: string[]
-}
-
-/** Validate kebab-case: lowercase alphanumeric segments separated by single hyphens */
-function isValidKebab(str: string): boolean {
-  if (!str) return false
-  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str)
-}
-
-/** Force input to kebab-case characters only (lowercase, digits, hyphens) */
-function toKebabChars(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-")
 }
 
 export default function NewSkillDialog({
@@ -227,9 +214,9 @@ export default function NewSkillDialog({
                 id="domain"
                 placeholder="What does this skill cover?"
                 value={domain}
-                onChange={(v) => setDomain(v)}
+                onChange={setDomain}
                 suggestion={suggestions?.domain ?? null}
-                onAccept={(s) => setDomain(s)}
+                onAccept={setDomain}
                 disabled={loading}
               />
               <p className="text-xs text-muted-foreground">
@@ -275,9 +262,9 @@ export default function NewSkillDialog({
                     id="audience"
                     placeholder={placeholders.audience}
                     value={audience}
-                    onChange={(v) => setAudience(v)}
+                    onChange={setAudience}
                     suggestion={suggestions?.audience ?? null}
-                    onAccept={(s) => setAudience(s)}
+                    onAccept={setAudience}
                     disabled={loading}
                     rows={2}
                   />
@@ -288,9 +275,9 @@ export default function NewSkillDialog({
                     id="challenges"
                     placeholder={placeholders.challenges}
                     value={challenges}
-                    onChange={(v) => setChallenges(v)}
+                    onChange={setChallenges}
                     suggestion={suggestions?.challenges ?? null}
-                    onAccept={(s) => setChallenges(s)}
+                    onAccept={setChallenges}
                     disabled={loading}
                     rows={2}
                   />
@@ -301,9 +288,9 @@ export default function NewSkillDialog({
                     id="scope"
                     placeholder={placeholders.scope}
                     value={scope}
-                    onChange={(v) => setScope(v)}
+                    onChange={setScope}
                     suggestion={suggestions?.scope ?? null}
-                    onAccept={(s) => setScope(s)}
+                    onAccept={setScope}
                     disabled={loading}
                     rows={2}
                   />
