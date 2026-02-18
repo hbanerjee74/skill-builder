@@ -60,8 +60,6 @@ All output files use YAML frontmatter (`---` delimited, first thing in file). Al
 
 ### Clarifications (`clarifications.md`)
 
-Single file across both research rounds. The detailed-research step inserts `#### Refinements` subsections in-place.
-
 ```
 ---
 question_count: 12
