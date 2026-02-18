@@ -375,6 +375,38 @@ mod tests {
         assert!(new_path.join(".git").exists());
     }
 
+    #[test]
+    fn test_skills_path_change_does_not_affect_db_records() {
+        // Workflow runs are keyed by skill_name (not path), so changing
+        // skills_path should leave DB records intact and resolvable.
+        let conn = crate::commands::test_utils::create_test_db();
+        crate::db::save_workflow_run(&conn, "my-skill", "data-engineering", 3, "in_progress", "domain").unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old-skills");
+        let new_path = dir.path().join("new-skills");
+
+        // Set up old path with the skill directory
+        fs::create_dir_all(old_path.join("my-skill")).unwrap();
+        fs::write(old_path.join("my-skill").join("SKILL.md"), "# Test").unwrap();
+
+        // Migrate
+        handle_skills_path_change(
+            Some(old_path.to_str().unwrap()),
+            Some(new_path.to_str().unwrap()),
+        )
+        .unwrap();
+
+        // Verify DB records are unchanged — skill_name still resolves
+        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.skill_name, "my-skill");
+        assert_eq!(run.current_step, 3);
+        assert_eq!(run.status, "in_progress");
+
+        // And the skill files are at the new location
+        assert!(new_path.join("my-skill").join("SKILL.md").exists());
+    }
+
     // ===== move_directory tests =====
 
     #[test]
