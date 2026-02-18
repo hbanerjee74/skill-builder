@@ -96,6 +96,7 @@ fn build_refine_config(
 /// Build the refine agent prompt with all runtime fields.
 /// Matches the workflow pattern in `workflow.rs::build_prompt` — provides skill directory,
 /// context directory, workspace directory, skill type, command, and user context.
+#[allow(clippy::too_many_arguments)]
 fn build_refine_prompt(
     skill_name: &str,
     domain: &str,

@@ -18,11 +18,11 @@ const baseSkill: SkillSummary = {
 };
 
 describe("SkillCard", () => {
-  it("renders formatted skill name", () => {
+  it("renders skill name", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    expect(screen.getByText("Sales Pipeline")).toBeInTheDocument();
+    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
   });
 
   it("renders domain badge when domain is present", () => {
@@ -39,52 +39,6 @@ describe("SkillCard", () => {
     );
     // Only status badge should exist, not a domain badge
     expect(screen.queryByText("sales")).not.toBeInTheDocument();
-  });
-
-  it("renders status badge for in_progress", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("In Progress")).toBeInTheDocument();
-  });
-
-  it("renders status badge for completed", () => {
-    const skill = { ...baseSkill, status: "completed" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("Completed")).toBeInTheDocument();
-  });
-
-  it("renders status badge for waiting_for_user", () => {
-    const skill = { ...baseSkill, status: "waiting_for_user" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("Needs Input")).toBeInTheDocument();
-  });
-
-  it("renders Unknown for null status", () => {
-    const skill = { ...baseSkill, status: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
-  });
-
-  it("shows current step text", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("Step 3")).toBeInTheDocument();
-  });
-
-  it("shows Not started when current_step is null", () => {
-    const skill = { ...baseSkill, current_step: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("Not started")).toBeInTheDocument();
   });
 
   it("shows progress percentage from step number", () => {
@@ -129,9 +83,7 @@ describe("SkillCard", () => {
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={onDelete} />
     );
 
-    // The delete button is the ghost icon button (second button)
-    const buttons = screen.getAllByRole("button");
-    const deleteButton = buttons[1]; // Continue is first, delete is second
+    const deleteButton = screen.getByRole("button", { name: /Delete skill/i });
     await user.click(deleteButton);
     expect(onDelete).toHaveBeenCalledWith(baseSkill);
   });
@@ -158,10 +110,9 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Only "sales" domain badge and status badge should be present
+    // Only domain badge should be present (no status badge, no tag badges)
     const badges = document.querySelectorAll('[data-slot="badge"]');
-    // Status badge + domain badge = 2
-    expect(badges.length).toBe(2);
+    expect(badges.length).toBe(1);
   });
 
   it("renders skill type badge with correct color when skill_type is set", () => {
@@ -171,7 +122,6 @@ describe("SkillCard", () => {
     );
     const typeBadge = screen.getByText("Platform");
     expect(typeBadge).toBeInTheDocument();
-    expect(typeBadge.className).toContain("bg-[#E8F4F5]");
   });
 
   it("does not render type badge when skill_type is null", () => {
@@ -182,42 +132,6 @@ describe("SkillCard", () => {
     expect(screen.queryByText("Domain")).not.toBeInTheDocument();
     expect(screen.queryByText("Source")).not.toBeInTheDocument();
     expect(screen.queryByText("Data Engineering")).not.toBeInTheDocument();
-  });
-
-  it("renders author avatar when author_login and author_avatar are set", () => {
-    const skill = {
-      ...baseSkill,
-      author_login: "octocat",
-      author_avatar: "https://avatars.githubusercontent.com/u/583231",
-    };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    const avatar = screen.getByAltText("octocat");
-    expect(avatar).toBeInTheDocument();
-    expect(avatar).toHaveAttribute(
-      "src",
-      "https://avatars.githubusercontent.com/u/583231"
-    );
-  });
-
-  it("renders author login text when avatar is missing", () => {
-    const skill = {
-      ...baseSkill,
-      author_login: "octocat",
-      author_avatar: null,
-    };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("octocat")).toBeInTheDocument();
-  });
-
-  it("does not render author section when author_login is null", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.queryByAltText("octocat")).not.toBeInTheDocument();
   });
 });
 

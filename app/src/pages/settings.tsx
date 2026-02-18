@@ -29,7 +29,7 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
-import SkillsPage from "./skills"
+import { SkillsLibraryTab } from "@/components/skills-library-tab"
 import PromptsPage from "./prompts"
 
 const sections = [
@@ -520,7 +520,7 @@ export default function SettingsPage() {
           </div>
           )}
 
-          {activeSection === "skills-library" && <SkillsPage />}
+          {activeSection === "skills-library" && <SkillsLibraryTab />}
 
           {activeSection === "prompts" && <PromptsPage />}
 

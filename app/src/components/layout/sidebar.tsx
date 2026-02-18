@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, FileText, Settings, PanelLeftClose, PanelLeftOpen, DollarSign, Github, LogOut } from "lucide-react";
+import { Home, FileText, PanelLeftClose, PanelLeftOpen, DollarSign, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
