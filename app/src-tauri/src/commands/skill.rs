@@ -589,6 +589,8 @@ pub struct FieldSuggestions {
     pub audience: String,
     pub challenges: String,
     pub scope: String,
+    pub unique_setup: String,
+    pub claude_mistakes: String,
 }
 
 #[tauri::command]
@@ -641,7 +643,9 @@ pub async fn generate_suggestions(
          {{\"domain\": \"<1 sentence domain description>\", \
          \"audience\": \"<1 sentence target audience>\", \
          \"challenges\": \"<1 sentence key challenges>\", \
-         \"scope\": \"<1 sentence scope>\"}}"
+         \"scope\": \"<1 sentence scope>\", \
+         \"unique_setup\": \"<1 sentence: what might make a typical {skill_type} setup for {readable_name} different from standard implementations?>\", \
+         \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\"}}"
     );
 
     let client = reqwest::Client::new();
@@ -653,7 +657,7 @@ pub async fn generate_suggestions(
         .body(
             serde_json::json!({
                 "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 300,
+                "max_tokens": 500,
                 "messages": [{"role": "user", "content": prompt}]
             })
             .to_string(),
@@ -704,6 +708,14 @@ pub async fn generate_suggestions(
             .unwrap_or("")
             .to_string(),
         scope: suggestions["scope"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        unique_setup: suggestions["unique_setup"]
+            .as_str()
+            .unwrap_or("")
+            .to_string(),
+        claude_mistakes: suggestions["claude_mistakes"]
             .as_str()
             .unwrap_or("")
             .to_string(),

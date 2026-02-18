@@ -497,6 +497,16 @@ fn write_user_context_file(
                     parts.push(format!("- **Scope**: {}", s));
                 }
             }
+            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
+                if !u.is_empty() {
+                    parts.push(format!("- **What Makes This Setup Unique**: {}", u));
+                }
+            }
+            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
+                if !m.is_empty() {
+                    parts.push(format!("- **What Claude Gets Wrong**: {}", m));
+                }
+            }
         }
     }
 
@@ -609,6 +619,16 @@ fn build_prompt(
             if let Some(s) = intake.get("scope").and_then(|v| v.as_str()) {
                 if !s.is_empty() {
                     ctx_parts.push(format!("- **Scope**: {}", s));
+                }
+            }
+            if let Some(u) = intake.get("unique_setup").and_then(|v| v.as_str()) {
+                if !u.is_empty() {
+                    ctx_parts.push(format!("- **What Makes This Setup Unique**: {}", u));
+                }
+            }
+            if let Some(m) = intake.get("claude_mistakes").and_then(|v| v.as_str()) {
+                if !m.is_empty() {
+                    ctx_parts.push(format!("- **What Claude Gets Wrong**: {}", m));
                 }
             }
         }
