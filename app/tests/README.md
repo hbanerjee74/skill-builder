@@ -117,18 +117,6 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 | Skills Library | `@skills` | `./tests/run.sh e2e --tag @skills` | `skills.spec.ts` |
 | Usage | `@usage` | `./tests/run.sh e2e --tag @usage` | `usage.spec.ts` |
 
-## Test Inventory
-
-| Layer | Files | Test Cases | Location |
-|---|---|---|---|
-| Frontend unit | 9 | ~154 | `src/__tests__/stores/`, `src/__tests__/lib/`, `src/__tests__/hooks/` |
-| Frontend integration | 26 | ~490 | `src/__tests__/components/`, `src/__tests__/pages/` |
-| E2E (Playwright) | 11 | 70 | `e2e/` subdirectories |
-| Rust (cargo) | 13 | ~260 | `src-tauri/src/` inline modules |
-| Sidecar | 6 | ~91 | `sidecar/__tests__/` |
-| Eval harness | 1 | 19 | `scripts/eval/test-eval-harness.sh` |
-| **Total** | **66** | **~1084** | |
-
 ## Adding Tests
 
 ### Where to put new tests
