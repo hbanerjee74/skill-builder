@@ -319,9 +319,9 @@ export default function RefinePage() {
           prompt,
           model,
           cwd,
-          undefined, // allowedTools
-          undefined, // maxTurns
-          currentSessionId,
+          ["Read", "Edit", "Write", "Glob", "Grep", "Task"],
+          20,
+          undefined, // sessionId — refine session is app-level, not SDK resume
           selectedSkill.name,
           stepLabel,
           agentName,
