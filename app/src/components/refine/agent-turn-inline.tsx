@@ -54,7 +54,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   }
 
   return (
-    <div data-agent-id={agentId} className="flex flex-col">
+    <div data-agent-id={agentId} className="flex min-w-0 flex-col">
       {run.messages.map((msg, i) => {
         // Skip result messages — they duplicate the assistant's final text
         if (msg.type === "result") return null;
