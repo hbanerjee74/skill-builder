@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -16,6 +15,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
+import { renameSkill, updateSkillMetadata } from "@/lib/tauri"
+import { useSettingsStore } from "@/stores/settings-store"
 import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
@@ -41,6 +42,20 @@ function parseIntake(json: string | null | undefined): { audience: string; chall
   }
 }
 
+/** Validate kebab-case */
+function isValidKebab(str: string): boolean {
+  if (!str) return false
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str)
+}
+
+/** Force input to kebab-case characters only */
+function toKebabChars(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "")
+    .replace(/-+/g, "-")
+}
+
 export default function EditSkillDialog({
   skill,
   open,
@@ -48,7 +63,9 @@ export default function EditSkillDialog({
   onSaved,
   availableTags,
 }: EditSkillDialogProps) {
-  const [displayName, setDisplayName] = useState("")
+  const { workspacePath } = useSettingsStore()
+  const [skillName, setSkillName] = useState("")
+  const [domain, setDomain] = useState("")
   const [skillType, setSkillType] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [audience, setAudience] = useState("")
@@ -58,7 +75,8 @@ export default function EditSkillDialog({
 
   useEffect(() => {
     if (open && skill) {
-      setDisplayName(skill.display_name || "")
+      setSkillName(skill.name)
+      setDomain(skill.domain || "")
       setSkillType(skill.skill_type || "domain")
       setTags([...skill.tags])
       const intake = parseIntake(skill.intake_json)
@@ -66,7 +84,8 @@ export default function EditSkillDialog({
       setChallenges(intake.challenges)
       setScope(intake.scope)
     } else if (!open) {
-      setDisplayName("")
+      setSkillName("")
+      setDomain("")
       setSkillType("")
       setTags([])
       setAudience("")
@@ -78,22 +97,35 @@ export default function EditSkillDialog({
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
+  const nameChanged = skill ? skillName !== skill.name : false
+  const nameValid = isValidKebab(skillName)
+
   const handleSave = async () => {
     if (!skill) return
+    if (!nameValid) {
+      toast.error("Skill name must be kebab-case (e.g., sales-pipeline)")
+      return
+    }
+
     setSaving(true)
     try {
+      // Rename first if name changed
+      if (nameChanged && workspacePath) {
+        await renameSkill(skill.name, skillName, workspacePath)
+      }
+
       const intakeData: Record<string, string> = {}
       if (audience.trim()) intakeData.audience = audience.trim()
       if (challenges.trim()) intakeData.challenges = challenges.trim()
       if (scope.trim()) intakeData.scope = scope.trim()
 
-      await invoke("update_skill_metadata", {
-        skillName: skill.name,
-        displayName: displayName.trim() || null,
-        skillType: skillType || null,
+      await updateSkillMetadata(
+        nameChanged ? skillName : skill.name,
+        domain.trim() || null,
+        skillType || null,
         tags,
-        intakeJson: Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
-      })
+        Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
+      )
       toast.success("Skill updated")
       onOpenChange(false)
       onSaved()
@@ -121,17 +153,34 @@ export default function EditSkillDialog({
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-display-name">Display Name</Label>
+            <Label htmlFor="edit-skill-name">Skill Name</Label>
             <Input
-              id="edit-display-name"
-              placeholder="Optional friendly name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              id="edit-skill-name"
+              placeholder="kebab-case-name"
+              value={skillName}
+              onChange={(e) => setSkillName(toKebabChars(e.target.value))}
               disabled={saving}
             />
-            <p className="text-xs text-muted-foreground">
-              Shown on skill cards instead of the kebab-case identifier
-            </p>
+            {skillName && !nameValid && (
+              <p className="text-xs text-destructive">
+                Must be kebab-case (e.g., sales-pipeline)
+              </p>
+            )}
+            {nameChanged && nameValid && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Renaming will move the skill directory
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-domain">Domain</Label>
+            <Input
+              id="edit-domain"
+              placeholder="What does this skill cover?"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              disabled={saving}
+            />
           </div>
           <div className="flex flex-col gap-2">
             <Label>Skill Type</Label>
@@ -194,7 +243,7 @@ export default function EditSkillDialog({
               rows={2}
             />
             <p className="text-xs text-muted-foreground">
-              Optional — helps agents focus research on what matters most
+              Helps agents focus research on what matters most
             </p>
           </div>
         </div>
@@ -206,7 +255,7 @@ export default function EditSkillDialog({
           >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving || !nameValid}>
             {saving && <Loader2 className="size-4 animate-spin" />}
             Save
           </Button>

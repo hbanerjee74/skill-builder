@@ -1,8 +1,8 @@
-import { useState } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Plus, Loader2 } from "lucide-react"
+import { Plus, Loader2, ChevronRight, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,9 +15,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
+import { GhostInput, GhostTextarea } from "@/components/ghost-input"
+import { useSettingsStore } from "@/stores/settings-store"
+import { generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
 const SKILL_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -33,12 +35,17 @@ interface NewSkillDialogProps {
   tagSuggestions?: string[]
 }
 
-function toKebabCase(str: string): string {
+/** Validate kebab-case: lowercase alphanumeric segments separated by single hyphens */
+function isValidKebab(str: string): boolean {
+  if (!str) return false
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(str)
+}
+
+/** Force input to kebab-case characters only (lowercase, digits, hyphens) */
+function toKebabChars(str: string): string {
   return str
     .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
     .replace(/-+/g, "-")
 }
 
@@ -48,29 +55,67 @@ export default function NewSkillDialog({
   tagSuggestions = [],
 }: NewSkillDialogProps) {
   const navigate = useNavigate()
+  const { skillsPath, industry, functionRole } = useSettingsStore()
   const [open, setOpen] = useState(false)
+  const [name, setName] = useState("")
   const [skillType, setSkillType] = useState<string>("")
   const [domain, setDomain] = useState("")
-  const [name, setName] = useState("")
   const [tags, setTags] = useState<string[]>([])
-  const [displayName, setDisplayName] = useState("")
   const [audience, setAudience] = useState("")
   const [challenges, setChallenges] = useState("")
   const [scope, setScope] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const handleDomainChange = (value: string) => {
-    setDomain(value)
-    setName(toKebabCase(value))
-    setError(null)
-  }
+  const [moreOptions, setMoreOptions] = useState(false)
+  const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
+  // Fetch AI suggestions when name + type are set
+  const fetchSuggestions = useCallback(
+    (skillName: string, type: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (!skillName || !type) {
+        setSuggestions(null)
+        return
+      }
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const result = await generateSuggestions(skillName, type, industry, functionRole)
+          setSuggestions(result)
+        } catch {
+          // Silently fail — ghost text is optional
+        }
+      }, 800)
+    },
+    [industry, functionRole],
+  )
+
+  // Trigger suggestion fetch when name or type changes
+  useEffect(() => {
+    if (name && skillType) {
+      fetchSuggestions(name, skillType)
+    } else {
+      setSuggestions(null)
+    }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [name, skillType, fetchSuggestions])
+
+  const handleNameChange = (value: string) => {
+    setName(toKebabChars(value))
+    setError(null)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!domain.trim() || !name.trim()) return
+    if (!name.trim() || !skillType) return
+    if (!isValidKebab(name.trim())) {
+      setError("Skill name must be kebab-case (e.g., sales-pipeline)")
+      return
+    }
 
     setLoading(true)
     setError(null)
@@ -83,10 +128,9 @@ export default function NewSkillDialog({
       await invoke("create_skill", {
         workspacePath,
         name: name.trim(),
-        domain: domain.trim(),
+        domain: domain.trim() || name.replace(/-/g, " "),
         tags: tags.length > 0 ? tags : null,
         skillType: skillType || null,
-        displayName: displayName.trim() || null,
         intakeJson: Object.keys(intakeData).length > 0 ? JSON.stringify(intakeData) : null,
       })
       console.log(`[skill] Created skill "${name}"`)
@@ -95,14 +139,7 @@ export default function NewSkillDialog({
       await onCreated()
       navigate({ to: "/skill/$skillName", params: { skillName } })
       setOpen(false)
-      setSkillType("")
-      setDomain("")
-      setName("")
-      setTags([])
-      setDisplayName("")
-      setAudience("")
-      setChallenges("")
-      setScope("")
+      resetForm()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
@@ -112,8 +149,21 @@ export default function NewSkillDialog({
     }
   }
 
+  const resetForm = () => {
+    setName("")
+    setSkillType("")
+    setDomain("")
+    setTags([])
+    setAudience("")
+    setChallenges("")
+    setScope("")
+    setMoreOptions(false)
+    setSuggestions(null)
+    setError(null)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSkillType(""); }}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
       <DialogTrigger asChild>
         <Button>
           <Plus className="size-4" />
@@ -125,10 +175,28 @@ export default function NewSkillDialog({
           <DialogHeader>
             <DialogTitle>Create New Skill</DialogTitle>
             <DialogDescription>
-              Define the functional domain for your new skill.
+              Define the scope and context for your new skill.
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-4 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Level 1: Required fields */}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="skill-name">Skill Name</Label>
+              <Input
+                id="skill-name"
+                placeholder="e.g., sales-pipeline"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                disabled={loading}
+                autoFocus
+              />
+              <p className="text-xs text-muted-foreground">
+                Kebab-case identifier (lowercase, hyphens)
+                {name && !isValidKebab(name) && (
+                  <span className="text-destructive ml-1">— invalid format</span>
+                )}
+              </p>
+            </div>
             <div className="flex flex-col gap-2">
               <Label>Skill Type</Label>
               <RadioGroup
@@ -154,28 +222,17 @@ export default function NewSkillDialog({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="domain">Domain</Label>
-              <Input
+              <GhostInput
                 id="domain"
-                placeholder="e.g., sales pipeline, HR analytics"
+                placeholder="What does this skill cover?"
                 value={domain}
-                onChange={(e) => handleDomainChange(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="skill-name">Skill Name</Label>
-              <Input
-                id="skill-name"
-                placeholder="auto-derived-from-domain"
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value)
-                  setError(null)
-                }}
+                onChange={(v) => setDomain(v)}
+                suggestion={suggestions?.domain ?? null}
+                onAccept={(s) => setDomain(s)}
                 disabled={loading}
               />
               <p className="text-xs text-muted-foreground">
-                Kebab-case identifier for this skill
+                Brief description of the skill&apos;s domain
               </p>
             </div>
             <div className="flex flex-col gap-2">
@@ -187,63 +244,75 @@ export default function NewSkillDialog({
                 disabled={loading}
                 placeholder="e.g., salesforce, analytics"
               />
-              <p className="text-xs text-muted-foreground">
-                Optional tags for categorization
-              </p>
             </div>
-            {skillType && (
-              <>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="display-name">Display Name</Label>
-                  <Input
-                    id="display-name"
-                    placeholder="e.g., Sales Pipeline Analytics"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    disabled={loading}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional friendly name shown on skill cards
-                  </p>
-                </div>
+
+            {/* Skills output location */}
+            {skillsPath && name && (
+              <p className="text-xs text-muted-foreground">
+                Output: <code className="text-xs">{skillsPath}/{name}/</code>
+              </p>
+            )}
+
+            {/* Level 2: Collapsible "More options" */}
+            <button
+              type="button"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMoreOptions(!moreOptions)}
+            >
+              {moreOptions ? (
+                <ChevronDown className="size-4" />
+              ) : (
+                <ChevronRight className="size-4" />
+              )}
+              More options
+            </button>
+            {moreOptions && (
+              <div className="flex flex-col gap-4 pl-2 border-l-2 border-muted">
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="audience">Target Audience</Label>
-                  <Textarea
+                  <GhostTextarea
                     id="audience"
                     placeholder={placeholders.audience}
                     value={audience}
-                    onChange={(e) => setAudience(e.target.value)}
+                    onChange={(v) => setAudience(v)}
+                    suggestion={suggestions?.audience ?? null}
+                    onAccept={(s) => setAudience(s)}
                     disabled={loading}
                     rows={2}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="challenges">Key Challenges</Label>
-                  <Textarea
+                  <GhostTextarea
                     id="challenges"
                     placeholder={placeholders.challenges}
                     value={challenges}
-                    onChange={(e) => setChallenges(e.target.value)}
+                    onChange={(v) => setChallenges(v)}
+                    suggestion={suggestions?.challenges ?? null}
+                    onAccept={(s) => setChallenges(s)}
                     disabled={loading}
                     rows={2}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="scope">Scope</Label>
-                  <Textarea
+                  <GhostTextarea
                     id="scope"
                     placeholder={placeholders.scope}
                     value={scope}
-                    onChange={(e) => setScope(e.target.value)}
+                    onChange={(v) => setScope(v)}
+                    suggestion={suggestions?.scope ?? null}
+                    onAccept={(s) => setScope(s)}
                     disabled={loading}
                     rows={2}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Optional — helps agents focus research on what matters most
+                    Helps agents focus research on what matters most
                   </p>
                 </div>
-              </>
+              </div>
             )}
+
             {error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
@@ -259,7 +328,7 @@ export default function NewSkillDialog({
             </Button>
             <Button
               type="submit"
-              disabled={loading || !skillType || !domain.trim() || !name.trim()}
+              disabled={loading || !skillType || !name.trim() || !isValidKebab(name.trim())}
             >
               {loading && <Loader2 className="size-4 animate-spin" />}
               Create
