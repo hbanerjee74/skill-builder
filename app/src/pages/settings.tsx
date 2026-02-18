@@ -683,7 +683,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Logging</CardTitle>
                 <CardDescription>
-                  Configure application logging.
+                  Configure application logging. Chat transcripts (JSONL) are always captured regardless of level.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
