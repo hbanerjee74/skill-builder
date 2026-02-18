@@ -125,7 +125,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
       {hasBadges && (
         <div className="flex flex-wrap gap-1">
           {activeCommand && (
-            <Badge variant="default" className="gap-1 text-xs">
+            <Badge data-testid="refine-command-badge" variant="default" className="gap-1 text-xs">
               /{activeCommand}
               <button
                 type="button"
@@ -163,6 +163,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
           <PopoverAnchor asChild>
             <Textarea
               ref={textareaRef}
+              data-testid="refine-chat-input"
               value={text}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
@@ -204,6 +205,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
           </PopoverContent>
         </Popover>
         <Button
+          data-testid="refine-send-button"
           size="icon"
           onClick={handleSend}
           disabled={isRunning || (!text.trim() && !activeCommand)}

@@ -12,6 +12,7 @@ Changes to these files affect all test layers — run the full test suite (`./te
 - `src/test/mocks/tauri-e2e-event.ts` — E2E event system mock
 - `e2e/helpers/app-helpers.ts` — Shared E2E helpers (splash screen wait, etc.)
 - `e2e/helpers/workflow-helpers.ts` — Shared workflow E2E helpers (navigation, mock overrides)
+- `e2e/helpers/refine-helpers.ts` — Shared refine E2E helpers (navigation, mock overrides)
 - `e2e/helpers/agent-simulator.ts` — Agent lifecycle event simulators
 - `src/test/setup.ts` — Vitest global setup
 - `vite.config.ts` / `vitest.config.ts` / `playwright.config.ts` — Build and test runner config
@@ -75,6 +76,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/usage/usage.spec.ts` | `@usage` |
 | `e2e/workflow/workflow-steps.spec.ts` | `@workflow` |
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
+| `e2e/refine/refine.spec.ts` | `@refine` |
 
 ## Quick Reference
 

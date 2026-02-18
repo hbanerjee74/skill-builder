@@ -43,7 +43,7 @@ export function PreviewPanel() {
 
   if (skillFiles.length === 0 && !isLoadingFiles) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
+      <div data-testid="refine-preview-empty" className="flex h-full items-center justify-center text-muted-foreground">
         Select a skill to preview its files
       </div>
     );
@@ -67,7 +67,7 @@ export function PreviewPanel() {
       <div className="flex items-center justify-between border-b px-3 py-2">
         <Popover open={filePickerOpen} onOpenChange={setFilePickerOpen}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="max-w-[280px] justify-between gap-1.5">
+            <Button data-testid="refine-file-picker" variant="outline" size="sm" className="max-w-[280px] justify-between gap-1.5">
               <FileText className="size-3.5 shrink-0" />
               <span className="truncate">{activeFileTab}</span>
               <ChevronDown className="ml-1 size-3.5 shrink-0 opacity-50" />
@@ -98,6 +98,7 @@ export function PreviewPanel() {
           </PopoverContent>
         </Popover>
         <Button
+          data-testid="refine-diff-toggle"
           variant="outline"
           size="sm"
           disabled={!hasBaseline}

@@ -18,7 +18,7 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
+      <div data-testid="refine-chat-empty" className="flex flex-1 items-center justify-center text-muted-foreground">
         Send a message to start refining
       </div>
     );

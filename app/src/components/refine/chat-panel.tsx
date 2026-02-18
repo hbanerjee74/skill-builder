@@ -15,7 +15,7 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
 
   if (!hasSkill) {
     return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
+      <div data-testid="refine-no-skill" className="flex h-full items-center justify-center text-muted-foreground">
         Select a skill to start refining
       </div>
     );

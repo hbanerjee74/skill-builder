@@ -46,7 +46,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   // Typing indicator while agent is running with no messages yet
   if (run.status === "running" && run.messages.length === 0) {
     return (
-      <div className="flex items-center gap-1.5 py-2 text-muted-foreground">
+      <div data-testid="refine-agent-thinking" data-agent-id={agentId} className="flex items-center gap-1.5 py-2 text-muted-foreground">
         <Loader2 className="size-3.5 animate-spin" />
         <span className="text-sm">Thinking...</span>
       </div>
@@ -54,7 +54,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   }
 
   return (
-    <div className="flex flex-col">
+    <div data-agent-id={agentId} className="flex flex-col">
       {run.messages.map((msg, i) => {
         // Skip result messages — they duplicate the assistant's final text
         if (msg.type === "result") return null;
