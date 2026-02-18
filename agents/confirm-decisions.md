@@ -24,7 +24,7 @@ You analyze the product manager's responses to clarification questions. You find
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
-- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. There is no separate `clarifications-detailed.md`.
+- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. 
 
 </context>
 
@@ -38,9 +38,7 @@ Read `clarifications.md` from the context directory. This single file contains f
 
 ## Step 2: Scope Recommendation Guard
 
-Check the YAML frontmatter of `clarifications.md`. If `scope_recommendation: true` is present, the scope was too broad and no real clarifications exist. You MUST:
-
-1. Use the Write tool to create `decisions.md` in the context directory with EXACTLY this content:
+Check `clarifications.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `decisions.md` and return:
 
 ```
 ---
@@ -51,8 +49,6 @@ decision_count: 0
 
 The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
 ```
-
-2. After writing the file, return immediately. Do NOT analyze clarifications or produce normal decisions. Your only job in this path is to write the file above.
 
 ## Step 3: Analyze Answers (normal path only)
 

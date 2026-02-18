@@ -62,10 +62,7 @@ Check if the prompt contains `/rewrite`. This determines how each phase operates
 
 Skip this guard entirely in rewrite mode.
 
-Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:
-
-1. Do NOT generate SKILL.md or any reference files
-2. Use the Write tool to create a placeholder `SKILL.md` in the skill output directory with this content:
+Check `decisions.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `SKILL.md` in the skill output directory and return:
 
 ```
 ---
@@ -77,8 +74,6 @@ scope_recommendation: true
 
 The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No skill was generated.
 ```
-
-3. Return immediately after writing the file.
 
 ## Phase 1: Plan the Skill Structure
 

@@ -53,10 +53,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 Before running any validation, check if `decisions.md` exists in the context directory. If it does not exist (common when called from refine context), skip this guard and proceed to Phase 1.
 
-If `decisions.md` exists and its YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
+If `decisions.md` exists, check it per the Scope Recommendation Guard protocol. If detected, write these stubs and return:
 
-1. Use the Write tool to create `agent-validation-log.md` in the context directory with EXACTLY this content:
-
+**`agent-validation-log.md`:**
 ```
 ---
 scope_recommendation: true
@@ -66,8 +65,7 @@ scope_recommendation: true
 Scope recommendation is active. No skill was generated, so no validation was performed.
 ```
 
-2. Use the Write tool to create `test-skill.md` in the context directory with EXACTLY this content:
-
+**`test-skill.md`:**
 ```
 ---
 scope_recommendation: true
