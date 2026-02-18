@@ -34,7 +34,8 @@ own flow optimized for the Claude Code context.
 3. **dbt specialization** -- the generated skills should be targeted and
    directional, kicking in when someone uses Claude Code to build dbt silver
    and gold models. The output should focus on what a data engineer or analytics
-   engineer actually needs.
+   engineer actually needs. This benefits both the plugin and the app since the
+   agents and content guidelines are shared.
 
 ### While we're here
 
