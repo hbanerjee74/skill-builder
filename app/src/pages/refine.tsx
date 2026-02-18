@@ -44,7 +44,11 @@ export default function RefinePage() {
   const isRunning = useRefineStore((s) => s.isRunning);
   const activeAgentId = useRefineStore((s) => s.activeAgentId);
 
-  const runs = useAgentStore((s) => s.runs);
+  // Subscribe only to the active run's status — NOT the entire runs object.
+  // Subscribing to `s.runs` causes the whole page to re-render on every agent message flush.
+  const activeRunStatus = useAgentStore((s) =>
+    activeAgentId ? s.runs[activeAgentId]?.status : undefined,
+  );
 
   const [pendingSwitchSkill, setPendingSwitchSkill] = useState<SkillSummary | null>(null);
   const autoSelectedRef = useRef(false);
@@ -88,17 +92,16 @@ export default function RefinePage() {
     }
   }, [skillParam, refinableSkills]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Watch agent completion ---
+  // --- Watch agent completion (only re-runs when status changes, not every message) ---
   useEffect(() => {
-    if (!activeAgentId) return;
+    if (!activeAgentId || !activeRunStatus) return;
 
-    const run = runs[activeAgentId];
-    const isTerminal = run?.status === "completed" || run?.status === "error" || run?.status === "shutdown";
-    if (!run || !isTerminal) return;
+    const isTerminal = activeRunStatus === "completed" || activeRunStatus === "error" || activeRunStatus === "shutdown";
+    if (!isTerminal) return;
 
-    console.log("[refine] agent %s finished: status=%s", activeAgentId, run.status);
+    console.log("[refine] agent %s finished: status=%s", activeAgentId, activeRunStatus);
 
-    if (run.status === "error" || run.status === "shutdown") {
+    if (activeRunStatus === "error" || activeRunStatus === "shutdown") {
       toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
 
@@ -112,7 +115,7 @@ export default function RefinePage() {
 
     store.setRunning(false);
     store.setActiveAgentId(null);
-  }, [activeAgentId, runs, effectiveSkillsPath, selectedSkill]);
+  }, [activeAgentId, activeRunStatus, effectiveSkillsPath, selectedSkill]);
 
   // --- Cleanup on unmount ---
   useEffect(() => {

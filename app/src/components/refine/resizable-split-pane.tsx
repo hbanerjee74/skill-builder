@@ -14,6 +14,8 @@ export function ResizableSplitPane({
   const [leftPercent, setLeftPercent] = useState(defaultLeftPercent);
   const [dragging, setDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const pendingPercentRef = useRef<number | null>(null);
+  const rafIdRef = useRef<number | null>(null);
 
   const onMouseDown = useCallback(() => {
     setDragging(true);
@@ -27,11 +29,31 @@ export function ResizableSplitPane({
       if (!container) return;
       const rect = container.getBoundingClientRect();
       const percent = ((e.clientX - rect.left) / rect.width) * 100;
-      setLeftPercent(Math.min(80, Math.max(20, percent)));
+      pendingPercentRef.current = Math.min(80, Math.max(20, percent));
+
+      // Batch updates to one per animation frame
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          if (pendingPercentRef.current !== null) {
+            setLeftPercent(pendingPercentRef.current);
+            pendingPercentRef.current = null;
+          }
+          rafIdRef.current = null;
+        });
+      }
     };
 
     const onMouseUp = () => {
       setDragging(false);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      // Apply final position
+      if (pendingPercentRef.current !== null) {
+        setLeftPercent(pendingPercentRef.current);
+        pendingPercentRef.current = null;
+      }
     };
 
     document.addEventListener("mousemove", onMouseMove);
@@ -39,6 +61,10 @@ export function ResizableSplitPane({
     return () => {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
     };
   }, [dragging]);
 

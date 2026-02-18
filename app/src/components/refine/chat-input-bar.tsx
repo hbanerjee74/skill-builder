@@ -47,6 +47,13 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // If a picker is open, Escape closes it — let Enter also close it
+      if (e.key === "Enter" && !e.shiftKey && (showFilePicker || showCommandPicker)) {
+        e.preventDefault();
+        setShowFilePicker(false);
+        setShowCommandPicker(false);
+        return;
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -58,7 +65,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
         setShowCommandPicker(true);
       }
     },
-    [handleSend, availableFiles.length, activeCommand],
+    [handleSend, availableFiles.length, activeCommand, showFilePicker, showCommandPicker],
   );
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -17,6 +17,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRefineStore } from "@/stores/refine-store";
 import { DiffView } from "./diff-view";
+
+const REMARK_PLUGINS = [remarkGfm];
+const REHYPE_PLUGINS = [rehypeHighlight];
+
+/** Memoized markdown renderer — only re-renders when content changes. */
+const MarkdownPreview = memo(({ content }: { content: string }) => (
+  <div className="markdown-body max-w-none p-4">
+    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+      {content}
+    </ReactMarkdown>
+  </div>
+));
 
 export function PreviewPanel() {
   const skillFiles = useRefineStore((s) => s.skillFiles);
@@ -104,11 +116,7 @@ export function PreviewPanel() {
           />
         ) : (
           <ScrollArea className="h-full">
-            <div className="markdown-body max-w-none p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {activeFile?.content ?? ""}
-              </ReactMarkdown>
-            </div>
+            <MarkdownPreview content={activeFile?.content ?? ""} />
           </ScrollArea>
         )}
       </div>
