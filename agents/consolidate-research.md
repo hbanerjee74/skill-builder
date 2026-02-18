@@ -26,7 +26,8 @@ When called during **detailed research** (Step 3), you instead take refinement q
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (where to write or update the output file)
   - The **skill output directory** path (containing SKILL.md and reference files)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements
+  - **User context** (inline) — the orchestrator embeds the full `user-context.md` content in the prompt under a `## User Context` heading. Use this to prioritize questions relevant to the user's industry, audience, and challenges.
+  - **Workspace directory** path — fallback: if user context is not provided inline, read `user-context.md` from this directory
 - The coordinator also provides:
   - The **source content** to consolidate (passed as inline text in the prompt)
   - The **target filename** (`clarifications.md` in both modes)

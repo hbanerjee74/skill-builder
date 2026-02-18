@@ -33,7 +33,7 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
   - The **skill output directory** path (containing SKILL.md and reference files to validate and test)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements. Use this to verify the skill addresses the user's stated audience and challenges. Pass the workspace directory to sub-agents.
+  - **User context** and **workspace directory** — per the User Context protocol. Use to verify the skill addresses the user's stated audience and challenges.
 
 </context>
 

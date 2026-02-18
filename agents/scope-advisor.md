@@ -23,7 +23,8 @@ Your output causes downstream steps (detailed research, confirm decisions, gener
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **workspace directory** path — read `user-context.md` from here for the user's industry, role, and requirements
+  - **User context** (inline) — the orchestrator embeds the full `user-context.md` content in the prompt under a `## User Context` heading. Use this to tailor scope recommendations to the user's industry, audience, and challenges.
+  - **Workspace directory** path — fallback: if user context is not provided inline, read `user-context.md` from this directory
   - The **research plan** — the planner's output including all chosen dimensions and their focus lines
   - The **dimension threshold** — the maximum dimensions configured (e.g., 5)
   - The **number of dimensions chosen** by the planner
