@@ -373,6 +373,9 @@ export const getRefineDiff = (skillName: string, workspacePath: string) =>
 export const startRefineSession = (skillName: string, workspacePath: string) =>
   invoke<RefineSessionInfo>("start_refine_session", { skillName, workspacePath })
 
+export const closeRefineSession = (sessionId: string) =>
+  invoke<void>("close_refine_session", { sessionId })
+
 export const sendRefineMessage = (
   sessionId: string,
   message: string,
