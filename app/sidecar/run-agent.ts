@@ -23,7 +23,7 @@ export function emitSystemEvent(
  */
 export function buildRefinePrompt(
   prompt: string,
-  history: { role: string; content: string }[],
+  history: { role: "user" | "assistant"; content: string }[],
 ): string {
   if (history.length === 0) return prompt;
 
