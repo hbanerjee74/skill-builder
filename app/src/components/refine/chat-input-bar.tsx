@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,14 @@ const COMMANDS: { value: RefineCommand; label: string; icon: typeof RefreshCw }[
   { value: "validate", label: "Validate skill", icon: ShieldCheck },
 ];
 
+/** Cycle to the next/previous item in a list, wrapping around. */
+function cycleValue(items: string[], current: string, direction: 1 | -1): string {
+  if (items.length === 0) return "";
+  const idx = items.indexOf(current);
+  if (idx === -1) return items[0];
+  return items[(idx + direction + items.length) % items.length];
+}
+
 interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
   isRunning: boolean;
@@ -30,8 +38,25 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
   const [activeCommand, setActiveCommand] = useState<RefineCommand | undefined>();
   const [showFilePicker, setShowFilePicker] = useState(false);
   const [showCommandPicker, setShowCommandPicker] = useState(false);
+  const [pickerValue, _setPickerValue] = useState("");
+  const pickerValueRef = useRef("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const commandRef = useRef<HTMLDivElement>(null);
+
+  /** Update picker value in both state (for rendering) and ref (for synchronous reads in event handlers). */
+  const setPickerValue = useCallback((valOrFn: string | ((prev: string) => string)) => {
+    _setPickerValue((prev) => {
+      const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
+      pickerValueRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // Item values for the currently open picker (used for arrow key cycling)
+  const pickerItems = useMemo(() => {
+    if (showCommandPicker) return COMMANDS.map((c) => c.value);
+    if (showFilePicker) return availableFiles;
+    return [];
+  }, [showCommandPicker, showFilePicker, availableFiles]);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -45,44 +70,6 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
     setTargetFiles([]);
     setActiveCommand(undefined);
   }, [text, targetFiles, activeCommand, onSend]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const pickerOpen = showFilePicker || showCommandPicker;
-
-      // Forward navigation keys to cmdk when a picker is open
-      if (pickerOpen && (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "Enter")) {
-        e.preventDefault();
-        commandRef.current?.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: e.key,
-            bubbles: true,
-          }),
-        );
-        return;
-      }
-
-      // Escape closes the picker
-      if (pickerOpen && e.key === "Escape") {
-        e.preventDefault();
-        setShowFilePicker(false);
-        setShowCommandPicker(false);
-        return;
-      }
-
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-      if (e.key === "@" && availableFiles.length > 0) {
-        setShowFilePicker(true);
-      }
-      if (e.key === "/" && !activeCommand) {
-        setShowCommandPicker(true);
-      }
-    },
-    [handleSend, availableFiles.length, activeCommand, showFilePicker, showCommandPicker],
-  );
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
@@ -125,6 +112,63 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
     setShowCommandPicker(false);
     textareaRef.current?.focus();
   }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      const pickerOpen = showFilePicker || showCommandPicker;
+
+      if (pickerOpen) {
+        // Arrow keys cycle through picker items via controlled value
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setPickerValue((prev) => cycleValue(pickerItems, prev, 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setPickerValue((prev) => cycleValue(pickerItems, prev, -1));
+          return;
+        }
+
+        // Enter confirms the currently highlighted picker item.
+        // Read from ref to avoid stale closure when ArrowDown+Enter fire in the same render cycle.
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const current = pickerValueRef.current;
+          if (showCommandPicker) {
+            const cmd = COMMANDS.find((c) => c.value === current);
+            if (cmd) selectCommand(cmd.value);
+          } else if (showFilePicker && current) {
+            const file = availableFiles.find((f) => f === current);
+            if (file) selectFile(file);
+          }
+          return;
+        }
+
+        // Escape closes the picker
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setShowFilePicker(false);
+          setShowCommandPicker(false);
+          return;
+        }
+      }
+
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+      if (e.key === "@" && availableFiles.length > 0) {
+        setShowFilePicker(true);
+        setPickerValue(availableFiles[0] ?? "");
+      }
+      if (e.key === "/" && !activeCommand) {
+        setShowCommandPicker(true);
+        setPickerValue(COMMANDS[0]?.value ?? "");
+      }
+    },
+    [handleSend, selectFile, selectCommand, availableFiles, activeCommand, showFilePicker, showCommandPicker, pickerItems],
+  );
 
   const removeFile = useCallback((filename: string) => {
     setTargetFiles((prev) => prev.filter((f) => f !== filename));
@@ -190,7 +234,7 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
             />
           </PopoverAnchor>
           <PopoverContent className="w-56 p-0" align="start" side="top">
-            <Command ref={commandRef}>
+            <Command value={pickerValue} onValueChange={setPickerValue}>
               <CommandList>
                 {showCommandPicker && (
                   <CommandGroup heading="Commands">

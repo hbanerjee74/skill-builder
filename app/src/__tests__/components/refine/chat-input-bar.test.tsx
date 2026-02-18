@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatInputBar } from "@/components/refine/chat-input-bar";
 
@@ -285,6 +285,96 @@ describe("ChatInputBar", () => {
 
     // Picker heading should not appear
     expect(screen.queryByText("Files")).not.toBeInTheDocument();
+  });
+
+  // --- Keyboard navigation in pickers ---
+
+  it("selects a command via ArrowDown + Enter keyboard navigation", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/");
+
+    // Wait for picker to be rendered before sending navigation keys
+    await waitFor(() => {
+      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+    });
+
+    // Fire navigation directly on the textarea to bypass Radix focus guards
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const badge = screen.getByTestId("refine-command-badge");
+      expect(badge).toHaveTextContent("/validate");
+    });
+  });
+
+  it("selects a file via ArrowDown + Enter keyboard navigation", async () => {
+    const user = userEvent.setup();
+    const { container } = renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "@");
+
+    // Wait for picker to be rendered
+    await waitFor(() => {
+      expect(screen.getByText("SKILL.md")).toBeInTheDocument();
+    });
+
+    // Fire navigation directly on the textarea
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const badge = container.querySelector("[data-slot='badge'][data-variant='secondary']");
+      expect(badge).toBeTruthy();
+      expect(badge!.textContent).toContain("@references/glossary.md");
+    });
+  });
+
+  it("closes picker on Escape without sending", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/");
+
+    await waitFor(() => {
+      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Rewrite skill")).not.toBeInTheDocument();
+    });
+    // Should not have sent anything
+    expect(defaultProps.onSend).not.toHaveBeenCalled();
+  });
+
+  it("wraps around when navigating past the last picker item", async () => {
+    const user = userEvent.setup();
+    renderBar();
+
+    const input = screen.getByTestId("refine-chat-input");
+    await user.type(input, "/");
+
+    await waitFor(() => {
+      expect(screen.getByText("Rewrite skill")).toBeInTheDocument();
+    });
+
+    // Two commands: rewrite (0), validate (1). Start at rewrite (0).
+    // ArrowDown → validate (1), ArrowDown → wraps to rewrite (0), Enter selects rewrite
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const badge = screen.getByTestId("refine-command-badge");
+      expect(badge).toHaveTextContent("/rewrite");
+    });
   });
 
   // --- Placeholder ---
