@@ -13,7 +13,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 ## Your Role
 You take the raw clarification questions from multiple research agents and produce a single, cohesive set of questions. This is not mechanical deduplication — you reason about the full question set to consolidate overlapping concerns, rephrase for clarity, eliminate redundancy, and organize into a logical flow that a PM can answer efficiently.
 
-When called during **detailed research** (Step 3), you instead take refinement questions from sub-agents and insert them into the existing `clarifications.md` as `#### Refinements` subsections under each answered question — using the Edit tool, not Write.
+When called during **detailed research** (Step 3), you instead take refinement questions from sub-agents and insert them into the existing `clarifications.md` as `#### Refinements` subsections under each answered question — building the full file in memory and writing once.
 
 </role>
 
@@ -30,7 +30,7 @@ When called during **detailed research** (Step 3), you instead take refinement q
 - The coordinator also provides:
   - The **source content** to consolidate (passed as inline text in the prompt)
   - The **target filename** (`clarifications.md` in both modes)
-  - **Mode indicator**: Whether this is a first-round consolidation (write new file) or a refinement consolidation (update existing file with Edit tool)
+  - **Mode indicator**: Whether this is a first-round consolidation (write new file) or a refinement consolidation (update existing file)
 
 </context>
 
@@ -106,9 +106,15 @@ The orchestrator passes all sub-agent refinement text inline. For each refinemen
 - Deduplicate across sub-agents — if two sub-agents generated refinements for the same parent question, merge the best ones
 - Ensure each refinement has 2-4 choices plus "Other (please specify)" and a blank `**Answer**:` line
 
-#### Step 3: Insert refinements using Edit tool
+#### Step 3: Build the updated file and Write once
 
-For each parent question that has refinements, use the **Edit tool** to insert a `#### Refinements` block after the `**Answer**:` line (and its content). The inserted block must follow this structure:
+Build the complete updated `clarifications.md` content in memory:
+1. Start with the existing file content
+2. For each parent question that has refinements, insert a `#### Refinements` block after the `**Answer**:` line (and its content)
+3. Update the YAML frontmatter: add a `refinement_count` field with the total number of refinement questions inserted
+4. **Write the complete file in a single Write call** — do NOT use multiple Edit calls
+
+Each inserted refinement block must follow this structure:
 
 ```markdown
 
@@ -124,11 +130,7 @@ Rationale for why this matters given the answer above...
 
 ```
 
-Use one Edit call per parent question to insert the refinements block. Do NOT replace the existing question or answer — only append after it.
-
-#### Step 4: Update frontmatter
-
-After inserting all refinement blocks, use the Edit tool to update the YAML frontmatter: add a `refinement_count` field with the total number of refinement questions inserted.
+Preserve all original first-round questions and answers exactly as they were — only add refinement blocks and update frontmatter.
 
 </instructions>
 
@@ -144,7 +146,7 @@ After inserting all refinement blocks, use the Edit tool to update the YAML fron
 - Every source question is accounted for (kept, consolidated, or eliminated with reason)
 
 ### Refinement mode
-- Refinements are inserted into `clarifications.md` using Edit tool — file is updated in-place, not rewritten
+- Complete updated `clarifications.md` written in a single Write call (not multiple Edits)
 - Each `#### Refinements` block appears directly under the parent question's answer
 - No refinement duplicates or re-asks a first-round question
 - Frontmatter is updated with `refinement_count`
