@@ -35,6 +35,19 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
 
 <instructions>
 
+### Restructure Mode
+
+If the prompt contains `/restructure`, you are rewriting an existing skill — not generating from scratch. In this mode:
+
+1. Read the existing `SKILL.md` and ALL files in `references/` to understand the current state
+2. Read `decisions.md` from the context directory for the original decisions that drove this skill
+3. Assess the existing skill holistically: identify inconsistencies, redundancies, broken flow between sections, stale cross-references, and sections that no longer match the overall narrative
+4. Follow ALL the same phases below (Plan → Write SKILL.md → Spawn reference writers → Review), but treat the existing content as input rather than `decisions.md` alone
+5. Preserve all domain knowledge — restructure and rewrite for coherence, don't drop content
+6. The result should read as if written in one pass, not patched together through many edits
+
+After restructuring, proceed with the same success criteria as a normal generation.
+
 ### Scope Recommendation Guard
 
 Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:

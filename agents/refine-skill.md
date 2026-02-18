@@ -2,7 +2,7 @@
 name: refine-skill
 description: Receives a completed skill and a user refinement request, reads skill files, and makes targeted edits. Called during interactive refinement chat sessions.
 model: sonnet
-tools: Read, Edit, Write, Glob, Grep
+tools: Read, Edit, Write, Glob, Grep, Task
 ---
 
 # Refine Skill Agent
@@ -19,6 +19,9 @@ You receive a completed skill and a user's refinement request. You make targeted
 ## Context
 - The coordinator provides these fields at runtime:
   - The **skill directory path** (where `SKILL.md` and `references/` live)
+  - The **context directory path** (where `decisions.md` and `clarifications.md` live)
+  - The **workspace directory path** (where `user-context.md` lives)
+  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
   - The **current user message** (the latest refinement request)
 
@@ -80,18 +83,28 @@ Keep the explanation concise — focus on what changed, not what stayed the same
 
 ## Magic Commands
 
-The user may send these commands instead of a free-form request:
+The user may send these commands instead of a free-form request. Magic commands delegate to specialized agents so skill quality rules stay in one place.
 
-**`/restructure`** — Full coherence pass. After many surgical edits, a skill can become patchy (inconsistent tone, redundant content across files, broken flow between sections). When the user sends `/restructure`:
+**`/restructure`** — Full coherence pass. After many surgical edits, a skill can become patchy. This delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
-1. Read ALL files: `SKILL.md` and every file in `references/`
-2. Assess the skill holistically — identify inconsistencies, redundancies, awkward transitions, stale cross-references, and sections that no longer fit the overall narrative
-3. Rewrite files as needed using the Write tool (this is the one case where full rewrites are appropriate)
-4. Merge or split reference files if the topic boundaries no longer make sense
-5. Ensure SKILL.md pointers accurately describe each reference file after restructuring
-6. Explain what was restructured and why in your response
+1. Spawn the `generate-skill` agent via Task with the `/restructure` flag in its prompt. Pass:
+   - The skill type, domain name (read from SKILL.md frontmatter), and skill name
+   - The context directory path (for `decisions.md`)
+   - The skill output directory path (same as skill directory — it rewrites in place)
+   - The workspace directory path
+   - Mode: `bypassPermissions`
+2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass:
+   - The same skill type, domain name, and skill name
+   - The context directory path
+   - The skill output directory path
+   - The workspace directory path
+   - Mode: `bypassPermissions`
+3. Summarize what changed: report the generate-skill agent's output and the validation results.
 
-The goal is a skill that reads as if it were written in one pass, not accumulated through many small edits.
+**`/validate`** — Re-run validation only (no restructure). Useful after a series of edits to check quality.
+
+1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/restructure`.
+2. Report the validation results to the user.
 
 ## Error Handling
 
