@@ -26,8 +26,7 @@ You do NOT launch dimension agents -- the orchestrator handles that based on you
   - The **context directory** path (where to write `research-plan.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
 - The orchestrator also passes:
-  - **User context** (inline) — the orchestrator embeds the full `user-context.md` content in the prompt under a `## User Context` heading. Use this to tailor dimension scoring and focus lines to the user's industry, audience, challenges, and setup.
-  - **Workspace directory** path — fallback: if user context is not provided inline, read `user-context.md` from this directory
+  - **User context** and **workspace directory** — per the User Context protocol
   - **Type-scoped dimension catalog** -- 5-6 dimensions pre-filtered by skill type, each with slug and default focus
 
 </context>

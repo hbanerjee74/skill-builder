@@ -23,10 +23,8 @@ Orchestrate research by selecting the type-scoped dimension set, spawning an opu
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (write `clarifications.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-  - The **workspace directory** path (contains `user-context.md` with the user's industry, role, audience, challenges, and scope)
-- The coordinator also provides:
-  - **User context** (optional) -- inline in the prompt (industry, function/role, audience, challenges, scope)
-- **Sub-agent propagation**: Pass the **workspace directory** path to all sub-agents (planner, dimension agents, scope-advisor, consolidation) so they can read `user-context.md`.
+  - The **workspace directory** path (contains `user-context.md`)
+- Follow the **User Context protocol** — read `user-context.md` in Phase 0 and embed inline in every sub-agent prompt.
 
 ## Type-Scoped Dimension Sets
 
@@ -81,10 +79,6 @@ When the planner selects more dimensions than the configured threshold (passed a
 
 <instructions>
 
-## Phase 0: Load User Context
-
-Read `user-context.md` from the **workspace directory**. Store the full content — you will embed it inline in every sub-agent prompt. If the file is missing or empty, proceed without it but note the gap in your final output.
-
 ## Phase 1: Research Planning
 
 Select the dimension set for the skill type from the Type-Scoped Dimension Sets in the Context section. Pass only those 5-6 dimensions (slug and default focus from the research-planner catalog) to the planner.
@@ -94,9 +88,8 @@ Spawn a **planner sub-agent** (`name: "research-planner"`, `model: "opus"`) via 
 - The **skill name**
 - The **skill type**
 - The **context directory** path (so it can write `research-plan.md`)
-- The **user context** (if any)
+- The **user context** (inline, per protocol)
 - The **type-scoped dimension catalog** (only the 5-6 dimensions for this skill type, each with slug and default focus)
-- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
 
 The planner scores each dimension, selects the top dimensions, writes `context/research-plan.md`, and returns scored YAML with the dimension slugs, scores, reasons, focus lines, and the `selected` list. The planner aims for 3-5 selections but does not enforce a hard cap -- the orchestrator enforces the max_dimensions threshold.
 
@@ -116,8 +109,7 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
    - The **domain name**, **skill name**, **skill type**
    - The full text of `research-plan.md` (the planner's output)
    - The **dimension threshold** and **number of dimensions chosen**
-   - The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
-   - The **workspace directory** path (fallback)
+   - **User context** and **workspace directory** (per protocol)
 3. The scope-advisor returns the full `clarifications.md` content as text. **You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool.
 4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
 
@@ -133,9 +125,7 @@ Include this directive in each prompt:
 Pass each agent:
 - The **domain** name
 - The planner's **tailored focus line** for that dimension (the planner embeds entity examples, metric names, and other specifics directly in the focus line)
-- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
-- The **workspace directory** path (fallback — agent should read `user-context.md` from here if inline content is missing)
-- This directive: `If user context was not provided inline above AND reading user-context.md from the workspace directory fails, prefix your response with [USER_CONTEXT_MISSING] and continue with your best effort.`
+- **User context** and **workspace directory** (per protocol)
 
 Wait for all agents to return their research text.
 
@@ -147,9 +137,7 @@ After all dimension agents return, spawn a fresh **consolidate-research** sub-ag
 Pass it:
 - The returned text from ALL dimension agents that ran, each labeled with its dimension name (e.g., "Entities Research:", "Data Quality Research:", "Metrics Research:")
 - The **domain name** and **skill type**
-- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
-- The **workspace directory** path (fallback — agent should read `user-context.md` from here if inline content is missing)
-- This directive: `If user context was not provided inline above AND reading user-context.md from the workspace directory fails, prefix your response with [USER_CONTEXT_MISSING] and continue with your best effort.`
+- **User context** and **workspace directory** (per protocol)
 
 The consolidation agent uses extended thinking to deeply reason about the full question set — identifying cross-cutting concerns, resolving overlapping questions, and organizing into a logical flow — then returns the complete `clarifications.md` content as text.
 
@@ -162,7 +150,6 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 - **Planner failure**: Report the error and stop. Do not attempt to run dimension agents without a scored plan.
 - **Dimension agent failure**: Re-spawn the failed agent once. If it fails again, proceed with available output from the other agents.
 - **Consolidation failure**: Write `clarifications.md` yourself — combine the returned text, deduplicate overlapping questions, organize into logical sections.
-- **`[USER_CONTEXT_MISSING]` in sub-agent output**: Log which agent(s) reported it. Include a warning in your final output: "Warning: User context was unavailable to: [agent names]. Results may lack personalization."
 
 </instructions>
 

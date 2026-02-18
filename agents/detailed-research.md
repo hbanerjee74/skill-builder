@@ -23,8 +23,8 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into this same file)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-  - The **workspace directory** path (contains `user-context.md` with the user's industry, role, audience, challenges, and scope)
-- **Sub-agent propagation**: Pass the **workspace directory** path to all sub-agents so they can read `user-context.md`.
+  - The **workspace directory** path (contains `user-context.md`)
+- Follow the **User Context protocol** — read `user-context.md` in Phase 0 and embed inline in every sub-agent prompt.
 - **Single artifact**: There is no separate `clarifications-detailed.md`. All refinements are added in-place to `clarifications.md` using the Edit tool.
 
 </context>
@@ -48,10 +48,6 @@ Before doing any research, read `clarifications.md` from the context directory. 
 2. Do NOT modify `clarifications.md`
 3. Return immediately with: "Scope recommendation detected. Detailed research skipped — no refinements needed."
 
-## Phase 0: Load User Context
-
-Read `user-context.md` from the **workspace directory**. Store the full content — you will embed it inline in every sub-agent prompt. If the file is missing or empty, proceed without it but note the gap in your final output.
-
 ## Phase 1: Analyze First-Round Answers
 
 Read `clarifications.md` from the context directory. Identify the topic sections (from the `sections` field in the YAML frontmatter). For each section, note:
@@ -65,9 +61,7 @@ Follow the Sub-agent Spawning protocol. Spawn one sub-agent per topic section (`
 
 - The PM's answered `clarifications.md` content (pass the text in the prompt)
 - Which section to drill into
-- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
-- The **workspace directory** path (fallback — agent should read `user-context.md` from here if inline content is missing)
-- This directive: `If user context was not provided inline above AND reading user-context.md from the workspace directory fails, prefix your response with [USER_CONTEXT_MISSING] and continue with your best effort.`
+- **User context** and **workspace directory** (per protocol)
 
 Each sub-agent's task:
 - Review the `clarifications.md` content and focus on the assigned section's answered questions
@@ -110,8 +104,7 @@ Rationale...
 After all sub-agents return their text, spawn the **consolidate-research** agent (`name: "consolidate-research"`, `model: "opus"`). Pass it:
 - The returned refinement text from all sub-agents directly in the prompt
 - The context directory path
-- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
-- The **workspace directory** path (fallback)
+- **User context** and **workspace directory** (per protocol)
 - Explicit instruction: **build the full updated file in memory and Write once** — do NOT use multiple Edit calls
 - The target filename `clarifications.md` (update mode, not create mode)
 
@@ -160,7 +153,6 @@ Rationale...
 - **If `clarifications.md` is missing or has no answers:** Report to the coordinator — detailed research requires first-round answers.
 - **If a sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
 - **If the consolidation agent fails:** Perform the consolidation yourself — build the full updated file in memory and Write once.
-- **`[USER_CONTEXT_MISSING]` in sub-agent output**: Log which agent(s) reported it. Include a warning in your final output: "Warning: User context was unavailable to: [agent names]. Refinements may lack personalization."
 
 </instructions>
 
