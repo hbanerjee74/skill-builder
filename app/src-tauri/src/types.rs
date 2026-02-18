@@ -391,6 +391,38 @@ pub struct FileDiff {
     pub new_content: Option<String>,
 }
 
+// ─── Refine session types (VD-702) ──────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillFileContent {
+    /// Relative path from the skill root (e.g. "SKILL.md", "references/guide.md")
+    pub path: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineFileDiff {
+    pub path: String,
+    /// One of "added", "modified", "deleted"
+    pub status: String,
+    /// Unified diff text for this file
+    pub diff: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineDiff {
+    /// Human-readable change summary (e.g. "1 file(s) changed, 3 insertion(s)(+)")
+    pub stat: String,
+    pub files: Vec<RefineFileDiff>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefineSessionInfo {
+    pub session_id: String,
+    pub skill_name: String,
+    pub created_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
