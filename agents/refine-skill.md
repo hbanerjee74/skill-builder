@@ -85,9 +85,9 @@ Keep the explanation concise — focus on what changed, not what stayed the same
 
 The user may send these commands instead of a free-form request. Magic commands delegate to specialized agents so skill quality rules stay in one place.
 
-**`/restructure`** — Full coherence pass. After many surgical edits, a skill can become patchy. This delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
+**`/rewrite`** — Full coherence pass. After many surgical edits, a skill can become patchy. This delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
-1. Spawn the `generate-skill` agent via Task with the `/restructure` flag in its prompt. Pass:
+1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
    - The skill type, domain name (read from SKILL.md frontmatter), and skill name
    - The context directory path (for `decisions.md`)
    - The skill output directory path (same as skill directory — it rewrites in place)
@@ -101,9 +101,9 @@ The user may send these commands instead of a free-form request. Magic commands 
    - Mode: `bypassPermissions`
 3. Summarize what changed: report the generate-skill agent's output and the validation results.
 
-**`/validate`** — Re-run validation only (no restructure). Useful after a series of edits to check quality.
+**`/validate`** — Re-run validation only (no rewrite). Useful after a series of edits to check quality.
 
-1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/restructure`.
+1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite`.
 2. Report the validation results to the user.
 
 ## Error Handling

@@ -1,6 +1,6 @@
 ---
 name: validate-skill
-description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found. Also called via /validate or after /restructure from the refine-skill agent to re-validate an edited skill.
+description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found. Also called via /validate or after /rewrite from the refine-skill agent to re-validate an edited skill.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
