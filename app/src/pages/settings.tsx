@@ -166,7 +166,11 @@ export default function SettingsPage() {
         industry: settings.industry,
         functionRole: settings.function_role,
       })
-      console.log("[settings] Settings saved")
+      const changed = Object.entries(overrides)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ")
+      console.log(`[settings] Saved: ${changed}`)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
