@@ -34,8 +34,10 @@ Given the issue, deliver a working implementation that satisfies all acceptance 
 - Issue assigned and worktree ready
 - Plan approved by user (if full flow)
 - All ACs implemented and checked off on Linear
-- Code review passed
 - Tests passing
+- Code simplified and clean
+- Code review passed
+- Documentation updated
 - PR created and linked
 
 **Deciding your approach:**
@@ -48,43 +50,62 @@ Given the issue, deliver a working implementation that satisfies all acceptance 
 - Each coding agent checks off its ACs on Linear after tests pass via `linear-server:update_issue`.
 - Coordinator writes Implementation Updates at checkpoints. See [linear-updates.md](references/linear-updates.md).
 
-**After every code-changing turn:**
-- Run `git diff --name-only main` in the worktree to see what changed.
-- **Recommend test mode:** If ANY changed file matches an agent-related path (see [test-mode.md](references/test-mode.md)), recommend full mode. Otherwise recommend mock mode. Include the launch command.
-- **Review requirements and ACs against changes:** Compare what was just implemented to the issue's description, requirements, and acceptance criteria. If the change reveals that requirements are missing context, ACs are incomplete or overly broad, or either needs adjustment, recommend specific updates to the user. If the user agrees, update the Linear issue immediately.
+**After every code-changing turn** (during implementation only — formal testing happens in the post-implementation pipeline):
+- Flag any gaps between implemented changes and the issue's requirements/ACs. If the user agrees to adjustments, update the Linear issue.
 
-**Before declaring done:**
-- Code review: see [review-flow.md](references/review-flow.md). Max 2 cycles.
-- Tests pass for changed files per the project's test strategy. Max 3 attempts, then escalate to user.
-- **Update `app/tests/TEST_MANIFEST.md`** if you add new Rust commands, E2E spec files, or plugin source patterns — keep the cross-layer map current.
-- All ACs verified checked on Linear. If any missed, spawn a fix agent and re-verify.
-- PR created and linked. See [git-and-pr.md](references/git-and-pr.md). **Do NOT remove the worktree** — user tests manually on it.
+## Post-Implementation Pipeline
 
-## Completion (do these steps exactly)
+Execute these phases in order after all ACs are implemented. Each phase must pass before moving to the next. Copy this checklist and check off phases as you complete them:
 
-Only enter when all ACs are verified and PR is created.
+```
+Pipeline Progress:
+- [ ] Phase 1: Unit & integration tests written/updated
+- [ ] Phase 2: E2E tests assessed and written (if needed)
+- [ ] Phase 3: Targeted tests passing
+- [ ] Phase 4: Code simplified
+- [ ] Phase 5: Code review passed
+- [ ] Phase 6: Documentation updated
+- [ ] Phase 7: E2E tests passing
+```
 
-1. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
-2. Move issue to Review via `linear-server:update_issue`.
-3. **Determine test mode.** Run `git diff --name-only main` in the worktree. Classify using [test-mode.md](references/test-mode.md): if ANY changed file matches an agent-related path, recommend full mode; otherwise mock mode.
-4. **Report to user** with this format:
+### Phase 1: Unit & Integration Tests
 
-   > **PR:** <url>
-   > **Worktree:** `../worktrees/<branch>`
-   >
-   > **Test mode: Mock** *(or Full)*
-   > ```
-   > cd ../worktrees/<branch>/app && MOCK_AGENTS=true npm run dev
-   > ```
-   > *(or `npm run dev` for full mode)*
-   >
-   > **Manual test steps:**
-   > - [ ] <step from PR test plan>
-   > - [ ] ...
-   >
-   > **Relevant E2E tags:** `@workflow`, `@dashboard`, etc.
+Ensure tests cover all changed behavior. Follow the project's test discipline in CLAUDE.md — update broken tests, remove redundant ones, add tests only for new behavior. Update `app/tests/TEST_MANIFEST.md` if new Rust commands, E2E spec files, or plugin source patterns were added.
 
-5. **Do NOT remove the worktree.**
+### Phase 2: E2E Tests
+
+Assess whether changes affect user-facing flows that warrant new Playwright E2E tests. If so, write specs with appropriate tags and update `app/tests/TEST_MANIFEST.md`. If not, note why and skip.
+
+### Phase 3: Run Targeted Tests
+
+Run tests per the project's test strategy (see CLAUDE.md "Choosing which tests to run"). Max 3 attempts per failure, then escalate to user.
+
+### Phase 4: Code Simplification
+
+Spawn `code-simplifier:code-simplifier` targeting the worktree. It reviews recently changed files and simplifies for clarity, consistency, and maintainability while preserving all functionality. Fix any issues it surfaces, then re-run affected tests to confirm nothing broke.
+
+### Phase 5: Code Review
+
+Spawn `feature-dev:code-reviewer`. See [review-flow.md](references/review-flow.md). Max 2 review-fix cycles — fix high/medium issues, note low-severity if not straightforward.
+
+### Phase 6: Update Documentation
+
+Keep project docs in sync with changes. Check `CLAUDE.md` (and its `@import` files) and any `README.md` in changed directories. Update if the changes affect documented architecture, commands, conventions, or usage. Commit doc updates separately.
+
+### Phase 7: Run E2E Tests
+
+Run E2E tests tagged for the changed areas. This is the final validation gate after simplification, review fixes, and doc updates. Fix failures. Max 3 attempts, then escalate to user.
+
+## Completion
+
+Enter when all pipeline phases pass.
+
+1. Verify all ACs are checked on Linear. If any missed, spawn a fix agent and re-verify.
+2. Create PR and link to issue. See [git-and-pr.md](references/git-and-pr.md).
+3. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
+4. Move issue to Review via `linear-server:update_issue`.
+5. Report to user with: PR link, worktree path, recommended test mode (see [test-mode.md](references/test-mode.md)) with launch command, manual test steps from the PR test plan, and relevant E2E tags.
+6. **Do NOT remove the worktree** — user tests manually on it.
 
 ## Sub-agent Type Selection
 
@@ -95,6 +116,7 @@ These are `subagent_type` values for the `Task` tool — not MCP tools.
 | Planning | feature-dev:code-architect | sonnet |
 | Codebase exploration | Explore | default |
 | Implementation | general-purpose | default |
+| Code simplification | code-simplifier:code-simplifier | default |
 | Code review | feature-dev:code-reviewer | default |
 | Linear updates | general-purpose | haiku |
 
