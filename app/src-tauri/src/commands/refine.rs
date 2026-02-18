@@ -63,11 +63,7 @@ fn build_refine_config(
     extended_context: bool,
     extended_thinking: bool,
 ) -> (SidecarConfig, String) {
-    let thinking_budget: Option<u32> = if extended_thinking {
-        Some(16_000)
-    } else {
-        None
-    };
+    let thinking_budget = extended_thinking.then_some(16_000u32);
 
     let cwd = Path::new(skills_path)
         .join(skill_name)
@@ -92,11 +88,7 @@ fn build_refine_config(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        conversation_history: if conversation_history.is_empty() {
-            None
-        } else {
-            Some(conversation_history)
-        },
+        conversation_history: (!conversation_history.is_empty()).then_some(conversation_history),
     };
 
     (config, agent_id)
@@ -165,13 +157,7 @@ fn get_skill_content_inner(
         let mut refs: Vec<_> = std::fs::read_dir(&references_dir)
             .map_err(|e| format!("Failed to read references dir: {}", e))?
             .flatten()
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .map(|ext| ext == "md" || ext == "txt")
-                    .unwrap_or(false)
-            })
+            .filter(|e| matches!(e.path().extension().and_then(|x| x.to_str()), Some("md" | "txt")))
             .collect();
         refs.sort_by_key(|e| e.file_name());
         for entry in refs {
@@ -284,14 +270,14 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
                 current_file = Some(path.clone());
             }
 
-            // Append diff content
+            // Append diff content (context, additions, deletions only)
             let origin = line.origin();
-            if origin == '+' || origin == '-' || origin == ' ' {
-                if let Ok(s) = std::str::from_utf8(line.content()) {
-                    if let Some(entry) = file_map.get_mut(&path) {
-                        entry.diff.push(origin);
-                        entry.diff.push_str(s);
-                    }
+            if matches!(origin, '+' | '-' | ' ') {
+                if let (Ok(s), Some(entry)) =
+                    (std::str::from_utf8(line.content()), file_map.get_mut(&path))
+                {
+                    entry.diff.push(origin);
+                    entry.diff.push_str(s);
                 }
             }
 
@@ -310,12 +296,14 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
         });
     }
 
-    // Build stat summary from line counts
+    // Build stat summary from line counts (single pass per file)
     let total_files = file_map.len();
     let (insertions, deletions) = file_map.values().fold((0usize, 0usize), |(ins, del), f| {
-        let line_ins = f.diff.lines().filter(|l| l.starts_with('+')).count();
-        let line_del = f.diff.lines().filter(|l| l.starts_with('-')).count();
-        (ins + line_ins, del + line_del)
+        f.diff.lines().fold((ins, del), |(i, d), line| match line.as_bytes().first() {
+            Some(b'+') => (i + 1, d),
+            Some(b'-') => (i, d + 1),
+            _ => (i, d),
+        })
     });
 
     let stat = format!(
