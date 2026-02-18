@@ -228,6 +228,7 @@ pub fn run() {
             commands::refine::get_refine_diff,
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
+            commands::refine::close_refine_session,
         ])
         .on_window_event(|window, event| {
             use tauri::Emitter;

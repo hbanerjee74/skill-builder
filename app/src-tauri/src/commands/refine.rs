@@ -4,6 +4,7 @@ use std::sync::Mutex;
 
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
+use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -60,6 +61,7 @@ pub fn get_skill_content_for_refine(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<SkillFileContent>, String> {
     log::info!("[get_skill_content_for_refine] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!("[get_skill_content_for_refine] Failed to resolve skills path: {}", e);
         e
@@ -142,6 +144,7 @@ pub fn get_refine_diff(
     db: tauri::State<'_, Db>,
 ) -> Result<RefineDiff, String> {
     log::info!("[get_refine_diff] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!("[get_refine_diff] Failed to resolve skills path: {}", e);
         e
@@ -279,6 +282,7 @@ pub async fn start_refine_session(
     db: tauri::State<'_, Db>,
 ) -> Result<RefineSessionInfo, String> {
     log::info!("[start_refine_session] skill={}", skill_name);
+    validate_skill_name(&skill_name)?;
 
     let skills_path = resolve_skills_path(&db, &workspace_path).map_err(|e| {
         log::error!("[start_refine_session] Failed to resolve skills path: {}", e);
@@ -394,7 +398,10 @@ pub async fn send_refine_message(
         None
     };
 
-    let cwd = format!("{}/{}", skills_path, skill_name);
+    let cwd = Path::new(&skills_path)
+        .join(&skill_name)
+        .to_string_lossy()
+        .to_string();
     let agent_id = format!("refine-{}-{}", skill_name, chrono::Utc::now().timestamp_millis());
 
     log::debug!(
@@ -446,6 +453,31 @@ pub async fn send_refine_message(
     })?;
 
     Ok(agent_id)
+}
+
+// ─── close_refine_session ─────────────────────────────────────────────────────
+
+/// Close a refine session, removing it from the session manager.
+///
+/// Called by the frontend when navigating away from the refine chat or when
+/// the user explicitly ends the session. This frees the one-per-skill slot
+/// so a new session can be started for the same skill.
+#[tauri::command]
+pub fn close_refine_session(
+    session_id: String,
+    sessions: tauri::State<'_, RefineSessionManager>,
+) -> Result<(), String> {
+    log::info!("[close_refine_session] session={}", session_id);
+    let mut map = sessions.0.lock().map_err(|e| {
+        log::error!("[close_refine_session] Failed to acquire session lock: {}", e);
+        e.to_string()
+    })?;
+    if map.remove(&session_id).is_some() {
+        log::debug!("[close_refine_session] removed session {}", session_id);
+    } else {
+        log::debug!("[close_refine_session] session {} not found (already closed)", session_id);
+    }
+    Ok(())
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -737,6 +769,50 @@ mod tests {
         assert_eq!(ch.as_array().unwrap().len(), 2);
         assert_eq!(ch[0]["role"], "user");
         assert_eq!(ch[1]["role"], "assistant");
+    }
+
+    #[test]
+    fn test_close_session_removes_entry() {
+        let manager = RefineSessionManager::new();
+        let session_id = "to-close".to_string();
+
+        {
+            let mut map = manager.0.lock().unwrap();
+            map.insert(
+                session_id.clone(),
+                RefineSession {
+                    session_id: session_id.clone(),
+                    skill_name: "my-skill".to_string(),
+                    created_at: "2026-01-01T00:00:00Z".to_string(),
+                    conversation: Vec::new(),
+                },
+            );
+            assert_eq!(map.len(), 1);
+        }
+
+        // Simulate close: remove by session_id
+        {
+            let mut map = manager.0.lock().unwrap();
+            assert!(map.remove(&session_id).is_some());
+        }
+
+        let map = manager.0.lock().unwrap();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn test_close_nonexistent_session_is_noop() {
+        let manager = RefineSessionManager::new();
+        let mut map = manager.0.lock().unwrap();
+        assert!(map.remove("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_skill_name_validation_rejects_traversal() {
+        assert!(validate_skill_name("good-name").is_ok());
+        assert!(validate_skill_name("../bad").is_err());
+        assert!(validate_skill_name("bad/name").is_err());
+        assert!(validate_skill_name("").is_err());
     }
 
     #[test]
