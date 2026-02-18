@@ -5,6 +5,12 @@ export interface DiffLine {
   content: string;
 }
 
+function changeToDiffType(change: Change): DiffLine["type"] {
+  if (change.added) return "added";
+  if (change.removed) return "removed";
+  return "unchanged";
+}
+
 export function computeLineDiff(before: string, after: string): DiffLine[] {
   const changes: Change[] = diffLines(before, after);
   const result: DiffLine[] = [];
@@ -13,15 +19,10 @@ export function computeLineDiff(before: string, after: string): DiffLine[] {
     const lines = change.value.split("\n");
     // diffLines includes trailing empty string for final newline
     const trimmed = lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
+    const type = changeToDiffType(change);
 
     for (const line of trimmed) {
-      if (change.added) {
-        result.push({ type: "added", content: line });
-      } else if (change.removed) {
-        result.push({ type: "removed", content: line });
-      } else {
-        result.push({ type: "unchanged", content: line });
-      }
+      result.push({ type, content: line });
     }
   }
 

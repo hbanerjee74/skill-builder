@@ -26,7 +26,6 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
       <ChatInputBar
         onSend={onSend}
         isRunning={isRunning}
-        disabled={!hasSkill}
         availableFiles={availableFiles}
       />
     </div>

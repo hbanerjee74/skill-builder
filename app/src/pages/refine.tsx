@@ -93,34 +93,32 @@ export default function RefinePage() {
     if (!activeAgentId) return;
 
     const run = runs[activeAgentId];
-    if (!run) return;
+    const isTerminal = run?.status === "completed" || run?.status === "error" || run?.status === "shutdown";
+    if (!run || !isTerminal) return;
 
-    if (run.status === "completed" || run.status === "error" || run.status === "shutdown") {
-      const store = useRefineStore.getState();
-
-      if (run.status === "error" || run.status === "shutdown") {
-        toast.error("Agent failed — check the chat for details", { duration: Infinity });
-      }
-
-      // Re-read skill files to capture any changes the agent made
-      if (effectiveSkillsPath && selectedSkill) {
-        loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
-          if (files) store.updateSkillFiles(files);
-        });
-      }
-
-      store.setRunning(false);
-      store.setActiveAgentId(null);
+    if (run.status === "error" || run.status === "shutdown") {
+      toast.error("Agent failed — check the chat for details", { duration: Infinity });
     }
+
+    // Re-read skill files to capture any changes the agent made
+    const store = useRefineStore.getState();
+    if (effectiveSkillsPath && selectedSkill) {
+      loadSkillFiles(effectiveSkillsPath, selectedSkill.name).then((files) => {
+        if (files) store.updateSkillFiles(files);
+      });
+    }
+
+    store.setRunning(false);
+    store.setActiveAgentId(null);
   }, [activeAgentId, runs, effectiveSkillsPath, selectedSkill]);
 
   // --- Cleanup on unmount ---
   useEffect(() => {
     return () => {
-      const { isRunning: running, activeAgentId: agentId } = useRefineStore.getState();
-      if (running && agentId) {
-        useRefineStore.getState().setRunning(false);
-        useRefineStore.getState().setActiveAgentId(null);
+      const store = useRefineStore.getState();
+      if (store.isRunning && store.activeAgentId) {
+        store.setRunning(false);
+        store.setActiveAgentId(null);
       }
     };
   }, []);

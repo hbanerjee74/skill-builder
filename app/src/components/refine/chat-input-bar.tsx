@@ -15,17 +15,14 @@ import {
 interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[]) => void;
   isRunning: boolean;
-  disabled: boolean;
   availableFiles: string[];
 }
 
-export function ChatInputBar({ onSend, isRunning, disabled, availableFiles }: ChatInputBarProps) {
+export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBarProps) {
   const [text, setText] = useState("");
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const [showFilePicker, setShowFilePicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const isDisabled = isRunning || disabled;
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -57,24 +54,20 @@ export function ChatInputBar({ onSend, isRunning, disabled, availableFiles }: Ch
     }
   }, []);
 
-  const selectFile = useCallback(
-    (filename: string) => {
-      if (!targetFiles.includes(filename)) {
-        setTargetFiles((prev) => [...prev, filename]);
+  const selectFile = useCallback((filename: string) => {
+    setTargetFiles((prev) =>
+      prev.includes(filename) ? prev : [...prev, filename],
+    );
+    setText((prev) => {
+      const atIdx = prev.lastIndexOf("@");
+      if (atIdx >= 0) {
+        return prev.slice(0, atIdx) + `@${filename} `;
       }
-      // Insert @filename into text
-      setText((prev) => {
-        const atIdx = prev.lastIndexOf("@");
-        if (atIdx >= 0) {
-          return prev.slice(0, atIdx) + `@${filename} `;
-        }
-        return prev + `@${filename} `;
-      });
-      setShowFilePicker(false);
-      textareaRef.current?.focus();
-    },
-    [targetFiles],
-  );
+      return prev + `@${filename} `;
+    });
+    setShowFilePicker(false);
+    textareaRef.current?.focus();
+  }, []);
 
   const removeFile = useCallback((filename: string) => {
     setTargetFiles((prev) => prev.filter((f) => f !== filename));
@@ -107,7 +100,7 @@ export function ChatInputBar({ onSend, isRunning, disabled, availableFiles }: Ch
               onChange={handleChange}
               onKeyDown={handleKeyDown}
               placeholder="Describe what to change..."
-              disabled={isDisabled}
+              disabled={isRunning}
               className="min-h-10 resize-none"
               rows={1}
             />
@@ -130,7 +123,7 @@ export function ChatInputBar({ onSend, isRunning, disabled, availableFiles }: Ch
         <Button
           size="icon"
           onClick={handleSend}
-          disabled={isDisabled || !text.trim()}
+          disabled={isRunning || !text.trim()}
         >
           <SendHorizontal className="size-4" />
         </Button>

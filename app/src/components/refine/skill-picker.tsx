@@ -12,9 +12,21 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { SkillSummary } from "@/lib/types";
-import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types";
-import type { SkillType } from "@/lib/types";
+import {
+  SKILL_TYPE_LABELS,
+  SKILL_TYPE_COLORS,
+  type SkillSummary,
+  type SkillType,
+} from "@/lib/types";
+
+function SkillTypeBadge({ skillType, className }: { skillType: string; className?: string }) {
+  const type = skillType as SkillType;
+  return (
+    <Badge className={`text-[10px] px-1.5 py-0 ${SKILL_TYPE_COLORS[type] ?? ""} ${className ?? ""}`}>
+      {SKILL_TYPE_LABELS[type] ?? skillType}
+    </Badge>
+  );
+}
 
 interface SkillPickerProps {
   skills: SkillSummary[];
@@ -37,13 +49,7 @@ export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPick
           {selected ? (
             <span className="flex items-center gap-2 truncate">
               <span className="truncate">{selected.display_name ?? selected.name}</span>
-              {selected.skill_type && (
-                <Badge
-                  className={`text-[10px] px-1.5 py-0 ${SKILL_TYPE_COLORS[selected.skill_type as SkillType] ?? ""}`}
-                >
-                  {SKILL_TYPE_LABELS[selected.skill_type as SkillType] ?? selected.skill_type}
-                </Badge>
-              )}
+              {selected.skill_type && <SkillTypeBadge skillType={selected.skill_type} />}
             </span>
           ) : (
             <span className="text-muted-foreground">Select a skill...</span>
@@ -67,13 +73,7 @@ export function SkillPicker({ skills, selected, isLoading, onSelect }: SkillPick
                   }}
                 >
                   <span className="truncate">{skill.display_name ?? skill.name}</span>
-                  {skill.skill_type && (
-                    <Badge
-                      className={`ml-auto text-[10px] px-1.5 py-0 ${SKILL_TYPE_COLORS[skill.skill_type as SkillType] ?? ""}`}
-                    >
-                      {SKILL_TYPE_LABELS[skill.skill_type as SkillType] ?? skill.skill_type}
-                    </Badge>
-                  )}
+                  {skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className="ml-auto" />}
                 </CommandItem>
               ))}
             </CommandGroup>

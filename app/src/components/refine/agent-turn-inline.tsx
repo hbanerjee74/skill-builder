@@ -10,6 +10,8 @@ import {
   MessageItem,
 } from "@/components/agent-output-panel";
 
+const EMPTY_TOOL_GROUPS = { groups: new Map<number, number[]>(), memberOf: new Map<number, number>() };
+
 interface AgentTurnInlineProps {
   agentId: string;
 }
@@ -36,7 +38,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   );
 
   const toolCallGroupMap = useMemo(
-    () => (run ? computeToolCallGroups(run.messages) : { groups: new Map(), memberOf: new Map() }),
+    () => (run ? computeToolCallGroups(run.messages) : EMPTY_TOOL_GROUPS),
     [run?.messages],
   );
 
