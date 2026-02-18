@@ -174,9 +174,11 @@ describe("NewSkillDialog", () => {
 
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
     expect(
-      screen.getByText("Describe the domain this skill covers."),
+      screen.getByText("Describe the domain, scope, and tags."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scope")).toBeInTheDocument();
+    expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
   it("shows skills output location on Step 2 when skillsPath is set", async () => {
@@ -293,8 +295,6 @@ describe("NewSkillDialog", () => {
     await fillStep1AndAdvance(user);
     await advanceToStep3(user);
 
-    expect(screen.getByLabelText("Scope")).toBeInTheDocument();
-    expect(screen.getByText("Tags")).toBeInTheDocument();
     expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
     expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
     expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
@@ -328,16 +328,6 @@ describe("NewSkillDialog", () => {
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
   });
 
-  it("renders tag input on Step 3", async () => {
-    const user = userEvent.setup();
-    renderDialog();
-    await openDialog(user);
-    await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
-
-    expect(screen.getByText("Tags")).toBeInTheDocument();
-  });
-
   // --- Submit scenarios ---
 
   it("passes selected skillType to invoke on submit", async () => {
@@ -363,14 +353,13 @@ describe("NewSkillDialog", () => {
     });
   });
 
-  it("passes tags to invoke when tags are added on Step 3", async () => {
+  it("passes tags to invoke when tags are added on Step 2", async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
     await openDialog(user);
     await fillStep1AndAdvance(user, "test-domain", /Source/i);
-    await advanceToStep3(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "analytics{Enter}");
@@ -460,7 +449,6 @@ describe("NewSkillDialog", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ana");
@@ -478,7 +466,6 @@ describe("NewSkillDialog", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user, "test");
-    await advanceToStep3(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");
@@ -518,7 +505,6 @@ describe("NewSkillDialog", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ANA");
@@ -535,7 +521,6 @@ describe("NewSkillDialog", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
 

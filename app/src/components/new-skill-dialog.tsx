@@ -172,7 +172,7 @@ export default function NewSkillDialog({
             <DialogTitle>Create New Skill</DialogTitle>
             <DialogDescription>
               {step === 1 && "Name your skill and choose its type."}
-              {step === 2 && "Describe the domain this skill covers."}
+              {step === 2 && "Describe the domain, scope, and tags."}
               {step === 3 && "Add optional details to guide research."}
             </DialogDescription>
           </DialogHeader>
@@ -243,7 +243,7 @@ export default function NewSkillDialog({
               </>
             )}
 
-            {/* Step 2: Domain */}
+            {/* Step 2: Domain + Scope + Tags */}
             {step === 2 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -261,19 +261,6 @@ export default function NewSkillDialog({
                     Brief description of the skill&apos;s domain
                   </p>
                 </div>
-
-                {/* Skills output location */}
-                {skillsPath && name && (
-                  <p className="text-xs text-muted-foreground">
-                    Output: <code className="text-xs">{skillsPath}/{name}/</code>
-                  </p>
-                )}
-              </>
-            )}
-
-            {/* Step 3: Optional detail fields */}
-            {step === 3 && (
-              <>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="scope">Scope</Label>
                   <GhostTextarea
@@ -300,6 +287,19 @@ export default function NewSkillDialog({
                     placeholder="e.g., salesforce, analytics"
                   />
                 </div>
+
+                {/* Skills output location */}
+                {skillsPath && name && (
+                  <p className="text-xs text-muted-foreground">
+                    Output: <code className="text-xs">{skillsPath}/{name}/</code>
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* Step 3: Optional detail fields */}
+            {step === 3 && (
+              <>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="audience">Target Audience</Label>
                   <GhostTextarea
