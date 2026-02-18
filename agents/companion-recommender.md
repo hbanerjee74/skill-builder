@@ -1,5 +1,5 @@
 ---
-name: validate-companion-recommender
+name: companion-recommender
 description: Analyzes skipped research dimensions and recommends companion skills that fill knowledge gaps. Called as a sub-agent during validation (Step 7).
 model: sonnet
 tools: Read, Glob, Grep
@@ -70,3 +70,4 @@ Return findings as text using this format:
 ```
 
 </instructions>
+</output>

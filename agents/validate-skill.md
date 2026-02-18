@@ -45,9 +45,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 | Sub-agent | Model | Purpose |
 |---|---|---|
-| `quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness (see `agents/validate-quality.md`) |
-| `test-evaluator` | haiku | Generate and evaluate 5 test prompts against skill content (see `agents/validate-test-evaluator.md`) |
-| `companion-recommender` | sonnet | Recommend companion skills from skipped research dimensions (see `agents/validate-companion-recommender.md`) |
+| `validate-quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness (see `agents/validate-quality.md`) |
+| `test-skill` | haiku | Generate and evaluate 5 test prompts against skill content (see `agents/test-skill.md`) |
+| `companion-recommender` | sonnet | Recommend companion skills from skipped research dimensions (see `agents/companion-recommender.md`) |
 
 ### Scope Recommendation Guard
 
@@ -100,18 +100,18 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 Spawn all 3 sub-agents in the same turn via the Task tool. All sub-agents **return text** — they do not write files.
 
-Spawn a **quality sub-agent** (`name: "quality"`, `model: "sonnet"`) via the Task tool. See `agents/validate-quality.md` for the full specification. Pass it:
+Spawn a **quality sub-agent** (`name: "validate-quality"`, `model: "sonnet"`) via the Task tool. See `agents/validate-quality.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
 - `SKILL.md` and all `references/` file paths
 - The **skill type**
 - The **workspace directory** path
 
-Spawn a **test evaluator sub-agent** (`name: "test-evaluator"`, `model: "haiku"`) via the Task tool. See `agents/validate-test-evaluator.md` for the full specification. Pass it:
+Spawn a **test evaluator sub-agent** (`name: "test-skill"`, `model: "haiku"`) via the Task tool. See `agents/test-skill.md` for the full specification. Pass it:
 - `decisions.md` and `clarifications.md` paths
 - `SKILL.md` and all `references/` file paths
 - The **workspace directory** path
 
-Spawn a **companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`) via the Task tool. See `agents/validate-companion-recommender.md` for the full specification. Pass it:
+Spawn a **companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`) via the Task tool. See `agents/companion-recommender.md` for the full specification. Pass it:
 - `SKILL.md` and all `references/` file paths
 - `decisions.md` and `research-plan.md` paths (from the context directory)
 - The **skill type**
@@ -146,7 +146,7 @@ The orchestrator writes three files. Each has a structured format that the app U
 
 **`test-skill.md`** — Summary (total/passed/partial/failed counts), test results (prompt, category, result, coverage, gap per test), skill content issues, and suggested PM prompts.
 
-**`companion-skills.md`** — YAML frontmatter with structured companion data (for UI parsing) plus markdown body with detailed reasoning per recommendation. See `agents/validate-companion-recommender.md` for the YAML schema. If no recommendations, use `companions: []`.
+**`companion-skills.md`** — YAML frontmatter with structured companion data (for UI parsing) plus markdown body with detailed reasoning per recommendation. See `agents/companion-recommender.md` for the YAML schema. If no recommendations, use `companions: []`.
 
 ### Short Example
 

@@ -35,7 +35,7 @@ run_t1() {
   assert_count_eq "$tier" "agent_file_count_is_29" "29" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="confirm-decisions consolidate-research detailed-research generate-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods scope-advisor validate-companion-recommender validate-quality validate-skill validate-test-evaluator"
+  local all_agents="companion-recommender confirm-decisions consolidate-research detailed-research generate-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods scope-advisor test-skill validate-quality validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
@@ -64,7 +64,7 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       consolidate-research|confirm-decisions|research-planner|scope-advisor) echo "opus" ;;
-      research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state|validate-test-evaluator) echo "haiku" ;;
+      research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state|test-skill) echo "haiku" ;;
       *) echo "sonnet" ;;
     esac
   }

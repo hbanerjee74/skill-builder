@@ -1,5 +1,5 @@
 ---
-name: validate-test-evaluator
+name: test-skill
 description: Generates domain-specific test prompts and evaluates skill content against them. Called as a sub-agent during validation (Step 7).
 model: haiku
 tools: Read, Glob, Grep
@@ -57,3 +57,4 @@ For PARTIAL/FAIL results: explain what the engineer would expect, what the skill
 Return all results as text, one block per test, including the prompt text, category, result, what the skill covers, and what's missing (or "None" for PASS).
 
 </instructions>
+</output>

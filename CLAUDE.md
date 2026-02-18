@@ -185,7 +185,7 @@ Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the 
 ## Shared Components
 
 Both frontends use the same files -- no conversion needed:
-- `agents/` -- 29 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill + validate-quality + validate-test-evaluator + validate-companion-recommender)
+- `agents/` -- 29 agents (18 research dimensions + planner + orchestrator + scope-advisor + consolidate-research + detailed-research + confirm-decisions + generate-skill + validate-skill + validate-quality + test-skill + companion-recommender)
 - `agent-sources/workspace/CLAUDE.md` -- agent instructions (protocols, content principles, best practices); the app deploys this to `.claude/CLAUDE.md` in workspace, the plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh`
 
 ## Skill Configuration
