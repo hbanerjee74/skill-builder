@@ -1,6 +1,6 @@
 ---
 name: validate-skill
-description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found.
+description: Coordinates parallel validation and testing of skill files, then fixes issues. Called during Step 7 to validate best practices, generate test prompts, and fix issues found. Also called via /validate or after /restructure from the refine-skill agent to re-validate an edited skill.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -43,7 +43,9 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 
 ### Scope Recommendation Guard
 
-Before running any validation, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
+Before running any validation, check if `decisions.md` exists in the context directory. If it does not exist (common when called from refine context), skip this guard and proceed to Phase 1.
+
+If `decisions.md` exists and its YAML frontmatter contains `scope_recommendation: true`, the scope was too broad. You MUST:
 
 1. Use the Write tool to create `agent-validation-log.md` in the context directory with EXACTLY this content:
 
@@ -71,7 +73,7 @@ Scope recommendation is active. No skill was generated, so no tests were run.
 
 ## Phase 1: Inventory and Prepare
 
-1. Read `decisions.md` and `clarifications.md` from the context directory.
+1. Read `decisions.md` and `clarifications.md` from the context directory. If either file does not exist (common when called via `/validate` from refine-skill), note their absence and continue — coverage checking will be skipped but all other validation proceeds.
 2. Read `SKILL.md` and all files in `references/`. Understand:
    - What domain knowledge the skill covers
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
@@ -98,7 +100,7 @@ All sub-agents **return text** — they do not write files.
 
 **Sub-agent A: Coverage & Structure Check** (`name: "coverage-structure"`)
 
-Cross-cutting checker. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files.
+Cross-cutting checker. Reads `SKILL.md` and all `references/` files. If `decisions.md` and `clarifications.md` are available, also reads those and checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). If `decisions.md` is unavailable, skip coverage checking and focus on structural validation only. Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files.
 
 Also verifies SKILL.md uses the correct architectural pattern for the skill type:
 - **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
@@ -271,7 +273,7 @@ Prompt it to:
 ```
 # Validation Log
 ## Summary
-- **Decisions covered**: X/Y | **Clarifications covered**: X/Y
+- **Decisions covered**: X/Y (or "N/A — decisions.md unavailable") | **Clarifications covered**: X/Y (or "N/A")
 - **Structural checks**: X passed, Y failed | **Content checks**: X passed, Y failed
 - **Auto-fixed**: N issues | **Needs manual review**: N issues
 ## Coverage Results
@@ -321,7 +323,7 @@ Prompt it to:
 ## Success Criteria
 
 ### Validation
-- Every decision and answered clarification is mapped to a specific file and section
+- Every decision and answered clarification is mapped to a specific file and section (when `decisions.md` is available)
 - All Skill Best Practices checks pass (per your system prompt)
 - Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
