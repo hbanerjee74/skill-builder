@@ -49,7 +49,6 @@ impl RefineSessionManager {
 fn build_refine_config(
     message: String,
     conversation_history: Vec<ConversationMessage>,
-    session_id: String,
     skill_name: &str,
     skills_path: &str,
     api_key: String,
@@ -80,7 +79,10 @@ fn build_refine_config(
         allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
         max_turns: Some(REFINE_MAX_TURNS),
         permission_mode: None,
-        session_id: Some(session_id),
+        // Do NOT pass session_id here — the sidecar interprets it as an SDK
+        // "resume" ID, but our session_id is an internal refine session tracker.
+        // Conversation context is passed via conversation_history instead.
+        session_id: None,
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(effective_agent_name.to_string()),
@@ -454,7 +456,6 @@ pub async fn send_refine_message(
     let (config, agent_id) = build_refine_config(
         prompt,
         conversation_history,
-        session_id,
         &skill_name,
         &skills_path,
         api_key,
@@ -767,7 +768,6 @@ mod tests {
         build_refine_config(
             message.to_string(),
             history,
-            "session-123".to_string(),
             "my-skill",
             "/skills",
             "sk-test-key".to_string(),
@@ -814,7 +814,6 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             vec![],
-            "s1".to_string(),
             "data-engineering",
             "/home/user/skills",
             "sk-key".to_string(),
@@ -877,9 +876,11 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_session_id_passed_through() {
+    fn test_refine_config_session_id_is_none() {
+        // session_id must NOT be passed to the sidecar — the SDK would interpret
+        // it as a "resume" ID and fail with "No conversation found".
         let (config, _) = base_refine_config("test", vec![]);
-        assert_eq!(config.session_id.as_deref(), Some("session-123"));
+        assert!(config.session_id.is_none());
     }
 
     #[test]
@@ -887,7 +888,6 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             vec![],
-            "s1".to_string(),
             "my-skill",
             "/skills",
             "sk-key".to_string(),
@@ -903,7 +903,6 @@ mod tests {
         let (config, _) = build_refine_config(
             "test".to_string(),
             vec![],
-            "s1".to_string(),
             "my-skill",
             "/skills",
             "sk-key".to_string(),
@@ -941,7 +940,8 @@ mod tests {
             .unwrap()
             .contains(&serde_json::json!("Task")));
         assert_eq!(parsed["conversationHistory"].as_array().unwrap().len(), 2);
-        assert!(parsed.get("sessionId").is_some());
+        // sessionId must NOT be set — the SDK interprets it as "resume" and fails
+        assert!(parsed.get("sessionId").is_none());
     }
 
     #[test]
