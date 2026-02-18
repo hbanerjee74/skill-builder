@@ -266,6 +266,7 @@ pub fn get_log_file_path(app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_default_skills_path() -> Result<String, String> {
+    log::info!("[get_default_skills_path]");
     let home = dirs::home_dir()
         .ok_or_else(|| "Could not determine home directory".to_string())?;
     let path = home.join("skill-builder");

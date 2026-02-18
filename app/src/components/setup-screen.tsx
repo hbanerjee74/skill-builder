@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
 import { Loader2, Eye, EyeOff, CheckCircle2, FolderSearch } from "lucide-react"
@@ -7,14 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useSettingsStore } from "@/stores/settings-store"
-import { getDefaultSkillsPath } from "@/lib/tauri"
-import type { AppSettings } from "@/lib/types"
+import { getSettings, saveSettings, testApiKey, getDefaultSkillsPath } from "@/lib/tauri"
 
 interface SetupScreenProps {
-  onComplete: () => void
+  /** @deprecated No longer needed -- the parent reads isConfigured from the store. */
+  onComplete?: () => void
 }
 
-export function SetupScreen({ onComplete }: SetupScreenProps) {
+export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
   const [apiKey, setApiKey] = useState("")
   const [showApiKey, setShowApiKey] = useState(false)
   const [skillsPath, setSkillsPath] = useState("")
@@ -34,7 +33,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
     setTesting(true)
     setApiKeyValid(null)
     try {
-      await invoke("test_api_key", { apiKey })
+      await testApiKey(apiKey)
       setApiKeyValid(true)
       toast.success("API key is valid")
     } catch (err) {
@@ -64,18 +63,17 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
     if (!apiKey || !skillsPath) return
     setSaving(true)
     try {
-      const existing = await invoke<AppSettings>("get_settings")
-      const updated: AppSettings = {
+      const existing = await getSettings()
+      await saveSettings({
         ...existing,
         anthropic_api_key: apiKey,
         skills_path: skillsPath,
-      }
-      await invoke("save_settings", { settings: updated })
+      })
       setStoreSettings({
         anthropicApiKey: apiKey,
         skillsPath,
       })
-      onComplete()
+      onComplete?.()
     } catch (err) {
       toast.error(
         `Failed to save settings: ${err instanceof Error ? err.message : String(err)}`,

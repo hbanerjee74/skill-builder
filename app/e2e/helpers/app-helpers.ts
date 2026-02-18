@@ -15,10 +15,10 @@ export async function waitForAppReady(page: Page) {
   // Wait for splash to be unmounted (app is ready)
   await splash.waitFor({ state: "detached", timeout: 10_000 });
 
-  // If setup screen appears (unconfigured settings), wait for it to go away too
-  const setup = page.getByTestId("setup-screen");
-  const setupVisible = await setup.isVisible().catch(() => false);
-  if (setupVisible) {
-    await setup.waitFor({ state: "detached", timeout: 10_000 });
-  }
+  // Wait for setup screen to finish if it appears (unconfigured settings).
+  // Uses 'hidden' state which handles both never-mounted and mounted-then-dismissed.
+  await page.waitForSelector('[data-testid="setup-screen"]', {
+    state: "hidden",
+    timeout: 15_000,
+  }).catch(() => {});
 }

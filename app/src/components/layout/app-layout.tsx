@@ -20,7 +20,6 @@ export function AppLayout() {
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
-  const [setupComplete, setSetupComplete] = useState(false);
   const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
 
   // Hydrate settings store from Tauri backend on app startup
@@ -50,11 +49,6 @@ export function AppLayout() {
     // Load GitHub auth state
     useAuthStore.getState().loadUser();
   }, [setSettings]);
-
-  // Sync setupComplete from isConfigured (returning users skip setup screen)
-  useEffect(() => {
-    if (isConfigured) setSetupComplete(true);
-  }, [isConfigured]);
 
   // Run reconciliation after settings are loaded
   useEffect(() => {
@@ -129,7 +123,7 @@ export function AppLayout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          {ready && setupComplete ? <Outlet /> : null}
+          {ready && isConfigured ? <Outlet /> : null}
         </main>
       </div>
       <CloseGuard />
@@ -139,9 +133,7 @@ export function AppLayout() {
           onReady={() => setNodeReady(true)}
         />
       )}
-      {splashDismissed && !setupComplete && (
-        <SetupScreen onComplete={() => setSetupComplete(true)} />
-      )}
+      {splashDismissed && !isConfigured && <SetupScreen />}
       {orphans.length > 0 && (
         <OrphanResolutionDialog
           orphans={orphans}
