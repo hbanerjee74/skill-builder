@@ -79,6 +79,10 @@ The research planner determined the skill scope is too broad. See `clarification
 
 3. Return immediately after writing the file.
 
+## Phase 0: Load User Context
+
+Read `user-context.md` from the **workspace directory**. Store the full content — you will embed it inline in every sub-agent prompt. If the file is missing or empty, proceed without it but note the gap in your final output.
+
 ## Phase 1: Plan the Skill Structure
 
 **Goal**: Design the skill's file layout following the Skill Best Practices provided in the agent instructions (structure, naming, line limits).
@@ -196,7 +200,9 @@ Each prompt must include:
 - The full output path for the reference file
 - The topic description and which decisions this file should address
 - The **skill type** and **content tier rules**: for Source/Domain, writers produce guided prompts only; for Platform/DE, writers use the three content tiers (decision structure, resolution criteria, context factors) and respect the annotation budget
-- The **workspace directory** path (so the sub-agent can read `user-context.md` for the user's industry, role, and requirements)
+- The **full user-context.md content** inline in the prompt (under a `## User Context` heading)
+- The **workspace directory** path (fallback — agent should read `user-context.md` from here if inline content is missing)
+- This directive: `If user context was not provided inline above AND reading user-context.md from the workspace directory fails, prefix your response with [USER_CONTEXT_MISSING] and continue with your best effort.`
 
 **Rewrite mode additionally:** Pass the existing reference file path so the sub-agent can read it. Instruct the sub-agent to preserve all domain knowledge from the existing file while rewriting for coherence and consistency with the new SKILL.md structure. The sub-agent should use the existing content as its primary source, supplemented by `decisions.md`.
 
@@ -208,7 +214,7 @@ Each sub-agent writes its reference file directly to the skill output directory.
 
 After all sub-agents return, spawn a **reviewer** sub-agent via the Task tool (`name: "reviewer"`, `model: "sonnet"`, `mode: "bypassPermissions"`).
 
-Pass it the skill output directory, context directory, and **workspace directory** paths.
+Pass it the skill output directory, context directory, **workspace directory** paths, and the **full user-context.md content** inline.
 
 **Reviewer's mandate:**
 - Cross-check `decisions.md` against `SKILL.md` and all `references/` files -- fix gaps, inconsistencies, or missing content directly
@@ -221,6 +227,7 @@ Pass it the skill output directory, context directory, and **workspace directory
 
 - **Missing/malformed `decisions.md`:** In normal mode, report to the coordinator — do not build without confirmed decisions. In rewrite mode, proceed using the existing skill content as the sole input and note that decisions.md was unavailable.
 - **Sub-agent failure:** Complete the file yourself rather than re-spawning.
+- **`[USER_CONTEXT_MISSING]` in sub-agent output**: Log which agent(s) reported it. Include a warning in your final output: "Warning: User context was unavailable to: [agent names]. Reference files may lack personalization."
 
 </instructions>
 
