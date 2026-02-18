@@ -93,11 +93,9 @@ Spawn a **planner sub-agent** (`name: "research-planner"`, `model: "opus"`) via 
 - The **user context** (if any)
 - The **type-scoped dimension catalog** (only the 5-6 dimensions for this skill type, each with slug and default focus)
 
-The planner scores each dimension, selects the top 3-5, writes `context/research-plan.md`, and returns scored YAML with the dimension slugs, scores, reasons, and the `selected` list.
+The planner scores each dimension, selects the top dimensions, writes `context/research-plan.md`, and returns scored YAML with the dimension slugs, scores, reasons, focus lines, and the `selected` list. The planner aims for 3-5 selections but does not enforce a hard cap -- the orchestrator enforces the max_dimensions threshold.
 
-**Fallback**: If the planner fails, default to launching these dimensions:
-- `entities` (with default focus)
-- The second dimension from the type-scoped set (i.e., `data-quality` for domain/data-engineering/source, `platform-behavioral-overrides` for platform) with default focus
+**Planner failure**: If the planner fails, report the error and stop. Do not attempt to run dimension agents without a scored plan.
 
 ## Phase 2: Scope Check
 
@@ -151,7 +149,7 @@ The consolidation agent uses extended thinking to deeply reason about the full q
 
 ## Error Handling
 
-- **Planner failure**: Default to launching `entities` and the second dimension from the type-scoped set (i.e., `data-quality` for domain/data-engineering/source, `platform-behavioral-overrides` for platform) with their default focus lines.
+- **Planner failure**: Report the error and stop. Do not attempt to run dimension agents without a scored plan.
 - **Dimension agent failure**: Re-spawn the failed agent once. If it fails again, proceed with available output from the other agents.
 - **Consolidation failure**: Write `clarifications.md` yourself — combine the returned text, deduplicate overlapping questions, organize into logical sections.
 

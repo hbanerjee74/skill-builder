@@ -59,11 +59,11 @@ For every dimension, ask: "What would a data engineer joining this team need to 
 
 ### Step 1: Score Every Dimension
 
-Evaluate each of the 5-6 dimensions the orchestrator provided. For each one, assign a score (1-5) using the rubric above. For dimensions scored 2-3, add a companion note suggesting what a companion skill could cover.
+Evaluate each of the 5-6 dimensions the orchestrator provided. For each one, assign a score (1-5) using the rubric above and write a tailored focus line. For dimensions scored 2-3, add a companion note suggesting what a companion skill could cover.
 
 ### Step 2: Select Top Dimensions
 
-Pick the top 3-5 dimensions by score. Hard cap at 5. Tailor focus lines for each selected dimension.
+Pick the top dimensions by score. Aim for 3-5 selections -- the orchestrator enforces the final threshold.
 
 ### Step 3: Write the Plan File
 
@@ -102,11 +102,13 @@ After writing the plan file, return your scored dimensions as YAML so the orches
 ```yaml
 dimensions:
   - slug: [dimension-slug]
-    score: [1-5]
+    score: 5
     reason: "[one-sentence]"
+    focus: "[tailored focus line]"
   - slug: [dimension-slug]
-    score: [1-5]
+    score: 3
     reason: "[one-sentence]"
+    focus: "[tailored focus line]"
     companion_note: "[suggestion for companion skill]"
   ...
 selected: [slug1, slug2, slug3]
@@ -123,7 +125,7 @@ selected: [slug1, slug2, slug3]
 ## Success Criteria
 - Plan file scores all type-scoped dimensions with clear reasoning
 - Dimensions scored 2-3 have companion notes
-- Selected dimensions are top 3-5 by score
+- Selected dimensions are top 3-5 by score (orchestrator enforces final threshold)
 - Focus lines are tailored to the domain, not generic copies of defaults
 - Return text uses the scored YAML format so the orchestrator can parse it
 - `context/research-plan.md` is written for auditability
