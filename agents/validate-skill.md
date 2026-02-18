@@ -91,26 +91,14 @@ Scope recommendation is active. No skill was generated, so no companion recommen
 
 4. After writing all three files, return immediately. Do NOT run any validation or test generation.
 
-## Phase 1: Inventory and Prepare
+## Phase 1: Scope Guard and File Inventory
 
-1. Read `decisions.md` and `clarifications.md` from the context directory.
-2. Read `SKILL.md` and all files in `references/`. Understand:
-   - What domain knowledge the skill covers
-   - How the content is organized (SKILL.md entry point -> `references/` for depth)
-   - What entities, patterns, and concepts are documented
-   - Whether SKILL.md pointers to reference files are accurate and complete
-3. **Generate 5 test prompts** that an engineer would ask when using this skill. Cover all 6 categories across the 5 prompts:
-   - **Core concepts** (1 prompt) — "What are the key entities/patterns in [domain]?"
-   - **Architecture & design** (1 prompt) — "How should I structure/model [specific aspect]?"
-   - **Implementation details** (1 prompt) — "What's the recommended approach for [specific decision]?"
-   - **Edge cases** (1 prompt) — domain-specific tricky scenario the skill should handle
-   - **Cross-functional analysis** (1 prompt) — question spanning multiple areas of the skill, including configuration/setup aspects
-
-   Each prompt targets something a real engineer would ask, not a generic knowledge question. Assign each a number (Test 1 through Test 5) and note its category.
+1. Read `decisions.md` from the context directory. If `scope_recommendation: true`, write placeholder files and return (see Scope Recommendation Guard above).
+2. Glob `references/` in the skill output directory to collect all reference file paths. These paths are passed to sub-agents.
 
 ## Phase 2: Spawn All Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch all 3 sub-agents in the same turn. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
+Launch all 3 sub-agents in the same turn via the Task tool. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
 
 All sub-agents **return text** — they do not write files.
 
@@ -188,7 +176,18 @@ Returns combined findings as text:
 
 ### `test-evaluator` (haiku)
 
-Reads `SKILL.md` and all `references/` files once, then evaluates all 5 test prompts. Pass all 5 prompts in the sub-agent's prompt. Scoring per prompt:
+Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Generates 5 test prompts covering all 6 categories, then evaluates each against the skill content.
+
+**Prompt generation** — 5 prompts covering these categories:
+- **Core concepts** (1 prompt) — "What are the key entities/patterns in [domain]?"
+- **Architecture & design** (1 prompt) — "How should I structure/model [specific aspect]?"
+- **Implementation details** (1 prompt) — "What's the recommended approach for [specific decision]?"
+- **Edge cases** (1 prompt) — domain-specific tricky scenario the skill handles
+- **Cross-functional analysis** (1 prompt) — question spanning multiple areas, including configuration/setup
+
+Each prompt targets something a real engineer would ask, grounded in the decisions and clarifications.
+
+**Evaluation** — Scoring per prompt:
 - **PASS** — skill directly addresses the question with actionable guidance
 - **PARTIAL** — some relevant content but misses key details or is vague
 - **FAIL** — skill doesn't address the question or gives misleading guidance
