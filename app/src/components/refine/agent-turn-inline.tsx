@@ -56,6 +56,9 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
   return (
     <div className="flex flex-col">
       {run.messages.map((msg, i) => {
+        // Skip result messages — they duplicate the assistant's final text
+        if (msg.type === "result") return null;
+
         const spacing = spacingClasses[messageGroups[i]];
 
         // Skip group members (rendered by group leader)
