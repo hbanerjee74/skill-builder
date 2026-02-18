@@ -141,7 +141,7 @@ Before writing any test code, read existing tests for the files you changed:
 
 Environment variables: `PLUGIN_DIR`, `CLAUDE_BIN`, `MAX_BUDGET_T4`, `MAX_BUDGET_T5`, `KEEP_TEMP`, `VERBOSE`.
 
-**E2E tags:** `@dashboard`, `@settings`, `@workflow`, `@workflow-agent`, `@navigation`
+**E2E tags:** `@dashboard`, `@navigation`, `@prompts`, `@settings`, `@skills`, `@usage`, `@workflow`, `@workflow-agent`
 
 **Plugin tags:** `@structure`, `@agents`, `@coordinator`, `@workflow`, `@all`
 

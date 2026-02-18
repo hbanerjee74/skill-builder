@@ -11,6 +11,8 @@ Changes to these files affect all test layers — run the full test suite (`./te
 - `src/test/mocks/tauri-e2e.ts` — E2E mock infrastructure
 - `src/test/mocks/tauri-e2e-event.ts` — E2E event system mock
 - `e2e/helpers/app-helpers.ts` — Shared E2E helpers (splash screen wait, etc.)
+- `e2e/helpers/workflow-helpers.ts` — Shared workflow E2E helpers (navigation, mock overrides)
+- `e2e/helpers/agent-simulator.ts` — Agent lifecycle event simulators
 - `src/test/setup.ts` — Vitest global setup
 - `vite.config.ts` / `vitest.config.ts` / `playwright.config.ts` — Build and test runner config
 
@@ -28,7 +30,15 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `src-tauri/src/commands/clarification.rs` | `commands::clarification` | `@workflow` |
 | `src-tauri/src/commands/github_push.rs` | `commands::github_push` | `@dashboard` |
 | `src-tauri/src/commands/github_auth.rs` | -- | `@settings` |
-| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | -- |
+| `src-tauri/src/commands/imported_skills.rs` | `commands::imported_skills` | `@skills` |
+| `src-tauri/src/commands/github_import.rs` | `commands::github_import` | `@skills` |
+| `src-tauri/src/commands/team_import.rs` | `commands::team_import` | `@skills` |
+| `src-tauri/src/commands/usage.rs` | `commands::usage` | `@usage` |
+| `src-tauri/src/commands/agent.rs` | -- | `@workflow-agent` |
+| `src-tauri/src/commands/sidecar_lifecycle.rs` | -- | `@workflow-agent` |
+| `src-tauri/src/commands/git.rs` | -- | `@dashboard` |
+| `src-tauri/src/commands/lifecycle.rs` | -- | -- |
+| `src-tauri/src/commands/feedback.rs` | -- | -- |
 | `src-tauri/src/commands/node.rs` | `commands::node` | -- |
 | `src-tauri/src/agents/sidecar.rs` | `agents::sidecar` | `@workflow-agent` |
 | `src-tauri/src/agents/sidecar_pool.rs` | `agents::sidecar_pool` | `@workflow-agent` |
@@ -57,6 +67,11 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/settings/settings.spec.ts` | `@settings` |
 | `e2e/workflow/workflow-agent.spec.ts` | `@workflow-agent` |
 | `e2e/navigation/navigation.spec.ts` | `@navigation` |
+| `e2e/prompts/prompts.spec.ts` | `@prompts` |
+| `e2e/skills/skills.spec.ts` | `@skills` |
+| `e2e/usage/usage.spec.ts` | `@usage` |
+| `e2e/workflow/workflow-steps.spec.ts` | `@workflow` |
+| `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
 
 ## Quick Reference
 

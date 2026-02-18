@@ -1,0 +1,22 @@
+[
+  {
+    "skill_id": "skill-001",
+    "skill_name": "data-analytics",
+    "domain": "Data",
+    "description": "Analytics skill for data teams",
+    "is_active": true,
+    "disk_path": "/tmp/skills/data-analytics",
+    "trigger_text": "When the user asks about data analysis...",
+    "imported_at": "2025-01-15T10:00:00Z"
+  },
+  {
+    "skill_id": "skill-002",
+    "skill_name": "api-design",
+    "domain": "Engineering",
+    "description": "REST API design patterns",
+    "is_active": true,
+    "disk_path": "/tmp/skills/api-design",
+    "trigger_text": "When designing REST APIs...",
+    "imported_at": "2025-01-14T09:00:00Z"
+  }
+]
