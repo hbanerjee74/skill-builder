@@ -158,11 +158,11 @@ export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBar
         e.preventDefault();
         handleSend();
       }
-      if (e.key === "@" && availableFiles.length > 0) {
+      if (e.key === "@" && availableFiles.length > 0 && !showFilePicker) {
         setShowFilePicker(true);
         setPickerValue(availableFiles[0] ?? "");
       }
-      if (e.key === "/" && !activeCommand) {
+      if (e.key === "/" && !activeCommand && !showCommandPicker) {
         setShowCommandPicker(true);
         setPickerValue(COMMANDS[0]?.value ?? "");
       }

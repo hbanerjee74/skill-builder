@@ -273,6 +273,13 @@ export default function RefinePage() {
       const store = useRefineStore.getState();
       const model = preferredModel ?? "sonnet";
 
+      // Build conversation context BEFORE adding the new message to avoid duplicating
+      // the current user text (which is already in the prompt's "Current request" field)
+      const conversationContext = buildConversationContext(
+        store.messages,
+        useAgentStore.getState().runs,
+      );
+
       // Snapshot baseline for diff
       store.snapshotBaseline();
 
@@ -300,12 +307,6 @@ export default function RefinePage() {
         targetFiles && targetFiles.length > 0
           ? `\n\nIMPORTANT: Only edit these files: ${targetFiles.join(", ")}. Do not modify any other files.`
           : "";
-
-      // Build conversation context from previous messages (read fresh from stores)
-      const conversationContext = buildConversationContext(
-        useRefineStore.getState().messages,
-        useAgentStore.getState().runs,
-      );
 
       const prompt = buildPrompt(text, conversationContext, fileConstraint, command);
       const agentName = resolveAgentName(command);
