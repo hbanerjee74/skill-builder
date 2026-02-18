@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Start from the topic examples in the focus line and map out the full entity landscape for the domain. Probe for custom objects, managed package extensions, and non-obvious relationships that deviate from the standard model. Investigate entity classification decisions (dimension vs. fact, reference vs. transactional), grain choices at each entity level, and cross-entity join patterns that the skill must understand to produce correct output.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

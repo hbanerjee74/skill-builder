@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the domain's reconciliation landscape by identifying data that flows between multiple systems or modules and should match but diverges in practice. Look for known discrepancies between source systems, conflicting definitions of the same metric across teams, and accepted workarounds for data that never fully reconciles. Ask about which system wins when numbers disagree, what tolerance thresholds are acceptable, and whether reconciliation is automated or manual.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

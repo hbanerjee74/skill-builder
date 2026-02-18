@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate platform features that silently degrade or behave differently than documented in the customer's specific environment and version. Look for features that work in one environment mode but not another (e.g., warehouse vs. lakehouse), data type edge cases where implicit conversions cause silent data corruption, and SQL dialect features that are documented as supported but produce incorrect results under specific conditions.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

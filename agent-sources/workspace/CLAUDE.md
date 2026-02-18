@@ -19,16 +19,6 @@ The user's `user-context.md` file (in the workspace directory) contains their in
 
 When `scope_recommendation: true` appears in the YAML frontmatter of `clarifications.md` or `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
-### Research Dimension Agents
-
-All 18 research dimension agents share these rules:
-
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-- If the domain is unclear or too broad, return a message explaining what additional context would help. Do not guess.
-
 ### Sub-agent Spawning
 
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
@@ -52,31 +42,6 @@ The coordinator provides **context directory** and **skill output directory** pa
 - All directories already exist — never run `mkdir`
 - Write directly to the provided paths
 - Skill output structure: `SKILL.md` at root + `references/` subfolder
-
-## File Formats
-
-All output files use YAML frontmatter (`---` delimited, first thing in file). Always include frontmatter with updated counts when rewriting.
-
-### Decisions (`decisions.md`)
-
-Clean snapshot, not a log. Write the complete file from scratch each time.
-
-```
----
-decision_count: 5
-conflicts_resolved: 2
-round: 2
----
-### D1: [Title]
-- **Question**: [original question]
-- **Decision**: [chosen answer]
-- **Implication**: [design impact]
-- **Status**: resolved | conflict-resolved | needs-review
-```
-
-Frontmatter counts give an at-a-glance summary. `conflict-resolved` = agent picked between contradicting answers (review first). `needs-review` = requires user input.
-
----
 
 ## Skill Best Practices
 

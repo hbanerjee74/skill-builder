@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Trace the full lifecycle of each load pattern in this domain -- initial load, steady-state incremental, failure recovery, and backfill -- to find where edge cases hide. Investigate what happens when a merge fails midway through a Type 2 update, how to backfill Type 2 history from current-state-only source data, and how schema evolution interacts with versioned tables. Focus on the operational concerns that only surface after the pipeline has been running for months.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

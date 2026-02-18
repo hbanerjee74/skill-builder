@@ -15,16 +15,6 @@ The user's `user-context.md` file (in the workspace directory) contains their in
 
 When `scope_recommendation: true` appears in the YAML frontmatter of `clarifications.md` or `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
-### Research Dimension Agents
-
-All 18 research dimension agents share these rules:
-
-- Always include "Other (please specify)" as a choice
-- Return the clarification text (do not write files)
-- Every question must present choices where different answers change the skill's design
-- Target 5-8 questions
-- If the domain is unclear or too broad, return a message explaining what additional context would help. Do not guess.
-
 ### Sub-agent Spawning
 
 Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).

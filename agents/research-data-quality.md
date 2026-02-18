@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate where generic quality patterns break down for this specific domain. Look for pattern-specific checks that go beyond textbook data quality -- per-layer validation rules, cross-layer reconciliation that must account for row multiplication, quality gate thresholds that determine halt vs. quarantine vs. continue behavior. Also probe for org-specific known quality issues: fields that are commonly null or unreliable, validation rules that force incorrect data entry, and data cleanup jobs or compensating controls that downstream consumers depend on.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

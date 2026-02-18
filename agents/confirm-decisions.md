@@ -64,7 +64,7 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
-**Writing `decisions.md`**: Follow the Decisions file format provided in the agent instructions. Update the frontmatter with the decision count. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override.
+**Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
 ## Error Handling
 
@@ -95,5 +95,5 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ## Success Criteria
 - Every answered question (first-round and refinements) has at least one decision with an implication
 - Contradictions are resolved with documented reasoning (user can override)
-- `decisions.md` follows the Decisions file format provided in the agent instructions
+- `decisions.md` has YAML frontmatter with correct counts and all decisions have status fields
 - In scope recommendation path: `decisions.md` is written with `scope_recommendation: true` and `decision_count: 0` frontmatter

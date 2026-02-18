@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the concrete segmentation dimensions and breakpoints the organization uses -- not just that segmentation exists, but the exact thresholds and compound criteria that define each segment. For period handling, determine the fiscal calendar structure (standard, 4-4-5, non-January start), how periods map to natural calendar boundaries, snapshot cadence and timing, and rules for records that span period boundaries (prorating, point-in-time attribution, period-end snapshotting).
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

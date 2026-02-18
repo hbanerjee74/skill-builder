@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate how the platform connects to version control, CI/CD systems, orchestrators, monitoring tools, and data catalogs in the customer's actual deployment. Look for authentication token handoffs between tools, artifact format compatibility requirements, and orchestration timing dependencies where the order and coordination of operations across tool boundaries matters.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the business rules landscape for the domain, focusing on rules with exceptions, conditional logic, and thresholds that vary by segment or context. Look for attribution models with competing approaches, regulatory requirements that override natural modeling choices, and rules that engineers without domain expertise commonly get wrong. Probe for the precise threshold values, exception conditions, and edge cases that distinguish correct implementation from plausible-but-wrong defaults.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Map the constraint graph for this domain by starting with the entity types and their likely historization choices, then tracing forward to see which merge strategies, key designs, and materialization approaches each choice forces or eliminates. Look for "hidden couplings" -- pairs of patterns that are individually correct but produce incorrect combinations when used together, such as Type 2 dimensions combined with view-based materialization at high query volume.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

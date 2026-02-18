@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate failure modes that engineers discover only after deploying to production, focusing on what breaks under load, during concurrent operations, and at scale boundaries. Look for undocumented timeout behaviors, metadata lock contention patterns, error message formats that differ across environments, and the debugging procedures that experienced operators use for rapid incident resolution but that are never written down in official documentation.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

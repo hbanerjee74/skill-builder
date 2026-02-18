@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate configuration options that are syntactically valid but produce wrong runtime behavior, focusing on multi-axis compatibility (core version x adapter version x runtime version). Look for settings with non-obvious defaults that cause silent failures, version boundaries where configuration options change meaning or become invalid, and configuration combinations where individually correct settings interact to produce unexpected behavior.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

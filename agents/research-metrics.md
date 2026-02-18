@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Identify the key business metrics for the domain and drill into the precise calculation logic for each. For every metric, investigate what the denominator is, which records are included or excluded, whether thresholds vary by segment, and whether custom modifiers or adjustments apply. Focus on where "approximately correct" becomes "meaningfully wrong" -- the parameters and edge cases that distinguish a useful skill from a misleading one.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

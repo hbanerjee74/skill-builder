@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the platform's extraction surface by probing each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms that require special API calls, multi-tenant filtering gaps, and parent-child relationships where changes to the parent do not propagate to child timestamps. Ask about scale-specific failures like governor limits and rate throttling that only appear in production volumes.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

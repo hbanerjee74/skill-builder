@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Investigate the domain's record lifecycle by mapping out which objects follow defined state machines and what the valid transitions are. Look for lifecycle boundary violations (regression, stage skipping, reopening closed records), record type-specific lifecycle paths that diverge from the default, and state fields that should be correlated but can be independently edited. Ask about how the actual lifecycle in production deviates from the designed lifecycle.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

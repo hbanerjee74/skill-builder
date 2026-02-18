@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: For each major entity in the domain, assess three factors: which columns change and how frequently, expected row volume growth over time, and whether regulatory or audit requirements demand bitemporal modeling. Use these factors to identify where the standard Type 2 recommendation breaks down -- for example, high-change-rate entities where snapshot-based approaches are more practical, or wide tables where row-versioning creates storage and query performance problems.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 

@@ -43,7 +43,7 @@ The planner provides a tailored focus line with domain-specific topic examples a
 
 **Research approach**: Examine the domain's data flow from source to consumption to identify where the silver/gold boundary should fall -- whether silver should be source-conformed or business-conformed, and what that choice implies for data lineage and debugging. Evaluate whether conformed dimensions should be physically materialized tables or logical views, considering the domain's pattern choices (e.g., Type 2 dimensions make views expensive due to point-in-time filtering). Identify which aggregate tables the domain's primary query patterns require.
 
-Follow the **Research Dimension Agents** constraints and error handling in the agent instructions.
+Always include "Other (please specify)" as a choice. If the domain is unclear or too broad, explain what context would help rather than guessing.
 
 </instructions>
 
