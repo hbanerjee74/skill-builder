@@ -99,13 +99,18 @@ export function AppLayout() {
         e.preventDefault();
         navigate({ to: "/skills" });
       }
-      // Cmd+3 -> Prompts
+      // Cmd+3 -> Refine
       if ((e.metaKey || e.ctrlKey) && e.key === "3") {
+        e.preventDefault();
+        navigate({ to: "/refine", search: { skill: undefined } });
+      }
+      // Cmd+4 -> Prompts
+      if ((e.metaKey || e.ctrlKey) && e.key === "4") {
         e.preventDefault();
         navigate({ to: "/prompts" });
       }
-      // Cmd+4 -> Usage
-      if ((e.metaKey || e.ctrlKey) && e.key === "4") {
+      // Cmd+5 -> Usage
+      if ((e.metaKey || e.ctrlKey) && e.key === "5") {
         e.preventDefault();
         navigate({ to: "/usage" });
       }

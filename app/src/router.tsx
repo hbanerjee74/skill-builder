@@ -10,6 +10,7 @@ import WorkflowPage from "./pages/workflow";
 import PromptsPage from "./pages/prompts";
 import SkillsPage from "./pages/skills";
 import UsagePage from "./pages/usage";
+import RefinePage from "./pages/refine";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -50,6 +51,15 @@ const usageRoute = createRoute({
   component: UsagePage,
 });
 
+const refineRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/refine",
+  component: RefinePage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    skill: typeof search.skill === "string" ? search.skill : undefined,
+  }),
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
@@ -57,6 +67,7 @@ const routeTree = rootRoute.addChildren([
   skillsRoute,
   usageRoute,
   workflowRoute,
+  refineRoute,
 ]);
 
 export const router = createRouter({ routeTree });

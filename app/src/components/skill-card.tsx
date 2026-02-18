@@ -15,7 +15,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, Play, Tag, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Play, Tag, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -33,6 +33,7 @@ interface SkillCardProps {
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
   onEdit?: (skill: SkillSummary) => void
+  onRefine?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
   isGitHubLoggedIn?: boolean
@@ -133,6 +134,7 @@ export default function SkillCard({
   onDelete,
   onDownload,
   onEdit,
+  onRefine,
   onPushToRemote,
   remoteConfigured,
   isGitHubLoggedIn,
@@ -188,6 +190,19 @@ export default function SkillCard({
             <Play className="size-3" />
             Continue
           </Button>
+          {canDownload && onRefine && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRefine(skill);
+              }}
+            >
+              <MessageSquare className="size-3" />
+              Refine
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-xs"

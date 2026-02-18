@@ -152,6 +152,10 @@ export default function DashboardPage() {
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
+  const handleRefine = useCallback((skill: SkillSummary) => {
+    navigate({ to: "/refine", search: { skill: skill.name } })
+  }, [navigate])
+
   const handleDownload = useCallback(async (skill: SkillSummary) => {
     if (!workspacePath) return
     const toastId = toast.loading("Packaging skill...")
@@ -362,6 +366,7 @@ export default function DashboardPage() {
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onEdit={setEditTarget}
+              onRefine={handleRefine}
               onPushToRemote={handlePushToRemote}
               remoteConfigured={remoteConfigured}
               isGitHubLoggedIn={isLoggedIn}
