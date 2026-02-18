@@ -11,5 +11,5 @@ export interface SidecarConfig {
   betas?: string[];
   maxThinkingTokens?: number;
   pathToClaudeCodeExecutable?: string;
-  conversationHistory?: { role: string; content: string }[];
+  conversationHistory?: { role: "user" | "assistant"; content: string }[];
 }
