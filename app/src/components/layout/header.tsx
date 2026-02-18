@@ -3,7 +3,7 @@ import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
 
 function getPageTitle(path: string): string {
-  if (path === "/") return "Dashboard";
+  if (path === "/") return "Skills";
   if (path === "/settings") return "Settings";
   if (path === "/prompts") return "Prompts";
   if (path === "/usage") return "Usage";

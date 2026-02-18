@@ -16,7 +16,7 @@ import { GitHubLoginDialog } from "@/components/github-login-dialog";
 import { useAuthStore } from "@/stores/auth-store";
 
 const navItems = [
-  { to: "/" as const, label: "Dashboard", icon: Home },
+  { to: "/" as const, label: "Skills", icon: Home },
   { to: "/prompts" as const, label: "Prompts", icon: FileText },
   { to: "/usage" as const, label: "Usage", icon: DollarSign },
   { to: "/settings" as const, label: "Settings", icon: Settings },
