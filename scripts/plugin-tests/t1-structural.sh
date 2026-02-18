@@ -29,13 +29,13 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (26 flat agents) ----
+  # ---- T1.3: Agent file count (27 flat agents) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_26" "26" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_27" "27" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="confirm-decisions consolidate-research detailed-research generate-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods scope-advisor validate-skill"
+  local all_agents="confirm-decisions consolidate-research detailed-research generate-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods scope-advisor validate-companion-recommender validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"

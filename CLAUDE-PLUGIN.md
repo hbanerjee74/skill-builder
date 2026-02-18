@@ -46,7 +46,7 @@ Three layers:
 
 ### Adding/modifying an agent
 
-Agent files live in `agents/` (flat directory, 26 agents). Edit them directly.
+Agent files live in `agents/` (flat directory, 27 agents). Edit them directly.
 
 ### Modifying the workflow
 

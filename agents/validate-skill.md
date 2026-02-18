@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn a coverage & quality checker, per-file reference reviewers, a test evaluator, a boundary & tone checker, and a companion recommender — all via the Task tool in one turn — then have a reporter sub-agent consolidate results, fix validation issues, and write all output files.
+You orchestrate parallel validation AND testing of a completed skill in a single step. You spawn 3 sub-agents — a quality checker, a test evaluator, and a companion recommender — all via the Task tool in one turn. Then you consolidate their results, fix validation issues, and write all output files directly.
 
 ## Out of Scope
 
@@ -40,6 +40,14 @@ Only evaluate: conformance to Skill Best Practices and Content Principles provid
 ---
 
 <instructions>
+
+### Sub-agent Index
+
+| Sub-agent | Model | Purpose |
+|---|---|---|
+| `quality` | sonnet | Coverage, structure, content quality, boundary, and prescriptiveness checks across SKILL.md and all reference files |
+| `test-evaluator` | haiku | Evaluate 5 test prompts against skill content |
+| `companion-recommender` | sonnet | Recommend companion skills from skipped research dimensions (see `agents/validate-companion-recommender.md`) |
 
 ### Scope Recommendation Guard
 
@@ -91,77 +99,42 @@ Scope recommendation is active. No skill was generated, so no companion recommen
    - How the content is organized (SKILL.md entry point -> `references/` for depth)
    - What entities, patterns, and concepts are documented
    - Whether SKILL.md pointers to reference files are accurate and complete
-4. **Count the files** — you'll need this to know how many sub-agents to spawn.
-5. **Generate 5 test prompts** that an engineer would ask when using this skill. Cover all 6 categories across the 5 prompts:
+3. **Generate 5 test prompts** that an engineer would ask when using this skill. Cover all 6 categories across the 5 prompts:
    - **Core concepts** (1 prompt) — "What are the key entities/patterns in [domain]?"
    - **Architecture & design** (1 prompt) — "How should I structure/model [specific aspect]?"
    - **Implementation details** (1 prompt) — "What's the recommended approach for [specific decision]?"
    - **Edge cases** (1 prompt) — domain-specific tricky scenario the skill should handle
    - **Cross-functional analysis** (1 prompt) — question spanning multiple areas of the skill, including configuration/setup aspects
 
-   Each prompt should be something a real engineer would ask, not a generic knowledge question. Assign each a number (Test 1 through Test 5) and note its category.
+   Each prompt targets something a real engineer would ask, not a generic knowledge question. Assign each a number (Test 1 through Test 5) and note its category.
 
-## Phase 2: Spawn ALL Sub-agents in Parallel
+## Phase 2: Spawn All Sub-agents in Parallel
 
-Follow the Sub-agent Spawning protocol. Launch all sub-agents in the same turn: coverage & quality checker, per-reference-file reviewers, test evaluator, boundary & tone checker, and companion recommender. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
-
-### Validation Sub-agents
+Follow the Sub-agent Spawning protocol. Launch all 3 sub-agents in the same turn. Pass the **workspace directory** path to every sub-agent so they can read `user-context.md`.
 
 All sub-agents **return text** — they do not write files.
 
-**Coverage & Quality Checker** (`name: "coverage-quality"`)
+### `quality` (sonnet)
 
-Combined cross-cutting and content quality checker for SKILL.md. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Performs two passes:
+Comprehensive quality gate for the entire skill. Reads `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files. Performs four passes in a single agent:
 
-1. **Coverage & structure pass**: Checks every decision and answered clarification is addressed (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files. Verifies SKILL.md uses the correct architectural pattern for the skill type:
-   - **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
-   - **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
-   Report architectural pattern as CORRECT or MISMATCH with details.
+**1. Coverage & structure** — Maps every decision and answered clarification to a specific file and section (report COVERED with file+section, or MISSING). Checks SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flags orphaned or unnecessary files. Verifies SKILL.md uses the correct architectural pattern for the skill type:
+- **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
+- **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
 
-2. **Content quality pass**: Scores each SKILL.md section on the Quality Dimensions and flags anti-patterns. Returns PASS/FAIL per section with improvement suggestions for any FAIL.
+Report architectural pattern as CORRECT or MISMATCH with details.
 
-Returns combined findings as text.
+**2. Content quality** — Scores each section of SKILL.md AND every reference file on the Quality Dimensions. Flags anti-patterns. Returns PASS/FAIL per section with improvement suggestions for any FAIL.
 
-**Reference File Reviewers — one per file** (`name: "reviewer-<filename>"`)
-
-Reads one reference file plus `decisions.md`. Scores each section on the Quality Dimensions and flags anti-patterns provided in the agent instructions. Returns PASS/FAIL per section with improvement suggestions for any FAIL as text.
-
-### Test Evaluator
-
-**Test Evaluator** (`name: "test-evaluator"`, `model: "haiku"`)
-
-Reads `SKILL.md` and all `references/` files once, then evaluates all 5 test prompts. Pass all 5 prompts in the sub-agent's prompt. Scoring per prompt:
-- **PASS** — skill directly addresses the question with actionable guidance
-- **PARTIAL** — some relevant content but misses key details or is vague
-- **FAIL** — skill doesn't address the question or gives misleading guidance
-
-For PARTIAL/FAIL, explain: what the engineer would expect, what the skill provides, and whether it's a content gap or organization issue.
-
-Returns all results as text using this format (one block per test):
-```
-### Test N: [prompt text]
-- **Category**: [category]
-- **Result**: PASS | PARTIAL | FAIL
-- **Skill coverage**: [what the skill provides]
-- **Gap**: [what's missing, if any — write "None" for PASS]
-```
-
-### Quality Gate Sub-agents
-
-**Boundary & Tone Checker** (`name: "boundary-tone"`, `model: "haiku"`)
-
-The coordinator passes the **skill type** to you. Pass it to this sub-agent along with SKILL.md and all reference files. This sub-agent performs two checks in a single pass:
-
-**1. Boundary check** — Checks whether the skill contains content that belongs to a different skill type. Use the type-scoped dimension sets:
-
+**3. Boundary check** — Checks whether the skill contains content that belongs to a different skill type. The coordinator passes the **skill type** — pass it through. Use the type-scoped dimension sets:
 - **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
 - **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
 - **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
 - **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
 
-For each section and reference file, classify which dimension(s) it covers. If content maps to a dimension NOT in the current skill type's set, flag it as a boundary violation. Brief incidental mentions are not violations — only flag substantial content sections that belong to another type.
+For each section and reference file, classify which dimension(s) it covers. Content mapping to a dimension outside the current skill type's set is a boundary violation. Brief incidental mentions are acceptable — only substantial content sections that belong to another type are violations.
 
-**2. Prescriptiveness check** — Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
+**4. Prescriptiveness check** — Scans for prescriptive language patterns that violate the Content Principles provided in the agent instructions:
 
 Patterns to detect:
 - Imperative directives: "always", "never", "must", "shall", "do not"
@@ -175,6 +148,24 @@ For each detected pattern, suggest an informational rewrite that provides the sa
 
 Returns combined findings as text:
 ```
+### Coverage & Structure Results
+- **Decisions covered**: X/Y | **Clarifications covered**: X/Y
+- **Architectural pattern**: CORRECT | MISMATCH — [details]
+- **Orphaned files**: [list or "none"]
+
+### D1: [title] — COVERED ([file:section]) | MISSING
+...
+
+### Content Quality Results
+
+#### SKILL.md
+##### [Section name] — PASS | FAIL
+- [Quality dimension scores and suggestions]
+
+#### references/[filename]
+##### [Section name] — PASS | FAIL
+- [Quality dimension scores and suggestions]
+
 ### Boundary Check Results
 - **Skill type**: [type]
 - **Violations found**: N
@@ -195,61 +186,50 @@ Returns combined findings as text:
 - **Suggested rewrite**: "[informational alternative]"
 ```
 
-**Companion Recommender** (`name: "companion-recommender"`, `model: "sonnet"`)
+### `test-evaluator` (haiku)
 
-Reads SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Uses the research planner's dimension scores to identify companion skill candidates -- dimensions scored 2-3 that were skipped represent knowledge gaps that companion skills could fill. Analyzes the skill's content and recommends complementary skills that would compose well with it. Recommends companions across **all skill types** (domain, source, platform, data-engineering) — not limited to the current skill's type.
+Reads `SKILL.md` and all `references/` files once, then evaluates all 5 test prompts. Pass all 5 prompts in the sub-agent's prompt. Scoring per prompt:
+- **PASS** — skill directly addresses the question with actionable guidance
+- **PARTIAL** — some relevant content but misses key details or is vague
+- **FAIL** — skill doesn't address the question or gives misleading guidance
 
-Platform recommendations are limited to **dbt, dlt, and Fabric** — these are the only supported platforms. Do not recommend other platforms.
+For PARTIAL/FAIL results: explain what the engineer would expect, what the skill provides, and whether the gap is content-related or organizational.
 
-**For each recommendation**, provide:
-- **Skill name and type** — e.g., "Salesforce extraction (source skill)"
-- **Slug** — kebab-case identifier for the companion (e.g., "salesforce-extraction")
-- **Why it pairs well** — how this skill's content composes with the current skill, referencing the skipped dimension and its score
-- **Composability** — which sections/decisions in the current skill would benefit from the companion skill's knowledge
-- **Priority** — High (strong dependency), Medium (improves quality), Low (nice to have)
-- **Suggested trigger description** — a draft `description` field for the companion's SKILL.md (following the trigger pattern: "[What it does]. Use when [triggers]. [How it works].")
-- **Dimension and score** — the skipped dimension this companion covers and its planner score
-- **Template match** — `null` (reserved for future template matching via VD-696)
-
-Target 2-4 recommendations. At least one must be contextually specific (not generic like "you should also build a source skill").
-
-Returns findings as text using this format:
+Returns all results as text using this format (one block per test):
 ```
-### Recommendation 1: [skill name] ([type] skill)
-- **Slug**: [kebab-case]
-- **Priority**: High | Medium | Low
-- **Dimension**: [dimension slug] (score: [N])
-- **Why**: [composability rationale referencing skipped dimension]
-- **Sections affected**: [which current skill sections benefit]
-- **Suggested trigger**: [draft description field for companion SKILL.md]
-- **Template match**: null
+### Test N: [prompt text]
+- **Category**: [category]
+- **Result**: PASS | PARTIAL | FAIL
+- **Skill coverage**: [what the skill provides]
+- **Gap**: [what's missing, if any — write "None" for PASS]
 ```
+
+### `companion-recommender` (sonnet)
+
+See `agents/validate-companion-recommender.md` for the full specification. Pass these inputs:
+- `SKILL.md` and all `references/` file paths
+- `decisions.md` and `research-plan.md` paths (from the context directory)
+- The **skill type**
+- The **workspace directory** path
 
 ## Phase 3: Consolidate, Fix, and Report
 
-After all sub-agents return their text, spawn a fresh **reporter** sub-agent (`name: "reporter"`) following the Sub-agent Spawning protocol.
+**Goal**: All fixable issues resolved in skill files, all findings consolidated into 3 output files.
 
-Pass the returned text from all sub-agents (coverage & quality checker, reference file reviewers, test evaluator, boundary & tone checker, and companion recommender) directly in the prompt. Also pass the skill output directory, context directory, and **workspace directory** paths.
+After all sub-agents return their text, handle consolidation directly:
 
-Prompt it to:
-1. Review all validation and test results (passed in the prompt)
-2. Read all skill files (`SKILL.md` and `references/`) so it can fix issues
-3. **Validation fixes:** Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
-4. **Boundary violations:** Review boundary & tone checker results (boundary section). For each violation, either remove the out-of-scope content or restructure it to be a brief cross-reference rather than substantial coverage. Include boundary check summary in `agent-validation-log.md`.
-5. **Test patterns:** Identify uncovered topic areas, vague content, and missing SKILL.md pointers
-6. **Companion skill report:** Write companion recommender results as a standalone `companion-skills.md` file in the context directory. Use YAML frontmatter with structured companion data (for future UI parsing) plus a markdown body with detailed reasoning. See format below.
-7. **Prescriptiveness rewrites:** Review boundary & tone checker results (prescriptiveness section). Apply suggested rewrites directly in skill files. Log each rewrite (original → revised) in `agent-validation-log.md`.
-8. Suggest 5-8 additional test prompt categories for future evaluation
-9. Write THREE output files to the context directory (formats below)
+- **Validation fixes**: Fix straightforward FAIL/MISSING findings directly in skill files. Flag ambiguous fixes for manual review. Re-check fixed items.
+- **Boundary violations**: For each violation, either remove the out-of-scope content or restructure it as a brief cross-reference rather than substantial coverage.
+- **Prescriptiveness rewrites**: Apply suggested rewrites directly in skill files. Log each rewrite (original -> revised).
+- **Test gap analysis**: Identify uncovered topic areas, vague content, and missing SKILL.md pointers. Include 5-8 suggested test prompt categories for future evaluation.
+- **Write output**: Three files to the context directory — `agent-validation-log.md`, `test-skill.md`, `companion-skills.md` (formats below).
 
 ## Error Handling
 
-- **Coverage & quality checker failure:** Re-spawn once. If it fails again, tell the reporter to perform coverage and quality checks itself during consolidation.
-- **Reference file reviewer failure:** Re-spawn once. If it fails again, tell the reporter to review that file itself during consolidation.
+- **Quality checker failure:** Re-spawn once. If it fails again, perform coverage and quality checks yourself during consolidation.
 - **Empty/incomplete skill files:** Report to the coordinator — do not validate incomplete content.
-- **Test evaluator failure:** Re-spawn once. If it fails again, tell the reporter to note "TESTS NOT EVALUATED" in the test report.
-- **Boundary & tone checker failure:** Re-spawn once. If it fails again, tell the reporter to skip boundary and prescriptiveness results and note "BOUNDARY & TONE CHECK UNAVAILABLE" in the validation log.
-- **Companion recommender failure:** Re-spawn once. If it fails again, tell the reporter to write `companion-skills.md` with `companions: []` in the YAML frontmatter and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the markdown body.
+- **Test evaluator failure:** Re-spawn once. If it fails again, note "TESTS NOT EVALUATED" in the test report.
+- **Companion recommender failure:** Re-spawn once. If it fails again, write `companion-skills.md` with `companions: []` in the YAML frontmatter and note "COMPANION RECOMMENDATIONS UNAVAILABLE" in the markdown body.
 
 </instructions>
 
@@ -275,7 +255,7 @@ Prompt it to:
 ## Prescriptiveness Rewrites
 - **Patterns found**: N | **Rewrites applied**: N
 ### [file:section] — REWRITTEN | KEPT (with justification)
-- Original: "[text]" → Revised: "[text]"
+- Original: "[text]" -> Revised: "[text]"
 ## Items Needing Manual Review
 ```
 
