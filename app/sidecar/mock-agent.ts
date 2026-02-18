@@ -20,6 +20,7 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   if (agentName === "confirm-decisions") return "step4-confirm-decisions";
   if (agentName === "generate-skill") return "step5-generate-skill";
   if (agentName === "validate-skill") return "step6-validate-skill";
+  if (agentName === "refine-skill") return "refine";
 
   // All research-related agents (orchestrator, planner, dimension agents, consolidate, scope-advisor)
   if (
@@ -43,6 +44,7 @@ function getOutputDir(stepTemplate: string): string {
     "step4-confirm-decisions": "step4",
     "step5-generate-skill": "step5",
     "step6-validate-skill": "step6",
+    "refine": "refine",
   };
   return stepMap[stepTemplate] || "";
 }
