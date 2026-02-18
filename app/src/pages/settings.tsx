@@ -26,6 +26,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from "@/components/ui/command"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 
@@ -299,519 +300,513 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>API Configuration</CardTitle>
-          <CardDescription>
-            Configure your Anthropic API key for skill building.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="api-key">Anthropic API Key</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="api-key"
-                  type={showApiKey ? "text" : "password"}
-                  placeholder="sk-ant-..."
-                  value={apiKey || ""}
-                  onChange={(e) => setApiKey(e.target.value || null)}
-                  onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-xs"
-                  className="absolute right-2 top-1/2 -translate-y-1/2"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                >
-                  {showApiKey ? (
-                    <EyeOff className="size-3.5" />
-                  ) : (
-                    <Eye className="size-3.5" />
-                  )}
-                </Button>
-              </div>
-              <Button
-                variant={apiKeyValid ? "default" : "outline"}
-                size="sm"
-                onClick={handleTestApiKey}
-                disabled={testing || !apiKey}
-                className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
-              >
-                {testing ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : apiKeyValid ? (
-                  <CheckCircle2 className="size-3.5" />
-                ) : null}
-                {apiKeyValid ? "Valid" : "Test"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="general">
+        <TabsList>
+          <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="skill-building">Skill Building</TabsTrigger>
+          <TabsTrigger value="github">GitHub</TabsTrigger>
+          <TabsTrigger value="advanced">Advanced</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>User Profile</CardTitle>
-          <CardDescription>
-            Optional context about you and your work. Agents use this to tailor research and skill content.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="industry">Industry</Label>
-            <Input
-              id="industry"
-              placeholder="e.g., Financial Services, Healthcare, Retail"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              onBlur={() => autoSave({ industry: industry || null })}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="function-role">Function / Role</Label>
-            <Input
-              id="function-role"
-              placeholder="e.g., Analytics Engineer, Data Platform Lead"
-              value={functionRole}
-              onChange={(e) => setFunctionRole(e.target.value)}
-              onBlur={() => autoSave({ functionRole: functionRole || null })}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Context</CardTitle>
-          <CardDescription>
-            Enable 1M token context window for all agents. Requires a compatible API plan.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
-            <Switch
-              id="extended-context"
-              checked={extendedContext}
-              onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Extended Thinking</CardTitle>
-          <CardDescription>
-            Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
-            <Switch
-              id="extended-thinking"
-              checked={extendedThinking}
-              onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Research Scope Limit</CardTitle>
-          <CardDescription>
-            Maximum number of research dimensions before suggesting narrower skills. Lower values produce more focused skills.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <Label htmlFor="max-dimensions">Max dimensions</Label>
-            <Input
-              id="max-dimensions"
-              type="number"
-              min={1}
-              max={18}
-              value={maxDimensions}
-              onChange={(e) => {
-                const val = Math.max(1, Math.min(18, parseInt(e.target.value) || 5))
-                setMaxDimensions(val)
-              }}
-              onBlur={() => autoSave({ maxDimensions })}
-              className="w-20"
-            />
-            <span className="text-sm text-muted-foreground">
-              {maxDimensions <= 3 ? "Narrow focus" : maxDimensions <= 5 ? "Balanced (default)" : maxDimensions <= 8 ? "Broad research" : "Very broad"}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>GitHub Account</CardTitle>
-          <CardDescription>
-            Connect your GitHub account to submit feedback and report issues.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {isLoggedIn && user ? (
-            <>
-              <div className="flex items-center gap-3">
-                <Avatar>
-                  <AvatarImage src={user.avatar_url} alt={user.login} />
-                  <AvatarFallback>{user.login[0].toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">@{user.login}</span>
-                  {user.email && (
-                    <span className="text-sm text-muted-foreground">{user.email}</span>
-                  )}
-                </div>
-              </div>
-              <Button variant="outline" size="sm" className="w-fit" onClick={logout}>
-                <LogOut className="size-4" />
-                Sign Out
-              </Button>
-            </>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground">Not connected</p>
-              <Button variant="outline" size="sm" className="w-fit" onClick={() => setLoginDialogOpen(true)}>
-                <Github className="size-4" />
-                Sign in with GitHub
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Remote Repository</CardTitle>
-          <CardDescription>
-            Configure a GitHub repository to push finished skills as pull requests.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {!isLoggedIn ? (
-            <p className="text-sm text-muted-foreground">
-              Sign in with GitHub above to configure remote push.
-            </p>
-          ) : (
-            <>
-              {validationStatus === "valid" && remoteRepo ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-green-600" />
-                    <code className="text-sm">{remoteRepo}</code>
+        <TabsContent value="general">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>API Configuration</CardTitle>
+                <CardDescription>
+                  Configure your Anthropic API key for skill building.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="api-key">Anthropic API Key</Label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Input
+                        id="api-key"
+                        type={showApiKey ? "text" : "password"}
+                        placeholder="sk-ant-..."
+                        value={apiKey || ""}
+                        onChange={(e) => setApiKey(e.target.value || null)}
+                        onBlur={(e) => autoSave({ apiKey: e.target.value || null })}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="absolute right-2 top-1/2 -translate-y-1/2"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                      >
+                        {showApiKey ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                    <Button
+                      variant={apiKeyValid ? "default" : "outline"}
+                      size="sm"
+                      onClick={handleTestApiKey}
+                      disabled={testing || !apiKey}
+                      className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                    >
+                      {testing ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : apiKeyValid ? (
+                        <CheckCircle2 className="size-3.5" />
+                      ) : null}
+                      {apiKeyValid ? "Valid" : "Test"}
+                    </Button>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>User Profile</CardTitle>
+                <CardDescription>
+                  Optional context about you and your work. Agents use this to tailor research and skill content.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="industry">Industry</Label>
+                  <Input
+                    id="industry"
+                    placeholder="e.g., Financial Services, Healthcare, Retail"
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                    onBlur={() => autoSave({ industry: industry || null })}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="function-role">Function / Role</Label>
+                  <Input
+                    id="function-role"
+                    placeholder="e.g., Analytics Engineer, Data Platform Lead"
+                    value={functionRole}
+                    onChange={(e) => setFunctionRole(e.target.value)}
+                    onBlur={() => autoSave({ functionRole: functionRole || null })}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Appearance</CardTitle>
+                <CardDescription>
+                  Choose a theme for the application.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 rounded-md bg-muted p-1">
+                  {([
+                    { value: "system", icon: Monitor, label: "System" },
+                    { value: "light", icon: Sun, label: "Light" },
+                    { value: "dark", icon: Moon, label: "Dark" },
+                  ] as const).map(({ value, icon: Icon, label }) => (
+                    <button
+                      key={value}
+                      onClick={() => setTheme(value)}
+                      className={cn(
+                        "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
+                        theme === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="size-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="skill-building">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Agent Features</CardTitle>
+                <CardDescription>
+                  Configure agent capabilities for skill building.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="extended-context">Extended context (1M tokens)</Label>
+                    <span className="text-sm text-muted-foreground">Enable 1M token context window for all agents. Requires a compatible API plan.</span>
+                  </div>
+                  <Switch
+                    id="extended-context"
+                    checked={extendedContext}
+                    onCheckedChange={(checked) => { setExtendedContext(checked); autoSave({ extendedContext: checked }); }}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="extended-thinking">Extended thinking (deeper reasoning)</Label>
+                    <span className="text-sm text-muted-foreground">Enable deeper reasoning for agents. Increases cost by ~$1-2 per skill build.</span>
+                  </div>
+                  <Switch
+                    id="extended-thinking"
+                    checked={extendedThinking}
+                    onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Research Scope Limit</CardTitle>
+                <CardDescription>
+                  Maximum number of research dimensions before suggesting narrower skills. Lower values produce more focused skills.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <Label htmlFor="max-dimensions">Max dimensions</Label>
+                  <Input
+                    id="max-dimensions"
+                    type="number"
+                    min={1}
+                    max={18}
+                    value={maxDimensions}
+                    onChange={(e) => {
+                      const val = Math.max(1, Math.min(18, parseInt(e.target.value) || 5))
+                      setMaxDimensions(val)
+                    }}
+                    onBlur={() => autoSave({ maxDimensions })}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    {maxDimensions <= 3 ? "Narrow focus" : maxDimensions <= 5 ? "Balanced (default)" : maxDimensions <= 8 ? "Broad research" : "Very broad"}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="github">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>GitHub Account</CardTitle>
+                <CardDescription>
+                  Connect your GitHub account to submit feedback and report issues.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {isLoggedIn && user ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <Avatar>
+                        <AvatarImage src={user.avatar_url} alt={user.login} />
+                        <AvatarFallback>{user.login[0].toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">@{user.login}</span>
+                        {user.email && (
+                          <span className="text-sm text-muted-foreground">{user.email}</span>
+                        )}
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="w-fit" onClick={logout}>
+                      <LogOut className="size-4" />
+                      Sign Out
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">Not connected</p>
+                    <Button variant="outline" size="sm" className="w-fit" onClick={() => setLoginDialogOpen(true)}>
+                      <Github className="size-4" />
+                      Sign in with GitHub
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Remote Repository</CardTitle>
+                <CardDescription>
+                  Configure a GitHub repository to push finished skills as pull requests.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {!isLoggedIn ? (
+                  <p className="text-sm text-muted-foreground">
+                    Sign in with GitHub above to configure remote push.
+                  </p>
+                ) : (
+                  <>
+                    {validationStatus === "valid" && remoteRepo ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="size-4 text-green-600" />
+                          <code className="text-sm">{remoteRepo}</code>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setValidationStatus(null)
+                              setRemoteRepo("")
+                              setRepoPickerOpen(true)
+                            }}
+                          >
+                            Change
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-muted-foreground"
+                            onClick={() => {
+                              setRemoteRepo("")
+                              setValidationStatus(null)
+                              autoSave({ remoteRepoOwner: null, remoteRepoName: null })
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-2">
+                        <Label>Repository</Label>
+                        <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-start text-muted-foreground font-normal"
+                              onClick={() => {
+                                setRepoPickerOpen(true)
+                                if (repos.length === 0 && !loadingRepos) {
+                                  loadRepos()
+                                }
+                              }}
+                            >
+                              <Search className="size-4 mr-2" />
+                              {remoteRepo || "Select a repository..."}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search repositories..." />
+                              <CommandList>
+                                {loadingRepos ? (
+                                  <div className="flex items-center justify-center py-6">
+                                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                                  </div>
+                                ) : (
+                                  <>
+                                    <CommandEmpty>No repositories found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {repos.map((repo) => (
+                                        <CommandItem
+                                          key={repo.full_name}
+                                          value={repo.full_name}
+                                          onSelect={() => handleSelectRepo(repo)}
+                                        >
+                                          <div className="flex flex-col">
+                                            <span className="text-sm font-medium">{repo.full_name}</span>
+                                            {repo.description && (
+                                              <span className="text-xs text-muted-foreground line-clamp-1">
+                                                {repo.description}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {repo.is_private && (
+                                            <Badge variant="outline" className="ml-auto text-xs">Private</Badge>
+                                          )}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </>
+                                )}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">or</span>
+                          <div className="flex flex-1 gap-2">
+                            <Input
+                              placeholder="owner/repo"
+                              value={remoteRepo}
+                              onChange={(e) => {
+                                setRemoteRepo(e.target.value)
+                                setValidationStatus(null)
+                              }}
+                              className="text-sm"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={handleValidateRemoteRepo}
+                              disabled={validating || !remoteRepo.includes("/")}
+                            >
+                              {validating ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                              Validate
+                            </Button>
+                          </div>
+                        </div>
+                        {validationStatus === "error" && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <AlertCircle className="size-4 text-red-600" />
+                            <span className="text-red-600">{validationError}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="advanced">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Logging</CardTitle>
+                <CardDescription>
+                  Configure application logging.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="log-level-select">Log Level</Label>
+                  <div className="flex items-center gap-3">
+                    <select
+                      id="log-level-select"
+                      value={logLevel}
+                      onChange={(e) => {
+                        setLogLevel(e.target.value)
+                        autoSave({ logLevel: e.target.value })
+                        invoke("set_log_level", { level: e.target.value }).catch(() => {})
+                      }}
+                      className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="error">Error</option>
+                      <option value="warn">Warn</option>
+                      <option value="info">Info</option>
+                      <option value="debug">Debug</option>
+                    </select>
+                    <span className="text-sm text-muted-foreground">
+                      {{ error: "Only errors", warn: "Errors + warnings", info: "Errors + warnings + lifecycle (default)", debug: "Everything (verbose)" }[logLevel]}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-muted-foreground" />
+                  <code className="text-sm text-muted-foreground flex-1">
+                    {logFilePath || "Not available"}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (logFilePath) {
+                        revealItemInDir(logFilePath).catch(() => {
+                          toast.error("Failed to open log directory")
+                        })
+                      }
+                    }}
+                    disabled={!logFilePath}
+                  >
+                    <ExternalLink className="size-4" />
+                    Open
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Storage</CardTitle>
+                <CardDescription>
+                  Manage application directories.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label>Skills Folder</Label>
                   <div className="flex items-center gap-2">
+                    <FolderOpen className="size-4 text-muted-foreground" />
+                    <code className="text-sm text-muted-foreground flex-1">
+                      {skillsPath || "Not configured"}
+                    </code>
+                    <Button variant="outline" size="sm" onClick={handleBrowseSkillsPath}>
+                      <FolderSearch className="size-4" />
+                      Browse
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Workspace Folder</Label>
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="size-4 text-muted-foreground" />
+                    <code className="text-sm text-muted-foreground flex-1">
+                      {workspacePath || "Not initialized"}
+                    </code>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        setValidationStatus(null)
-                        setRemoteRepo("")
-                        setRepoPickerOpen(true)
-                      }}
+                      onClick={handleClearWorkspace}
+                      disabled={clearing || !workspacePath}
+                      className="text-destructive hover:text-destructive"
                     >
-                      Change
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-muted-foreground"
-                      onClick={() => {
-                        setRemoteRepo("")
-                        setValidationStatus(null)
-                        autoSave({ remoteRepoOwner: null, remoteRepoName: null })
-                      }}
-                    >
-                      Remove
+                      {clearing ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-4" />
+                      )}
+                      Clear
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Label>Repository</Label>
-                  <Popover open={repoPickerOpen} onOpenChange={setRepoPickerOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-muted-foreground font-normal"
-                        onClick={() => {
-                          setRepoPickerOpen(true)
-                          if (repos.length === 0 && !loadingRepos) {
-                            loadRepos()
-                          }
-                        }}
-                      >
-                        <Search className="size-4 mr-2" />
-                        {remoteRepo || "Select a repository..."}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[400px] p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Search repositories..." />
-                        <CommandList>
-                          {loadingRepos ? (
-                            <div className="flex items-center justify-center py-6">
-                              <Loader2 className="size-4 animate-spin text-muted-foreground" />
-                            </div>
-                          ) : (
-                            <>
-                              <CommandEmpty>No repositories found.</CommandEmpty>
-                              <CommandGroup>
-                                {repos.map((repo) => (
-                                  <CommandItem
-                                    key={repo.full_name}
-                                    value={repo.full_name}
-                                    onSelect={() => handleSelectRepo(repo)}
-                                  >
-                                    <div className="flex flex-col">
-                                      <span className="text-sm font-medium">{repo.full_name}</span>
-                                      {repo.description && (
-                                        <span className="text-xs text-muted-foreground line-clamp-1">
-                                          {repo.description}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {repo.is_private && (
-                                      <Badge variant="outline" className="ml-auto text-xs">Private</Badge>
-                                    )}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
+                <div className="flex flex-col gap-1.5">
+                  <Label>Data Directory</Label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">or</span>
-                    <div className="flex flex-1 gap-2">
-                      <Input
-                        placeholder="owner/repo"
-                        value={remoteRepo}
-                        onChange={(e) => {
-                          setRemoteRepo(e.target.value)
-                          setValidationStatus(null)
-                        }}
-                        className="text-sm"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleValidateRemoteRepo}
-                        disabled={validating || !remoteRepo.includes("/")}
-                      >
-                        {validating ? <Loader2 className="size-3.5 animate-spin" /> : null}
-                        Validate
-                      </Button>
-                    </div>
+                    <FolderOpen className="size-4 text-muted-foreground" />
+                    <code className="text-sm text-muted-foreground flex-1">
+                      {dataDir || "Unknown"}
+                    </code>
                   </div>
-                  {validationStatus === "error" && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <AlertCircle className="size-4 text-red-600" />
-                      <span className="text-red-600">{validationError}</span>
-                    </div>
-                  )}
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+              </CardContent>
+            </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>
-            Choose a theme for the application.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-1 rounded-md bg-muted p-1">
-            {([
-              { value: "system", icon: Monitor, label: "System" },
-              { value: "light", icon: Sun, label: "Light" },
-              { value: "dark", icon: Moon, label: "Dark" },
-            ] as const).map(({ value, icon: Icon, label }) => (
-              <button
-                key={value}
-                onClick={() => setTheme(value)}
-                className={cn(
-                  "flex flex-1 items-center justify-center gap-1.5 rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
-                  theme === value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Icon className="size-3.5" />
-                {label}
-              </button>
-            ))}
+            <Card>
+              <CardHeader>
+                <CardTitle>About</CardTitle>
+                <CardDescription>
+                  Skill Builder v{appVersion}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
+                  <Info className="size-4" />
+                  About Skill Builder
+                </Button>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Log Level</CardTitle>
-          <CardDescription>
-            Controls how much detail is written to the app log file.
-            Each level includes everything above it: Error &lt; Warn &lt; Info &lt; Debug.
-            Chat transcripts (JSONL) are always captured regardless of this setting.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="log-level-select">Log Level</Label>
-            <div className="flex items-center gap-3">
-              <select
-                id="log-level-select"
-                value={logLevel}
-                onChange={(e) => {
-                  setLogLevel(e.target.value)
-                  autoSave({ logLevel: e.target.value })
-                  invoke("set_log_level", { level: e.target.value }).catch(() => {})
-                }}
-                className="flex h-9 w-fit rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="error">Error</option>
-                <option value="warn">Warn</option>
-                <option value="info">Info</option>
-                <option value="debug">Debug</option>
-              </select>
-              <span className="text-sm text-muted-foreground">
-                {{ error: "Only errors", warn: "Errors + warnings", info: "Errors + warnings + lifecycle (default)", debug: "Everything (verbose)" }[logLevel]}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Log File</CardTitle>
-          <CardDescription>
-            Application logs are written here. The log file is recreated each time the app starts.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <FileText className="size-4 text-muted-foreground" />
-            <code className="text-sm text-muted-foreground flex-1">
-              {logFilePath || "Not available"}
-            </code>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (logFilePath) {
-                  revealItemInDir(logFilePath).catch(() => {
-                    toast.error("Failed to open log directory")
-                  })
-                }
-              }}
-              disabled={!logFilePath}
-            >
-              <ExternalLink className="size-4" />
-              Open
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Skills Folder</CardTitle>
-          <CardDescription>
-            Persistent folder for finished skill outputs (SKILL.md, references, .skill packages). Not affected by workspace clearing.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <FolderOpen className="size-4 text-muted-foreground" />
-            <code className="text-sm text-muted-foreground flex-1">
-              {skillsPath || "Not configured"}
-            </code>
-            <Button variant="outline" size="sm" onClick={handleBrowseSkillsPath}>
-              <FolderSearch className="size-4" />
-              Browse
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Workspace Folder</CardTitle>
-          <CardDescription>
-            Working files are stored in this directory and is managed automatically.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <FolderOpen className="size-4 text-muted-foreground" />
-            <code className="text-sm text-muted-foreground flex-1">
-              {workspacePath || "Not initialized"}
-            </code>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleClearWorkspace}
-              disabled={clearing || !workspacePath}
-              className="text-destructive hover:text-destructive"
-            >
-              {clearing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Clear
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Data Directory</CardTitle>
-          <CardDescription>
-            Internal storage for the app database and configuration. Not intended for direct editing.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <FolderOpen className="size-4 text-muted-foreground" />
-            <code className="text-sm text-muted-foreground flex-1">
-              {dataDir || "Unknown"}
-            </code>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>About</CardTitle>
-          <CardDescription>
-            Skill Builder v{appVersion}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button variant="outline" size="sm" onClick={() => setAboutDialogOpen(true)}>
-            <Info className="size-4" />
-            About Skill Builder
-          </Button>
-        </CardContent>
-      </Card>
+        </TabsContent>
+      </Tabs>
 
       <AboutDialog open={aboutDialogOpen} onOpenChange={setAboutDialogOpen} />
       <GitHubLoginDialog open={loginDialogOpen} onOpenChange={setLoginDialogOpen} />
