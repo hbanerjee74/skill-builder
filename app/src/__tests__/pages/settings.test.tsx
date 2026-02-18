@@ -106,9 +106,11 @@ describe("SettingsPage", () => {
     resetTauriMocks();
     // Default to logged-out state
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
+    // Reset URL search params so tab defaults to "general"
+    window.history.replaceState({}, "", window.location.pathname);
   });
 
-  it("renders all 4 tabs", async () => {
+  it("renders all 5 tabs", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
@@ -117,8 +119,9 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Skill Building/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /GitHub/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Skill Building/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Skills Library/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Advanced/i })).toBeInTheDocument();
   });
 

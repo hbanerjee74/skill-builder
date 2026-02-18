@@ -28,8 +28,13 @@ import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, Command
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
+import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get("tab") ?? "general"
+  })
   const [apiKey, setApiKey] = useState<string | null>(null)
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   const [skillsPath, setSkillsPath] = useState<string | null>(null)
@@ -299,11 +304,21 @@ export default function SettingsPage() {
         )}
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs value={activeTab} onValueChange={(value) => {
+        setActiveTab(value)
+        const url = new URL(window.location.href)
+        if (value === "general") {
+          url.searchParams.delete("tab")
+        } else {
+          url.searchParams.set("tab", value)
+        }
+        window.history.replaceState({}, "", url.toString())
+      }}>
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="skill-building">Skill Building</TabsTrigger>
           <TabsTrigger value="github">GitHub</TabsTrigger>
+          <TabsTrigger value="skill-building">Skill Building</TabsTrigger>
+          <TabsTrigger value="skills-library">Skills Library</TabsTrigger>
           <TabsTrigger value="advanced">Advanced</TabsTrigger>
         </TabsList>
 
@@ -663,6 +678,10 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="skills-library">
+          <SkillsLibraryTab />
         </TabsContent>
 
         <TabsContent value="advanced">
