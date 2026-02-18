@@ -294,8 +294,7 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">Settings</h1>
-        <span className="text-sm text-muted-foreground">Skill Builder v{appVersion}</span>
+        <span className="text-sm text-muted-foreground">v{appVersion}</span>
         {saved && (
           <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
             <CheckCircle2 className="size-3.5" />

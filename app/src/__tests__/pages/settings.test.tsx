@@ -115,7 +115,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
@@ -130,7 +130,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     expect(screen.getByText("API Configuration")).toBeInTheDocument();
@@ -155,7 +155,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     // API key field (password input)
@@ -168,7 +168,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -182,7 +182,7 @@ describe("SettingsPage", () => {
 
     // Wait for loading to finish
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     const testButtons = screen.getAllByRole("button", { name: /Test/i });
@@ -202,7 +202,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Skill Building/i);
@@ -225,7 +225,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     const apiKeyInput = screen.getByPlaceholderText("sk-ant-...");
@@ -248,7 +248,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Skill Building/i);
@@ -274,7 +274,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Skill Building/i);
@@ -287,25 +287,12 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("has the page title 'Settings'", async () => {
-    setupDefaultMocks();
-    render(<SettingsPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
-    });
-
-    const heading = screen.getByRole("heading", { name: "Settings" });
-    expect(heading).toBeInTheDocument();
-  });
-
   it("displays the app version from Tauri", async () => {
     setupDefaultMocks();
     render(<SettingsPage />);
 
     await waitFor(() => {
-      const matches = screen.getAllByText("Skill Builder v0.1.0");
-      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("v0.1.0")).toBeInTheDocument();
     });
   });
 
@@ -316,8 +303,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      const matches = screen.getAllByText("Skill Builder vdev");
-      expect(matches.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("vdev")).toBeInTheDocument();
     });
   });
 
@@ -326,7 +312,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -342,7 +328,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -355,7 +341,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -370,7 +356,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -386,7 +372,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -411,7 +397,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -432,7 +418,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -452,7 +438,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -470,7 +456,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -488,7 +474,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -501,7 +487,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -516,7 +502,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -535,7 +521,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -557,7 +543,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -576,7 +562,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/Advanced/i);
@@ -589,7 +575,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     expect(screen.getByText("Appearance")).toBeInTheDocument();
@@ -604,7 +590,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "Dark" }));
@@ -616,7 +602,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/GitHub/i);
@@ -636,7 +622,7 @@ describe("SettingsPage", () => {
     render(<SettingsPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /General/i })).toBeInTheDocument();
     });
 
     await switchToTab(/GitHub/i);
