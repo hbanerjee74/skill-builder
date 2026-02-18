@@ -5,6 +5,7 @@ import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
+import { SetupScreen } from "@/components/setup-screen";
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
@@ -13,11 +14,13 @@ import type { OrphanSkill } from "@/lib/types";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
+  const isConfigured = useSettingsStore((s) => s.isConfigured);
   const navigate = useNavigate();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [reconciled, setReconciled] = useState(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(false);
   const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
 
   // Hydrate settings store from Tauri backend on app startup
@@ -47,6 +50,11 @@ export function AppLayout() {
     // Load GitHub auth state
     useAuthStore.getState().loadUser();
   }, [setSettings]);
+
+  // Sync setupComplete from isConfigured (returning users skip setup screen)
+  useEffect(() => {
+    if (isConfigured) setSetupComplete(true);
+  }, [isConfigured]);
 
   // Run reconciliation after settings are loaded
   useEffect(() => {
@@ -113,10 +121,6 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
-  const handleSplashDismiss = () => {
-    setSplashDismissed(true);
-  };
-
   const ready = settingsLoaded && reconciled && nodeReady;
 
   return (
@@ -125,15 +129,18 @@ export function AppLayout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          {ready ? <Outlet /> : null}
+          {ready && setupComplete ? <Outlet /> : null}
         </main>
       </div>
       <CloseGuard />
       {!splashDismissed && (
         <SplashScreen
-          onDismiss={handleSplashDismiss}
+          onDismiss={() => setSplashDismissed(true)}
           onReady={() => setNodeReady(true)}
         />
+      )}
+      {splashDismissed && !setupComplete && (
+        <SetupScreen onComplete={() => setSetupComplete(true)} />
       )}
       {orphans.length > 0 && (
         <OrphanResolutionDialog

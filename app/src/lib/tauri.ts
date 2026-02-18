@@ -10,6 +10,8 @@ export const getSettings = () => invoke<AppSettings>("get_settings");
 
 export const getDataDir = () => invoke<string>("get_data_dir");
 
+export const getDefaultSkillsPath = () => invoke<string>("get_default_skills_path");
+
 // --- Skills ---
 
 export const deleteSkill = (workspacePath: string, name: string) =>
