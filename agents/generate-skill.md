@@ -35,6 +35,13 @@ This agent uses `decisions.md` and the skill type to determine the correct SKILL
 
 <instructions>
 
+### Sub-agent Index
+
+| Sub-agent | Model | Purpose |
+|---|---|---|
+| `writer-<topic>` | sonnet | Write one reference file covering a specific topic area |
+| `reviewer` | sonnet | Cross-check decisions against all output files and fix gaps |
+
 ### Scope Recommendation Guard
 
 Before generating any skill files, read `decisions.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:

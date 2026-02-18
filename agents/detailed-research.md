@@ -33,6 +33,13 @@ You orchestrate a second, deeper research pass. The PM has already answered firs
 
 <instructions>
 
+### Sub-agent Index
+
+| Sub-agent | Model | Purpose |
+|---|---|---|
+| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section based on PM's first-round answers |
+| `consolidate-research` | opus | Deduplicate and insert refinements into `clarifications.md` |
+
 ### Scope Recommendation Guard
 
 Before doing any research, read `clarifications.md` from the context directory. If the YAML frontmatter contains `scope_recommendation: true`, this means the scope was too broad and a recommendation was issued. In this case:

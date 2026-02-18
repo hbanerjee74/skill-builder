@@ -67,7 +67,7 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
-  6: { type: "agent", outputFiles: ["context/agent-validation-log.md", "context/test-skill.md"], model: "sonnet" },
+  6: { type: "agent", outputFiles: ["context/agent-validation-log.md", "context/test-skill.md", "context/companion-skills.md"], model: "sonnet" },
 };
 
 // Human review steps: step id -> relative artifact path
