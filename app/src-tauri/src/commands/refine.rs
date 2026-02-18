@@ -6,7 +6,7 @@ use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
 use crate::db::{self, Db};
-use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
+use crate::types::{ConversationMessage, RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
 /// Tools available to the refine-skill agent. Matches the agent's frontmatter
 /// `tools: Read, Edit, Write, Glob, Grep, Task`. Task is required for the
@@ -47,13 +47,12 @@ impl RefineSessionManager {
 /// Extracted for testability — `send_refine_message` calls this then spawns the sidecar.
 fn build_refine_config(
     message: String,
-    conversation_history: Vec<serde_json::Value>,
+    conversation_history: Vec<ConversationMessage>,
     session_id: String,
     skill_name: &str,
     skills_path: &str,
     api_key: String,
     model: String,
-    extended_context: bool,
     extended_thinking: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
@@ -70,7 +69,7 @@ fn build_refine_config(
 
     let config = SidecarConfig {
         prompt: message,
-        betas: crate::commands::workflow::build_betas(extended_context, thinking_budget, &model),
+        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
         model: Some(model),
         api_key,
         cwd,
@@ -81,7 +80,12 @@ fn build_refine_config(
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
-        conversation_history: (!conversation_history.is_empty()).then_some(conversation_history),
+        conversation_history: (!conversation_history.is_empty()).then(|| {
+            conversation_history
+                .into_iter()
+                .map(|m| serde_json::json!({"role": m.role, "content": m.content}))
+                .collect()
+        }),
     };
 
     (config, agent_id)
@@ -244,12 +248,19 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
             diff: String::new(),
         });
 
-        // Append diff content (context, additions, deletions only)
+        // Append diff content: hunk headers, context, additions, deletions
         let origin = line.origin();
-        if matches!(origin, '+' | '-' | ' ') {
-            if let Ok(s) = std::str::from_utf8(line.content()) {
-                entry.diff.push(origin);
-                entry.diff.push_str(s);
+        if let Ok(s) = std::str::from_utf8(line.content()) {
+            match origin {
+                '+' | '-' | ' ' => {
+                    entry.diff.push(origin);
+                    entry.diff.push_str(s);
+                }
+                'H' => {
+                    // Hunk header (@@) — content already includes the @@ prefix
+                    entry.diff.push_str(s);
+                }
+                _ => {}
             }
         }
 
@@ -359,7 +370,7 @@ pub async fn start_refine_session(
 pub async fn send_refine_message(
     session_id: String,
     message: String,
-    conversation_history: Vec<serde_json::Value>,
+    conversation_history: Vec<ConversationMessage>,
     workspace_path: String,
     sessions: tauri::State<'_, RefineSessionManager>,
     pool: tauri::State<'_, SidecarPool>,
@@ -383,7 +394,7 @@ pub async fn send_refine_message(
     };
 
     // 2. Read settings (API key, model prefs, extended thinking) in a single DB lock
-    let (skills_path, api_key, extended_context, extended_thinking, model) = {
+    let (skills_path, api_key, extended_thinking, model) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
             e.to_string()
@@ -403,7 +414,7 @@ pub async fn send_refine_message(
         let model = settings
             .preferred_model
             .unwrap_or_else(|| "sonnet".to_string());
-        (skills_path, key, settings.extended_context, settings.extended_thinking, model)
+        (skills_path, key, settings.extended_thinking, model)
     };
 
     // 3. Build config and agent_id
@@ -415,7 +426,6 @@ pub async fn send_refine_message(
         &skills_path,
         api_key,
         model,
-        extended_context,
         extended_thinking,
     );
 
@@ -594,6 +604,8 @@ mod tests {
             .unwrap();
         assert_eq!(skill_file.status, "modified");
         assert!(!skill_file.diff.is_empty());
+        // Verify hunk headers are included for valid unified diff format
+        assert!(skill_file.diff.contains("@@"), "diff should include hunk headers");
     }
 
     #[test]
@@ -716,7 +728,7 @@ mod tests {
 
     fn base_refine_config(
         message: &str,
-        history: Vec<serde_json::Value>,
+        history: Vec<ConversationMessage>,
     ) -> (SidecarConfig, String) {
         build_refine_config(
             message.to_string(),
@@ -726,7 +738,6 @@ mod tests {
             "/skills",
             "sk-test-key".to_string(),
             "sonnet".to_string(),
-            false,
             false,
         )
     }
@@ -774,7 +785,6 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
-            false,
         );
         assert_eq!(config.cwd, "/home/user/skills/data-engineering");
     }
@@ -783,8 +793,8 @@ mod tests {
     fn test_refine_config_passes_conversation_history() {
         // Multi-turn history is passed to the sidecar for context
         let history = vec![
-            serde_json::json!({"role": "user", "content": "Add metrics section"}),
-            serde_json::json!({"role": "assistant", "content": "Done. I added..."}),
+            ConversationMessage { role: "user".into(), content: "Add metrics section".into() },
+            ConversationMessage { role: "assistant".into(), content: "Done. I added...".into() },
         ];
         let (config, _) = base_refine_config("Now add examples", history);
         let ch = config.conversation_history.unwrap();
@@ -846,7 +856,6 @@ mod tests {
             "/skills",
             "sk-key".to_string(),
             "sonnet".to_string(),
-            false,
             true, // extended_thinking enabled
         );
         assert_eq!(config.max_thinking_tokens, Some(16_000));
@@ -862,8 +871,8 @@ mod tests {
     fn test_refine_config_serialization_matches_sidecar_schema() {
         // End-to-end: build config, serialize to JSON, verify the sidecar sees correct fields
         let history = vec![
-            serde_json::json!({"role": "user", "content": "First request"}),
-            serde_json::json!({"role": "assistant", "content": "Done"}),
+            ConversationMessage { role: "user".into(), content: "First request".into() },
+            ConversationMessage { role: "assistant".into(), content: "Done".into() },
         ];
         let (config, _) = base_refine_config("@SKILL.md Update overview", history);
 
