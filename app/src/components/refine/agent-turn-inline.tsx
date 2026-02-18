@@ -1,4 +1,4 @@
-import { Fragment, useMemo } from "react";
+import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { useAgentStore } from "@/stores/agent-store";
 import {
@@ -74,9 +74,7 @@ export function AgentTurnInline({ agentId }: AgentTurnInlineProps) {
         );
 
         return (
-          <Fragment key={`${msg.timestamp}-${i}`}>
-            <div className={spacing}>{content}</div>
-          </Fragment>
+          <div key={`${msg.timestamp}-${i}`} className={spacing}>{content}</div>
         );
       })}
       {run.status === "running" && run.messages.length > 0 && (

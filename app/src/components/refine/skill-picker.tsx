@@ -18,11 +18,12 @@ import {
   type SkillSummary,
   type SkillType,
 } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 function SkillTypeBadge({ skillType, className }: { skillType: string; className?: string }) {
   const type = skillType as SkillType;
   return (
-    <Badge className={`text-[10px] px-1.5 py-0 ${SKILL_TYPE_COLORS[type] ?? ""} ${className ?? ""}`}>
+    <Badge className={cn("px-1.5 py-0 text-[10px]", SKILL_TYPE_COLORS[type], className)}>
       {SKILL_TYPE_LABELS[type] ?? skillType}
     </Badge>
   );

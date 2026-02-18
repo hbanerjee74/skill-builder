@@ -59,37 +59,32 @@ interface RefineState {
   clearSession: () => void;
 }
 
+/** Session state that resets when switching skills or clearing the session. */
+const SESSION_DEFAULTS = {
+  messages: [] as RefineMessage[],
+  activeAgentId: null as string | null,
+  isRunning: false,
+  sessionId: null as string | null,
+  diffMode: false,
+  baselineFiles: [] as SkillFile[],
+  skillFiles: [] as SkillFile[],
+  activeFileTab: "SKILL.md",
+} as const;
+
 export const useRefineStore = create<RefineState>((set, get) => ({
   // Initial state
   selectedSkill: null,
   refinableSkills: [],
   isLoadingSkills: false,
-  skillFiles: [],
   isLoadingFiles: false,
-  activeFileTab: "SKILL.md",
-  diffMode: false,
-  baselineFiles: [],
-  messages: [],
-  activeAgentId: null,
-  isRunning: false,
-  sessionId: null,
+  ...SESSION_DEFAULTS,
 
   // Actions
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
   selectSkill: (skill) =>
-    set({
-      selectedSkill: skill,
-      messages: [],
-      activeAgentId: null,
-      isRunning: false,
-      sessionId: null,
-      diffMode: false,
-      baselineFiles: [],
-      skillFiles: [],
-      activeFileTab: "SKILL.md",
-    }),
+    set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
 
   setSkillFiles: (files) => set({ skillFiles: files, isLoadingFiles: false }),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
@@ -130,15 +125,5 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setActiveAgentId: (id) => set({ activeAgentId: id }),
   setRunning: (v) => set({ isRunning: v }),
 
-  clearSession: () =>
-    set({
-      messages: [],
-      activeAgentId: null,
-      isRunning: false,
-      sessionId: null,
-      diffMode: false,
-      baselineFiles: [],
-      skillFiles: [],
-      activeFileTab: "SKILL.md",
-    }),
+  clearSession: () => set(SESSION_DEFAULTS),
 }));

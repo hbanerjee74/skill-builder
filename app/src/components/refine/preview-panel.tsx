@@ -22,13 +22,15 @@ const REMARK_PLUGINS = [remarkGfm];
 const REHYPE_PLUGINS = [rehypeHighlight];
 
 /** Memoized markdown renderer — only re-renders when content changes. */
-const MarkdownPreview = memo(({ content }: { content: string }) => (
-  <div className="markdown-body max-w-none p-4">
-    <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
-      {content}
-    </ReactMarkdown>
-  </div>
-));
+const MarkdownPreview = memo(function MarkdownPreview({ content }: { content: string }) {
+  return (
+    <div className="markdown-body max-w-none p-4">
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={REHYPE_PLUGINS}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+});
 
 export function PreviewPanel() {
   const skillFiles = useRefineStore((s) => s.skillFiles);

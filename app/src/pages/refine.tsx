@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useRefineStore } from "@/stores/refine-store";
-import type { RefineCommand } from "@/stores/refine-store";
+import type { RefineCommand, RefineMessage, SkillFile } from "@/stores/refine-store";
 import { useAgentStore } from "@/stores/agent-store";
 import {
   listRefinableSkills,
@@ -24,10 +24,87 @@ import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { ChatPanel } from "@/components/refine/chat-panel";
 import { PreviewPanel } from "@/components/refine/preview-panel";
-import type { SkillFile } from "@/stores/refine-store";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
+
+/** Map a refine command to the corresponding sidecar agent name. */
+function resolveAgentName(command?: RefineCommand): string {
+  if (command === "rewrite") return "rewrite-skill";
+  if (command === "validate") return "validate-skill";
+  return "refine-skill";
+}
+
+/** Build the prompt sent to the sidecar agent. */
+function buildPrompt(
+  text: string,
+  conversationContext: string,
+  fileConstraint: string,
+  command?: RefineCommand,
+): string {
+  if (command === "rewrite") {
+    return `You are rewriting a completed skill. The skill files are in the current working directory.
+
+Read ALL existing skill files (SKILL.md and everything in references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
+
+${text ? `Additional instructions: ${text}` : ""}${fileConstraint}
+
+Focus on: clear progressive disclosure, actionable guidance, proper frontmatter, well-organized reference files. Preserve domain expertise but improve presentation.
+
+Briefly describe what you rewrote and why.`;
+  }
+
+  if (command === "validate") {
+    return `You are validating a completed skill. The skill files are in the current working directory.
+
+Read ALL existing skill files (SKILL.md and everything in references/), then evaluate:
+- Coverage: Do files address all aspects from the skill description?
+- Structure: Is progressive disclosure used well? Sections logically organized?
+- Actionability: Are instructions specific enough to follow?
+- Quality: Are code examples correct? References properly linked?
+
+Fix any issues you find. Provide a brief validation report: what you checked, what you fixed.
+
+${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
+  }
+
+  // Default refine prompt
+  return `You are refining a skill. The skill files are in the current working directory.
+
+${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
+
+Read the relevant files, make the requested changes, and briefly describe what you changed.`;
+}
+
+/**
+ * Build a text summary of previous chat messages for inclusion in the agent prompt.
+ * Excludes the trailing agent turn (the one about to be sent).
+ */
+function buildConversationContext(
+  messages: RefineMessage[],
+  runs: Record<string, { messages: { type: string; content?: string }[] }>,
+): string {
+  return messages
+    .slice(0, -1)
+    .map((msg) => {
+      if (msg.role === "user") {
+        return `User: ${msg.userText}`;
+      }
+      if (msg.role === "agent" && msg.agentId) {
+        const agentRun = runs[msg.agentId];
+        if (agentRun) {
+          const lastText = agentRun.messages
+            .filter((m) => m.type === "assistant" && m.content)
+            .map((m) => m.content)
+            .pop();
+          return lastText ? `Assistant: ${lastText}` : null;
+        }
+      }
+      return null;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 export default function RefinePage() {
   const { skill: skillParam } = useSearch({ from: "/refine" });
@@ -95,7 +172,7 @@ export default function RefinePage() {
   useEffect(() => {
     if (!activeAgentId || !activeRunStatus) return;
 
-    const isTerminal = activeRunStatus === "completed" || activeRunStatus === "error" || activeRunStatus === "shutdown";
+    const isTerminal = ["completed", "error", "shutdown"].includes(activeRunStatus);
     if (!isTerminal) return;
 
     console.log("[refine] agent %s finished: status=%s", activeAgentId, activeRunStatus);
@@ -131,19 +208,14 @@ export default function RefinePage() {
   async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
     try {
       const contents = await getSkillContentForRefine(skillName, basePath);
-      const files: SkillFile[] = contents.map((c) => ({
-        filename: c.path,
-        content: c.content,
-      }));
-
-      // Ensure SKILL.md is first
-      files.sort((a, b) => {
-        if (a.filename === "SKILL.md") return -1;
-        if (b.filename === "SKILL.md") return 1;
-        return a.filename.localeCompare(b.filename);
-      });
-
-      return files;
+      return contents
+        .map((c): SkillFile => ({ filename: c.path, content: c.content }))
+        .sort((a, b) => {
+          // Ensure SKILL.md is first
+          if (a.filename === "SKILL.md") return -1;
+          if (b.filename === "SKILL.md") return 1;
+          return a.filename.localeCompare(b.filename);
+        });
     } catch (err) {
       console.error("[refine] Failed to load skill files:", err);
       return null;
@@ -191,47 +263,6 @@ export default function RefinePage() {
     handleSelectSkill(pendingSwitchSkill);
   }, [pendingSwitchSkill, handleSelectSkill]);
 
-  // --- Build command-specific prompts ---
-  function buildPrompt(
-    text: string,
-    conversationContext: string,
-    fileConstraint: string,
-    command?: RefineCommand,
-  ): string {
-    if (command === "rewrite") {
-      return `You are rewriting a completed skill. The skill files are in the current working directory.
-
-Read ALL existing skill files (SKILL.md and everything in references/), then rewrite them to improve structure, clarity, and adherence to Claude skill best practices.
-
-${text ? `Additional instructions: ${text}` : ""}${fileConstraint}
-
-Focus on: clear progressive disclosure, actionable guidance, proper frontmatter, well-organized reference files. Preserve domain expertise but improve presentation.
-
-Briefly describe what you rewrote and why.`;
-    }
-
-    if (command === "validate") {
-      return `You are validating a completed skill. The skill files are in the current working directory.
-
-Read ALL existing skill files (SKILL.md and everything in references/), then evaluate:
-- Coverage: Do files address all aspects from the skill description?
-- Structure: Is progressive disclosure used well? Sections logically organized?
-- Actionability: Are instructions specific enough to follow?
-- Quality: Are code examples correct? References properly linked?
-
-Fix any issues you find. Provide a brief validation report: what you checked, what you fixed.
-
-${text ? `Additional instructions: ${text}` : ""}${fileConstraint}`;
-    }
-
-    // Default refine prompt
-    return `You are refining a skill. The skill files are in the current working directory.
-
-${conversationContext ? `Previous conversation:\n${conversationContext}\n\n` : ""}Current request: ${text}${fileConstraint}
-
-Read the relevant files, make the requested changes, and briefly describe what you changed.`;
-  }
-
   // --- Send a message ---
   const handleSend = useCallback(
     async (text: string, targetFiles?: string[], command?: RefineCommand) => {
@@ -270,38 +301,13 @@ Read the relevant files, make the requested changes, and briefly describe what y
           : "";
 
       // Build conversation context from previous messages (read fresh from stores)
-      const currentMessages = useRefineStore.getState().messages;
-      const agentRuns = useAgentStore.getState().runs;
-      const conversationContext = currentMessages
-        .slice(0, -1) // Exclude the agent turn just added above
-        .map((msg) => {
-          if (msg.role === "user") {
-            return `User: ${msg.userText}`;
-          }
-          if (msg.role === "agent" && msg.agentId) {
-            const agentRun = agentRuns[msg.agentId];
-            if (agentRun) {
-              const lastText = agentRun.messages
-                .filter((m) => m.type === "assistant" && m.content)
-                .map((m) => m.content)
-                .pop();
-              return lastText ? `Assistant: ${lastText}` : null;
-            }
-          }
-          return null;
-        })
-        .filter(Boolean)
-        .join("\n\n");
+      const conversationContext = buildConversationContext(
+        useRefineStore.getState().messages,
+        useAgentStore.getState().runs,
+      );
 
       const prompt = buildPrompt(text, conversationContext, fileConstraint, command);
-
-      // Route agent name based on command
-      const agentName = command === "rewrite"
-        ? "rewrite-skill"
-        : command === "validate"
-          ? "validate-skill"
-          : "refine-skill";
-
+      const agentName = resolveAgentName(command);
       const stepLabel = command ?? "refine";
       const cwd = `${effectiveSkillsPath}/${selectedSkill.name}`;
 
