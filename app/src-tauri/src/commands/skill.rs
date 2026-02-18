@@ -694,31 +694,17 @@ pub async fn generate_suggestions(
             format!("Failed to parse suggestions: {}", e)
         })?;
 
+    let field = |key: &str| -> String {
+        suggestions[key].as_str().unwrap_or("").to_string()
+    };
+
     Ok(FieldSuggestions {
-        domain: suggestions["domain"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        audience: suggestions["audience"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        challenges: suggestions["challenges"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        scope: suggestions["scope"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        unique_setup: suggestions["unique_setup"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
-        claude_mistakes: suggestions["claude_mistakes"]
-            .as_str()
-            .unwrap_or("")
-            .to_string(),
+        domain: field("domain"),
+        audience: field("audience"),
+        challenges: field("challenges"),
+        scope: field("scope"),
+        unique_setup: field("unique_setup"),
+        claude_mistakes: field("claude_mistakes"),
     })
 }
 

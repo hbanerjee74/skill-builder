@@ -852,6 +852,7 @@ pub fn set_skill_author(
     Ok(())
 }
 
+#[cfg(test)]
 pub fn set_skill_display_name(
     conn: &Connection,
     skill_name: &str,
