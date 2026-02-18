@@ -151,6 +151,66 @@ interface AgentState {
   _applyMessageBatch: (batch: BufferedMessage[]) => void;
 }
 
+/** Persist one row per model entry (fire-and-forget). Used by both completeRun and shutdownRun. */
+function persistRunRows(
+  sharedParams: Record<string, unknown>,
+  modelEntries: Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }>,
+): void {
+  for (const entry of modelEntries) {
+    persistAgentRun({
+      ...sharedParams,
+      model: entry.model,
+      inputTokens: entry.inputTokens,
+      outputTokens: entry.outputTokens,
+      cacheReadTokens: entry.cacheReadTokens,
+      cacheWriteTokens: entry.cacheWriteTokens,
+      totalCost: entry.totalCost,
+    } as Parameters<typeof persistAgentRun>[0]).catch((err) =>
+      console.error("Failed to persist agent run:", err),
+    );
+  }
+}
+
+/** Build per-model entries from breakdown or fallback to a single aggregate row. */
+function buildModelEntries(
+  run: AgentRun,
+): Array<{ model: string; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; totalCost: number }> {
+  const breakdown = run.modelUsageBreakdown;
+  if (breakdown && breakdown.length > 0) {
+    return breakdown.map((mu) => ({
+      model: mu.model,
+      inputTokens: mu.inputTokens,
+      outputTokens: mu.outputTokens,
+      cacheReadTokens: mu.cacheReadTokens,
+      cacheWriteTokens: mu.cacheWriteTokens,
+      totalCost: mu.cost,
+    }));
+  }
+
+  // Fallback: single-model persistence using aggregate totals.
+  // Extract cache tokens from the last assistant message's raw usage.
+  let cacheRead = 0;
+  let cacheWrite = 0;
+  const assistantMessages = run.messages.filter((m) => m.type === "assistant");
+  if (assistantMessages.length > 0) {
+    const lastMsg = assistantMessages[assistantMessages.length - 1];
+    const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
+      | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
+      | undefined;
+    cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
+    cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
+  }
+
+  return [{
+    model: run.model,
+    inputTokens: run.tokenUsage?.input ?? 0,
+    outputTokens: run.tokenUsage?.output ?? 0,
+    cacheReadTokens: cacheRead,
+    cacheWriteTokens: cacheWrite,
+    totalCost: run.totalCost ?? 0,
+  }];
+}
+
 export const useAgentStore = create<AgentState>((set) => ({
   runs: {},
   activeAgentId: null,
@@ -257,8 +317,6 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist agent run to SQLite (fire-and-forget)
     if (runBeforeUpdate?.tokenUsage && runBeforeUpdate?.totalCost !== undefined) {
       const workflow = useWorkflowStore.getState();
-      const status = success ? "completed" : "error";
-      const durationMs = Date.now() - runBeforeUpdate.startTime;
 
       // Count tool uses across all assistant messages
       let toolUseCount = 0;
@@ -273,60 +331,23 @@ export const useAgentStore = create<AgentState>((set) => ({
         }
       }
 
-      const sharedParams = {
-        agentId,
-        skillName: workflow.skillName ?? "unknown",
-        stepId: workflow.currentStep,
-        status,
-        durationMs,
-        numTurns: runBeforeUpdate.numTurns ?? 0,
-        stopReason: runBeforeUpdate.stopReason ?? null,
-        durationApiMs: runBeforeUpdate.durationApiMs ?? null,
-        toolUseCount,
-        compactionCount: runBeforeUpdate.compactionEvents.length,
-        sessionId: runBeforeUpdate.sessionId,
-        workflowSessionId: workflow.workflowSessionId ?? undefined,
-      };
-
-      const breakdown = runBeforeUpdate.modelUsageBreakdown;
-      if (breakdown && breakdown.length > 0) {
-        // Persist one row per model from the SDK's per-model breakdown
-        for (const mu of breakdown) {
-          persistAgentRun({
-            ...sharedParams,
-            model: mu.model,
-            inputTokens: mu.inputTokens,
-            outputTokens: mu.outputTokens,
-            cacheReadTokens: mu.cacheReadTokens,
-            cacheWriteTokens: mu.cacheWriteTokens,
-            totalCost: mu.cost,
-          }).catch((err) => console.error("Failed to persist agent run:", err));
-        }
-      } else {
-        // Fallback: single-model persistence using aggregate totals
-        // Extract cache tokens from the last assistant message's raw usage
-        let cacheRead = 0;
-        let cacheWrite = 0;
-        const assistantMessages = runBeforeUpdate.messages.filter((m) => m.type === "assistant");
-        if (assistantMessages.length > 0) {
-          const lastMsg = assistantMessages[assistantMessages.length - 1];
-          const betaMsg = (lastMsg.raw as Record<string, unknown>).message as
-            | { usage?: { cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }
-            | undefined;
-          cacheRead = betaMsg?.usage?.cache_read_input_tokens ?? 0;
-          cacheWrite = betaMsg?.usage?.cache_creation_input_tokens ?? 0;
-        }
-
-        persistAgentRun({
-          ...sharedParams,
-          model: runBeforeUpdate.model,
-          inputTokens: runBeforeUpdate.tokenUsage.input,
-          outputTokens: runBeforeUpdate.tokenUsage.output,
-          cacheReadTokens: cacheRead,
-          cacheWriteTokens: cacheWrite,
-          totalCost: runBeforeUpdate.totalCost,
-        }).catch((err) => console.error("Failed to persist agent run:", err));
-      }
+      persistRunRows(
+        {
+          agentId,
+          skillName: workflow.skillName ?? "unknown",
+          stepId: workflow.currentStep,
+          status: success ? "completed" : "error",
+          durationMs: Date.now() - runBeforeUpdate.startTime,
+          numTurns: runBeforeUpdate.numTurns ?? 0,
+          stopReason: runBeforeUpdate.stopReason ?? null,
+          durationApiMs: runBeforeUpdate.durationApiMs ?? null,
+          toolUseCount,
+          compactionCount: runBeforeUpdate.compactionEvents.length,
+          sessionId: runBeforeUpdate.sessionId,
+          workflowSessionId: workflow.workflowSessionId ?? undefined,
+        },
+        buildModelEntries(runBeforeUpdate),
+      );
     }
   },
 
@@ -354,39 +375,17 @@ export const useAgentStore = create<AgentState>((set) => ({
     // Persist shutdown status with whatever partial data we have
     if (runBeforeUpdate) {
       const workflow = useWorkflowStore.getState();
-      const sharedParams = {
-        agentId,
-        skillName: workflow.skillName ?? "unknown",
-        stepId: workflow.currentStep,
-        status: "shutdown" as const,
-        durationMs: Date.now() - runBeforeUpdate.startTime,
-        workflowSessionId: workflow.workflowSessionId ?? undefined,
-      };
-
-      const breakdown = runBeforeUpdate.modelUsageBreakdown;
-      if (breakdown && breakdown.length > 0) {
-        for (const mu of breakdown) {
-          persistAgentRun({
-            ...sharedParams,
-            model: mu.model,
-            inputTokens: mu.inputTokens,
-            outputTokens: mu.outputTokens,
-            cacheReadTokens: mu.cacheReadTokens,
-            cacheWriteTokens: mu.cacheWriteTokens,
-            totalCost: mu.cost,
-          }).catch((err) => console.error("Failed to persist agent shutdown:", err));
-        }
-      } else {
-        persistAgentRun({
-          ...sharedParams,
-          model: runBeforeUpdate.model,
-          inputTokens: runBeforeUpdate.tokenUsage?.input ?? 0,
-          outputTokens: runBeforeUpdate.tokenUsage?.output ?? 0,
-          cacheReadTokens: 0,
-          cacheWriteTokens: 0,
-          totalCost: runBeforeUpdate.totalCost ?? 0,
-        }).catch((err) => console.error("Failed to persist agent shutdown:", err));
-      }
+      persistRunRows(
+        {
+          agentId,
+          skillName: workflow.skillName ?? "unknown",
+          stepId: workflow.currentStep,
+          status: "shutdown" as const,
+          durationMs: Date.now() - runBeforeUpdate.startTime,
+          workflowSessionId: workflow.workflowSessionId ?? undefined,
+        },
+        buildModelEntries(runBeforeUpdate),
+      );
     }
   },
 

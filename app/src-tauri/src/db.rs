@@ -204,23 +204,19 @@ fn run_intake_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
 /// Migrate agent_runs from PRIMARY KEY (agent_id) to composite PRIMARY KEY (agent_id, model).
 /// This allows multiple rows per agent when sub-agents use different models.
 fn run_composite_pk_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Check if migration is needed: try inserting two rows with same agent_id
-    // but different model values. If the table still has a single-column PK on
-    // agent_id, the second insert will fail with a UNIQUE constraint violation.
-    let needs_migration = conn
-        .execute_batch(
-            "INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status)
-             VALUES ('__migration_probe__', '__probe__', 0, '__model_a__', 'probe');
-             INSERT INTO agent_runs (agent_id, skill_name, step_id, model, status)
-             VALUES ('__migration_probe__', '__probe__', 0, '__model_b__', 'probe');",
+    // Check if the table's PRIMARY KEY already includes `model` by inspecting
+    // the CREATE TABLE statement stored in sqlite_master.
+    let create_sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'agent_runs'",
+            [],
+            |row| row.get(0),
         )
-        .is_err();
+        .unwrap_or_default();
 
-    // Clean up probe rows regardless of outcome
-    let _ = conn.execute("DELETE FROM agent_runs WHERE agent_id = '__migration_probe__'", []);
-
-    if !needs_migration {
-        // Composite PK already in place — the two inserts succeeded
+    // After migration the DDL contains "PRIMARY KEY (agent_id, model)".
+    // Before migration it has "agent_id TEXT PRIMARY KEY" (inline PK on one column).
+    if create_sql.contains("agent_id, model") {
         return Ok(());
     }
 
