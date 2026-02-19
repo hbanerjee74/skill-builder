@@ -389,11 +389,14 @@ export default function WorkflowPage() {
         status: s.status,
       }));
 
-      const status = latestStore.steps[latestStore.currentStep]?.status === "in_progress"
-        ? "in_progress"
-        : latestStore.steps.every((s) => s.status === "completed")
-          ? "completed"
-          : "pending";
+      let status: string;
+      if (latestStore.steps[latestStore.currentStep]?.status === "in_progress") {
+        status = "in_progress";
+      } else if (latestStore.steps.every((s) => s.status === "completed")) {
+        status = "completed";
+      } else {
+        status = "pending";
+      }
 
       saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
         (err) => console.error("Failed to persist workflow state:", err)
@@ -725,36 +728,34 @@ export default function WorkflowPage() {
     skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
-  /** Insufficient: auto-fill all answers then skip to decisions. */
-  const handleGateAutofillAndSkip = async () => {
-    logGateAction("autofill_and_skip");
+  /** Shared autofill logic: call autofillClarifications, then run onSuccess with the count. */
+  const runAutofill = async (decision: string, onSuccess: (filled: number) => void) => {
+    logGateAction(decision);
     setIsAutofilling(true);
     try {
       const filled = await autofillClarifications(skillName);
       setIsAutofilling(false);
-      skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
+      onSuccess(filled);
     } catch (err) {
       toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
       setIsAutofilling(false);
     }
   };
 
+  /** Insufficient: auto-fill all answers then skip to decisions. */
+  const handleGateAutofillAndSkip = () =>
+    runAutofill("autofill_and_skip", (filled) => {
+      skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
+    });
+
   /** Mixed: auto-fill empty answers then proceed to detailed research. */
-  const handleGateAutofillAndResearch = async () => {
-    logGateAction("autofill_and_research");
-    setIsAutofilling(true);
-    try {
-      const filled = await autofillClarifications(skillName);
-      setIsAutofilling(false);
+  const handleGateAutofillAndResearch = () =>
+    runAutofill("autofill_and_research", (filled) => {
       closeGateDialog();
       toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
       updateStepStatus(currentStep, "completed");
       advanceToNextStep();
-    } catch (err) {
-      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
-      setIsAutofilling(false);
-    }
-  };
+    });
 
   /** Sufficient override: run research anyway without autofill. */
   const handleGateResearch = () => {
@@ -768,6 +769,22 @@ export default function WorkflowPage() {
   const handleGateLetMeAnswer = () => {
     logGateAction("let_me_answer");
     closeGateDialog();
+  };
+
+  /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
+  const performStepReset = async (stepId: number) => {
+    endActiveSession();
+    if (workspacePath) {
+      try {
+        await resetWorkflowStep(workspacePath, skillName, stepId);
+      } catch {
+        // best-effort -- proceed even if disk cleanup fails
+      }
+    }
+    clearRuns();
+    resetToStep(stepId);
+    autoStartAfterReset(stepId);
+    toast.success(`Reset step ${stepId + 1}`);
   };
 
   /** Advance without writing — used after handleSave() already persisted. */
@@ -1054,26 +1071,12 @@ export default function WorkflowPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  // Show confirmation if partial output exists
+                onClick={() => {
                   if (errorHasArtifacts) {
                     setShowResetConfirm(true);
                     return;
                   }
-                  // End active session — reset starts a fresh workflow context
-                  endActiveSession();
-                  // Full reset: clear artifacts on disk, clear agent runs, then revert step
-                  if (workspacePath) {
-                    try {
-                      await resetWorkflowStep(workspacePath, skillName, currentStep);
-                    } catch {
-                      // best-effort — proceed even if disk cleanup fails
-                    }
-                  }
-                  clearRuns();
-                  resetToStep(currentStep);
-                  autoStartAfterReset(currentStep);
-                  toast.success(`Reset step ${currentStep + 1}`);
+                  performStepReset(currentStep);
                 }}
               >
                 <RotateCcw className="size-3.5" />
@@ -1197,22 +1200,9 @@ export default function WorkflowPage() {
               <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={async () => {
+              <Button variant="destructive" onClick={() => {
                 setShowResetConfirm(false);
-                // End active session — reset starts a fresh workflow context
-                endActiveSession();
-                // Full reset: clear artifacts on disk, clear agent runs, then revert step
-                if (workspacePath) {
-                  try {
-                    await resetWorkflowStep(workspacePath, skillName, currentStep);
-                  } catch {
-                    // best-effort — proceed even if disk cleanup fails
-                  }
-                }
-                clearRuns();
-                resetToStep(currentStep);
-                autoStartAfterReset(currentStep);
-                toast.success(`Reset step ${currentStep + 1}`);
+                performStepReset(currentStep);
               }}>
                 Reset
               </Button>
