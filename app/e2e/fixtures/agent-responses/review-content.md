@@ -9,7 +9,7 @@ refinement_count: 0
 
 ## Domain Concepts
 
-### Q1: Primary Focus Area
+### Q1: Primary focus area
 What is the primary focus area for this skill?
 
 A. Sales forecasting — predict future revenue
@@ -22,7 +22,7 @@ C. Other (please specify)
 
 ## Technical Stack
 
-### Q2: Primary Database
+### Q2: Primary database
 What database does your team primarily use?
 
 A. PostgreSQL
