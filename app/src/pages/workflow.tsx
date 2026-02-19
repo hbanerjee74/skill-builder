@@ -443,6 +443,7 @@ export default function WorkflowPage() {
   // Auto-start agent step on initial page load (fresh workflow, pending step)
   useEffect(() => {
     if (!hydrated) return;
+    if (reviewMode) return; // review mode is read-only, don't start agents
     if (!workspacePath) return;
     if (stepConfig?.type !== "agent") return;
     const status = steps[currentStep]?.status;
