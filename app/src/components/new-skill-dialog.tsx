@@ -81,6 +81,7 @@ export default function NewSkillDialog({
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
   const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
+  const [contextualTags, setContextualTags] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchVersionRef = useRef(0)
   const step3VersionRef = useRef(0)
@@ -89,11 +90,12 @@ export default function NewSkillDialog({
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
-  // Merged tag suggestions: existing workspace tags + AI-generated tags from step 2 (deduped)
-  const derivedAiTags = suggestions?.tags ?? []
+  // Merged tag suggestions: existing workspace tags + AI-generated tags (deduped)
+  // Prefer contextual tags (from full-context pre-fetch with domain+scope) over basic step 2 tags
+  const aiTags = contextualTags.length > 0 ? contextualTags : (suggestions?.tags ?? [])
   const mergedTagSuggestions = [
     ...tagSuggestions,
-    ...derivedAiTags.filter((t) => !tagSuggestions.includes(t)),
+    ...aiTags.filter((t) => !tagSuggestions.includes(t)),
   ]
 
   // Step 2 suggestions: triggered by name + type (domain, scope ghosts only)
@@ -107,14 +109,14 @@ export default function NewSkillDialog({
       const version = ++fetchVersionRef.current
       debounceRef.current = setTimeout(async () => {
         try {
-          const key = makeCacheKey({ name: skillName, skillType: type, industry, functionRole })
+          const key = makeCacheKey({ name: skillName, skillType: type, industry, functionRole, existingTags: tagSuggestions })
           const cached = suggestionCache.current.get(key)
           if (cached) {
             if (version === fetchVersionRef.current) setSuggestions(cached)
             return
           }
           const result = await generateSuggestions(skillName, type, {
-            industry, functionRole,
+            industry, functionRole, existingTags: tagSuggestions,
           })
           if (version === fetchVersionRef.current) {
             suggestionCache.current.set(key, result)
@@ -125,7 +127,7 @@ export default function NewSkillDialog({
         }
       }, 800)
     },
-    [industry, functionRole],
+    [industry, functionRole, tagSuggestions],
   )
 
   // Build cache key and API params for step 3 suggestions (shared by fetch and prefetch)
@@ -198,6 +200,8 @@ export default function NewSkillDialog({
         const result = await generateSuggestions(name, skillType, opts)
         if (version === step3VersionRef.current) {
           suggestionCache.current.set(key, result)
+          // Surface full-context tags on step 2 for the tag input
+          if (result.tags.length > 0) setContextualTags(result.tags)
           console.debug("[new-skill] Pre-fetched step 3 suggestions")
         }
       } catch (err) {
@@ -267,6 +271,7 @@ export default function NewSkillDialog({
     setClaudeMistakes("")
     setSuggestions(null)
     setStep3Suggestions(null)
+    setContextualTags([])
     setError(null)
     fetchVersionRef.current++
     step3VersionRef.current++
