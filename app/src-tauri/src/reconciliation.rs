@@ -88,6 +88,7 @@ pub fn reconcile_on_startup(
                     // Count how many non-detectable (file-less) steps sit between disk_step
                     // and current_step. If the gap is fully explained by normal progression
                     // plus non-detectable steps, the DB state is valid.
+                    let mut did_reset = false;
                     if run.current_step > disk_step {
                         let gap = run.current_step - disk_step;
                         // Step 2 (detailed research) edits clarifications.md in-place,
@@ -110,6 +111,7 @@ pub fn reconcile_on_startup(
                                 &run.skill_type,
                             )?;
                             crate::db::reset_workflow_steps_from(conn, &run.skill_name, disk_step)?;
+                            did_reset = true;
                             notifications.push(format!(
                                 "'{}' was reset from step {} to step {} (disk state behind DB)",
                                 run.skill_name, run.current_step, disk_step
@@ -135,15 +137,13 @@ pub fn reconcile_on_startup(
                     }
 
                     // Mark steps with output on disk as completed.
-                    // Also mark intervening non-detectable steps as completed when
-                    // the DB position accounts for them (they leave no files but were done).
                     for s in 0..=disk_step {
                         crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
                     }
-                    // If current_step > disk_step and we didn't reset, the steps between
+                    // If we didn't reset and current_step > disk_step, the steps between
                     // disk_step+1 and current_step-1 are non-detectable — mark them too.
-                    // Step 2 is non-detectable (edits clarifications.md in-place, no unique artifact).
-                    if run.current_step > disk_step + 1 {
+                    // After a reset, these steps are no longer valid so we skip this.
+                    if !did_reset && run.current_step > disk_step + 1 {
                         for s in (disk_step + 1)..run.current_step {
                             if matches!(s, 1 | 2 | 3 | 7) {
                                 crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
@@ -586,6 +586,45 @@ mod tests {
             steps.is_empty() || steps.iter().all(|s| s.status != "completed"),
             "No steps should be completed when there are no output files"
         );
+    }
+
+    #[test]
+    fn test_reset_does_not_mark_non_detectable_steps_completed() {
+        // Bug: DB at step 5, disk at step 0. After reset to step 0, the
+        // non-detectable step loop was still marking steps 1,2,3 as completed
+        // using the original current_step (5) instead of the reset target (0).
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "pending", "domain").unwrap();
+        // Mark steps 0-4 as completed in DB (pre-existing state)
+        for s in 0..=4 {
+            crate::db::save_workflow_step(&conn, "my-skill", s, "completed").unwrap();
+        }
+        create_skill_dir(tmp.path(), "my-skill", "sales");
+        // Only step 0 has output on disk
+        create_step_output(tmp.path(), "my-skill", 0);
+
+        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+
+        assert!(result.notifications[0].contains("reset from step 5 to step 0"));
+        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(run.current_step, 0);
+
+        // Only step 0 should be completed — steps 1,2,3 must NOT be re-marked
+        let steps = crate::db::get_workflow_steps(&conn, "my-skill").unwrap();
+        for step in &steps {
+            if step.step_id == 0 {
+                assert_eq!(step.status, "completed", "Step 0 should be completed (has output)");
+            } else {
+                assert_ne!(
+                    step.status, "completed",
+                    "Step {} should NOT be completed after reset",
+                    step.step_id
+                );
+            }
+        }
     }
 
     // --- Non-detectable step tests ---
