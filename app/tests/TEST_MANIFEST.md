@@ -88,6 +88,10 @@ Agent prompts define artifact formats (`clarifications.md`, `decisions.md`). The
 | `agents/detailed-research.md` | `clarifications.md` refinement format | `./scripts/test-canonical-format.sh` |
 | `agents/confirm-decisions.md` | `decisions.md` format | `./scripts/test-canonical-format.sh` |
 | `agents/answer-evaluator.md` | `answer-evaluation.json` schema | `./scripts/test-plugin.sh t1` |
+| `agents/research-planner.md` | `research-plan.md` format | `./scripts/test-canonical-format.sh` |
+| `agents/validate-skill.md` | `agent-validation-log.md`, `test-skill.md`, `companion-skills.md` format | `./scripts/test-canonical-format.sh` |
+| `agents/companion-recommender.md` | `companion-skills.md` YAML schema | `./scripts/test-canonical-format.sh` |
+| `agents/test-skill.md` | `test-skill.md` format | `./scripts/test-canonical-format.sh` |
 | `app/sidecar/mock-templates/outputs/*/context/*.md` | Mock template content | `./scripts/test-canonical-format.sh` |
 | `app/e2e/fixtures/agent-responses/review-content.md` | E2E fixture content | `./scripts/test-canonical-format.sh` |
 | `scripts/plugin-tests/fixtures.sh` | Plugin test fixtures | `./scripts/test-canonical-format.sh` |
