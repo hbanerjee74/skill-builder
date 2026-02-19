@@ -81,7 +81,7 @@ export function GhostInput({
         onChange={(e) => onChange(e.target.value)}
       />
       {showGhost && (
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/70 bg-background/80 px-1.5 py-0.5 rounded border border-border/50 pointer-events-none select-none">
           Tab to accept
         </span>
       )}
@@ -116,7 +116,7 @@ export function GhostTextarea({
         onChange={(e) => onChange(e.target.value)}
       />
       {showGhost && (
-        <span className="absolute right-2 bottom-2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">
+        <span className="absolute right-2 bottom-2 text-xs text-muted-foreground/70 bg-background/80 px-1.5 py-0.5 rounded border border-border/50 pointer-events-none select-none">
           Tab to accept
         </span>
       )}
