@@ -113,6 +113,48 @@ run_t1() {
     record_result "$tier" "plugin_json_exists" "FAIL" "file not found"
   fi
 
+  # ---- T1.11: Agent prompt canonical format compliance ----
+  # Scan all agent .md files for anti-patterns that violate the canonical format spec.
+  local format_errors=0
+  for agent_file in "$PLUGIN_DIR"/agents/*.md; do
+    [ -f "$agent_file" ] || continue
+    local agent_basename
+    agent_basename=$(basename "$agent_file")
+
+    # **Answer**: (colon outside bold) — canonical is **Answer:**
+    if grep -qE '\*\*Answer\*\*:' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_answer_colon_outside_bold_${agent_basename}" "FAIL" "Found **Answer**: in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Recommendation**: (colon outside bold) — canonical is **Recommendation:**
+    if grep -qE '\*\*Recommendation\*\*:' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_recommendation_colon_outside_bold_${agent_basename}" "FAIL" "Found **Recommendation**: in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # - [ ] checkbox choice format — canonical is A. text
+    if grep -qE '^[[:space:]]*- \[([ x])\]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_checkbox_choices_${agent_basename}" "FAIL" "Found checkbox choices in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Choices**: label (not needed)
+    if grep -qE '\*\*Choices\*\*[:\*]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_choices_label_${agent_basename}" "FAIL" "Found **Choices**: label in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Question**: label (not needed)
+    if grep -qE '\*\*Question\*\*[:\*]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_question_label_${agent_basename}" "FAIL" "Found **Question**: label in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+  done
+  if [ $format_errors -eq 0 ]; then
+    record_result "$tier" "agent_canonical_format_compliance" "PASS"
+  fi
+
   # ---- T1.10: Coordinator references key concepts ----
   local coord_content
   coord_content=$(cat "$PLUGIN_DIR/skills/generate-skill/SKILL.md")

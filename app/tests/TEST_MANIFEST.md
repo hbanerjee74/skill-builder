@@ -80,23 +80,16 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 
-Agent prompts define artifact formats (`clarifications.md`, `decisions.md`). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. Run the format compliance test when changing any of these:
+Agent prompts define artifact formats (`clarifications.md`, `decisions.md`). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract.
 
 | Source | Artifact | Compliance Test |
 |---|---|---|
-| `agents/consolidate-research.md` | `clarifications.md` format | `./scripts/test-canonical-format.sh` |
-| `agents/detailed-research.md` | `clarifications.md` refinement format | `./scripts/test-canonical-format.sh` |
-| `agents/confirm-decisions.md` | `decisions.md` format | `./scripts/test-canonical-format.sh` |
-| `agents/answer-evaluator.md` | `answer-evaluation.json` schema | `./scripts/test-plugin.sh t1` |
-| `agents/research-planner.md` | `research-plan.md` format | `./scripts/test-canonical-format.sh` |
-| `agents/validate-skill.md` | `agent-validation-log.md`, `test-skill.md`, `companion-skills.md` format | `./scripts/test-canonical-format.sh` |
-| `agents/companion-recommender.md` | `companion-skills.md` YAML schema | `./scripts/test-canonical-format.sh` |
-| `agents/test-skill.md` | `test-skill.md` format | `./scripts/test-canonical-format.sh` |
-| `app/sidecar/mock-templates/outputs/*/context/*.md` | Mock template content | `./scripts/test-canonical-format.sh` |
-| `app/e2e/fixtures/agent-responses/review-content.md` | E2E fixture content | `./scripts/test-canonical-format.sh` |
-| `scripts/plugin-tests/fixtures.sh` | Plugin test fixtures | `./scripts/test-canonical-format.sh` |
+| `agents/*.md` (all agent prompts) | Anti-pattern checks (colon placement, checkboxes, labels) | `./scripts/test-plugin.sh t1` (T1.11 canonical format) |
+| `app/sidecar/mock-templates/outputs/*/context/*.md` | Mock template structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/e2e/fixtures/agent-responses/review-content.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/sidecar/mock-templates/outputs/gate-answer-evaluator/context/answer-evaluation.json` | JSON schema validation | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/src-tauri/src/commands/workflow.rs` (`autofill_answers`) | Rust parser patterns | `cargo test commands::workflow` |
-| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser patterns | `npm run test:unit` |
+| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser patterns | `npm run test:unit` (`reasoning-parser.test.ts`) |
 
 Canonical format spec: `docs/design/clarifications-rendering/canonical-format.md`
 

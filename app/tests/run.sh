@@ -120,15 +120,9 @@ run_unit() {
     fail "Sidecar unit tests"
   fi
 
-  header "Unit Tests: Canonical Format Compliance"
-  CANONICAL_SCRIPT="$APP_DIR/../scripts/test-canonical-format.sh"
-  if [[ ! -x "$CANONICAL_SCRIPT" ]]; then
-    fail "Canonical format test (scripts/test-canonical-format.sh not found)"
-  elif ("$CANONICAL_SCRIPT"); then
-    pass "Canonical format compliance"
-  else
-    fail "Canonical format compliance"
-  fi
+  # Canonical format compliance is now covered by:
+  # - Agent prompts: ./scripts/test-plugin.sh t1 (T1.11)
+  # - Mock templates / fixtures: vitest canonical-format.test.ts (included in unit tests above)
 }
 
 # ---------------------------------------------------------------------------
