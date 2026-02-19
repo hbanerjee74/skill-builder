@@ -298,6 +298,17 @@
 .markdown-body.compact > :first-child { margin-top: 0; }
 .markdown-body.compact > :last-child { margin-bottom: 0; }
 
+/* ------------------------------------------------------------------ */
+/* MDEditor: match compact markdown font size (14px) so review mode   */
+/* and edit mode look consistent.                                     */
+/* ------------------------------------------------------------------ */
+.w-md-editor,
+.w-md-editor .w-md-editor-text,
+.w-md-editor .w-md-editor-preview .wmde-markdown {
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
 /* --- Paragraphs --------------------------------------------------- */
 .markdown-body.compact p {
   margin-top: 0.5em;
