@@ -1,7 +1,7 @@
 /**
  * Parsing helpers for the reasoning step (Step 4).
  * Provides utilities for parsing decisions.md format, used by
- * the ReasoningReview component.
+ * the agent output panel.
  */
 
 /**

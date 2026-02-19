@@ -1215,6 +1215,225 @@ pub fn get_disabled_steps(
     }
 }
 
+/// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
+/// Returns the agent ID for the frontend to subscribe to completion events.
+#[tauri::command]
+pub async fn run_answer_evaluator(
+    app: tauri::AppHandle,
+    pool: tauri::State<'_, SidecarPool>,
+    db: tauri::State<'_, Db>,
+    skill_name: String,
+    workspace_path: String,
+) -> Result<String, String> {
+    log::info!("run_answer_evaluator: skill={}", skill_name);
+
+    // Ensure agent files are deployed to workspace
+    ensure_workspace_prompts(&app, &workspace_path).await?;
+
+    // Read settings from DB — same pattern as read_workflow_settings but without
+    // step-specific validation (this is a gate, not a workflow step).
+    let (api_key, skills_path, industry, function_role, intake_json) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+            log::error!("run_answer_evaluator: failed to read settings: {}", e);
+            e.to_string()
+        })?;
+        let key = settings.anthropic_api_key.ok_or_else(|| {
+            log::error!("run_answer_evaluator: API key not configured");
+            "Anthropic API key not configured".to_string()
+        })?;
+        let sp = settings.skills_path.ok_or_else(|| {
+            log::error!("run_answer_evaluator: skills_path not configured");
+            "Skills path not configured".to_string()
+        })?;
+        let run_row = crate::db::get_workflow_run(&conn, &skill_name)
+            .ok()
+            .flatten();
+        let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
+        (key, sp, settings.industry, settings.function_role, ij)
+    };
+
+    // Write user-context.md so the agent can read it (same as workflow steps)
+    write_user_context_file(
+        &workspace_path,
+        &skill_name,
+        industry.as_deref(),
+        function_role.as_deref(),
+        intake_json.as_deref(),
+    );
+
+    let context_dir = std::path::Path::new(&skills_path)
+        .join(&skill_name)
+        .join("context");
+
+    // Build prompt with user context inline (same pattern as build_prompt)
+    let mut prompt = format!(
+        "The context directory is: {dir}. \
+         Read {dir}/clarifications.md, evaluate the user answers, \
+         and write {dir}/answer-evaluation.json. \
+         All directories already exist — do not create any directories.",
+        dir = context_dir.display(),
+    );
+
+    if let Some(ctx) = format_user_context(
+        industry.as_deref(),
+        function_role.as_deref(),
+        intake_json.as_deref(),
+    ) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&ctx);
+    }
+
+    log::debug!("run_answer_evaluator: prompt={}", prompt);
+
+    let agent_id = make_agent_id(&skill_name, "gate-eval");
+
+    let config = SidecarConfig {
+        prompt,
+        model: None, // haiku comes from agent frontmatter
+        api_key,
+        cwd: workspace_path.clone(),
+        allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
+        max_turns: Some(20),
+        permission_mode: Some("bypassPermissions".to_string()),
+        session_id: None,
+        betas: None,
+        max_thinking_tokens: None,
+        path_to_claude_code_executable: None,
+        agent_name: Some("answer-evaluator".to_string()),
+        conversation_history: None,
+    };
+
+    sidecar::spawn_sidecar(
+        agent_id.clone(),
+        config,
+        pool.inner().clone(),
+        app.clone(),
+        skill_name,
+    )
+    .await?;
+
+    Ok(agent_id)
+}
+
+/// Copy Recommendation -> Answer for every empty Answer field in clarifications.md.
+/// Returns the number of fields auto-filled.
+#[tauri::command]
+pub fn autofill_clarifications(
+    skill_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<u32, String> {
+    log::info!("autofill_clarifications: skill={}", skill_name);
+
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+
+    let clarifications_path = Path::new(&skills_path)
+        .join(&skill_name)
+        .join("context")
+        .join("clarifications.md");
+
+    let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
+        log::error!(
+            "autofill_clarifications: failed to read {}: {}",
+            clarifications_path.display(),
+            e
+        );
+        format!("Failed to read clarifications.md: {}", e)
+    })?;
+
+    let (updated, count) = autofill_answers(&content);
+
+    if count > 0 {
+        std::fs::write(&clarifications_path, &updated).map_err(|e| {
+            log::error!(
+                "autofill_clarifications: failed to write {}: {}",
+                clarifications_path.display(),
+                e
+            );
+            format!("Failed to write clarifications.md: {}", e)
+        })?;
+        log::info!(
+            "autofill_clarifications: auto-filled {} answers in {}",
+            count,
+            clarifications_path.display()
+        );
+    } else {
+        log::info!("autofill_clarifications: no empty answers found");
+    }
+
+    Ok(count)
+}
+
+/// Log the user's gate decision so it appears in the backend log stream.
+#[tauri::command]
+pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {
+    log::info!(
+        "gate_decision: skill={} verdict={} decision={}",
+        skill_name,
+        verdict,
+        decision
+    );
+}
+
+/// Pure function: parse clarifications.md content and copy Recommendation -> Answer
+/// for each empty Answer field. Returns (updated_content, count_filled).
+fn autofill_answers(content: &str) -> (String, u32) {
+    let mut result = String::new();
+    let mut count: u32 = 0;
+    let mut last_recommendation = String::new();
+
+    let has_trailing_newline = content.ends_with('\n');
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Reset recommendation at each new question heading to prevent
+        // a previous question's recommendation from bleeding into the next.
+        if trimmed.starts_with("## ") {
+            last_recommendation = String::new();
+        }
+
+        // Track the most recent Recommendation value.
+        // Handle both `- Recommendation: ...` and `**Recommendation:** ...` formats.
+        if let Some(rest) = trimmed.strip_prefix("- Recommendation:") {
+            last_recommendation = rest.trim().to_string();
+        } else if let Some(rest) = trimmed.strip_prefix("**Recommendation:**") {
+            last_recommendation = rest.trim().to_string();
+        }
+
+        // Check for empty Answer fields
+        if trimmed.starts_with("**Answer:**") {
+            let after_prefix = trimmed.strip_prefix("**Answer:**").unwrap_or("");
+            let answer_text = after_prefix.trim();
+
+            let is_empty_or_sentinel = answer_text.is_empty()
+                || answer_text.eq_ignore_ascii_case("(accepted recommendation)");
+            if is_empty_or_sentinel && !last_recommendation.is_empty() {
+                // Replace the line, preserving leading whitespace
+                let leading_ws = &line[..line.len() - line.trim_start().len()];
+                result.push_str(leading_ws);
+                result.push_str("**Answer:** ");
+                result.push_str(&last_recommendation);
+                result.push('\n');
+                count += 1;
+                continue;
+            }
+        }
+
+        result.push_str(line);
+        result.push('\n');
+    }
+
+    // If original didn't have trailing newline and we added one, remove it.
+    // If original had trailing newline, keep it.
+    if !has_trailing_newline && result.ends_with('\n') {
+        result.pop();
+    }
+
+    (result, count)
+}
+
 #[tauri::command]
 pub fn reset_workflow_step(
     workspace_path: String,
@@ -2356,6 +2575,66 @@ mod tests {
         let path = tmp.path().join("decisions.md");
         std::fs::write(&path, "## Decisions\n### D1: something").unwrap();
         assert!(!parse_decisions_guard(&path));
+    }
+
+    // --- autofill_answers tests ---
+
+    #[test]
+    fn test_autofill_copies_recommendation_to_empty_answer() {
+        let input = "   - Recommendation: Use X\n   **Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use X"));
+    }
+
+    #[test]
+    fn test_autofill_skips_already_answered() {
+        let input = "   - Recommendation: Use X\n   **Answer:** Use Y\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0);
+        assert!(out.contains("**Answer:** Use Y"));
+    }
+
+    #[test]
+    fn test_autofill_preserves_trailing_newline() {
+        let input = "   - Recommendation: A\n   **Answer:**\n";
+        let (out, _) = super::autofill_answers(input);
+        assert!(out.ends_with('\n'));
+    }
+
+    #[test]
+    fn test_autofill_handles_multiple_questions() {
+        let input = "   - Recommendation: Rec1\n   **Answer:**\n\n   - Recommendation: Rec2\n   **Answer:** already filled\n\n   - Recommendation: Rec3\n   **Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 2);
+        assert!(out.contains("**Answer:** Rec1"));
+        assert!(out.contains("**Answer:** already filled"));
+        assert!(out.contains("**Answer:** Rec3"));
+    }
+
+    #[test]
+    fn test_autofill_handles_whitespace_only_answer() {
+        let input = "   - Recommendation: Use X\n   **Answer:**   \n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use X"));
+    }
+
+    #[test]
+    fn test_autofill_replaces_accepted_recommendation_sentinel() {
+        let input = "   - Recommendation: Use X\n   **Answer:** (accepted recommendation)\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use X"));
+        assert!(!out.contains("(accepted recommendation)"));
+    }
+
+    #[test]
+    fn test_autofill_does_not_bleed_recommendation_across_questions() {
+        let input = "## Q1\n- Recommendation: Use PostgreSQL\n**Answer:** I prefer MySQL\n\n## Q2\n**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 should not get Q1's recommendation");
+        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
     }
 
 }

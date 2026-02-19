@@ -123,11 +123,12 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
   });
 
-  test("update mode shows Start Step button for pending steps", async ({ page }) => {
+  test("update mode auto-starts agent on pending step", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page);
 
-    // Fresh workflow — step 0 is pending, should see Start Step
-    await expect(page.getByRole("button", { name: "Start Step" })).toBeVisible();
+    // Fresh workflow — step 0 is pending, agent should auto-start
+    // and show the initializing indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
   });
 
   test("human review loads file content from read_file", async ({ page }) => {
@@ -244,8 +245,18 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
   });
 
   test("reset to prior step shows ResetStepDialog", async ({ page }) => {
+    // Use a human step as current (step 3 = Review) to avoid auto-start of agent
     await navigateToWorkflowUpdateMode(page, {
-      ...COMPLETED_STEP_OVERRIDES,
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+          { step_id: 2, status: "completed" },
+        ],
+      },
+      read_file: "# Review\n\nDetailed review content.",
       preview_step_reset: [
         {
           step_id: 0,
@@ -312,9 +323,8 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
   test("error state shows Retry and Reset Step buttons", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, ERROR_STEP_OVERRIDES);
 
-    // Start the step
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(200);
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate agent init then error exit
     await emitTauriEvent(page, "agent-init-progress", {
@@ -336,6 +346,134 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     // Retry and Reset Step buttons should be visible
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible();
+  });
+
+  test("completed human step shows readonly markdown in review mode", async ({ page }) => {
+    // Steps 0 and 1 completed, current_step=2.
+    // Navigate in review mode (NOT update) and click step 2 (Review, index 1).
+    await navigateToWorkflow(page, COMPLETED_STEP_OVERRIDES);
+
+    // Click step 2 (Review, human, completed) in sidebar
+    const step2Button = page.locator("button").filter({ hasText: "2. Review" });
+    await step2Button.click();
+    await page.waitForTimeout(300);
+
+    // Verify we're on the human review step
+    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+
+    // Should show readonly markdown preview (ReactMarkdown renders inside .markdown-body)
+    await expect(page.locator(".markdown-body")).toBeVisible({ timeout: 5_000 });
+
+    // Verify the loaded content is rendered (read_file mock returns "Research Results")
+    await expect(page.getByText("Research Results")).toBeVisible();
+
+    // Should NOT show MDEditor (update-mode editor uses data-color-mode="dark")
+    await expect(page.locator("[data-color-mode='dark']")).not.toBeVisible();
+
+    // Should NOT show "Complete Step" button (step already completed, and we're in review mode)
+    await expect(page.getByRole("button", { name: "Complete Step" })).not.toBeVisible();
+  });
+
+  test("completed human step shows editor without Complete button in update mode", async ({ page }) => {
+    // All steps completed, current_step=3 (human Review step, completed).
+    // Navigate to update mode — the reposition effect targets step 6 (last step,
+    // all completed). After reposition settles, programmatically navigate to step 3
+    // via the exposed Zustand store to test the completed-human-step UI in update mode.
+    const allCompletedOnHuman: Record<string, unknown> = {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+          { step_id: 2, status: "completed" },
+          { step_id: 3, status: "completed" },
+          { step_id: 4, status: "completed" },
+          { step_id: 5, status: "completed" },
+          { step_id: 6, status: "completed" },
+        ],
+      },
+      read_file: REVIEW_CONTENT,
+    };
+
+    await navigateToWorkflowUpdateMode(page, allCompletedOnHuman);
+    // Reposition settles on step 6 (all completed, target = last step)
+    await page.waitForTimeout(500);
+
+    // Programmatically navigate to the completed human step via the store
+    await page.evaluate(() => {
+      const store = (window as unknown as Record<string, unknown>).__TEST_WORKFLOW_STORE__ as {
+        getState: () => { setCurrentStep: (step: number) => void };
+      };
+      store.getState().setCurrentStep(3);
+    });
+    await page.waitForTimeout(500);
+
+    // Should be on step 4 (Review, 0-indexed step 3)
+    await expect(page.getByText("Step 4: Review")).toBeVisible({ timeout: 5_000 });
+
+    // Should show MDEditor (data-color-mode="dark" container)
+    const editorContainer = page.locator("[data-color-mode='dark']");
+    await expect(editorContainer).toBeVisible({ timeout: 5_000 });
+
+    // Should show Save and Reload buttons
+    await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reload" })).toBeVisible();
+
+    // Should NOT show "Complete Step" button (step already completed)
+    await expect(page.getByRole("button", { name: "Complete Step" })).not.toBeVisible();
+  });
+
+  test("completed agent step shows Re-run Step button in update mode", async ({ page }) => {
+    // All steps completed, current_step=6 (last step).
+    // In update mode, the reposition targets step 6 (all completed = last step).
+    // No reposition needed, and no agent auto-start (step is completed, not pending).
+    await navigateToWorkflowUpdateMode(page, LAST_STEP_OVERRIDES);
+
+    // Should show completion screen for the last step
+    await expect(page.getByText("Validate Skill Complete")).toBeVisible({ timeout: 5_000 });
+
+    // In update mode, completed agent step shows "Re-run Step" button
+    await expect(page.getByRole("button", { name: "Re-run Step" })).toBeVisible();
+
+    // Should also show "Done" button (last step) and NOT "Next Step"
+    await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
+  });
+
+  test("Review to Update toggle repositions to first incomplete step", async ({ page }) => {
+    // Steps 0,1,2 completed, current_step=3 (human step, pending).
+    // Navigate in review mode, then click on a completed step to move away from
+    // the first incomplete step. Toggling to Update should reposition back.
+    const threeCompletedOverrides: Record<string, unknown> = {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+          { step_id: 2, status: "completed" },
+        ],
+      },
+      read_file: "# Research Results\n\nAnalysis complete.",
+    };
+
+    await navigateToWorkflow(page, threeCompletedOverrides);
+
+    // In review mode, navigate to step 1 (Research, completed) — away from first incomplete
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // Verify we're on step 1 (Research)
+    await expect(page.getByText("Step 1: Research")).toBeVisible();
+
+    // Click "Update" toggle — should reposition to first incomplete step (step 3, index 3)
+    await page.getByRole("button", { name: "Update" }).click();
+    await page.waitForTimeout(500);
+
+    // Should reposition to step 4 (display name, 0-indexed step 3 = "Review")
+    await expect(page.getByText("Step 4: Review")).toBeVisible({ timeout: 5_000 });
   });
 
   test("last step completion shows Done button that navigates to dashboard", async ({ page }) => {

@@ -286,6 +286,32 @@ describe("useWorkflowStore", () => {
     });
   });
 
+  describe("gateLoading", () => {
+    it("defaults to false", () => {
+      expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    });
+
+    it("setGateLoading(true) sets it, setGateLoading(false) clears it", () => {
+      useWorkflowStore.getState().setGateLoading(true);
+      expect(useWorkflowStore.getState().gateLoading).toBe(true);
+
+      useWorkflowStore.getState().setGateLoading(false);
+      expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    });
+
+    it("initWorkflow resets gateLoading to false", () => {
+      useWorkflowStore.getState().setGateLoading(true);
+      useWorkflowStore.getState().initWorkflow("test", "test domain");
+      expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    });
+
+    it("reset resets gateLoading to false", () => {
+      useWorkflowStore.getState().setGateLoading(true);
+      useWorkflowStore.getState().reset();
+      expect(useWorkflowStore.getState().gateLoading).toBe(false);
+    });
+  });
+
   describe("loadWorkflowState migration safety", () => {
     it("completes all 7 steps (0-6)", () => {
       // Simulate SQLite returning all steps completed

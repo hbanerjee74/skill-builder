@@ -31,6 +31,12 @@ interface WorkflowState {
   /** Structured runtime error from a failed sidecar startup (shown in RuntimeErrorDialog). */
   runtimeError: RuntimeError | null;
 
+  /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
+  gateLoading: boolean;
+
+  /** Transient: set by create-skill dialog to start in update mode. Consumed once by init effect. */
+  pendingCreateMode: boolean;
+
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
   setReviewMode: (mode: boolean) => void;
@@ -48,6 +54,8 @@ interface WorkflowState {
   setRuntimeError: (error: RuntimeError) => void;
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
+  setGateLoading: (loading: boolean) => void;
+  setPendingCreateMode: (mode: boolean) => void;
   reset: () => void;
 }
 
@@ -109,6 +117,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initStartTime: null,
   initProgressMessage: null,
   runtimeError: null,
+  gateLoading: false,
+  pendingCreateMode: false,
   hydrated: false,
   disabledSteps: [],
 
@@ -126,6 +136,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initStartTime: null,
       initProgressMessage: null,
       runtimeError: null,
+      gateLoading: false,
       hydrated: false,
       disabledSteps: [],
     }),
@@ -177,6 +188,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setRuntimeError: (error) => set({ runtimeError: error }),
 
   clearRuntimeError: () => set({ runtimeError: null }),
+
+  setGateLoading: (loading) => set({ gateLoading: loading }),
+  setPendingCreateMode: (mode) => set({ pendingCreateMode: mode }),
 
   resetToStep: (stepId) =>
     set((state) => ({
@@ -233,7 +247,15 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initStartTime: null,
       initProgressMessage: null,
       runtimeError: null,
+      gateLoading: false,
+      pendingCreateMode: false,
       hydrated: false,
       disabledSteps: [],
     }),
 }));
+
+// Expose store for E2E tests (browser-only, no-op in SSR/Node)
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__TEST_WORKFLOW_STORE__ =
+    useWorkflowStore;
+}

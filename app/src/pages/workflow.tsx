@@ -30,7 +30,6 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningReview } from "@/components/reasoning-review";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -49,7 +48,12 @@ import {
   verifyStepOutput,
   endWorkflowSession,
   getDisabledSteps,
+  runAnswerEvaluator,
+  autofillClarifications,
+  logGateDecision,
+  type AnswerEvaluation,
 } from "@/lib/tauri";
+import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
 
 // --- Step config ---
 
@@ -92,6 +96,8 @@ export default function WorkflowPage() {
     hydrated,
     reviewMode,
     disabledSteps,
+    gateLoading,
+    setGateLoading,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
@@ -117,7 +123,8 @@ export default function WorkflowPage() {
   // value is current when the router re-evaluates after proceed().
   const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
     shouldBlockFn: () => {
-      return useWorkflowStore.getState().isRunning || hasUnsavedChangesRef.current;
+      const s = useWorkflowStore.getState();
+      return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
     },
     enableBeforeUnload: false,
     withResolver: true,
@@ -144,6 +151,7 @@ export default function WorkflowPage() {
     }
 
     useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setGateLoading(false);
     // Clear session ID so the next "Continue" starts a fresh session
     useWorkflowStore.setState({ workflowSessionId: null });
     useAgentStore.getState().clearRuns();
@@ -177,6 +185,7 @@ export default function WorkflowPage() {
         useWorkflowStore.getState().setRunning(false);
         useAgentStore.getState().clearRuns();
       }
+      useWorkflowStore.getState().setGateLoading(false);
       // Clear session ID so the next "Continue" starts a fresh session
       useWorkflowStore.setState({ workflowSessionId: null });
 
@@ -232,8 +241,26 @@ export default function WorkflowPage() {
   // Confirmation dialog for resetting steps with partial output
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
+  // Transition gate dialog state
+  const [showGateDialog, setShowGateDialog] = useState(false);
+  const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
+  const [gateTotalCount, setGateTotalCount] = useState(0);
+  const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
+  const [isAutofilling, setIsAutofilling] = useState(false);
+  const gateAgentIdRef = useRef<string | null>(null);
+
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
+
+  // Consume the pendingCreateMode flag set by the create-skill dialog.
+  // If set, switch to update mode so the first step auto-starts.
+  const consumeCreateMode = () => {
+    const store = useWorkflowStore.getState();
+    if (store.pendingCreateMode) {
+      store.setPendingCreateMode(false);
+      store.setReviewMode(false);
+    }
+  };
 
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
@@ -258,13 +285,19 @@ export default function WorkflowPage() {
       .then((state) => {
         if (cancelled) return;
         if (!state.run) {
-          // No saved state — fresh skill, safe to persist
+          // No saved state — check if we came from the create dialog
+          consumeCreateMode();
           setHydrated(true);
           return;
         }
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName, state.run.skill_type);
+        // Consume create mode after initWorkflow (which resets reviewMode to true).
+        // Handles the race where the persistence effect saves state to SQLite before
+        // getWorkflowState resolves, making a fresh create-flow skill appear as an
+        // existing skill with state.run.
+        consumeCreateMode();
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -285,7 +318,8 @@ export default function WorkflowPage() {
           .catch(() => {}); // Non-fatal
       })
       .catch(() => {
-        // No saved state — fresh skill
+        // No saved state — check if we came from the create dialog
+        consumeCreateMode();
         setHydrated(true);
       });
 
@@ -356,11 +390,14 @@ export default function WorkflowPage() {
         status: s.status,
       }));
 
-      const status = latestStore.steps[latestStore.currentStep]?.status === "in_progress"
-        ? "in_progress"
-        : latestStore.steps.every((s) => s.status === "completed")
-          ? "completed"
-          : "pending";
+      let status: string;
+      if (latestStore.steps[latestStore.currentStep]?.status === "in_progress") {
+        status = "in_progress";
+      } else if (latestStore.steps.every((s) => s.status === "completed")) {
+        status = "completed";
+      } else {
+        status = "pending";
+      }
 
       saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
         (err) => console.error("Failed to persist workflow state:", err)
@@ -392,6 +429,18 @@ export default function WorkflowPage() {
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
+  const [pendingAutoStart, setPendingAutoStart] = useState(false);
+
+  /** After resetting to a step, auto-start if it's an agent step in update mode. */
+  const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
+
+  const autoStartAfterReset = (stepId: number) => {
+    const cfg = STEP_CONFIGS[stepId];
+    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
+      setPendingAutoStart(true);
+    }
+  };
+
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
     const { disabledSteps: disabled } = useWorkflowStore.getState();
@@ -405,15 +454,86 @@ export default function WorkflowPage() {
     const nextConfig = STEP_CONFIGS[nextStep];
     if (nextConfig?.type === "human") {
       updateStepStatus(nextStep, "waiting_for_user");
+    } else {
+      // Agent and reasoning steps auto-start
+      setPendingAutoStart(true);
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus]);
+
+  // Auto-start agent/reasoning steps:
+  // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
+  // 2. On initial page load when step hasn't started yet
+  useEffect(() => {
+    if (!pendingAutoStart) return;
+    if (!isAgentType) return;
+    if (isRunning) return;
+    setPendingAutoStart(false);
+    handleStartAgentStep();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoStart, currentStep]);
+
+  // Auto-start when switching from Review → Update mode on a pending agent step.
+  // Does NOT fire on initial page load (new skills show a Start button per AC 1).
+  const prevReviewModeRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const wasToggle = prevReviewModeRef.current === true && !reviewMode;
+    prevReviewModeRef.current = reviewMode;
+
+    if (!wasToggle) return; // only auto-start on review→update toggle
+    if (!workspacePath) return;
+    if (stepConfig?.type === "human") return;
+    const status = steps[currentStep]?.status;
+    if (status && status !== "pending") return;
+    if (isRunning || pendingAutoStart) return;
+    console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
+    setPendingAutoStart(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, reviewMode]);
+
+  // Reposition to first incomplete step when switching to Update mode (AC 3).
+  useEffect(() => {
+    if (!hydrated || reviewMode) return;
+    const first = steps.find((s) => s.status !== "completed");
+    const target = first ? first.id : steps.length - 1;
+    if (target !== currentStep) {
+      setCurrentStep(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewMode]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
+  // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
+    if (gateAgentIdRef.current !== activeAgentId) return; // not the gate agent
+
+    if (activeRunStatus === "completed" || activeRunStatus === "error") {
+      gateAgentIdRef.current = null;
+      setActiveAgent(null);
+      clearRuns();
+
+      if (activeRunStatus === "error") {
+        console.warn("[workflow] Gate evaluation failed — proceeding normally");
+        setGateLoading(false);
+        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+        advanceToNextStep();
+        return;
+      }
+
+      // Read the evaluation result
+      finishGateEvaluation();
+    }
+  }, [activeRunStatus, activeAgentId]);
+
+  useEffect(() => {
+    if (!activeRunStatus || !activeAgentId) return;
+    // Skip gate agent — handled by the dedicated gate watcher above
+    if (gateAgentIdRef.current === activeAgentId) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;
@@ -511,6 +631,7 @@ export default function WorkflowPage() {
 
     switch (stepConfig.type) {
       case "agent":
+      case "reasoning":
         return handleStartAgentStep();
       case "human":
         // Human steps don't have a "start" — they just show the form
@@ -532,8 +653,167 @@ export default function WorkflowPage() {
         return;
       }
     }
+
+    // Gate: after step 1, evaluate answers before advancing
+    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+      runGateEvaluation();
+      return;
+    }
+
+    // All other review steps: advance normally
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
+  };
+
+  const runGateEvaluation = async () => {
+    if (!workspacePath) return;
+    console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    setGateLoading(true);
+
+    try {
+      const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
+      gateAgentIdRef.current = agentId;
+      agentStartRun(agentId, "haiku");
+      setActiveAgent(agentId);
+    } catch (err) {
+      console.error("[workflow] Gate evaluation failed to start:", err);
+      setGateLoading(false);
+      // Fail-open: proceed normally
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    }
+  };
+
+  const finishGateEvaluation = async () => {
+    const proceedNormally = () => {
+      setGateLoading(false);
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+      advanceToNextStep();
+    };
+
+    if (!skillsPath) {
+      proceedNormally();
+      return;
+    }
+
+    try {
+      const evalPath = `${skillsPath}/${skillName}/context/answer-evaluation.json`;
+      const raw = await readFile(evalPath);
+      const evaluation: AnswerEvaluation = JSON.parse(raw);
+
+      // Validate verdict shape — if the Haiku agent wrote malformed output, proceed normally
+      if (!["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)) {
+        console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
+        proceedNormally();
+        return;
+      }
+
+      // Write gate result to .vibedata (internal files) so it appears in Rust
+      // [write_file] logs and persists for debugging.
+      if (workspacePath) {
+        const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
+        writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch(() => {});
+      }
+
+      // All verdicts show a dialog — sufficient offers skip, mixed/insufficient offer auto-fill
+      const unanswered = evaluation.empty_count + evaluation.vague_count;
+      setGateLoading(false);
+      setGateVerdict(evaluation.verdict);
+      setGateTotalCount(evaluation.total_count);
+      setGateUnansweredCount(unanswered);
+      setShowGateDialog(true);
+    } catch (err) {
+      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      proceedNormally();
+    }
+  };
+
+  const closeGateDialog = () => {
+    setShowGateDialog(false);
+    setGateVerdict(null);
+  };
+
+  const skipToDecisions = (message: string) => {
+    closeGateDialog();
+    updateStepStatus(1, "completed");
+    updateStepStatus(2, "completed");
+    updateStepStatus(3, "completed");
+    setCurrentStep(4);
+    toast.success(message);
+  };
+
+  /** Write the user's gate decision to .vibedata so it appears in Rust [write_file] logs. */
+  const logGateAction = (decision: string) => {
+    if (!workspacePath) return;
+    const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
+    writeFile(`${workspacePath}/${skillName}/gate-result.json`, entry).catch(() => {});
+    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
+  };
+
+  /** Sufficient: skip straight to decisions. */
+  const handleGateSkip = () => {
+    logGateAction("skip");
+    skipToDecisions("Skipped detailed research — answers were sufficient");
+  };
+
+  /** Shared autofill logic: call autofillClarifications, then run onSuccess with the count. */
+  const runAutofill = async (decision: string, onSuccess: (filled: number) => void) => {
+    logGateAction(decision);
+    setIsAutofilling(true);
+    try {
+      const filled = await autofillClarifications(skillName);
+      setIsAutofilling(false);
+      onSuccess(filled);
+    } catch (err) {
+      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsAutofilling(false);
+    }
+  };
+
+  /** Insufficient: auto-fill all answers then skip to decisions. */
+  const handleGateAutofillAndSkip = () =>
+    runAutofill("autofill_and_skip", (filled) => {
+      skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
+    });
+
+  /** Mixed: auto-fill empty answers then proceed to detailed research. */
+  const handleGateAutofillAndResearch = () =>
+    runAutofill("autofill_and_research", (filled) => {
+      closeGateDialog();
+      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+      advanceToNextStep();
+    });
+
+  /** Sufficient override: run research anyway without autofill. */
+  const handleGateResearch = () => {
+    logGateAction("research_anyway");
+    closeGateDialog();
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  /** Override: go back to review so user can answer manually. */
+  const handleGateLetMeAnswer = () => {
+    logGateAction("let_me_answer");
+    closeGateDialog();
+  };
+
+  /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
+  const performStepReset = async (stepId: number) => {
+    endActiveSession();
+    if (workspacePath) {
+      try {
+        await resetWorkflowStep(workspacePath, skillName, stepId);
+      } catch {
+        // best-effort -- proceed even if disk cleanup fails
+      }
+    }
+    clearRuns();
+    resetToStep(stepId);
+    autoStartAfterReset(stepId);
+    toast.success(`Reset step ${stepId + 1}`);
   };
 
   /** Advance without writing — used after handleSave() already persisted. */
@@ -579,197 +859,45 @@ export default function WorkflowPage() {
   };
 
   const currentStepDef = steps[currentStep];
-  const canStart =
-    stepConfig &&
-    stepConfig.type !== "human" &&
-    stepConfig.type !== "reasoning" &&
-    !isRunning &&
-    workspacePath &&
-    currentStepDef?.status !== "completed";
 
   // --- Render content ---
 
-  const renderContent = () => {
-    // Completed step with output files.
-    if (
-      currentStepDef?.status === "completed" &&
-      !activeAgentId
-    ) {
-      // Check if workflow is halted: next step (or all subsequent steps) are disabled
-      const nextStep = currentStep + 1;
-      const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
-      const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
-      const handleClose = () => navigate({ to: "/" });
+  // --- Render helpers ---
 
-      // When halted, show a scope-too-broad message instead of normal completion
-      if (isWorkflowHalted && !reviewMode) {
-        const outputFiles = stepConfig?.outputFiles ?? [];
-        return (
-          <WorkflowStepComplete
-            stepName={currentStepDef.name}
-            outputFiles={outputFiles}
-            onClose={handleClose}
-            isLastStep={true}
-            reviewMode={reviewMode}
-            skillName={skillName}
-            workspacePath={workspacePath ?? undefined}
-            skillsPath={skillsPath}
-          />
-        );
-      }
+  /** Render completed agent/reasoning step with output files. */
+  const renderCompletedStep = () => {
+    const nextStep = currentStep + 1;
+    const isLastStep = disabledSteps.includes(nextStep) || currentStep >= steps.length - 1;
+    const handleClose = () => navigate({ to: "/" });
 
-      if (stepConfig?.outputFiles) {
-        return (
-          <WorkflowStepComplete
-            stepName={currentStepDef.name}
-            stepId={currentStep}
-            outputFiles={stepConfig.outputFiles}
-            onNextStep={advanceToNextStep}
-            onClose={handleClose}
-            isLastStep={isLastStep}
-            reviewMode={reviewMode}
-            skillName={skillName}
-            workspacePath={workspacePath ?? undefined}
-            skillsPath={skillsPath}
-          />
-        );
-      }
-      // Human steps or steps without output files
+    return (
+      <WorkflowStepComplete
+        stepName={currentStepDef.name}
+        stepId={currentStep}
+        outputFiles={stepConfig?.outputFiles ?? []}
+        onNextStep={advanceToNextStep}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
+        onClose={handleClose}
+        isLastStep={isLastStep}
+        reviewMode={reviewMode}
+        skillName={skillName}
+        workspacePath={workspacePath ?? undefined}
+        skillsPath={skillsPath}
+      />
+    );
+  };
+
+  /** Render human review step (all states: loading, active, completed). */
+  const renderHumanContent = () => {
+    if (loadingReview) {
       return (
-        <WorkflowStepComplete
-          stepName={currentStepDef.name}
-          stepId={currentStep}
-          outputFiles={[]}
-          onNextStep={advanceToNextStep}
-          onClose={handleClose}
-          isLastStep={isLastStep}
-          reviewMode={reviewMode}
-          skillName={skillName}
-          workspacePath={workspacePath ?? undefined}
-          skillsPath={skillsPath}
-        />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
       );
     }
 
-    // Human review step — editable markdown editor (active) or read-only preview (review mode)
-    if (isHumanReviewStep) {
-      if (loadingReview) {
-        return (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
-        );
-      }
-
-      if (reviewContent !== null) {
-        // Review mode: read-only markdown preview
-        if (reviewMode) {
-          return (
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between pb-3">
-                <p className="text-xs text-muted-foreground font-mono">
-                  {reviewFilePath}
-                </p>
-              </div>
-              <ScrollArea className="min-h-0 flex-1 rounded-md border">
-                <div className="markdown-body max-w-none p-4">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {reviewContent}
-                  </ReactMarkdown>
-                </div>
-              </ScrollArea>
-            </div>
-          );
-        }
-
-        // Check if the workflow is halted at this review step
-        const nextStepAfterReview = currentStep + 1;
-        const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
-
-        // Active editing mode: MDEditor
-        return (
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between pb-3">
-              <p className="text-xs text-muted-foreground font-mono">
-                {reviewFilePath}
-              </p>
-            </div>
-            <div className="min-h-0 flex-1" data-color-mode="dark">
-              <MDEditor
-                value={editorContent}
-                onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
-                height="100%"
-                visibleDragbar={false}
-              />
-            </div>
-            {isReviewHalted ? (
-              <div className="border-t pt-4">
-                <div className="flex flex-col items-center gap-3 py-4">
-                  <CheckCircle2 className="size-8 text-green-500" />
-                  <div className="text-center max-w-md">
-                    <p className="text-base font-medium">Scope Too Broad</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      The research phase determined this skill topic is too broad for a single skill.
-                      Review the scope recommendations above, then start a new workflow with a narrower focus.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate({ to: "/" })}
-                  >
-                    <Home className="size-3.5" />
-                    Return to Dashboard
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between border-t pt-4">
-                <p className="text-sm text-muted-foreground">
-                  Edit the markdown above, then save and continue.
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={!hasUnsavedChanges || isSaving}
-                  >
-                    {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                    Save
-                    {hasUnsavedChanges && (
-                      <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReviewReload}
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Reload
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (hasUnsavedChanges) {
-                        setShowUnsavedDialog(true);
-                      } else {
-                        handleReviewContinue();
-                      }
-                    }}
-                  >
-                    <CheckCircle2 className="size-3.5" />
-                    Complete Step
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      // File not available — this is an error (previous step should have produced it)
+    if (reviewContent === null) {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
@@ -784,32 +912,146 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 4) — single-shot generation with review
-    if (stepConfig?.type === "reasoning") {
+    // Review mode (or completed in any mode): read-only markdown preview
+    if (reviewMode) {
       return (
-        <ReasoningReview
-          skillName={skillName}
-          domain={domain ?? ""}
-          workspacePath={workspacePath ?? ""}
-          onStepComplete={advanceToNextStep}
-        />
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between pb-3">
+            <p className="text-xs text-muted-foreground font-mono">
+              {reviewFilePath}
+            </p>
+          </div>
+          <ScrollArea className="min-h-0 flex-1 rounded-md border">
+            <div className="markdown-body compact max-w-none p-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {reviewContent}
+              </ReactMarkdown>
+            </div>
+          </ScrollArea>
+        </div>
       );
     }
 
-    // Initializing state — show spinner before first agent message arrives.
-    if (isInitializing) {
-      if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
-        return <AgentInitializingIndicator />;
-      }
+    // Update mode: MDEditor
+    const isCompleted = currentStepDef?.status === "completed";
+    const nextStepAfterReview = currentStep + 1;
+    const isReviewHalted = disabledSteps.includes(nextStepAfterReview);
+
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between pb-3">
+          <p className="text-xs text-muted-foreground font-mono">
+            {reviewFilePath}
+          </p>
+        </div>
+        <div className="min-h-0 flex-1" data-color-mode="dark">
+          <MDEditor
+            value={editorContent}
+            onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
+            height="100%"
+            visibleDragbar={false}
+          />
+        </div>
+        {isReviewHalted ? (
+          <div className="border-t pt-4">
+            <div className="flex flex-col items-center gap-3 py-4">
+              <CheckCircle2 className="size-8 text-green-500" />
+              <div className="text-center max-w-md">
+                <p className="text-base font-medium">Scope Too Broad</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The research phase determined this skill topic is too broad for a single skill.
+                  Review the scope recommendations above, then start a new workflow with a narrower focus.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate({ to: "/" })}
+              >
+                <Home className="size-3.5" />
+                Return to Dashboard
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-t px-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              {isCompleted ? "Step completed. You can still edit and save." : "Edit the markdown above, then save and continue."}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges || isSaving}
+              >
+                {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                Save
+                {hasUnsavedChanges && (
+                  <span className="ml-1 size-2 rounded-full bg-orange-500" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReviewReload}
+              >
+                <RotateCcw className="size-3.5" />
+                Reload
+              </Button>
+              {!isCompleted && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (hasUnsavedChanges) {
+                      setShowUnsavedDialog(true);
+                    } else {
+                      handleReviewContinue();
+                    }
+                  }}
+                  disabled={gateLoading}
+                >
+                  {gateLoading
+                    ? <Loader2 className="size-3.5 animate-spin" />
+                    : <CheckCircle2 className="size-3.5" />}
+                  {gateLoading ? "Evaluating..." : "Complete Step"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // --- Render content (dispatch by step type) ---
+
+  const renderContent = () => {
+    // 1. Human review — always shows content regardless of status
+    if (isHumanReviewStep) {
+      return renderHumanContent();
     }
 
-    // Agent with output
+    // 2. Agent running — show streaming output or init spinner
     if (activeAgentId) {
+      if (isInitializing && !runs[activeAgentId]?.messages.length) {
+        return <AgentInitializingIndicator />;
+      }
       return <AgentOutputPanel agentId={activeAgentId} />;
     }
 
-    // Error state with retry
-    if (currentStepDef?.status === "error" && !activeAgentId) {
+    // 3. Agent initializing (no ID yet)
+    if (isInitializing) {
+      return <AgentInitializingIndicator />;
+    }
+
+    // 4. Completed agent/reasoning step — show output files
+    if (currentStepDef?.status === "completed") {
+      return renderCompletedStep();
+    }
+
+    // 5. Error state with retry
+    if (currentStepDef?.status === "error") {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
@@ -824,25 +1066,12 @@ export default function WorkflowPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  // Show confirmation if partial output exists
+                onClick={() => {
                   if (errorHasArtifacts) {
                     setShowResetConfirm(true);
                     return;
                   }
-                  // End active session — reset starts a fresh workflow context
-                  endActiveSession();
-                  // Full reset: clear artifacts on disk, clear agent runs, then revert step
-                  if (workspacePath) {
-                    try {
-                      await resetWorkflowStep(workspacePath, skillName, currentStep);
-                    } catch {
-                      // best-effort — proceed even if disk cleanup fails
-                    }
-                  }
-                  clearRuns();
-                  resetToStep(currentStep);
-                  toast.success(`Reset step ${currentStep + 1}`);
+                  performStepReset(currentStep);
                 }}
               >
                 <RotateCcw className="size-3.5" />
@@ -858,21 +1087,44 @@ export default function WorkflowPage() {
       );
     }
 
-    // Default empty state
-    return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <div className="flex flex-col items-center gap-2">
-          <Play className="size-8 text-muted-foreground/50" />
-          <p className="text-sm">Press "Start Step" to begin</p>
+    // 6. Pending — awaiting user action
+    if (reviewMode) {
+      return (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <p className="text-sm">Switch to Update mode to run this step.</p>
         </div>
+      );
+    }
+    if (pendingAutoStart) {
+      return <AgentInitializingIndicator />;
+    }
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+        <Play className="size-8 text-primary/50" />
+        <div className="text-center">
+          <p className="font-medium">Ready to run</p>
+          <p className="mt-1 text-sm">Click Start to begin this step.</p>
+        </div>
+        <Button size="sm" onClick={handleStartStep}>
+          <Play className="size-3.5" />
+          Start Step
+        </Button>
       </div>
     );
   };
 
-  // --- Start button label ---
+  // Navigation guard dialog helpers — avoids nested ternaries in JSX
+  const navGuardTitle = (): string => {
+    if (isRunning) return "Agent Running";
+    if (gateLoading) return "Evaluating Answers";
+    return "Unsaved Changes";
+  };
 
-  const getStartButtonLabel = () => "Start Step";
-  const getStartButtonIcon = () => <Play className="size-3.5" />;
+  const navGuardDescription = (): string => {
+    if (isRunning) return "An agent is still running on this step. Leaving will abandon it.";
+    if (gateLoading) return "The answer evaluator is still running. Leaving will abandon it.";
+    return "You have unsaved edits that will be lost if you leave.";
+  };
 
   return (
     <>
@@ -881,12 +1133,8 @@ export default function WorkflowPage() {
         <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>{isRunning ? "Agent Running" : "Unsaved Changes"}</DialogTitle>
-              <DialogDescription>
-                {isRunning
-                  ? "An agent is still running on this step. Leaving will abandon it."
-                  : "You have unsaved edits that will be lost if you leave."}
-              </DialogDescription>
+              <DialogTitle>{navGuardTitle()}</DialogTitle>
+              <DialogDescription>{navGuardDescription()}</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={handleNavStay}>
@@ -951,6 +1199,7 @@ export default function WorkflowPage() {
             endActiveSession();
             clearRuns();
             resetToStep(resetTarget);
+            autoStartAfterReset(resetTarget);
             setResetTarget(null);
           }
         }}
@@ -970,21 +1219,9 @@ export default function WorkflowPage() {
               <Button variant="outline" onClick={() => setShowResetConfirm(false)}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={async () => {
+              <Button variant="destructive" onClick={() => {
                 setShowResetConfirm(false);
-                // End active session — reset starts a fresh workflow context
-                endActiveSession();
-                // Full reset: clear artifacts on disk, clear agent runs, then revert step
-                if (workspacePath) {
-                  try {
-                    await resetWorkflowStep(workspacePath, skillName, currentStep);
-                  } catch {
-                    // best-effort — proceed even if disk cleanup fails
-                  }
-                }
-                clearRuns();
-                resetToStep(currentStep);
-                toast.success(`Reset step ${currentStep + 1}`);
+                performStepReset(currentStep);
               }}>
                 Reset
               </Button>
@@ -1025,6 +1262,20 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
+      {/* Transition gate dialog — shown after step 1 review */}
+      <TransitionGateDialog
+        open={showGateDialog}
+        verdict={gateVerdict}
+        totalCount={gateTotalCount}
+        unansweredCount={gateUnansweredCount}
+        onSkip={handleGateSkip}
+        onResearch={handleGateResearch}
+        onAutofillAndSkip={handleGateAutofillAndSkip}
+        onAutofillAndResearch={handleGateAutofillAndResearch}
+        onLetMeAnswer={handleGateLetMeAnswer}
+        isAutofilling={isAutofilling}
+      />
+
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar
           steps={steps}
@@ -1063,13 +1314,7 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {canStart && !reviewMode && (
-                <Button onClick={() => handleStartStep()} size="sm">
-                  {getStartButtonIcon()}
-                  {getStartButtonLabel()}
-                </Button>
-              )}
-              {isHumanReviewStep && currentStepDef?.status !== "completed" && (
+              {isHumanReviewStep && (
                 <Badge variant="outline" className="gap-1">
                   <FileText className="size-3" />
                   Q&A Review
@@ -1078,11 +1323,9 @@ export default function WorkflowPage() {
             </div>
           </div>
 
-          {/* Content area — reasoning/agent panels manage their own padding */}
+          {/* Content area — agent output panel manages its own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            (stepConfig?.type === "reasoning" && currentStepDef?.status !== "completed") || activeAgentId
-              ? ""
-              : "p-4"
+            activeAgentId && !isHumanReviewStep ? "" : "p-4"
           }`}>
             {renderContent()}
           </div>

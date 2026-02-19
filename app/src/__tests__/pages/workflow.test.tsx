@@ -46,6 +46,10 @@ vi.mock("@/lib/tauri", () => ({
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
   previewStepReset: vi.fn(() => Promise.resolve([])),
+  getDisabledSteps: vi.fn(() => Promise.resolve([])),
+  runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
+  autofillClarifications: vi.fn(() => Promise.resolve(0)),
+  logGateDecision: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock MDEditor — renders a textarea that calls onChange on input
@@ -72,9 +76,6 @@ vi.mock("@/components/workflow-step-complete", () => ({
   WorkflowStepComplete: () => (
     <div data-testid="step-complete" />
   ),
-}));
-vi.mock("@/components/reasoning-review", () => ({
-  ReasoningReview: () => <div data-testid="reasoning-review" />,
 }));
 
 // Import after mocks
@@ -408,31 +409,27 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       expect(useWorkflowStore.getState().hydrated).toBe(true);
     });
 
-    // Stale agent data should be cleared
-    expect(useAgentStore.getState().activeAgentId).toBeNull();
-    expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
+    // Stale agent data should be cleared — "old-agent" is no longer active
+    // (auto-start may have kicked off a new agent, so we check the stale ID is gone)
+    expect(useAgentStore.getState().activeAgentId).not.toBe("old-agent");
+    expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 
-  it("always shows Start Step button (no Resume) even with partial output on disk", async () => {
-    // Simulate: step 0 was interrupted — files on disk from a previous run
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Partial research output");
-      }
-      return Promise.reject("not found");
-    });
-
+  it("shows Start Step button on initial create-flow load (no auto-start)", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setPendingCreateMode(true);
     useWorkflowStore.getState().setReviewMode(false);
 
     render(<WorkflowPage />);
 
-    // Should always show "Start Step", never "Resume"
-    await waitFor(() => {
-      expect(screen.queryByText("Start Step")).toBeTruthy();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
     });
-    expect(screen.queryByText("Resume")).toBeNull();
+
+    // New skills show Start Step button — auto-start only on review→update toggle
+    expect(screen.getByText("Start Step")).toBeDefined();
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
   });
 
   it("renders completion screen on last step (step 6)", async () => {
@@ -917,10 +914,14 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection and error UI to render
+    // Wait for artifact detection to complete (readFile resolves asynchronously)
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith(
+        expect.stringContaining("research-plan.md")
+      );
     });
+    // Flush promise so errorHasArtifacts state updates
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
     // Click "Reset Step" — should show confirmation dialog (since artifacts exist)
     await act(async () => {
@@ -992,6 +993,38 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // endWorkflowSession should have been called with the session ID
     await waitFor(() => {
       expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    });
+  });
+
+  it("shows inline Retry button on error and calls runWorkflowStep when clicked", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+
+    // Put step 0 in error state (agent failed)
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+
+    // No partial artifacts on disk
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    render(<WorkflowPage />);
+
+    // Wait for error UI to render
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
+    });
+
+    // Clear previous calls so we can assert the retry call
+    vi.mocked(runWorkflowStep).mockClear();
+
+    // Click the inline Retry button
+    await act(async () => {
+      screen.getByRole("button", { name: /Retry/ }).click();
+    });
+
+    // Should trigger the agent step to restart
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalled();
     });
   });
 });
@@ -1300,5 +1333,76 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       expect(screen.getByText("Agent Running")).toBeTruthy();
       expect(screen.getByText("An agent is still running on this step. Leaving will abandon it.")).toBeTruthy();
     });
+  });
+});
+
+describe("WorkflowPage — review mode default state", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockBlocker.status = "idle";
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(runWorkflowStep).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("shows 'Switch to Update mode' message in review mode on pending agent step", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode defaults to true from initWorkflow
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Switch to Update mode to run this step.")).toBeTruthy();
+    });
+
+    // Should NOT show the initializing indicator
+    expect(screen.queryByText("Initializing agent")).toBeNull();
+    // Should NOT have called runWorkflowStep (no auto-start in review mode)
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+  });
+
+  it("consumeCreateMode works even when getWorkflowState returns saved state", async () => {
+    // Simulate the race: create-flow sets pendingCreateMode, but persistence
+    // saved state before getWorkflowState resolved, so state.run exists.
+    useWorkflowStore.getState().setPendingCreateMode(true);
+
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        domain: "test domain",
+        current_step: 0,
+        status: "pending",
+        skill_type: "domain",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+      steps: [],
+    });
+
+    render(<WorkflowPage />);
+
+    // After init, reviewMode should be false (create flow) even though state.run exists
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+    });
+    expect(useWorkflowStore.getState().reviewMode).toBe(false);
   });
 });

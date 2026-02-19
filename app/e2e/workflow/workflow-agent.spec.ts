@@ -38,13 +38,8 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     // Verify we're on the workflow page with Step 1 visible
     await expect(page.getByText("Step 1: Research")).toBeVisible();
 
-    // Click Start Step
-    const startButton = page.getByRole("button", { name: "Start Step" });
-    await expect(startButton).toBeVisible();
-    await startButton.click();
-
-    // The initializing indicator should appear
-    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible();
+    // Agent auto-starts in update mode — the initializing indicator should appear
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByTestId("init-progress-message")).toBeVisible();
 
     // Simulate init progress events
@@ -93,9 +88,8 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
   test("assistant messages render in the output panel", async ({ page }) => {
     await navigateToWorkflow(page);
 
-    // Start the step
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(100);
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Emit messages manually (without completing the run) so the agent
     // output panel stays visible and doesn't get replaced by the
@@ -126,9 +120,8 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
   test("runtime error dialog appears on agent-init-error", async ({ page }) => {
     await navigateToWorkflow(page);
 
-    // Start the step to enter initializing state
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(100);
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate an init error (e.g. Node.js not found)
     await simulateAgentInitError(page, {
@@ -169,9 +162,8 @@ test.describe("Workflow Agent Lifecycle", { tag: "@workflow-agent" }, () => {
     // Verify Step 1 header is visible
     await expect(page.getByText("Step 1: Research")).toBeVisible();
 
-    // Start the step
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(100);
+    // Agent auto-starts — wait for init indicator before simulating events
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate a full agent run (init -> messages -> result -> exit)
     await simulateAgentRun(page, {

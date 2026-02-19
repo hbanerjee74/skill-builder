@@ -19,6 +19,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
+import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
@@ -371,6 +372,8 @@ export default function SkillDialog(props: SkillDialogProps) {
         toast.success(`Skill "${skillName}" created`)
         const createdName = skillName.trim()
         await createOnCreated?.()
+        // Signal the workflow page to start in update mode (auto-start step 0)
+        useWorkflowStore.getState().setPendingCreateMode(true)
         navigate({ to: "/skill/$skillName", params: { skillName: createdName } })
         handleOpenChange(false)
       }
