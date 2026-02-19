@@ -77,9 +77,6 @@ vi.mock("@/components/workflow-step-complete", () => ({
     <div data-testid="step-complete" />
   ),
 }));
-vi.mock("@/components/reasoning-review", () => ({
-  ReasoningReview: () => <div data-testid="reasoning-review" />,
-}));
 
 // Import after mocks
 import WorkflowPage from "@/pages/workflow";
