@@ -23,7 +23,6 @@ cd app
 ./tests/run.sh e2e --tag @workflow
 ./tests/run.sh e2e --tag @workflow-agent
 ./tests/run.sh e2e --tag @navigation
-./tests/run.sh e2e --tag @prompts
 ./tests/run.sh e2e --tag @skills
 ./tests/run.sh e2e --tag @usage
 
@@ -44,7 +43,6 @@ npm run test:e2e:dashboard
 npm run test:e2e:settings
 npm run test:e2e:workflow
 npm run test:e2e:navigation
-npm run test:e2e:prompts
 npm run test:e2e:skills
 npm run test:e2e:usage
 ```
@@ -75,7 +73,7 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 | Runtime | Command | Location |
 |---|---|---|
-| Playwright | `npm run test:e2e` | `e2e/dashboard/`, `e2e/settings/`, `e2e/workflow/`, `e2e/navigation/`, `e2e/prompts/`, `e2e/skills/`, `e2e/usage/` |
+| Playwright | `npm run test:e2e` | `e2e/dashboard/`, `e2e/settings/`, `e2e/workflow/`, `e2e/navigation/`, `e2e/skills/`, `e2e/usage/` |
 
 ### Level 4: Plugin Tests
 
@@ -113,7 +111,6 @@ Each E2E spec file has a Playwright tag on its top-level `test.describe()`. Use 
 | Workflow (steps) | `@workflow` | `./tests/run.sh e2e --tag @workflow` | `workflow-steps.spec.ts`, `workflow-navigation.spec.ts` |
 | Workflow (agent) | `@workflow-agent` | `./tests/run.sh e2e --tag @workflow-agent` | `workflow-agent.spec.ts` |
 | Navigation | `@navigation` | `./tests/run.sh e2e --tag @navigation` | `navigation.spec.ts` |
-| Prompts | `@prompts` | `./tests/run.sh e2e --tag @prompts` | `prompts.spec.ts` |
 | Skills Library | `@skills` | `./tests/run.sh e2e --tag @skills` | `skills.spec.ts` |
 | Usage | `@usage` | `./tests/run.sh e2e --tag @usage` | `usage.spec.ts` |
 
@@ -142,7 +139,7 @@ test.describe("Feature Name", { tag: "@area" }, () => {
 });
 ```
 
-Available tags: `@dashboard`, `@navigation`, `@prompts`, `@settings`, `@skills`, `@usage`, `@workflow`, `@workflow-agent`.
+Available tags: `@dashboard`, `@navigation`, `@settings`, `@skills`, `@usage`, `@workflow`, `@workflow-agent`.
 
 ### Naming conventions
 

@@ -22,7 +22,6 @@
     "test:e2e:settings": "playwright test --grep @settings",
     "test:e2e:workflow": "playwright test --grep '@workflow|@workflow-agent'",
     "test:e2e:navigation": "playwright test --grep @navigation",
-    "test:e2e:prompts": "playwright test --grep @prompts",
     "test:e2e:skills": "playwright test --grep @skills",
     "test:e2e:usage": "playwright test --grep @usage",
     "test:changed": "vitest run --changed HEAD~1",
