@@ -631,66 +631,6 @@ fn build_prompt(
     prompt
 }
 
-const VALID_SKILL_TYPES: &[&str] = &["platform", "domain", "source", "data-engineering"];
-const VALID_PHASES: &[&str] = &[
-    "research-orchestrator",
-    "research-entities",
-    "research-metrics",
-    "research-data-quality",
-    "research-business-rules",
-    "research-segmentation-and-periods",
-    "research-modeling-patterns",
-    "research-pattern-interactions",
-    "research-load-merge-patterns",
-    "research-historization",
-    "research-layer-design",
-    "research-platform-behavioral-overrides",
-    "research-config-patterns",
-    "research-integration-orchestration",
-    "research-operational-failure-modes",
-    "research-extraction",
-    "research-field-semantics",
-    "research-lifecycle-and-state",
-    "research-reconciliation",
-    "research-planner",
-    "confirm-decisions",
-    "generate-skill",
-    "validate-skill",
-    "detailed-research",
-    "consolidate-research",
-];
-
-#[tauri::command]
-pub fn get_agent_prompt(skill_type: String, phase: String) -> Result<String, String> {
-    log::info!("[get_agent_prompt] skill_type={} phase={}", skill_type, phase);
-    // Validate inputs against allowlists to prevent path traversal
-    if !VALID_SKILL_TYPES.contains(&skill_type.as_str()) {
-        return Err(format!("Invalid skill type: '{}'", skill_type));
-    }
-    if !VALID_PHASES.contains(&phase.as_str()) {
-        return Err(format!("Invalid phase: '{}'", phase));
-    }
-
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or("Could not resolve repo root")?
-        .to_path_buf();
-
-    let agent_path = repo_root
-        .join("agents")
-        .join(format!("{}.md", phase));
-
-    if agent_path.exists() {
-        std::fs::read_to_string(&agent_path).map_err(|e| e.to_string())
-    } else {
-        Err(format!(
-            "Prompt not found for phase '{}'",
-            phase
-        ))
-    }
-}
-
 fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     let conn = db.0.lock().ok()?;
     crate::db::read_settings(&conn).ok()?.skills_path
