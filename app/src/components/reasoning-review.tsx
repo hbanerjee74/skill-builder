@@ -157,13 +157,14 @@ export function ReasoningReview({
       return;
     }
 
+    updateStepStatus(currentStep, "completed");
+    setRunning(false);
+
     // Checkpoint 2: check for decisions guard (zero decisions or contradictory inputs)
     try {
       const disabled = await getDisabledSteps(skillName);
       useWorkflowStore.getState().setDisabledSteps(disabled);
       if (disabled.includes(5)) {
-        updateStepStatus(currentStep, "completed");
-        setRunning(false);
         toast.warning(
           "The reasoning step found issues with your responses. Review the decisions above, then navigate back to revise your answers.",
           { duration: Infinity },
@@ -174,8 +175,6 @@ export function ReasoningReview({
       // Non-fatal: proceed normally
     }
 
-    updateStepStatus(currentStep, "completed");
-    setRunning(false);
     toast.success("Reasoning step completed");
     onStepComplete();
   }, [skillName, skillsPath, currentStep, updateStepStatus, setRunning, onStepComplete]);

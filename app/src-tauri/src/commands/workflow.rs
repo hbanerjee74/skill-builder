@@ -967,7 +967,6 @@ pub async fn run_workflow_step(
     // the agent doesn't see stale files from a previous workflow run.
     // Context lives in skills_path (not workspace_path).
     if step_id == 0 {
-        let context_dir = Path::new(&settings.skills_path).join(&skill_name).join("context");
         if context_dir.is_dir() {
             log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
             let _ = std::fs::remove_dir_all(&context_dir);
