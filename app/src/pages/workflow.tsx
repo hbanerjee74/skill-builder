@@ -251,6 +251,16 @@ export default function WorkflowPage() {
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
 
+  // Consume the pendingCreateMode flag set by the create-skill dialog.
+  // If set, switch to update mode so the first step auto-starts.
+  const consumeCreateMode = () => {
+    const store = useWorkflowStore.getState();
+    if (store.pendingCreateMode) {
+      store.setPendingCreateMode(false);
+      store.setReviewMode(false);
+    }
+  };
+
   // Initialize workflow and restore state from SQLite
   useEffect(() => {
     let cancelled = false;
@@ -274,8 +284,8 @@ export default function WorkflowPage() {
       .then((state) => {
         if (cancelled) return;
         if (!state.run) {
-          // No saved state — fresh skill: start in update mode so step 0 auto-starts
-          useWorkflowStore.getState().setReviewMode(false);
+          // No saved state — check if we came from the create dialog
+          consumeCreateMode();
           setHydrated(true);
           return;
         }
@@ -302,8 +312,8 @@ export default function WorkflowPage() {
           .catch(() => {}); // Non-fatal
       })
       .catch(() => {
-        // No saved state — fresh skill: start in update mode so step 0 auto-starts
-        useWorkflowStore.getState().setReviewMode(false);
+        // No saved state — check if we came from the create dialog
+        consumeCreateMode();
         setHydrated(true);
       });
 

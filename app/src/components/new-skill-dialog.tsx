@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
+import { useWorkflowStore } from "@/stores/workflow-store"
 import { Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -184,6 +185,8 @@ export default function NewSkillDialog({
       toast.success(`Skill "${name}" created`)
       const skillName = name.trim()
       await onCreated()
+      // Signal the workflow page to start in update mode (auto-start step 0)
+      useWorkflowStore.getState().setPendingCreateMode(true)
       navigate({ to: "/skill/$skillName", params: { skillName } })
       setOpen(false)
       resetForm()

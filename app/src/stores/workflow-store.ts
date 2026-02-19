@@ -34,6 +34,9 @@ interface WorkflowState {
   /** Transient: true while the answer-evaluator gate agent is running (not persisted to SQLite). */
   gateLoading: boolean;
 
+  /** Transient: set by create-skill dialog to start in update mode. Consumed once by init effect. */
+  pendingCreateMode: boolean;
+
   initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
   setSkillType: (skillType: string | null) => void;
   setReviewMode: (mode: boolean) => void;
@@ -52,6 +55,7 @@ interface WorkflowState {
   /** Clear the runtime error (e.g. after user dismisses the dialog). */
   clearRuntimeError: () => void;
   setGateLoading: (loading: boolean) => void;
+  setPendingCreateMode: (mode: boolean) => void;
   reset: () => void;
 }
 
@@ -114,6 +118,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   initProgressMessage: null,
   runtimeError: null,
   gateLoading: false,
+  pendingCreateMode: false,
   hydrated: false,
   disabledSteps: [],
 
@@ -185,6 +190,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   clearRuntimeError: () => set({ runtimeError: null }),
 
   setGateLoading: (loading) => set({ gateLoading: loading }),
+  setPendingCreateMode: (mode) => set({ pendingCreateMode: mode }),
 
   resetToStep: (stepId) =>
     set((state) => ({
@@ -242,6 +248,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       initProgressMessage: null,
       runtimeError: null,
       gateLoading: false,
+      pendingCreateMode: false,
       hydrated: false,
       disabledSteps: [],
     }),
