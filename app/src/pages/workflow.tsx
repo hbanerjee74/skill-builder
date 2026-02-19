@@ -292,6 +292,11 @@ export default function WorkflowPage() {
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName, state.run.skill_type);
+        // Consume create mode after initWorkflow (which resets reviewMode to true).
+        // Handles the race where the persistence effect saves state to SQLite before
+        // getWorkflowState resolves, making a fresh create-flow skill appear as an
+        // existing skill with state.run.
+        consumeCreateMode();
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -421,6 +426,14 @@ export default function WorkflowPage() {
 
   // Advance to next step helper
   const [pendingAutoStart, setPendingAutoStart] = useState(false);
+
+  /** After resetting to a step, auto-start if it's an agent step in update mode. */
+  const autoStartAfterReset = (stepId: number) => {
+    const cfg = STEP_CONFIGS[stepId];
+    if (cfg?.type === "agent" && !useWorkflowStore.getState().reviewMode) {
+      setPendingAutoStart(true);
+    }
+  };
 
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
@@ -1059,6 +1072,7 @@ export default function WorkflowPage() {
                   }
                   clearRuns();
                   resetToStep(currentStep);
+                  autoStartAfterReset(currentStep);
                   toast.success(`Reset step ${currentStep + 1}`);
                 }}
               >
@@ -1075,7 +1089,14 @@ export default function WorkflowPage() {
       );
     }
 
-    // Default empty state — agent steps auto-start, so show initializing indicator
+    // Default empty state — agent steps auto-start in update mode
+    if (reviewMode) {
+      return (
+        <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <p className="text-sm">Switch to Update mode to run this step.</p>
+        </div>
+      );
+    }
     return <AgentInitializingIndicator />;
   };
 
@@ -1156,6 +1177,7 @@ export default function WorkflowPage() {
             endActiveSession();
             clearRuns();
             resetToStep(resetTarget);
+            autoStartAfterReset(resetTarget);
             setResetTarget(null);
           }
         }}
@@ -1189,6 +1211,7 @@ export default function WorkflowPage() {
                 }
                 clearRuns();
                 resetToStep(currentStep);
+                autoStartAfterReset(currentStep);
                 toast.success(`Reset step ${currentStep + 1}`);
               }}>
                 Reset
