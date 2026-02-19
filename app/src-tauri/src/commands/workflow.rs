@@ -2659,4 +2659,22 @@ mod tests {
         assert!(!out.contains("**Answer:** Use Redis\n"), "Q2 must not get Q1's recommendation");
     }
 
+    #[test]
+    fn test_autofill_no_bleed_when_q2_has_no_recommendation() {
+        // The actual bug scenario: Q2 has no Recommendation of its own.
+        // Without the ### reset, Q1's recommendation would leak into Q2.
+        let input = "\
+## Section 1\n\
+\n\
+### Q1: First Question\n\
+**Recommendation:** Use Redis\n\
+**Answer:** Already using Memcached\n\
+\n\
+### Q2: Second Question\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 has no recommendation and should not be filled");
+        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
+    }
+
 }
