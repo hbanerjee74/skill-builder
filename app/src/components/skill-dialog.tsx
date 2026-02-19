@@ -225,7 +225,7 @@ export default function SkillDialog(props: SkillDialogProps) {
             setSuggestions(result)
           }
         } catch (err) {
-          console.warn("[skill-dialog] Ghost suggestion fetch failed:", err)
+          console.error("[skill-dialog] Ghost suggestion fetch failed:", err)
         }
       }, 800)
     },
@@ -268,7 +268,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           setStep3Suggestions(result)
         }
       } catch (err) {
-        console.warn("[skill-dialog] Step 3 suggestion fetch failed:", err)
+        console.error("[skill-dialog] Step 3 suggestion fetch failed:", err)
       }
     })()
   }, [skillName, skillType, industry, functionRole, domain, scope, suggestions?.domain, suggestions?.scope])
@@ -302,7 +302,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           console.debug("[skill-dialog] Pre-fetched step 3 suggestions")
         }
       } catch (err) {
-        console.warn("[skill-dialog] Step 3 pre-fetch failed:", err)
+        console.error("[skill-dialog] Step 3 pre-fetch failed:", err)
       }
     }, 1500)
 
