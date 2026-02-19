@@ -66,7 +66,7 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 
 **Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. Optionally include `contradictory_inputs: true` when unresolvable contradictions exist (see below). For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
-**`contradictory_inputs` flag**: Only set `contradictory_inputs: true` when two answers are mutually exclusive at the data model level and cannot be resolved by picking one option (e.g., "track monthly revenue" vs "don't track revenue at all"). Normal disagreements where one option can be chosen and documented (e.g., "SCD Type 2" vs "SCD Type 1") should NOT trigger this flag — just pick the more reasonable option and document it.
+**`contradictory_inputs` flag**: Set `contradictory_inputs: true` when the user's answers are logically incompatible — you cannot build a coherent data model that satisfies both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach (e.g., "SCD Type 2" vs "SCD Type 1"), pick the more reasonable option and document the trade-off — do not flag.
 
 **`decision_count: 0`**: If `clarifications.md` is present but all user answers are empty and there are no meaningful recommendations to make, write `decision_count: 0` in the frontmatter. The downstream guard will disable steps 5-6.
 
