@@ -408,7 +408,7 @@ export default function WorkflowPage() {
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
-  const autoStartRef = useRef(false);
+  const [pendingAutoStart, setPendingAutoStart] = useState(false);
 
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
@@ -424,19 +424,19 @@ export default function WorkflowPage() {
     if (nextConfig?.type === "human") {
       updateStepStatus(nextStep, "waiting_for_user");
     } else if (nextConfig?.type === "agent") {
-      autoStartRef.current = true;
+      setPendingAutoStart(true);
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus]);
 
   // Auto-start agent steps when advancing from a completed/review step
   useEffect(() => {
-    if (!autoStartRef.current) return;
+    if (!pendingAutoStart) return;
     if (stepConfig?.type !== "agent") return;
     if (isRunning) return;
-    autoStartRef.current = false;
+    setPendingAutoStart(false);
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep]);
+  }, [pendingAutoStart, currentStep]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -777,6 +777,7 @@ export default function WorkflowPage() {
     stepConfig.type !== "human" &&
     stepConfig.type !== "reasoning" &&
     !isRunning &&
+    !pendingAutoStart &&
     workspacePath &&
     currentStepDef?.status !== "completed";
 
@@ -1054,7 +1055,10 @@ export default function WorkflowPage() {
       );
     }
 
-    // Default empty state
+    // Default empty state — show loading if auto-start is pending
+    if (pendingAutoStart) {
+      return <AgentInitializingIndicator />;
+    }
     return (
       <div className="flex flex-1 items-center justify-center text-muted-foreground">
         <div className="flex flex-col items-center gap-2">
@@ -1067,8 +1071,6 @@ export default function WorkflowPage() {
 
   // --- Start button label ---
 
-  const getStartButtonLabel = () => "Start Step";
-  const getStartButtonIcon = () => <Play className="size-3.5" />;
 
   return (
     <>
@@ -1275,8 +1277,8 @@ export default function WorkflowPage() {
             <div className="flex items-center gap-3">
               {canStart && !reviewMode && (
                 <Button onClick={() => handleStartStep()} size="sm">
-                  {getStartButtonIcon()}
-                  {getStartButtonLabel()}
+                  <Play className="size-3.5" />
+                  Start Step
                 </Button>
               )}
               {isHumanReviewStep && currentStepDef?.status !== "completed" && (
