@@ -515,7 +515,7 @@ export default function WorkflowPage() {
       if (activeRunStatus === "error") {
         console.warn("[workflow] Gate evaluation failed — proceeding normally");
         setGateLoading(false);
-        updateStepStatus(currentStep, "completed");
+        updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
         advanceToNextStep();
         return;
       }
@@ -683,7 +683,7 @@ export default function WorkflowPage() {
   const finishGateEvaluation = async () => {
     const proceedNormally = () => {
       setGateLoading(false);
-      updateStepStatus(currentStep, "completed");
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
       advanceToNextStep();
     };
 
@@ -777,7 +777,7 @@ export default function WorkflowPage() {
     runAutofill("autofill_and_research", (filled) => {
       closeGateDialog();
       toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
-      updateStepStatus(currentStep, "completed");
+      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
       advanceToNextStep();
     });
 
@@ -785,7 +785,7 @@ export default function WorkflowPage() {
   const handleGateResearch = () => {
     logGateAction("research_anyway");
     closeGateDialog();
-    updateStepStatus(currentStep, "completed");
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
   };
 
