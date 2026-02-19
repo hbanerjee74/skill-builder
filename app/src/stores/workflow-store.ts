@@ -253,3 +253,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       disabledSteps: [],
     }),
 }));
+
+// Expose store for E2E tests (browser-only, no-op in SSR/Node)
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__TEST_WORKFLOW_STORE__ =
+    useWorkflowStore;
+}
