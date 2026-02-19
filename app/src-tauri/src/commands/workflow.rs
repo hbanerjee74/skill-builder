@@ -462,20 +462,9 @@ fn parse_decisions_guard(decisions_path: &Path) -> bool {
         None => return false,
     };
     let frontmatter = &after_start[..end];
-    let mut decision_count: Option<i64> = None;
-    let mut contradictory = false;
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if trimmed == "contradictory_inputs: true" {
-            contradictory = true;
-        }
-        if let Some(rest) = trimmed.strip_prefix("decision_count:") {
-            if let Ok(n) = rest.trim().parse::<i64>() {
-                decision_count = Some(n);
-            }
-        }
-    }
-    contradictory || decision_count == Some(0)
+    frontmatter
+        .lines()
+        .any(|line| line.trim() == "contradictory_inputs: true")
 }
 
 /// Derive agent name from prompt template.
@@ -954,9 +943,9 @@ pub async fn run_workflow_step(
         let decisions_path = context_dir.join("decisions.md");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
-                "Step {} is disabled: the reasoning agent found zero decisions or \
-                 unresolvable contradictions in decisions.md. Reset to step 3 \
-                 and revise your answers before retrying.",
+                "Step {} is disabled: the reasoning agent found unresolvable \
+                 contradictions in decisions.md. Reset to step 3 and revise \
+                 your answers before retrying.",
                 step_id
             ));
         }
@@ -2392,11 +2381,13 @@ mod tests {
     // --- VD-801: parse_decisions_guard tests ---
 
     #[test]
-    fn test_parse_decisions_guard_zero_count() {
+    fn test_parse_decisions_guard_zero_count_no_trigger() {
+        // decision_count: 0 is only used in scope recommendation path,
+        // which is already caught by checkpoint 1 — not a checkpoint 2 trigger
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("decisions.md");
         std::fs::write(&path, "---\ndecision_count: 0\nround: 1\n---\n## No decisions").unwrap();
-        assert!(parse_decisions_guard(&path));
+        assert!(!parse_decisions_guard(&path));
     }
 
     #[test]

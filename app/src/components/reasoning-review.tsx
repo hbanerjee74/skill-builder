@@ -160,13 +160,13 @@ export function ReasoningReview({
     updateStepStatus(currentStep, "completed");
     setRunning(false);
 
-    // Checkpoint 2: check for decisions guard (zero decisions or contradictory inputs)
+    // Checkpoint 2: check for decisions guard (contradictory inputs)
     try {
       const disabled = await getDisabledSteps(skillName);
       useWorkflowStore.getState().setDisabledSteps(disabled);
       if (disabled.includes(5)) {
         toast.warning(
-          "The reasoning step found issues with your responses. Review the decisions above, then navigate back to revise your answers.",
+          "The reasoning step found contradictions in your responses. Review the decisions above, then navigate back to revise your answers.",
           { duration: Infinity },
         );
         return; // Don't advance — user sees decisions.md content and navigates back

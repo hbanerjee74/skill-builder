@@ -412,7 +412,7 @@ describe("ReasoningReview", () => {
     });
   });
 
-  it("triggers decisions guard when decisions.md has zero decisions", async () => {
+  it("triggers decisions guard when getDisabledSteps returns steps 5-6", async () => {
     const user = userEvent.setup();
     const { toast } = await import("sonner");
 
@@ -425,7 +425,7 @@ describe("ReasoningReview", () => {
       return Promise.reject(new Error("not found"));
     });
 
-    // Mock getDisabledSteps to return [5, 6] (zero decisions guard)
+    // Mock getDisabledSteps to return [5, 6] (contradictory inputs guard)
     mockGetDisabledSteps.mockResolvedValue([5, 6]);
 
     render(<ReasoningReview {...defaultProps} />);
@@ -447,7 +447,7 @@ describe("ReasoningReview", () => {
     // Should show warning toast about issues
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringContaining("reasoning step found issues"),
+        expect.stringContaining("reasoning step found contradictions"),
         { duration: Infinity },
       );
     });
@@ -495,7 +495,7 @@ describe("ReasoningReview", () => {
     // Should show warning toast
     await waitFor(() => {
       expect(toast.warning).toHaveBeenCalledWith(
-        expect.stringContaining("reasoning step found issues"),
+        expect.stringContaining("reasoning step found contradictions"),
         { duration: Infinity },
       );
     });
