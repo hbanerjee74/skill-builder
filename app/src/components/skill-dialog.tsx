@@ -413,7 +413,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         </DialogTrigger>
       )}
       <DialogContent>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
             <DialogDescription>
@@ -434,7 +434,7 @@ export default function SkillDialog(props: SkillDialogProps) {
             </span>
           </div>
 
-          <div className="flex flex-col gap-4 py-2 max-h-[60vh] overflow-y-auto pr-1">
+          <div className="flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
             {/* Step 1: Name + Type */}
             {step === 1 && (
               <>
