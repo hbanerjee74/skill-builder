@@ -624,12 +624,12 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     // Content with empty Answer fields — should NOT be auto-filled
     const reviewContent = [
       "## Question 1",
-      "**Recommendation**: Use incremental loads for large tables",
-      "**Answer**: ",
+      "**Recommendation:** Use incremental loads for large tables",
+      "**Answer:** ",
       "",
       "## Question 2",
-      "**Recommendation**: Partition by date for time-series data",
-      "**Answer**: ",
+      "**Recommendation:** Partition by date for time-series data",
+      "**Answer:** ",
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
@@ -673,7 +673,7 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     expect(savedContent).not.toContain("auto-selected from recommendation");
 
     // Empty answers should still be empty
-    expect(savedContent).toContain("**Answer**: \n");
+    expect(savedContent).toContain("**Answer:** \n");
 
     // Step should be marked completed and advanced
     await waitFor(() => {
@@ -712,16 +712,16 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     // Content with mixed answers — some filled, some empty
     const reviewContent = [
       "## Question 1",
-      "**Recommendation**: Use incremental loads",
-      "**Answer**: We use full refresh for this table",
+      "**Recommendation:** Use incremental loads",
+      "**Answer:** We use full refresh for this table",
       "",
       "## Question 2",
-      "**Recommendation**: Partition by date",
-      "**Answer**: ",
+      "**Recommendation:** Partition by date",
+      "**Answer:** ",
       "",
       "## Question 3",
-      "**Recommendation**: Add surrogate keys",
-      "**Answer**: Already using natural keys, no change needed",
+      "**Recommendation:** Add surrogate keys",
+      "**Answer:** Already using natural keys, no change needed",
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
@@ -754,23 +754,23 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
 
     // User-filled answers should be preserved
-    expect(savedContent).toContain("**Answer**: We use full refresh for this table");
-    expect(savedContent).toContain("**Answer**: Already using natural keys, no change needed");
+    expect(savedContent).toContain("**Answer:** We use full refresh for this table");
+    expect(savedContent).toContain("**Answer:** Already using natural keys, no change needed");
 
     // Empty answer should still be empty — not auto-filled
-    expect(savedContent).toContain("**Answer**: \n");
+    expect(savedContent).toContain("**Answer:** \n");
   });
 
   it("step 3 human review also saves without auto-fill", async () => {
     // Step 3 reviews clarifications.md — same behavior expected
     const reviewContent = [
       "## Merged Question 1",
-      "**Recommendation**: Normalize customer dimensions",
-      "**Answer**: ",
+      "**Recommendation:** Normalize customer dimensions",
+      "**Answer:** ",
       "",
       "## Merged Question 2",
-      "**Recommendation**: Use SCD Type 2 for slowly changing dims",
-      "**Answer**: ",
+      "**Recommendation:** Use SCD Type 2 for slowly changing dims",
+      "**Answer:** ",
     ].join("\n");
 
     vi.mocked(readFile).mockImplementation((path: string) => {
