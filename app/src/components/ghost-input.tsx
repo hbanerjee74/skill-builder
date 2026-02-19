@@ -121,7 +121,7 @@ export function GhostTextarea({
       <Textarea
         {...textareaProps}
         ref={textareaRef}
-        className={cn(showGhost && "placeholder:text-transparent", className)}
+        className={cn("resize-none", showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}

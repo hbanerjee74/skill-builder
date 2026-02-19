@@ -392,7 +392,6 @@ export default function NewSkillDialog({
                     suggestion={suggestions?.scope ?? null}
                     onAccept={setScope}
                     disabled={loading}
-                    rows={2}
                   />
                   <p className="text-xs text-muted-foreground">
                     Helps agents focus research on what matters most
@@ -431,7 +430,6 @@ export default function NewSkillDialog({
                     suggestion={step3Suggestions?.audience ?? null}
                     onAccept={setAudience}
                     disabled={loading}
-                    rows={2}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -444,7 +442,6 @@ export default function NewSkillDialog({
                     suggestion={step3Suggestions?.challenges ?? null}
                     onAccept={setChallenges}
                     disabled={loading}
-                    rows={2}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -457,7 +454,6 @@ export default function NewSkillDialog({
                     suggestion={step3Suggestions?.unique_setup ?? null}
                     onAccept={setUniqueSetup}
                     disabled={loading}
-                    rows={2}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -470,7 +466,6 @@ export default function NewSkillDialog({
                     suggestion={step3Suggestions?.claude_mistakes ?? null}
                     onAccept={setClaudeMistakes}
                     disabled={loading}
-                    rows={2}
                   />
                 </div>
               </>
