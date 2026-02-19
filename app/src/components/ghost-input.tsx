@@ -88,6 +88,11 @@ export function GhostInput({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
       />
+      {showGhost && (
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">
+          Tab to accept
+        </span>
+      )}
     </div>
   )
 }
@@ -126,6 +131,11 @@ export function GhostTextarea({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
       />
+      {showGhost && (
+        <span className="absolute right-2 bottom-2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">
+          Tab to accept
+        </span>
+      )}
     </div>
   )
 }
