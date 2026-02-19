@@ -259,7 +259,7 @@ export default function SkillDialog(props: SkillDialogProps) {
 
   // Group 1: fetch domain when name + type are set (skip when closed or in edit mode)
   useEffect(() => {
-    if (!dialogOpen || isEdit || !skillName || !skillType) { setDomainSuggestion(null); return }
+    if (!dialogOpen || !skillName || !skillType) { setDomainSuggestion(null); return }
     const params = { name: skillName, skillType, industry, functionRole }
     fetchGroup({
       group: "domain", fields: ["domain"], params,
@@ -269,12 +269,12 @@ export default function SkillDialog(props: SkillDialogProps) {
       onResult: (r) => setDomainSuggestion(r.domain || null),
     })
     return () => { if (domainDebounceRef.current) clearTimeout(domainDebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, skillType, industry, functionRole, fetchGroup])
+  }, [dialogOpen, skillName, skillType, industry, functionRole, fetchGroup])
 
   // Group 2: fetch scope when domain is available
   const effectiveDomain = domain || domainSuggestion
   useEffect(() => {
-    if (!dialogOpen || isEdit || !effectiveDomain) { setScopeSuggestion(null); return }
+    if (!dialogOpen || !effectiveDomain) { setScopeSuggestion(null); return }
     const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain }
     fetchGroup({
       group: "scope", fields: ["scope"], params,
@@ -284,12 +284,12 @@ export default function SkillDialog(props: SkillDialogProps) {
       onResult: (r) => setScopeSuggestion(r.scope || null),
     })
     return () => { if (scopeDebounceRef.current) clearTimeout(scopeDebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, skillType, industry, functionRole, effectiveDomain, fetchGroup])
+  }, [dialogOpen, skillName, skillType, industry, functionRole, effectiveDomain, fetchGroup])
 
   // Group 3: fetch audience + challenges when scope is available
   const effectiveScope = scope || scopeSuggestion
   useEffect(() => {
-    if (!dialogOpen || isEdit || !effectiveDomain || !effectiveScope) {
+    if (!dialogOpen || !effectiveDomain || !effectiveScope) {
       setAudienceSuggestion(null); setChallengesSuggestion(null); return
     }
     const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain, scope: effectiveScope }
@@ -304,13 +304,13 @@ export default function SkillDialog(props: SkillDialogProps) {
       },
     })
     return () => { if (group3DebounceRef.current) clearTimeout(group3DebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, skillType, industry, functionRole, effectiveDomain, effectiveScope, fetchGroup])
+  }, [dialogOpen, skillName, skillType, industry, functionRole, effectiveDomain, effectiveScope, fetchGroup])
 
   // Group 4: fetch unique_setup + claude_mistakes when audience + challenges are available
   const effectiveAudience = audience || audienceSuggestion
   const effectiveChallenges = challenges || challengesSuggestion
   useEffect(() => {
-    if (!dialogOpen || isEdit || !effectiveDomain || !effectiveAudience || !effectiveChallenges) {
+    if (!dialogOpen || !effectiveDomain || !effectiveAudience || !effectiveChallenges) {
       setUniqueSetupSuggestion(null); setClaudeMistakesSuggestion(null); return
     }
     const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain, audience: effectiveAudience, challenges: effectiveChallenges }
@@ -325,7 +325,7 @@ export default function SkillDialog(props: SkillDialogProps) {
       },
     })
     return () => { if (group4DebounceRef.current) clearTimeout(group4DebounceRef.current) }
-  }, [dialogOpen, isEdit, skillName, skillType, industry, functionRole, effectiveDomain, effectiveAudience, effectiveChallenges, fetchGroup])
+  }, [dialogOpen, skillName, skillType, industry, functionRole, effectiveDomain, effectiveAudience, effectiveChallenges, fetchGroup])
 
   // --- Submit ---
 
