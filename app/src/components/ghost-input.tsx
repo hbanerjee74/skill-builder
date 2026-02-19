@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -66,13 +66,6 @@ export function GhostInput({
   const inputRef = useRef<HTMLInputElement>(null)
   useNativeTabCapture(inputRef, showGhost, suggestion, onAccept)
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      inputProps.onKeyDown?.(e)
-    },
-    [inputProps.onKeyDown],
-  )
-
   return (
     <div className="relative">
       {showGhost && (
@@ -86,7 +79,6 @@ export function GhostInput({
         className={cn(showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
       />
       {showGhost && (
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">
@@ -109,13 +101,6 @@ export function GhostTextarea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   useNativeTabCapture(textareaRef, showGhost, suggestion, onAccept)
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      textareaProps.onKeyDown?.(e)
-    },
-    [textareaProps.onKeyDown],
-  )
-
   return (
     <div className="relative">
       {showGhost && (
@@ -129,7 +114,6 @@ export function GhostTextarea({
         className={cn("resize-y", showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
       />
       {showGhost && (
         <span className="absolute right-2 bottom-2 text-[10px] text-muted-foreground/40 pointer-events-none select-none">

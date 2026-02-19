@@ -718,19 +718,18 @@ pub async fn generate_suggestions(
     };
 
     // If Step 3 context (domain, scope) is provided, include it for better suggestions
-    let step3_context = match (domain.as_deref().filter(|s| !s.is_empty()),
-                               scope.as_deref().filter(|s| !s.is_empty())) {
-        (None, None) => String::new(),
-        _ => {
-            let mut parts = Vec::new();
-            if let Some(d) = domain.as_deref().filter(|s| !s.is_empty()) {
-                parts.push(format!("Domain: {}", d));
-            }
-            if let Some(s) = scope.as_deref().filter(|s| !s.is_empty()) {
-                parts.push(format!("Scope: {}", s));
-            }
-            format!(" Skill details: {}.", parts.join("; "))
-        }
+    let step3_parts: Vec<String> = [
+        domain.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Domain: {}", s)),
+        scope.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Scope: {}", s)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let step3_context = if step3_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" Skill details: {}.", step3_parts.join("; "))
     };
 
     let prompt = format!(
