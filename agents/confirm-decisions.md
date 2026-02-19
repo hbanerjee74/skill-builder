@@ -91,15 +91,15 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ```
 ### D1: Customer Hierarchy Depth
 - **Original question:** How many levels should the customer hierarchy support?
-- **Decision**: Two levels — parent company and subsidiary
-- **Implication**: Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
-- **Status**: resolved
+- **Decision:** Two levels — parent company and subsidiary
+- **Implication:** Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
+- **Status:** resolved
 
 ### D2: Revenue Recognition Timing
 - **Original question:** When should revenue be recognized — at booking, invoicing, or payment?
-- **Implication**: PM said "at invoicing" but also answered "track bookings for pipeline forecasting" — both imply the skill needs booking-to-invoice lifecycle tracking, not just a single recognition point
-- **Decision**: Track full lifecycle (booking → invoice → payment) with invoice as the primary recognition event
-- **Status**: conflict-resolved
+- **Decision:** Track full lifecycle (booking → invoice → payment) with invoice as the primary recognition event
+- **Implication:** PM said "at invoicing" but also answered "track bookings for pipeline forecasting" — both imply the skill needs booking-to-invoice lifecycle tracking, not just a single recognition point
+- **Status:** conflict-resolved
 ```
 
 </output_format>

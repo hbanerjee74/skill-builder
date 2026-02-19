@@ -72,15 +72,31 @@ describe("parseAgentResponseType", () => {
 });
 
 describe("countDecisions", () => {
-  it("counts decision headings", () => {
+  it("counts decision headings in canonical format", () => {
     const content = [
-      "## Decisions",
+      "---",
+      "decision_count: 3",
+      "conflicts_resolved: 0",
+      "round: 1",
+      "---",
+      "",
       "### D1: Use REST API",
-      "- **Decision**: REST over GraphQL",
+      "- **Original question:** Which API style?",
+      "- **Decision:** REST over GraphQL",
+      "- **Implication:** Simpler tooling",
+      "- **Status:** resolved",
+      "",
       "### D2: PostgreSQL for storage",
-      "- **Decision**: PostgreSQL",
+      "- **Original question:** Which database?",
+      "- **Decision:** PostgreSQL",
+      "- **Implication:** Strong JSON support",
+      "- **Status:** resolved",
+      "",
       "### D3: JWT authentication",
-      "- **Decision**: JWT tokens",
+      "- **Original question:** How should auth work?",
+      "- **Decision:** JWT tokens",
+      "- **Implication:** Stateless but needs rotation",
+      "- **Status:** resolved",
     ].join("\n");
 
     expect(countDecisions(content)).toBe(3);

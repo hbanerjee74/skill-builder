@@ -186,7 +186,7 @@ Q17 is marked [MUST ANSWER] but has no answer. This is required for skill genera
 
 ---
 
-## Parser Notes
+## Parser Notes — clarifications.md
 
 Regex patterns for key fields (used by the Rust autofill parser and the UI renderer):
 
@@ -200,4 +200,121 @@ Regex patterns for key fields (used by the Rust autofill parser and the UI rende
 | Consolidated from | `^_Consolidated from: (.+)_$` | Group: source list |
 | Recommendation | `^\*\*Recommendation:\*\*\s*(.+)$` | Group: recommendation text |
 | Answer | `^\*\*Answer:\*\*\s*(.*)$` | Group: answer text (may be empty) |
+| Frontmatter | `^---$` delimited YAML block | Standard YAML frontmatter |
+
+---
+
+# Canonical `decisions.md` Format
+
+Written by `confirm-decisions` (Step 5). Read by `generate-skill`, `validate-skill`, `validate-quality`, `test-skill`, `companion-recommender`, and the app's Rust/TypeScript parsers.
+
+---
+
+## YAML Frontmatter
+
+```yaml
+---
+decision_count: 12          # required — total D-level decisions
+conflicts_resolved: 2       # required — number of conflict-resolved decisions
+round: 1                    # required — iteration count (1 for first pass)
+contradictory_inputs: true  # optional — set ONLY when answers are logically incompatible
+scope_recommendation: true  # optional — set when scope is too broad (stub file)
+---
+```
+
+### Required fields
+
+| Field | Type | Description |
+|---|---|---|
+| `decision_count` | integer | Total number of `### D{N}:` decision entries |
+| `conflicts_resolved` | integer | Count of decisions with `status: conflict-resolved` |
+| `round` | integer | Iteration number (1 on first write, incremented on re-analysis) |
+
+### Optional fields
+
+| Field | Type | Description |
+|---|---|---|
+| `contradictory_inputs` | boolean | Set `true` only when user answers are logically incompatible — not just different approaches |
+| `scope_recommendation` | boolean | Set `true` in the stub file when scope is too broad |
+
+---
+
+## Decision Entry Template
+
+```markdown
+### D1: Customer Hierarchy Depth
+- **Original question:** How many levels should the customer hierarchy support?
+- **Decision:** Two levels — parent company and subsidiary
+- **Implication:** Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
+- **Status:** resolved
+```
+
+### Field-by-field spec
+
+| Field | Format | Required | Notes |
+|---|---|---|---|
+| Heading | `### D{N}: Title` | yes | H3, D-numbered sequentially |
+| Original question | `- **Original question:** text` | yes | Source question text (verbatim or summarized) |
+| Decision | `- **Decision:** text` | yes | What was decided |
+| Implication | `- **Implication:** text` | yes | Design/engineering consequence |
+| Status | `- **Status:** value` | yes | One of: `resolved`, `conflict-resolved`, `needs-review` |
+
+### Status values
+
+| Value | When to use |
+|---|---|
+| `resolved` | Clean answer, direct derivation |
+| `conflict-resolved` | Contradiction detected, agent picked most reasonable option with documented reasoning |
+| `needs-review` | Ambiguous or insufficient information for a confident decision |
+
+### Rules
+
+- All field labels use `**Field:**` (colon inside bold), matching the clarifications convention.
+- Every answered question (first-round and refinements) produces at least one decision with an implication.
+- Contradictions are resolved with reasoning in the `**Implication:**` field — user reviews and can override.
+- File is a clean snapshot, not a log — written from scratch each time.
+
+---
+
+## Scope Recommendation Stub
+
+When the scope is too broad, `confirm-decisions` writes a minimal stub instead of decisions:
+
+```markdown
+---
+scope_recommendation: true
+decision_count: 0
+---
+## Scope Recommendation Active
+
+The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
+```
+
+---
+
+## VD-807 Draft Format (proposed, not yet implemented)
+
+When `detailed-research` writes a draft `decisions.md` (VD-807 Phase 1), entries use additional fields:
+
+```markdown
+### D1: MRR Calculation Formula
+- **Source:** Q1
+- **Section:** Core Concepts and Definitions
+- **Answer:** Managed services is already MRR, PS < 12mo = TCV/10
+- **Status:** draft
+```
+
+Draft-specific status values: `draft`, `critical-gap`, `contradiction`. See `vd-807-agent-outputs.md` for the full merge protocol.
+
+---
+
+## Parser Notes — decisions.md
+
+| Field | Regex | Notes |
+|---|---|---|
+| Decision heading | `^### (D\d+): (.+)$` | Groups: ID, title. Used by `countDecisions()` |
+| Decision count (frontmatter) | `^decision_count:\s*(\d+)` | Primary source for count |
+| Contradictory inputs | `^contradictory_inputs:\s*true` | Triggers `parse_decisions_guard` in Rust |
+| Scope recommendation | `^scope_recommendation:\s*true` | Stub file indicator |
+| Status field | `^\- \*\*Status:\*\*\s*(.+)$` | Group: status value |
 | Frontmatter | `^---$` delimited YAML block | Standard YAML frontmatter |

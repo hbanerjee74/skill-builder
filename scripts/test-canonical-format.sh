@@ -287,6 +287,118 @@ if [[ ${#CLARIFICATION_FILES[@]} -gt 0 ]]; then
   fi
 fi
 
+# ---------- Structural checks on decisions files ----------
+
+DECISION_FILES=()
+for f in app/sidecar/mock-templates/outputs/step4/context/decisions.md; do
+  [[ -f "$f" ]] && DECISION_FILES+=("$f")
+done
+
+check_decision_file() {
+  local description="$1"
+  local pattern="$2"
+  local all_pass=1
+
+  for f in "${DECISION_FILES[@]}"; do
+    if ! grep -qE "$pattern" "$ROOT_DIR/$f" 2>/dev/null; then
+      all_pass=0
+      if [[ $VERBOSE -eq 1 ]]; then
+        echo -e "${DIM}    Missing in: $f${RESET}"
+      fi
+    fi
+  done
+
+  if [[ $all_pass -eq 1 ]]; then
+    pass "$description"
+  else
+    fail "$description"
+  fi
+}
+
+check_decision_anti() {
+  local description="$1"
+  local pattern="$2"
+  local found=0
+
+  for f in "${DECISION_FILES[@]}"; do
+    if grep -qE "$pattern" "$ROOT_DIR/$f" 2>/dev/null; then
+      found=1
+      if [[ $VERBOSE -eq 1 ]]; then
+        echo -e "${DIM}    Found in: $f${RESET}"
+      fi
+    fi
+  done
+
+  if [[ $found -eq 0 ]]; then
+    pass "$description"
+  else
+    fail "$description"
+  fi
+}
+
+if [[ ${#DECISION_FILES[@]} -gt 0 ]]; then
+  echo ""
+  echo "=== Structural Checks (decisions files) ==="
+
+  # Frontmatter: required fields
+  check_decision_file \
+    "Frontmatter: \`decision_count\` present" \
+    '^decision_count:'
+
+  check_decision_file \
+    "Frontmatter: \`conflicts_resolved\` present" \
+    '^conflicts_resolved:'
+
+  check_decision_file \
+    "Frontmatter: \`round\` present" \
+    '^round:'
+
+  # Heading hierarchy: ### D{N}: (H3, not H2)
+  check_decision_file \
+    "Has \`### D{N}: Title\` decision headings (H3)" \
+    '^### D[0-9]+:'
+
+  # Anti-pattern: ## D{N}: (H2 headings — old mock format)
+  check_decision_anti \
+    "No \`## D{N}:\` headings (must be H3, not H2)" \
+    '^## D[0-9]+:'
+
+  # Structured fields present
+  check_decision_file \
+    "Has \`**Original question:**\` fields" \
+    '\*\*Original question:\*\*'
+
+  check_decision_file \
+    "Has \`**Decision:**\` fields" \
+    '\*\*Decision:\*\*'
+
+  check_decision_file \
+    "Has \`**Implication:**\` fields" \
+    '\*\*Implication:\*\*'
+
+  check_decision_file \
+    "Has \`**Status:**\` fields" \
+    '\*\*Status:\*\*'
+
+  # Status values are canonical
+  check_decision_file \
+    "Has \`resolved\` status entries" \
+    '\*\*Status:\*\* resolved'
+
+  # Anti-pattern: colon outside bold in decision fields
+  check_decision_anti \
+    "No \`**Decision**:\` (colon must be inside bold)" \
+    '\*\*Decision\*\*:'
+
+  check_decision_anti \
+    "No \`**Implication**:\` (colon must be inside bold)" \
+    '\*\*Implication\*\*:'
+
+  check_decision_anti \
+    "No \`**Status**:\` (colon must be inside bold)" \
+    '\*\*Status\*\*:'
+fi
+
 # ---------- Summary ----------
 echo ""
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
