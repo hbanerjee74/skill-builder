@@ -29,6 +29,28 @@ const STEP_DESCRIPTIONS: Record<number, string> = {
   3: "Add optional details to guide research.",
 }
 
+function makeCacheKey(params: {
+  name: string
+  skillType: string
+  industry?: string | null
+  functionRole?: string | null
+  existingTags?: string[]
+  domain?: string
+  scope?: string
+  currentTags?: string[]
+}): string {
+  return JSON.stringify({
+    n: params.name,
+    t: params.skillType,
+    i: params.industry ?? "",
+    f: params.functionRole ?? "",
+    et: (params.existingTags ?? []).slice().sort().join(","),
+    d: params.domain ?? "",
+    s: params.scope ?? "",
+    ct: (params.currentTags ?? []).slice().sort().join(","),
+  })
+}
+
 interface NewSkillDialogProps {
   workspacePath: string
   onCreated: () => Promise<void>
@@ -57,19 +79,19 @@ export default function NewSkillDialog({
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
   const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
-  const [aiTagSuggestions, setAiTagSuggestions] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const tagDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchVersionRef = useRef(0)
   const step3VersionRef = useRef(0)
-  const tagVersionRef = useRef(0)
+  const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
+  const step3PrefetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
 
-  // Merged tag suggestions: existing workspace tags + AI-generated tags (deduped)
+  // Merged tag suggestions: existing workspace tags + AI-generated tags from step 2 (deduped)
+  const derivedAiTags = suggestions?.tags ?? []
   const mergedTagSuggestions = [
     ...tagSuggestions,
-    ...aiTagSuggestions.filter((t) => !tagSuggestions.includes(t)),
+    ...derivedAiTags.filter((t) => !tagSuggestions.includes(t)),
   ]
 
   // Step 2 suggestions: triggered by name + type (domain, scope ghosts only)
@@ -83,10 +105,19 @@ export default function NewSkillDialog({
       const version = ++fetchVersionRef.current
       debounceRef.current = setTimeout(async () => {
         try {
+          const key = makeCacheKey({ name: skillName, skillType: type, industry, functionRole })
+          const cached = suggestionCache.current.get(key)
+          if (cached) {
+            if (version === fetchVersionRef.current) setSuggestions(cached)
+            return
+          }
           const result = await generateSuggestions(skillName, type, {
             industry, functionRole,
           })
-          if (version === fetchVersionRef.current) setSuggestions(result)
+          if (version === fetchVersionRef.current) {
+            suggestionCache.current.set(key, result)
+            setSuggestions(result)
+          }
         } catch (err) {
           console.warn("[new-skill] Ghost suggestion fetch failed:", err)
         }
@@ -95,45 +126,38 @@ export default function NewSkillDialog({
     [industry, functionRole],
   )
 
-  // Tag suggestions: triggered when domain or scope change (debounced)
-  useEffect(() => {
-    if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current)
-    const effectiveDomain = domain || suggestions?.domain
-    const effectiveScope = scope || suggestions?.scope
-    if (!name || !skillType || !effectiveDomain) {
-      setAiTagSuggestions([])
-      return
-    }
-    const version = ++tagVersionRef.current
-    tagDebounceRef.current = setTimeout(async () => {
-      try {
-        const result = await generateSuggestions(name, skillType, {
-          industry, functionRole, existingTags: tagSuggestions,
-          domain: effectiveDomain, scope: effectiveScope,
-        })
-        if (version === tagVersionRef.current) {
-          setAiTagSuggestions(result.tags)
-        }
-      } catch (err) {
-        console.warn("[new-skill] Tag suggestion fetch failed:", err)
-      }
-    }, 1200)
-    return () => { if (tagDebounceRef.current) clearTimeout(tagDebounceRef.current) }
-  }, [domain, scope, name, skillType, industry, functionRole, tagSuggestions, suggestions?.domain, suggestions?.scope])
-
   // Step 3 suggestions: triggered when entering step 3, uses step 2 values
   const fetchStep3Suggestions = useCallback(() => {
     if (!name || !skillType) return
+    const effectiveDomain = domain || suggestions?.domain
+    const effectiveScope = scope || suggestions?.scope
+
+    const key = makeCacheKey({
+      name, skillType, industry, functionRole,
+      existingTags: tagSuggestions,
+      domain: effectiveDomain ?? "",
+      scope: effectiveScope ?? "",
+      currentTags: tags,
+    })
+
+    const cached = suggestionCache.current.get(key)
+    if (cached) {
+      setStep3Suggestions(cached)
+      return
+    }
+
     const version = ++step3VersionRef.current
     const run = async () => {
       try {
         const result = await generateSuggestions(name, skillType, {
           industry, functionRole, existingTags: tagSuggestions,
-          domain: domain || suggestions?.domain,
-          scope: scope || suggestions?.scope,
+          domain: effectiveDomain, scope: effectiveScope,
           currentTags: tags,
         })
-        if (version === step3VersionRef.current) setStep3Suggestions(result)
+        if (version === step3VersionRef.current) {
+          suggestionCache.current.set(key, result)
+          setStep3Suggestions(result)
+        }
       } catch (err) {
         console.warn("[new-skill] Step 3 suggestion fetch failed:", err)
       }
@@ -152,6 +176,44 @@ export default function NewSkillDialog({
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [name, skillType, fetchSuggestions])
+
+  // Pre-fetch step 3 suggestions while user is on step 2
+  useEffect(() => {
+    if (step !== 2) return
+    const effectiveDomain = domain || suggestions?.domain
+    const effectiveScope = scope || suggestions?.scope
+    if (!name || !skillType || !effectiveDomain) return
+
+    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    const version = ++step3VersionRef.current
+    step3PrefetchRef.current = setTimeout(async () => {
+      const key = makeCacheKey({
+        name, skillType, industry, functionRole,
+        existingTags: tagSuggestions,
+        domain: effectiveDomain,
+        scope: effectiveScope ?? "",
+        currentTags: tags,
+      })
+      if (suggestionCache.current.has(key)) return
+      try {
+        const result = await generateSuggestions(name, skillType, {
+          industry, functionRole, existingTags: tagSuggestions,
+          domain: effectiveDomain, scope: effectiveScope,
+          currentTags: tags,
+        })
+        if (version === step3VersionRef.current) {
+          suggestionCache.current.set(key, result)
+          console.log("[new-skill] pre-fetched step 3 suggestions")
+        }
+      } catch (err) {
+        console.warn("[new-skill] Step 3 pre-fetch failed:", err)
+      }
+    }, 1500)
+
+    return () => {
+      if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    }
+  }, [step, domain, scope, name, skillType, industry, functionRole, tagSuggestions, tags, suggestions?.domain, suggestions?.scope])
 
   const handleNameChange = (value: string) => {
     setName(toKebabChars(value))
@@ -210,11 +272,11 @@ export default function NewSkillDialog({
     setClaudeMistakes("")
     setSuggestions(null)
     setStep3Suggestions(null)
-    setAiTagSuggestions([])
     setError(null)
     fetchVersionRef.current++
     step3VersionRef.current++
-    tagVersionRef.current++
+    suggestionCache.current.clear()
+    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
   }
 
   const canAdvanceStep1 = name.trim() !== "" && isValidKebab(name.trim()) && skillType !== ""
