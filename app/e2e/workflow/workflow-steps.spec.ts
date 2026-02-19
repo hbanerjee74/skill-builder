@@ -123,11 +123,12 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
   });
 
-  test("update mode shows Start Step button for pending steps", async ({ page }) => {
+  test("update mode auto-starts agent on pending step", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page);
 
-    // Fresh workflow — step 0 is pending, should see Start Step
-    await expect(page.getByRole("button", { name: "Start Step" })).toBeVisible();
+    // Fresh workflow — step 0 is pending, agent should auto-start
+    // and show the initializing indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
   });
 
   test("human review loads file content from read_file", async ({ page }) => {
@@ -244,8 +245,18 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
   });
 
   test("reset to prior step shows ResetStepDialog", async ({ page }) => {
+    // Use a human step as current (step 3 = Review) to avoid auto-start of agent
     await navigateToWorkflowUpdateMode(page, {
-      ...COMPLETED_STEP_OVERRIDES,
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { domain: "Testing", current_step: 3, skill_type: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+          { step_id: 2, status: "completed" },
+        ],
+      },
+      read_file: "# Review\n\nDetailed review content.",
       preview_step_reset: [
         {
           step_id: 0,
@@ -312,9 +323,8 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
   test("error state shows Retry and Reset Step buttons", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, ERROR_STEP_OVERRIDES);
 
-    // Start the step
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(200);
+    // Agent auto-starts — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate agent init then error exit
     await emitTauriEvent(page, "agent-init-progress", {

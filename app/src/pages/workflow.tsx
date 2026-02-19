@@ -470,7 +470,8 @@ export default function WorkflowPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoStart, currentStep]);
 
-  // Auto-start agent step on initial page load (fresh workflow, pending step)
+  // Auto-start agent step on page load or when switching to update mode.
+  // Fires on hydration (initial load) and reviewMode toggle (review → update).
   useEffect(() => {
     if (!hydrated) return;
     if (reviewMode) return; // review mode is read-only, don't start agents
@@ -479,10 +480,10 @@ export default function WorkflowPage() {
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return; // already started, completed, or errored
     if (isRunning || pendingAutoStart) return;
-    console.log(`[workflow] Auto-starting step ${currentStep} on page load`);
+    console.log(`[workflow] Auto-starting step ${currentStep}`);
     setPendingAutoStart(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [hydrated, reviewMode]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;

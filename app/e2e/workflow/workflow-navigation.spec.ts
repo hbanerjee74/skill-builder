@@ -43,9 +43,8 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
   test("blocks navigation while agent is running — Stay keeps page, Leave navigates away", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page);
 
-    // Start a step to put the workflow in running state
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(200);
+    // Agent auto-starts in update mode — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate agent init so the UI is in running state
     await emitTauriEvent(page, "agent-init-progress", {
@@ -55,9 +54,9 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     });
     await page.waitForTimeout(100);
 
-    // Try to navigate away by clicking Dashboard in the app sidebar
-    const dashboardLink = page.locator("aside nav").getByText("Dashboard");
-    await dashboardLink.click();
+    // Try to navigate away by clicking Skills in the app sidebar
+    const skillsLink = page.locator("aside nav").getByText("Skills");
+    await skillsLink.click();
     await page.waitForTimeout(300);
 
     // Navigation guard dialog should appear
@@ -76,7 +75,7 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     await expect(page.getByText("Workflow Steps")).toBeVisible();
 
     // Try to navigate again
-    await dashboardLink.click();
+    await skillsLink.click();
     await page.waitForTimeout(300);
 
     // Dialog appears again
@@ -103,9 +102,9 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     await textarea.type(" unsaved edit");
     await page.waitForTimeout(200);
 
-    // Try to navigate away by clicking Dashboard
-    const dashboardLink = page.locator("aside nav").getByText("Dashboard");
-    await dashboardLink.click();
+    // Try to navigate away by clicking Skills
+    const skillsLink = page.locator("aside nav").getByText("Skills");
+    await skillsLink.click();
     await page.waitForTimeout(300);
 
     // Navigation guard dialog should appear with "Unsaved Changes" title
@@ -130,9 +129,8 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
     // Verify we're on step 3 (Detailed Research)
     await expect(page.getByText("Step 3: Detailed Research")).toBeVisible();
 
-    // Start the step to enter running state
-    await page.getByRole("button", { name: "Start Step" }).click();
-    await page.waitForTimeout(200);
+    // Agent auto-starts in update mode — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
 
     // Simulate agent init
     await emitTauriEvent(page, "agent-init-progress", {
