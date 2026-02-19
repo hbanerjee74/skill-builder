@@ -768,6 +768,8 @@ pub async fn generate_suggestions(
          {tag_instruction}}}"
     );
 
+    log::debug!("[generate_suggestions] prompt={}", prompt);
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -809,6 +811,8 @@ pub async fn generate_suggestions(
             log::error!("[generate_suggestions] No text in API response");
             "No text in API response".to_string()
         })?;
+
+    log::debug!("[generate_suggestions] raw response={}", text);
 
     // Strip markdown fences if the model wrapped its response (e.g. ```json\n...\n```)
     let cleaned = text.trim();
