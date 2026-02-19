@@ -19,15 +19,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import TagInput from "@/components/tag-input"
 import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
-import { generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
+import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
+import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, SKILL_TYPE_DESCRIPTIONS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
-const STEP_DESCRIPTIONS: Record<number, string> = {
-  1: "Name your skill and choose its type.",
-  2: "Describe the domain, scope, and tags.",
-  3: "Add optional details to guide research.",
-}
+// --- Cache key helpers ---
 
 interface CacheKeyParams {
   name: string
@@ -53,23 +50,80 @@ function makeCacheKey(params: CacheKeyParams): string {
   })
 }
 
-interface NewSkillDialogProps {
+// --- Intake JSON parsing ---
+
+const EMPTY_INTAKE = { audience: "", challenges: "", scope: "", unique_setup: "", claude_mistakes: "" }
+
+function parseIntake(json: string | null | undefined): typeof EMPTY_INTAKE {
+  if (!json) return EMPTY_INTAKE
+  try {
+    const obj = JSON.parse(json)
+    return {
+      audience: obj.audience || "",
+      challenges: obj.challenges || "",
+      scope: obj.scope || "",
+      unique_setup: obj.unique_setup || "",
+      claude_mistakes: obj.claude_mistakes || "",
+    }
+  } catch {
+    return EMPTY_INTAKE
+  }
+}
+
+// --- Props ---
+
+interface SkillDialogCreateProps {
+  mode: "create"
   workspacePath: string
   onCreated: () => Promise<void>
   tagSuggestions?: string[]
 }
 
-export default function NewSkillDialog({
-  workspacePath,
-  onCreated,
-  tagSuggestions = [],
-}: NewSkillDialogProps) {
+interface SkillDialogEditProps {
+  mode: "edit"
+  skill: SkillSummary | null
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSaved: () => void
+  tagSuggestions?: string[]
+}
+
+export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
+
+const STEP_DESCRIPTIONS = {
+  create: {
+    1: "Name your skill and choose its type.",
+    2: "Describe the domain, scope, and tags.",
+    3: "Add optional details to guide research.",
+  },
+  edit: {
+    1: "Update name and type.",
+    2: "Update domain, scope, and tags.",
+    3: "Update optional details.",
+  },
+} as const
+
+export default function SkillDialog(props: SkillDialogProps) {
+  const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { skillsPath, industry, functionRole } = useSettingsStore()
-  const [open, setOpen] = useState(false)
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole } = useSettingsStore()
+
+  // Extract mode-specific props
+  const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
+  const editOnOpenChange = isEdit ? (props as SkillDialogEditProps).onOpenChange : undefined
+  const editOnSaved = isEdit ? (props as SkillDialogEditProps).onSaved : undefined
+  const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
+  const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
+  const tagSuggestions = props.tagSuggestions ?? []
+
+  // Dialog open state — edit is controlled, create is internal
+  const [internalOpen, setInternalOpen] = useState(false)
+  const dialogOpen = isEdit ? (props as SkillDialogEditProps).open : internalOpen
+
+  // Form state
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [name, setName] = useState("")
-  const [skillType, setSkillType] = useState<string>("")
+  const [skillName, setSkillName] = useState("")
+  const [skillType, setSkillType] = useState("")
   const [domain, setDomain] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [audience, setAudience] = useState("")
@@ -77,8 +131,10 @@ export default function NewSkillDialog({
   const [scope, setScope] = useState("")
   const [uniqueSetup, setUniqueSetup] = useState("")
   const [claudeMistakes, setClaudeMistakes] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Ghost suggestion state
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
   const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
   const [contextualTags, setContextualTags] = useState<string[]>([])
@@ -88,179 +144,27 @@ export default function NewSkillDialog({
   const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
   const step3PrefetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Derived state
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
+  const originalName = editSkill?.name ?? ""
+  const nameChanged = isEdit && skillName !== originalName
+  const nameValid = isValidKebab(skillName)
+  const canAdvanceStep1 = skillName.trim() !== "" && nameValid && skillType !== ""
+  const submitLabel = isEdit ? "Save" : "Create"
+  const stepDescriptions = STEP_DESCRIPTIONS[props.mode]
 
   // Merged tag suggestions: existing workspace tags + AI-generated tags (deduped)
-  // Prefer contextual tags (from full-context pre-fetch with domain+scope) over basic step 2 tags
   const aiTags = contextualTags.length > 0 ? contextualTags : (suggestions?.tags ?? [])
   const mergedTagSuggestions = [
     ...tagSuggestions,
     ...aiTags.filter((t) => !tagSuggestions.includes(t)),
   ]
 
-  // Step 2 suggestions: triggered by name + type (domain, scope ghosts only)
-  const fetchSuggestions = useCallback(
-    (skillName: string, type: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (!skillName || !type) {
-        setSuggestions(null)
-        return
-      }
-      const version = ++fetchVersionRef.current
-      debounceRef.current = setTimeout(async () => {
-        try {
-          const key = makeCacheKey({ name: skillName, skillType: type, industry, functionRole, existingTags: tagSuggestions })
-          const cached = suggestionCache.current.get(key)
-          if (cached) {
-            if (version === fetchVersionRef.current) setSuggestions(cached)
-            return
-          }
-          const result = await generateSuggestions(skillName, type, {
-            industry, functionRole, existingTags: tagSuggestions,
-          })
-          if (version === fetchVersionRef.current) {
-            suggestionCache.current.set(key, result)
-            setSuggestions(result)
-          }
-        } catch (err) {
-          console.warn("[new-skill] Ghost suggestion fetch failed:", err)
-        }
-      }, 800)
-    },
-    [industry, functionRole, tagSuggestions],
-  )
+  // --- Form population and reset ---
 
-  // Build cache key and API params for step 3 suggestions (shared by fetch and prefetch)
-  function buildStep3Params(): { key: string; opts: Parameters<typeof generateSuggestions>[2] } {
-    const effectiveDomain = domain || suggestions?.domain
-    const effectiveScope = scope || suggestions?.scope
-    const opts = {
-      industry, functionRole, existingTags: tagSuggestions,
-      domain: effectiveDomain, scope: effectiveScope,
-      currentTags: tags,
-    }
-    const key = makeCacheKey({
-      name, skillType, industry, functionRole,
-      existingTags: tagSuggestions,
-      domain: effectiveDomain ?? "",
-      scope: effectiveScope ?? "",
-      currentTags: tags,
-    })
-    return { key, opts }
-  }
-
-  // Step 3 suggestions: triggered when entering step 3, uses step 2 values
-  const fetchStep3Suggestions = useCallback(() => {
-    if (!name || !skillType) return
-    const { key, opts } = buildStep3Params()
-
-    const cached = suggestionCache.current.get(key)
-    if (cached) {
-      setStep3Suggestions(cached)
-      return
-    }
-
-    const version = ++step3VersionRef.current
-    ;(async () => {
-      try {
-        const result = await generateSuggestions(name, skillType, opts)
-        if (version === step3VersionRef.current) {
-          suggestionCache.current.set(key, result)
-          setStep3Suggestions(result)
-        }
-      } catch (err) {
-        console.warn("[new-skill] Step 3 suggestion fetch failed:", err)
-      }
-    })()
-  }, [name, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions?.domain, suggestions?.scope])
-
-  // Trigger step 2 suggestion fetch when name or type changes
-  useEffect(() => {
-    if (name && skillType) {
-      fetchSuggestions(name, skillType)
-    } else {
-      setSuggestions(null)
-    }
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [name, skillType, fetchSuggestions])
-
-  // Pre-fetch step 3 suggestions while user is on step 2
-  useEffect(() => {
-    if (step !== 2) return
-    if (!name || !skillType || !(domain || suggestions?.domain)) return
-
-    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
-    const version = ++step3VersionRef.current
-    step3PrefetchRef.current = setTimeout(async () => {
-      const { key, opts } = buildStep3Params()
-      if (suggestionCache.current.has(key)) return
-      try {
-        const result = await generateSuggestions(name, skillType, opts)
-        if (version === step3VersionRef.current) {
-          suggestionCache.current.set(key, result)
-          // Surface full-context tags on step 2 for the tag input
-          if (result.tags.length > 0) setContextualTags(result.tags)
-          console.debug("[new-skill] Pre-fetched step 3 suggestions")
-        }
-      } catch (err) {
-        console.warn("[new-skill] Step 3 pre-fetch failed:", err)
-      }
-    }, 1500)
-
-    return () => {
-      if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
-    }
-  }, [step, domain, scope, name, skillType, industry, functionRole, tagSuggestions, tags, suggestions?.domain, suggestions?.scope])
-
-  const handleNameChange = (value: string) => {
-    setName(toKebabChars(value))
-    setError(null)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!name.trim() || !skillType) return
-    if (!isValidKebab(name.trim())) {
-      setError("Skill name must be kebab-case (e.g., sales-pipeline)")
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-    try {
-      await invoke("create_skill", {
-        workspacePath,
-        name: name.trim(),
-        domain: domain.trim() || name.replace(/-/g, " "),
-        tags: tags.length > 0 ? tags : null,
-        skillType: skillType || null,
-        intakeJson: buildIntakeJson({
-          audience, challenges, scope,
-          unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
-        }),
-      })
-      console.log(`[skill] Created skill "${name}"`)
-      toast.success(`Skill "${name}" created`)
-      const skillName = name.trim()
-      await onCreated()
-      navigate({ to: "/skill/$skillName", params: { skillName } })
-      setOpen(false)
-      resetForm()
-    } catch (err) {
-      console.error("[new-skill] Failed to create skill:", err)
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg)
-      toast.error("Failed to create skill", { duration: Infinity })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setStep(1)
-    setName("")
+    setSkillName("")
     setSkillType("")
     setDomain("")
     setTags([])
@@ -273,13 +177,224 @@ export default function NewSkillDialog({
     setStep3Suggestions(null)
     setContextualTags([])
     setError(null)
+    setSubmitting(false)
     fetchVersionRef.current++
     step3VersionRef.current++
     suggestionCache.current.clear()
     if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+  }, [])
+
+  // Populate form in edit mode when dialog opens; reset on close for both modes
+  useEffect(() => {
+    if (isEdit && dialogOpen && editSkill) {
+      setSkillName(editSkill.name)
+      setDomain(editSkill.domain || "")
+      setSkillType(editSkill.skill_type || "domain")
+      setTags([...editSkill.tags])
+      const intake = parseIntake(editSkill.intake_json)
+      setAudience(intake.audience)
+      setChallenges(intake.challenges)
+      setScope(intake.scope)
+      setUniqueSetup(intake.unique_setup)
+      setClaudeMistakes(intake.claude_mistakes)
+    } else if (!dialogOpen) {
+      resetForm()
+    }
+  }, [dialogOpen, isEdit, editSkill, resetForm])
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    if (editOnOpenChange) {
+      editOnOpenChange(open)
+    } else {
+      setInternalOpen(open)
+    }
+    if (!open) resetForm()
+  }, [editOnOpenChange, resetForm])
+
+  // --- Ghost suggestions ---
+
+  // Step 2 suggestions: triggered by name + type
+  const fetchSuggestions = useCallback(
+    (name: string, type: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (!name || !type) {
+        setSuggestions(null)
+        return
+      }
+      const version = ++fetchVersionRef.current
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const key = makeCacheKey({ name, skillType: type, industry, functionRole, existingTags: tagSuggestions })
+          const cached = suggestionCache.current.get(key)
+          if (cached) {
+            if (version === fetchVersionRef.current) setSuggestions(cached)
+            return
+          }
+          const result = await generateSuggestions(name, type, {
+            industry, functionRole, existingTags: tagSuggestions,
+          })
+          if (version === fetchVersionRef.current) {
+            suggestionCache.current.set(key, result)
+            setSuggestions(result)
+          }
+        } catch (err) {
+          console.warn("[skill-dialog] Ghost suggestion fetch failed:", err)
+        }
+      }, 800)
+    },
+    [industry, functionRole, tagSuggestions],
+  )
+
+  // Build cache key and API params for step 3 suggestions
+  function buildStep3Params(): { key: string; opts: Parameters<typeof generateSuggestions>[2] } {
+    const effectiveDomain = domain || suggestions?.domain
+    const effectiveScope = scope || suggestions?.scope
+    const opts = {
+      industry, functionRole, existingTags: tagSuggestions,
+      domain: effectiveDomain, scope: effectiveScope,
+      currentTags: tags,
+    }
+    const key = makeCacheKey({
+      name: skillName, skillType, industry, functionRole,
+      existingTags: tagSuggestions,
+      domain: effectiveDomain ?? "",
+      scope: effectiveScope ?? "",
+      currentTags: tags,
+    })
+    return { key, opts }
   }
 
-  const canAdvanceStep1 = name.trim() !== "" && isValidKebab(name.trim()) && skillType !== ""
+  // Step 3 suggestions: triggered when entering step 3
+  const fetchStep3Suggestions = useCallback(() => {
+    if (!skillName || !skillType) return
+    const { key, opts } = buildStep3Params()
+
+    const cached = suggestionCache.current.get(key)
+    if (cached) {
+      setStep3Suggestions(cached)
+      return
+    }
+
+    const version = ++step3VersionRef.current
+    ;(async () => {
+      try {
+        const result = await generateSuggestions(skillName, skillType, opts)
+        if (version === step3VersionRef.current) {
+          suggestionCache.current.set(key, result)
+          setStep3Suggestions(result)
+        }
+      } catch (err) {
+        console.warn("[skill-dialog] Step 3 suggestion fetch failed:", err)
+      }
+    })()
+  }, [skillName, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions?.domain, suggestions?.scope])
+
+  // Trigger step 2 suggestion fetch when name or type changes
+  useEffect(() => {
+    if (skillName && skillType) {
+      fetchSuggestions(skillName, skillType)
+    } else {
+      setSuggestions(null)
+    }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [skillName, skillType, fetchSuggestions])
+
+  // Pre-fetch step 3 suggestions while user is on step 2
+  useEffect(() => {
+    if (step !== 2) return
+    if (!skillName || !skillType || !(domain || suggestions?.domain)) return
+
+    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    const version = ++step3VersionRef.current
+    step3PrefetchRef.current = setTimeout(async () => {
+      const { key, opts } = buildStep3Params()
+      if (suggestionCache.current.has(key)) return
+      try {
+        const result = await generateSuggestions(skillName, skillType, opts)
+        if (version === step3VersionRef.current) {
+          suggestionCache.current.set(key, result)
+          if (result.tags.length > 0) setContextualTags(result.tags)
+          console.debug("[skill-dialog] Pre-fetched step 3 suggestions")
+        }
+      } catch (err) {
+        console.warn("[skill-dialog] Step 3 pre-fetch failed:", err)
+      }
+    }, 1500)
+
+    return () => {
+      if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    }
+  }, [step, domain, scope, skillName, skillType, industry, functionRole, tagSuggestions, tags, suggestions?.domain, suggestions?.scope])
+
+  // --- Submit ---
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canAdvanceStep1) return
+
+    setSubmitting(true)
+    setError(null)
+
+    try {
+      if (isEdit) {
+        if (!editSkill) return
+        if (nameChanged && storeWorkspacePath) {
+          await renameSkill(editSkill.name, skillName, storeWorkspacePath)
+        }
+        await updateSkillMetadata(
+          nameChanged ? skillName : editSkill.name,
+          domain.trim(),
+          skillType || null,
+          tags,
+          buildIntakeJson({
+            audience, challenges, scope,
+            unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
+          }),
+        )
+        toast.success("Skill updated")
+        handleOpenChange(false)
+        editOnSaved?.()
+      } else {
+        await invoke("create_skill", {
+          workspacePath: createWorkspacePath,
+          name: skillName.trim(),
+          domain: domain.trim() || skillName.replace(/-/g, " "),
+          tags: tags.length > 0 ? tags : null,
+          skillType: skillType || null,
+          intakeJson: buildIntakeJson({
+            audience, challenges, scope,
+            unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
+          }),
+        })
+        console.log(`[skill] Created skill "${skillName}"`)
+        toast.success(`Skill "${skillName}" created`)
+        const createdName = skillName.trim()
+        await createOnCreated?.()
+        navigate({ to: "/skill/$skillName", params: { skillName: createdName } })
+        handleOpenChange(false)
+      }
+    } catch (err) {
+      console.error(`[skill-dialog] Failed to ${isEdit ? "update" : "create"} skill:`, err)
+      const msg = err instanceof Error ? err.message : String(err)
+      if (isEdit) {
+        toast.error(`Failed to update skill: ${msg}`, { duration: Infinity })
+      } else {
+        setError(msg)
+        toast.error("Failed to create skill", { duration: Infinity })
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // --- Helpers ---
+
+  const handleNameChange = (value: string) => {
+    setSkillName(toKebabChars(value))
+    setError(null)
+  }
 
   function stepDotColor(s: number): string {
     if (s === step) return "bg-primary"
@@ -288,19 +403,21 @@ export default function NewSkillDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetForm(); }}>
-      <DialogTrigger asChild>
-        <Button>
-          <Plus className="size-4" />
-          New Skill
-        </Button>
-      </DialogTrigger>
+    <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
+      {!isEdit && (
+        <DialogTrigger asChild>
+          <Button>
+            <Plus className="size-4" />
+            New Skill
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create New Skill</DialogTitle>
+            <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
             <DialogDescription>
-              {STEP_DESCRIPTIONS[step]}
+              {stepDescriptions[step]}
             </DialogDescription>
           </DialogHeader>
 
@@ -325,18 +442,30 @@ export default function NewSkillDialog({
                   <Label htmlFor="skill-name">Skill Name</Label>
                   <Input
                     id="skill-name"
-                    placeholder="e.g., sales-pipeline"
-                    value={name}
+                    placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
+                    value={skillName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={loading}
-                    autoFocus
+                    disabled={submitting}
+                    autoFocus={!isEdit}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Kebab-case identifier (lowercase, hyphens)
-                    {name && !isValidKebab(name) && (
-                      <span className="text-destructive ml-1">— invalid format</span>
-                    )}
-                  </p>
+                  {!isEdit && (
+                    <p className="text-xs text-muted-foreground">
+                      Kebab-case identifier (lowercase, hyphens)
+                      {skillName && !nameValid && (
+                        <span className="text-destructive ml-1">— invalid format</span>
+                      )}
+                    </p>
+                  )}
+                  {isEdit && skillName && !nameValid && (
+                    <p className="text-xs text-destructive">
+                      Must be kebab-case (e.g., sales-pipeline)
+                    </p>
+                  )}
+                  {nameChanged && nameValid && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Renaming will move the skill directory
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label>Skill Type</Label>
@@ -344,6 +473,7 @@ export default function NewSkillDialog({
                     value={skillType}
                     onValueChange={setSkillType}
                     className="grid grid-cols-2 gap-2"
+                    disabled={submitting}
                   >
                     {SKILL_TYPES.map((type) => (
                       <label
@@ -376,7 +506,7 @@ export default function NewSkillDialog({
                     onChange={setDomain}
                     suggestion={suggestions?.domain ?? null}
                     onAccept={setDomain}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                   <p className="text-xs text-muted-foreground">
                     Brief description of the skill&apos;s domain
@@ -391,7 +521,7 @@ export default function NewSkillDialog({
                     onChange={setScope}
                     suggestion={suggestions?.scope ?? null}
                     onAccept={setScope}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                   <p className="text-xs text-muted-foreground">
                     Helps agents focus research on what matters most
@@ -403,21 +533,21 @@ export default function NewSkillDialog({
                     tags={tags}
                     onChange={setTags}
                     suggestions={mergedTagSuggestions}
-                    disabled={loading}
+                    disabled={submitting}
                     placeholder="e.g., salesforce, analytics"
                   />
                 </div>
 
-                {/* Skills output location */}
-                {skillsPath && name && (
+                {/* Skills output location (create mode only) */}
+                {!isEdit && skillsPath && skillName && (
                   <p className="text-xs text-muted-foreground">
-                    Output: <code className="text-xs">{skillsPath}/{name}/</code>
+                    Output: <code className="text-xs">{skillsPath}/{skillName}/</code>
                   </p>
                 )}
               </>
             )}
 
-            {/* Step 3: Optional detail fields (suggestions use step 2 context) */}
+            {/* Step 3: Optional detail fields */}
             {step === 3 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -429,7 +559,7 @@ export default function NewSkillDialog({
                     onChange={setAudience}
                     suggestion={step3Suggestions?.audience ?? null}
                     onAccept={setAudience}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -441,7 +571,7 @@ export default function NewSkillDialog({
                     onChange={setChallenges}
                     suggestion={step3Suggestions?.challenges ?? null}
                     onAccept={setChallenges}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -453,7 +583,7 @@ export default function NewSkillDialog({
                     onChange={setUniqueSetup}
                     suggestion={step3Suggestions?.unique_setup ?? null}
                     onAccept={setUniqueSetup}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -465,24 +595,25 @@ export default function NewSkillDialog({
                     onChange={setClaudeMistakes}
                     suggestion={step3Suggestions?.claude_mistakes ?? null}
                     onAccept={setClaudeMistakes}
-                    disabled={loading}
+                    disabled={submitting}
                   />
                 </div>
               </>
             )}
 
-            {error && (
+            {!isEdit && error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
           </div>
+
           <DialogFooter className="gap-2 sm:gap-0">
             {step === 1 && (
               <>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setOpen(false)}
-                  disabled={loading}
+                  onClick={() => handleOpenChange(false)}
+                  disabled={submitting}
                 >
                   Cancel
                 </Button>
@@ -502,7 +633,7 @@ export default function NewSkillDialog({
                   type="button"
                   variant="outline"
                   onClick={() => setStep(1)}
-                  disabled={loading}
+                  disabled={submitting}
                 >
                   <ChevronLeft className="size-4" />
                   Back
@@ -511,17 +642,17 @@ export default function NewSkillDialog({
                   type="button"
                   variant="outline"
                   onClick={() => { setStep(3); fetchStep3Suggestions(); }}
-                  disabled={loading}
+                  disabled={submitting}
                 >
                   Next
                   <ChevronRight className="size-4" />
                 </Button>
                 <Button
                   type="submit"
-                  disabled={loading || !canAdvanceStep1}
+                  disabled={submitting || !canAdvanceStep1}
                 >
-                  {loading && <Loader2 className="size-4 animate-spin" />}
-                  Create
+                  {submitting && <Loader2 className="size-4 animate-spin" />}
+                  {submitLabel}
                 </Button>
               </>
             )}
@@ -531,17 +662,17 @@ export default function NewSkillDialog({
                   type="button"
                   variant="outline"
                   onClick={() => setStep(2)}
-                  disabled={loading}
+                  disabled={submitting}
                 >
                   <ChevronLeft className="size-4" />
                   Back
                 </Button>
                 <Button
                   type="submit"
-                  disabled={loading || !canAdvanceStep1}
+                  disabled={submitting || !canAdvanceStep1}
                 >
-                  {loading && <Loader2 className="size-4 animate-spin" />}
-                  Create
+                  {submitting && <Loader2 className="size-4 animate-spin" />}
+                  {submitLabel}
                 </Button>
               </>
             )}

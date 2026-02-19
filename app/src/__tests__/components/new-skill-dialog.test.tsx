@@ -16,7 +16,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import NewSkillDialog from "@/components/new-skill-dialog";
+import SkillDialog from "@/components/skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 
 // Helper: open dialog
@@ -41,9 +41,10 @@ async function advanceToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /^Next$/i }));
 }
 
-function renderDialog(props: Partial<React.ComponentProps<typeof NewSkillDialog>> = {}) {
+function renderDialog(props: Partial<{ onCreated: () => Promise<void>; tagSuggestions: string[] }> = {}) {
   return render(
-    <NewSkillDialog
+    <SkillDialog
+      mode="create"
       workspacePath="/workspace"
       onCreated={props.onCreated ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
       tagSuggestions={props.tagSuggestions}
@@ -51,7 +52,7 @@ function renderDialog(props: Partial<React.ComponentProps<typeof NewSkillDialog>
   );
 }
 
-describe("NewSkillDialog", () => {
+describe("SkillDialog (create mode)", () => {
   beforeEach(() => {
     resetTauriMocks();
     mockNavigate.mockReset();

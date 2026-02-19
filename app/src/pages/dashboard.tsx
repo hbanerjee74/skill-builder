@@ -24,9 +24,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import SkillCard from "@/components/skill-card"
-import NewSkillDialog from "@/components/new-skill-dialog"
+import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
-import EditSkillDialog from "@/components/edit-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
@@ -211,7 +210,8 @@ export default function DashboardPage() {
             remoteConfigured={remoteConfigured}
             isLoggedIn={isLoggedIn}
           />
-          <NewSkillDialog
+          <SkillDialog
+            mode="create"
             workspacePath={workspacePath}
             onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
             tagSuggestions={availableTags}
@@ -331,7 +331,8 @@ export default function DashboardPage() {
           </CardHeader>
           {workspacePath && skillsPath && (
             <CardContent className="flex justify-center">
-              <NewSkillDialog
+              <SkillDialog
+                mode="create"
                 workspacePath={workspacePath}
                 onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
                 tagSuggestions={availableTags}
@@ -371,14 +372,15 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={editTarget}
         open={editTarget !== null}
         onOpenChange={(open) => {
           if (!open) setEditTarget(null)
         }}
         onSaved={() => { loadSkills(); loadTags(); }}
-        availableTags={availableTags}
+        tagSuggestions={availableTags}
       />
 
       <DeleteSkillDialog
