@@ -665,7 +665,6 @@ const VALID_PHASES: &[&str] = &[
     "research-planner",
     "confirm-decisions",
     "generate-skill",
-    "scope-advisor",
     "validate-skill",
     "detailed-research",
     "consolidate-research",
@@ -956,8 +955,8 @@ pub async fn run_workflow_step(
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
                 "Step {} is disabled: the reasoning agent found zero decisions or \
-                 unresolvable contradictions. Review decisions.md, then reset to \
-                 step 3 and revise your answers.",
+                 unresolvable contradictions in decisions.md. Reset to step 3 \
+                 and revise your answers before retrying.",
                 step_id
             ));
         }

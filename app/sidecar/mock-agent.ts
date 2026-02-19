@@ -23,12 +23,11 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   if (agentName === "refine-skill") return "refine";
   if (agentName === "rewrite-skill") return "rewrite-skill";
 
-  // All research-related agents (orchestrator, planner, dimension agents, consolidate, scope-advisor)
+  // All research-related agents (orchestrator, planner, dimension agents, consolidate)
   if (
     agentName === "research-orchestrator" ||
     agentName === "research-planner" ||
     agentName === "consolidate-research" ||
-    agentName === "scope-advisor" ||
     agentName.startsWith("research-")
   ) {
     return "step0-research";
