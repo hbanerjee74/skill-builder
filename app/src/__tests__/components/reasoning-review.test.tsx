@@ -15,14 +15,17 @@ if (!Element.prototype.scrollIntoView) {
 const {
   mockRunWorkflowStep,
   mockReadFile,
+  mockGetDisabledSteps,
 } = vi.hoisted(() => ({
   mockRunWorkflowStep: vi.fn(() => Promise.resolve("agent-1")),
   mockReadFile: vi.fn<(...args: unknown[]) => Promise<string>>(() => Promise.reject(new Error("not found"))),
+  mockGetDisabledSteps: vi.fn<() => Promise<number[]>>(() => Promise.resolve([])),
 }));
 
 vi.mock("@/lib/tauri", () => ({
   runWorkflowStep: mockRunWorkflowStep,
   readFile: mockReadFile,
+  getDisabledSteps: mockGetDisabledSteps,
   persistAgentRun: vi.fn().mockResolvedValue(undefined),
   createWorkflowSession: vi.fn(() => Promise.resolve()),
   endWorkflowSession: vi.fn(() => Promise.resolve()),
@@ -75,7 +78,7 @@ vi.mock("@/components/agent-output-panel", () => ({
 
 // Mock sonner toast
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
 import { ReasoningReview } from "@/components/reasoning-review";
@@ -153,7 +156,7 @@ describe("ReasoningReview", () => {
     onStepComplete: vi.fn(),
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     useAgentStore.getState().clearRuns();
     useWorkflowStore.getState().reset();
     useWorkflowStore.getState().initWorkflow("saas-revenue", "SaaS Revenue Analytics", "domain");
@@ -166,7 +169,15 @@ describe("ReasoningReview", () => {
 
     mockRunWorkflowStep.mockReset().mockResolvedValue("agent-1");
     mockReadFile.mockReset().mockRejectedValue(new Error("not found"));
+    mockGetDisabledSteps.mockReset().mockResolvedValue([]);
     defaultProps.onStepComplete.mockReset();
+
+    // Reset toast mocks to prevent bleed-over between tests
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockReset();
+    vi.mocked(toast.success).mockReset();
+    vi.mocked(toast.warning).mockReset();
+    vi.mocked(toast.info).mockReset();
   });
 
   it("auto-starts agent on mount via runWorkflowStep", async () => {
@@ -399,5 +410,144 @@ describe("ReasoningReview", () => {
         { duration: Infinity },
       );
     });
+  });
+
+  it("triggers decisions guard when decisions.md has zero decisions", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+
+    // Mock readFile to return valid decisions content
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
+      if (filePath.includes("decisions.md")) {
+        return Promise.resolve(DECISIONS_MD);
+      }
+      return Promise.reject(new Error("not found"));
+    });
+
+    // Mock getDisabledSteps to return [5, 6] (zero decisions guard)
+    mockGetDisabledSteps.mockResolvedValue([5, 6]);
+
+    render(<ReasoningReview {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    });
+
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Complete Step"));
+
+    // Should show warning toast about issues
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining("reasoning step found issues"),
+        { duration: Infinity },
+      );
+    });
+
+    // Step should be marked completed (but user stays on step 4)
+    const store = useWorkflowStore.getState();
+    expect(store.steps[4].status).toBe("completed");
+
+    // onStepComplete should NOT have been called (no advancement)
+    expect(defaultProps.onStepComplete).not.toHaveBeenCalled();
+  });
+
+  it("triggers decisions guard when decisions.md has contradictory inputs", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+
+    // Mock readFile to return valid decisions content
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
+      if (filePath.includes("decisions.md")) {
+        return Promise.resolve(DECISIONS_MD);
+      }
+      return Promise.reject(new Error("not found"));
+    });
+
+    // Mock getDisabledSteps to return [5, 6] (contradictory inputs guard)
+    mockGetDisabledSteps.mockResolvedValue([5, 6]);
+
+    render(<ReasoningReview {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    });
+
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Complete Step"));
+
+    // Should show warning toast
+    await waitFor(() => {
+      expect(toast.warning).toHaveBeenCalledWith(
+        expect.stringContaining("reasoning step found issues"),
+        { duration: Infinity },
+      );
+    });
+
+    // Step should be marked completed
+    const store = useWorkflowStore.getState();
+    expect(store.steps[4].status).toBe("completed");
+
+    // onStepComplete should NOT have been called
+    expect(defaultProps.onStepComplete).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger decisions guard for normal decisions", async () => {
+    const user = userEvent.setup();
+    const { toast } = await import("sonner");
+
+    // Mock readFile to return valid decisions content
+    mockReadFile.mockImplementation((...args: unknown[]) => {
+      const filePath = args[0] as string;
+      if (filePath.includes("decisions.md")) {
+        return Promise.resolve(DECISIONS_MD);
+      }
+      return Promise.reject(new Error("not found"));
+    });
+
+    // Mock getDisabledSteps to return [] (no issues)
+    mockGetDisabledSteps.mockResolvedValue([]);
+
+    render(<ReasoningReview {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockRunWorkflowStep).toHaveBeenCalled();
+    });
+
+    act(() => {
+      simulateAgentCompletion("agent-1", AGENT_RESPONSE);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Complete Step")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Complete Step"));
+
+    // Should NOT show warning toast
+    await waitFor(() => {
+      expect(defaultProps.onStepComplete).toHaveBeenCalled();
+    });
+    expect(toast.warning).not.toHaveBeenCalled();
+
+    // Step should be completed and onStepComplete should have been called
+    const store = useWorkflowStore.getState();
+    expect(store.steps[4].status).toBe("completed");
   });
 });
