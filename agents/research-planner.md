@@ -59,7 +59,7 @@ For every dimension, ask: "What would a data engineer joining this team need to 
 
 ### Step 1: Score Every Dimension
 
-**Pre-check — topic relevance**: Before scoring dimensions, assess whether the domain is a legitimate topic for the given skill type. If the domain clearly falls outside the skill type's scope (e.g., "pizza-jokes" or "kidding" for a data engineering skill), set `topic_relevance: not_relevant` and skip dimension scoring. Go directly to Step 3 — write the plan file with `topic_relevance: not_relevant`, `dimensions_evaluated: 0`, `dimensions_selected: 0`, and an empty scores table. Then go to Step 4 and return YAML with `topic_relevance: not_relevant` and an empty `selected` list. Skip Step 2.
+**Pre-check — topic relevance**: Before scoring, decide whether the domain is a legitimate topic for the skill type. If it clearly is not (e.g., "pizza-jokes" for a data engineering skill), skip Steps 1-2 and go straight to Step 3. Write the plan file with `topic_relevance: not_relevant`, `dimensions_evaluated: 0`, `dimensions_selected: 0`, and an empty scores table. Then in Step 4 return `topic_relevance: not_relevant` with an empty `selected` list.
 
 Evaluate each of the 5-6 dimensions the orchestrator provided. For each one, assign a score (1-5) using the rubric above and write a tailored focus line. For dimensions scored 2-3, add a companion note suggesting what a companion skill could cover.
 
