@@ -69,7 +69,7 @@ export function GhostInput({
   return (
     <div className="relative">
       {showGhost && (
-        <div className="absolute inset-px px-3 py-1 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
+        <div className="absolute inset-px px-3 pr-24 py-1 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
           {suggestion}
         </div>
       )}
