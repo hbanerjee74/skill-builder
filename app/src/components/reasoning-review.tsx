@@ -71,6 +71,12 @@ export function ReasoningReview({
   // --- Auto-start agent on mount ---
 
   const launchAgent = useCallback(async () => {
+    // Guard: prevent double-launch when StrictMode remounts the component.
+    // The cleanup resets launchedRef so the second mount retries, but
+    // setRunning(true) from the first launch (synchronous Zustand update)
+    // blocks the second attempt.
+    if (useWorkflowStore.getState().isRunning) return;
+
     try {
       updateStepStatus(currentStep, "in_progress");
       setRunning(true);
@@ -92,6 +98,11 @@ export function ReasoningReview({
     if (launchedRef.current) return;
     launchedRef.current = true;
     launchAgent();
+    return () => {
+      // Reset so StrictMode remount can re-launch (double-launch prevented
+      // by the isRunning guard inside launchAgent).
+      launchedRef.current = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
