@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const remoteConfigured = !!(remoteRepoOwner && remoteRepoName)
   const lockedSkills = useSkillStore((s) => s.lockedSkills)
   const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
+  const existingSkillNames = skills.map((s) => s.name)
 
   const refreshLocks = useCallback(async () => {
     try {
@@ -215,6 +216,7 @@ export default function DashboardPage() {
             workspacePath={workspacePath}
             onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
             tagSuggestions={availableTags}
+            existingNames={existingSkillNames}
           />
         </div>
       )}
@@ -336,6 +338,7 @@ export default function DashboardPage() {
                 workspacePath={workspacePath}
                 onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
                 tagSuggestions={availableTags}
+                existingNames={existingSkillNames}
               />
             </CardContent>
           )}
@@ -381,6 +384,7 @@ export default function DashboardPage() {
         }}
         onSaved={() => { loadSkills(); loadTags(); }}
         tagSuggestions={availableTags}
+        existingNames={existingSkillNames}
       />
 
       <DeleteSkillDialog

@@ -57,6 +57,7 @@ interface SkillDialogCreateProps {
   workspacePath: string
   onCreated: () => Promise<void>
   tagSuggestions?: string[]
+  existingNames?: string[]
 }
 
 interface SkillDialogEditProps {
@@ -66,6 +67,7 @@ interface SkillDialogEditProps {
   onOpenChange: (open: boolean) => void
   onSaved: () => void
   tagSuggestions?: string[]
+  existingNames?: string[]
 }
 
 export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
@@ -95,6 +97,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
   const tagSuggestions = props.tagSuggestions ?? []
+  const existingNames = (isEdit ? (props as SkillDialogEditProps).existingNames : (props as SkillDialogCreateProps).existingNames) ?? []
 
   // Dialog open state — edit is controlled, create is internal
   const [internalOpen, setInternalOpen] = useState(false)
@@ -138,7 +141,8 @@ export default function SkillDialog(props: SkillDialogProps) {
   const originalName = editSkill?.name ?? ""
   const nameChanged = isEdit && skillName !== originalName
   const nameValid = isValidKebab(skillName)
-  const canAdvanceStep1 = skillName.trim() !== "" && nameValid && skillType !== ""
+  const nameExists = skillName !== "" && skillName !== originalName && existingNames.includes(skillName)
+  const canAdvanceStep1 = skillName.trim() !== "" && nameValid && !nameExists && skillType !== ""
   const submitLabel = isEdit ? "Save" : "Create"
   const stepDescriptions = STEP_DESCRIPTIONS[props.mode]
 
@@ -449,7 +453,12 @@ export default function SkillDialog(props: SkillDialogProps) {
                       Must be kebab-case (e.g., sales-pipeline)
                     </p>
                   )}
-                  {nameChanged && nameValid && (
+                  {nameExists && (
+                    <p className="text-xs text-destructive">
+                      A skill with this name already exists
+                    </p>
+                  )}
+                  {nameChanged && nameValid && !nameExists && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
                       Renaming will move the skill directory
                     </p>

@@ -41,13 +41,14 @@ async function advanceToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /^Next$/i }));
 }
 
-function renderDialog(props: Partial<{ onCreated: () => Promise<void>; tagSuggestions: string[] }> = {}) {
+function renderDialog(props: Partial<{ onCreated: () => Promise<void>; tagSuggestions: string[]; existingNames: string[] }> = {}) {
   return render(
     <SkillDialog
       mode="create"
       workspacePath="/workspace"
       onCreated={props.onCreated ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
       tagSuggestions={props.tagSuggestions}
+      existingNames={props.existingNames}
     />,
   );
 }
@@ -141,6 +142,18 @@ describe("SkillDialog (create mode)", () => {
 
     const nextButton = screen.getByRole("button", { name: /Next/i });
     expect(nextButton).toBeEnabled();
+  });
+
+  it("disables Next button when skill name already exists", async () => {
+    const user = userEvent.setup();
+    renderDialog({ existingNames: ["sales-pipeline", "my-skill"] });
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText("Skill Name"), "sales-pipeline");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+
+    expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
+    expect(screen.getByText("A skill with this name already exists")).toBeInTheDocument();
   });
 
   it("does not show Create button on Step 1", async () => {
