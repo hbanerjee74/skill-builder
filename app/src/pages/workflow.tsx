@@ -472,17 +472,22 @@ export default function WorkflowPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoStart, currentStep]);
 
-  // Auto-start on page load or when switching to update mode.
-  // Fires on hydration (initial load) and reviewMode toggle (review → update).
+  // Auto-start when switching from Review → Update mode on a pending agent step.
+  // Does NOT fire on initial page load (new skills show a Start button per AC 1).
+  const prevReviewModeRef = useRef<boolean | null>(null);
   useEffect(() => {
     if (!hydrated) return;
-    if (reviewMode) return; // review mode is read-only, don't start agents
+
+    const wasToggle = prevReviewModeRef.current === true && !reviewMode;
+    prevReviewModeRef.current = reviewMode;
+
+    if (!wasToggle) return; // only auto-start on review→update toggle
     if (!workspacePath) return;
-    if (stepConfig?.type === "human") return; // human steps don't auto-start
+    if (stepConfig?.type === "human") return;
     const status = steps[currentStep]?.status;
-    if (status && status !== "pending") return; // already started, completed, or errored
+    if (status && status !== "pending") return;
     if (isRunning || pendingAutoStart) return;
-    console.log(`[workflow] Auto-starting step ${currentStep}`);
+    console.log(`[workflow] Auto-starting step ${currentStep} (review→update toggle)`);
     setPendingAutoStart(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
@@ -1082,7 +1087,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // 6. Pending — awaiting auto-start
+    // 6. Pending — awaiting user action
     if (reviewMode) {
       return (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -1090,7 +1095,22 @@ export default function WorkflowPage() {
         </div>
       );
     }
-    return <AgentInitializingIndicator />;
+    if (pendingAutoStart) {
+      return <AgentInitializingIndicator />;
+    }
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+        <Play className="size-8 text-primary/50" />
+        <div className="text-center">
+          <p className="font-medium">Ready to run</p>
+          <p className="mt-1 text-sm">Click Start to begin this step.</p>
+        </div>
+        <Button size="sm" onClick={handleStartStep}>
+          <Play className="size-3.5" />
+          Start Step
+        </Button>
+      </div>
+    );
   };
 
   // Navigation guard dialog helpers — avoids nested ternaries in JSX
