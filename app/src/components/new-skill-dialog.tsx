@@ -29,7 +29,7 @@ const STEP_DESCRIPTIONS: Record<number, string> = {
   3: "Add optional details to guide research.",
 }
 
-function makeCacheKey(params: {
+interface CacheKeyParams {
   name: string
   skillType: string
   industry?: string | null
@@ -38,16 +38,18 @@ function makeCacheKey(params: {
   domain?: string
   scope?: string
   currentTags?: string[]
-}): string {
+}
+
+function makeCacheKey(params: CacheKeyParams): string {
   return JSON.stringify({
-    n: params.name,
-    t: params.skillType,
-    i: params.industry ?? "",
-    f: params.functionRole ?? "",
-    et: (params.existingTags ?? []).slice().sort().join(","),
-    d: params.domain ?? "",
-    s: params.scope ?? "",
-    ct: (params.currentTags ?? []).slice().sort().join(","),
+    name: params.name,
+    skillType: params.skillType,
+    industry: params.industry ?? "",
+    functionRole: params.functionRole ?? "",
+    existingTags: (params.existingTags ?? []).slice().sort().join(","),
+    domain: params.domain ?? "",
+    scope: params.scope ?? "",
+    currentTags: (params.currentTags ?? []).slice().sort().join(","),
   })
 }
 
@@ -126,12 +128,15 @@ export default function NewSkillDialog({
     [industry, functionRole],
   )
 
-  // Step 3 suggestions: triggered when entering step 3, uses step 2 values
-  const fetchStep3Suggestions = useCallback(() => {
-    if (!name || !skillType) return
+  // Build cache key and API params for step 3 suggestions (shared by fetch and prefetch)
+  function buildStep3Params(): { key: string; opts: Parameters<typeof generateSuggestions>[2] } {
     const effectiveDomain = domain || suggestions?.domain
     const effectiveScope = scope || suggestions?.scope
-
+    const opts = {
+      industry, functionRole, existingTags: tagSuggestions,
+      domain: effectiveDomain, scope: effectiveScope,
+      currentTags: tags,
+    }
     const key = makeCacheKey({
       name, skillType, industry, functionRole,
       existingTags: tagSuggestions,
@@ -139,6 +144,13 @@ export default function NewSkillDialog({
       scope: effectiveScope ?? "",
       currentTags: tags,
     })
+    return { key, opts }
+  }
+
+  // Step 3 suggestions: triggered when entering step 3, uses step 2 values
+  const fetchStep3Suggestions = useCallback(() => {
+    if (!name || !skillType) return
+    const { key, opts } = buildStep3Params()
 
     const cached = suggestionCache.current.get(key)
     if (cached) {
@@ -147,13 +159,9 @@ export default function NewSkillDialog({
     }
 
     const version = ++step3VersionRef.current
-    const run = async () => {
+    ;(async () => {
       try {
-        const result = await generateSuggestions(name, skillType, {
-          industry, functionRole, existingTags: tagSuggestions,
-          domain: effectiveDomain, scope: effectiveScope,
-          currentTags: tags,
-        })
+        const result = await generateSuggestions(name, skillType, opts)
         if (version === step3VersionRef.current) {
           suggestionCache.current.set(key, result)
           setStep3Suggestions(result)
@@ -161,8 +169,7 @@ export default function NewSkillDialog({
       } catch (err) {
         console.warn("[new-skill] Step 3 suggestion fetch failed:", err)
       }
-    }
-    run()
+    })()
   }, [name, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions])
 
   // Trigger step 2 suggestion fetch when name or type changes
@@ -180,30 +187,18 @@ export default function NewSkillDialog({
   // Pre-fetch step 3 suggestions while user is on step 2
   useEffect(() => {
     if (step !== 2) return
-    const effectiveDomain = domain || suggestions?.domain
-    const effectiveScope = scope || suggestions?.scope
-    if (!name || !skillType || !effectiveDomain) return
+    if (!name || !skillType || !(domain || suggestions?.domain)) return
 
     if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
     const version = ++step3VersionRef.current
     step3PrefetchRef.current = setTimeout(async () => {
-      const key = makeCacheKey({
-        name, skillType, industry, functionRole,
-        existingTags: tagSuggestions,
-        domain: effectiveDomain,
-        scope: effectiveScope ?? "",
-        currentTags: tags,
-      })
+      const { key, opts } = buildStep3Params()
       if (suggestionCache.current.has(key)) return
       try {
-        const result = await generateSuggestions(name, skillType, {
-          industry, functionRole, existingTags: tagSuggestions,
-          domain: effectiveDomain, scope: effectiveScope,
-          currentTags: tags,
-        })
+        const result = await generateSuggestions(name, skillType, opts)
         if (version === step3VersionRef.current) {
           suggestionCache.current.set(key, result)
-          console.log("[new-skill] pre-fetched step 3 suggestions")
+          console.debug("[new-skill] Pre-fetched step 3 suggestions")
         }
       } catch (err) {
         console.warn("[new-skill] Step 3 pre-fetch failed:", err)
