@@ -4,9 +4,15 @@ Plugin coordinator rewrite — replacing the rigid 7-step sequential script with
 a state-aware router that dynamically selects agents based on conversation
 context and filesystem state.
 
+> Status: **All plugin-specific work is pending.** Shared agent changes
+> (dimension scoring, validation consolidation, refine-skill agent) are done
+> and will be used by the plugin once the router is built.
+
 ---
 
 ## 1. Skill Rename
+
+> Status: **Pending** (VD-672)
 
 | Current | New |
 |---------|-----|
@@ -33,6 +39,8 @@ need gerund naming.
 
 ## 2. State-Aware Router
 
+> Status: **Pending** (VD-677 — critical path)
+
 The router replaces the current step-counter coordinator. It reads filesystem
 state, classifies user intent, and dispatches agents via the `Task` tool.
 
@@ -46,7 +54,7 @@ state, classifies user intent, and dispatches agents via the `Task` tool.
 | clarifications.md, unanswered | Continues session     | Show clarification status, prompt   |
 | decisions.md exists           | Continues             | Generate skill                      |
 | SKILL.md exists               | "Validate"            | Run validation only                 |
-| SKILL.md exists               | "Improve X section"   | Targeted regeneration               |
+| SKILL.md exists               | "Improve X section"   | Targeted refinement via refine-skill agent |
 | Any                           | Process question       | Answer about the process            |
 | Any                           | "Skip ahead"          | Jump forward, auto-fill defaults    |
 | Any                           | "Start fresh"         | Delete artifacts, begin scoping     |
@@ -59,7 +67,7 @@ Phases exist conceptually but the router navigates them adaptively:
 Scoping → Research → Clarification → [Refinement] → Decisions → Generation → Validation
    │          │           │                │             │            │           │
    │          │           │                │             │            │           └─ Loop to Generation
-   │          │           │                │             │            └─ Targeted regen possible
+   │          │           │                │             │            └─ Targeted regen via refine-skill
    │          │           │                │             └─ Auto-proceed if answers are unambiguous
    │          │           │                └─ OPTIONAL (skip if answers are detailed)
    │          │           └─ ASYNC (user can leave for days)
@@ -78,16 +86,23 @@ management needed:
 | `TaskCreate` | State tracked via `session.json` + filesystem artifacts |
 | `SendMessage` | Spawn a new `Task` with feedback context |
 
+**Note:** For the "Improve X section" intent (when SKILL.md exists), the
+router dispatches the `refine-skill` agent (shared, now implemented) which
+handles both targeted edits and full rewrites with `/rewrite` and `/validate`
+commands. See shared.md Section 9.
+
 ---
 
 ## 3. Directory Structure
+
+> Status: **Pending** (VD-676)
 
 ### Two directories, clearly separated
 
 | Concept | Purpose | Contents |
 |---------|---------|----------|
 | **Plugin workspace** (`.vibedata/`) | Plugin internals — state, logs, config | Session manifests, logs, plugin config. Local only, never committed. |
-| **Skill context** (`<skill-dir>/context/`) | User-facing working files | `clarifications.md`, `decisions.md`, `agent-validation-log.md`, `test-skill.md` |
+| **Skill context** (`<skill-dir>/context/`) | User-facing working files | `clarifications.md`, `decisions.md`, `agent-validation-log.md`, `test-skill.md`, `companion-skills.md` |
 | **Skill output** (`<skill-dir>/`) | Deployable skill | `SKILL.md` + `references/` |
 
 ### Layout
@@ -115,7 +130,8 @@ management needed:
     ├── clarifications.md
     ├── decisions.md
     ├── agent-validation-log.md
-    └── test-skill.md
+    ├── test-skill.md
+    └── companion-skills.md
 ```
 
 ### Key principles
@@ -181,11 +197,13 @@ management needed:
 | `clarifications.md` (refinements answered) | Refinement review |
 | `decisions.md` | Decisions |
 | `SKILL.md` in skill dir | Generation |
-| `agent-validation-log.md` + `test-skill.md` | Validation |
+| `agent-validation-log.md` + `test-skill.md` + `companion-skills.md` | Validation |
 
 ---
 
 ## 4. State Management
+
+> Status: **Pending** (VD-689)
 
 ### Offline clarification flow
 
@@ -208,6 +226,8 @@ Empty `**Answer:**` fields use the `**Recommendation:**` as the answer:
 ---
 
 ## 5. Workflow Modes
+
+> Status: **Pending** (VD-678, VD-679)
 
 ### Guided mode (default)
 
@@ -235,8 +255,11 @@ User has an existing skill and wants to improve it. Triggered by:
 - User says "improve", "modify", "update", or "fix"
 
 ```
-[Read existing skill] → Targeted Decisions → Targeted Generation → Validation
+[Read existing skill] → refine-skill agent (targeted edits or full rewrite)
 ```
+
+**Note:** The refine-skill agent (shared, now implemented) supports this mode
+directly with its `/rewrite` and `/validate` commands. See shared.md Section 9.
 
 ### Mode detection
 
@@ -250,6 +273,8 @@ mode for this one"). Explicit override always wins over inference.
 ---
 
 ## 6. Progressive Scoping (Plugin)
+
+> Status: **Pending** (VD-684)
 
 The router asks 2-3 scoping questions conversationally before spawning the
 research planner:
@@ -273,22 +298,27 @@ defaults if you want to skip ahead."
 
 ## 7. Targeted Regeneration (Plugin)
 
+> Status: **Pending** (VD-698). Agent support ready (refine-skill ✅).
+
 Instead of regenerating the entire skill, the router accepts natural language
 requests for partial updates:
 
 ```
 User: "The metrics section is missing win rate calculation"
-Router: Spawns generate-skill with targeted prompt for just that section
-        Uses Edit tool to update in-place rather than full rewrite
+Router: Dispatches refine-skill agent with targeted prompt for that section
+        Agent uses Edit tool to update in-place rather than full rewrite
 ```
 
 The router detects targeted edit intent (vs full regeneration) when SKILL.md
-already exists. The generate-skill agent reads existing files, uses Edit for
-surgical changes scoped to the relevant section/file.
+already exists. The refine-skill agent handles both cases — free-form edits
+for targeted changes, `/rewrite` for full regeneration, `/validate` for
+re-validation.
 
 ---
 
 ## 8. Dimension Caching
+
+> Status: **Pending**
 
 If a user builds multiple skills in the same domain family, cache the planner's
 dimension selections in `.vibedata/plugin/dimension-cache.json`:
@@ -307,32 +337,31 @@ dimension selections in `.vibedata/plugin/dimension-cache.json`:
 
 ## 9. Plugin Packaging
 
+> Status: **Pending**
+
 The build script packages convention skills into the plugin's reference
 structure. The plugin coordinator deploys the relevant convention skills to
 `.vibedata/skills/` based on tool ecosystem selection during init.
 
 `scripts/build-plugin-skill.sh` update: add `.session.json` format to
-file-formats section, add convention skills to build output.
+reference docs, add convention skills to build output.
 
 ---
 
 ## Related Linear Issues
 
-| Issue | Title | Size |
-|-------|-------|------|
-| [VD-672](https://linear.app/acceleratedata/issue/VD-672) | Rename skill from `generate-skill` to `building-skills` | S |
-| [VD-673](https://linear.app/acceleratedata/issue/VD-673) | Simplify coordinator to direct Task dispatch | M |
-| [VD-675](https://linear.app/acceleratedata/issue/VD-675) | Update plugin manifest and documentation for v2 | S |
-| [VD-676](https://linear.app/acceleratedata/issue/VD-676) | Formalize workspace/skill dir structure and session tracking | M |
-| [VD-677](https://linear.app/acceleratedata/issue/VD-677) | Replace step counter with state x intent router | L |
-| [VD-678](https://linear.app/acceleratedata/issue/VD-678) | Add workflow modes: guided, express, iterative | M |
-| [VD-679](https://linear.app/acceleratedata/issue/VD-679) | Add auto-fill express flow for clarifications | S |
-| [VD-684](https://linear.app/acceleratedata/issue/VD-684) | Add progressive scoping questions before research | S |
-| [VD-689](https://linear.app/acceleratedata/issue/VD-689) | Add interactive + offline hybrid clarification flow | M |
-| [VD-698](https://linear.app/acceleratedata/issue/VD-698) | Add targeted section regeneration to plugin workflow | M |
-
-**Note:** VD-688 (original targeted regen) is superseded by VD-698 (plugin)
-+ VD-699 (app) which are more specific.
+| Issue | Title | Size | Status |
+|-------|-------|------|--------|
+| [VD-672](https://linear.app/acceleratedata/issue/VD-672) | Rename skill from `generate-skill` to `building-skills` | S | Pending |
+| [VD-673](https://linear.app/acceleratedata/issue/VD-673) | Simplify coordinator to direct Task dispatch | M | Pending |
+| [VD-675](https://linear.app/acceleratedata/issue/VD-675) | Update plugin manifest and documentation for v2 | S | Pending |
+| [VD-676](https://linear.app/acceleratedata/issue/VD-676) | Formalize workspace/skill dir structure and session tracking | M | Pending |
+| [VD-677](https://linear.app/acceleratedata/issue/VD-677) | Replace step counter with state x intent router | L | Pending (critical path) |
+| [VD-678](https://linear.app/acceleratedata/issue/VD-678) | Add workflow modes: guided, express, iterative | M | Pending |
+| [VD-679](https://linear.app/acceleratedata/issue/VD-679) | Add auto-fill express flow for clarifications | S | Pending |
+| [VD-684](https://linear.app/acceleratedata/issue/VD-684) | Add progressive scoping questions before research | S | Pending |
+| [VD-689](https://linear.app/acceleratedata/issue/VD-689) | Add interactive + offline hybrid clarification flow | M | Pending |
+| [VD-698](https://linear.app/acceleratedata/issue/VD-698) | Add targeted section regeneration to plugin workflow | M | Pending (agent ready ✅) |
 
 ### Dependency order
 
@@ -354,5 +383,5 @@ VD-673 (simplify) ┘
                                               │
                               VD-689          VD-698
                               (hybrid         (targeted
-                              clarify)        regen)
+                              clarify)        regen; agent ✅)
 ```
