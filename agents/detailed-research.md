@@ -69,8 +69,9 @@ Each sub-agent's task:
 - Focus on SOLID questions in the assigned section
 - For each, identify 0-2 refinement questions that dig deeper into the PM's chosen direction
 - Look for cross-cutting implications with other sections
-- Every refinement must present 2-4 choices plus "Other (please specify)" — each choice must change the skill's design
-- Every refinement must end with a blank `**Answer**:` line followed by an empty line
+- Every refinement must present 2-4 choices in the format `A. Choice text` (lettered with period) plus "Other (please specify)" — each choice must change the skill's design
+- Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
+- Every refinement must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
 - Do NOT re-ask first-round questions — build on the answers already given
 - Return refinement text grouped by original question number
 
@@ -79,13 +80,16 @@ Each sub-agent's task:
 ```
 Refinements for Q3:
 
-**R3.1: Follow-up topic**
+##### R3.1: Follow-up topic
 Rationale for why this matters given the answer above...
-- [ ] Choice a
-- [ ] Choice b
-- [ ] Other (please specify)
 
-**Answer**:
+A. Choice a
+B. Choice b
+C. Other (please specify)
+
+**Recommendation:** A — Reason.
+
+**Answer:**
 
 ```
 

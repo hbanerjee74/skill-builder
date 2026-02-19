@@ -11,13 +11,12 @@ create_fixture_mode_a() {
 ## Core Entities
 
 ### Q1: Primary entities
-**Question**: What are the primary business entities in pet store analytics?
-**Choices**:
-  a) Products, Customers, Transactions
-  b) Products, Customers, Transactions, Inventory
-  c) Other (please specify)
-**Recommendation**: b
-**Answer**: b — We track all four plus suppliers
+What are the primary business entities in pet store analytics?
+A. Products, Customers, Transactions
+B. Products, Customers, Transactions, Inventory
+C. Other (please specify)
+**Recommendation:** B
+**Answer:** B — We track all four plus suppliers
 EOF
 }
 
@@ -74,31 +73,28 @@ create_fixture_t4_workspace() {
 ## Core Entities
 
 ### Q1: Primary entities
-**Question**: What are the primary business entities in pet store analytics?
-**Choices**:
-  a) Products, Customers, Transactions
-  b) Products, Customers, Transactions, Inventory
-  c) Other (please specify)
-**Recommendation**: b
-**Answer**: b — We track all four: Products, Customers, Transactions, and Inventory
+What are the primary business entities in pet store analytics?
+A. Products, Customers, Transactions
+B. Products, Customers, Transactions, Inventory
+C. Other (please specify)
+**Recommendation:** B
+**Answer:** B — We track all four: Products, Customers, Transactions, and Inventory
 
 ### Q2: Customer segmentation
-**Question**: How do you segment customers?
-**Choices**:
-  a) By purchase frequency (one-time, repeat, loyal)
-  b) By pet type (dog, cat, exotic, multi-pet)
-  c) Both dimensions
-**Recommendation**: c
-**Answer**: c — Both purchase frequency and pet type are important segmentation dimensions
+How do you segment customers?
+A. By purchase frequency (one-time, repeat, loyal)
+B. By pet type (dog, cat, exotic, multi-pet)
+C. Both dimensions
+**Recommendation:** C
+**Answer:** C — Both purchase frequency and pet type are important segmentation dimensions
 
 ### Q3: Product hierarchy
-**Question**: How deep is the product hierarchy?
-**Choices**:
-  a) Two levels (category, product)
-  b) Three levels (department, category, product)
-  c) Four+ levels (department, category, subcategory, product)
-**Recommendation**: b
-**Answer**: b — Department > Category > Product (e.g., Dog Food > Dry Food > Brand X Adult)
+How deep is the product hierarchy?
+A. Two levels (category, product)
+B. Three levels (department, category, product)
+C. Four+ levels (department, category, subcategory, product)
+**Recommendation:** B
+**Answer:** B — Department > Category > Product (e.g., Dog Food > Dry Food > Brand X Adult)
 EOF
 
   # Merged clarifications (Steps 3-4 complete, answered in Step 5)
@@ -106,62 +102,56 @@ EOF
 ## Business Patterns
 
 ### Q1: Seasonal patterns
-**Question**: Does the business have strong seasonal patterns?
-**Choices**:
-  a) Yes, holiday-driven (Christmas, adoption events)
-  b) Yes, weather-driven (flea/tick season, winter supplies)
-  c) Both holiday and weather seasonality
-  d) Minimal seasonality
-**Recommendation**: c
-**Answer**: c — Both holiday gifting peaks and seasonal health/weather product cycles
+Does the business have strong seasonal patterns?
+A. Yes, holiday-driven (Christmas, adoption events)
+B. Yes, weather-driven (flea/tick season, winter supplies)
+C. Both holiday and weather seasonality
+D. Minimal seasonality
+**Recommendation:** C
+**Answer:** C — Both holiday gifting peaks and seasonal health/weather product cycles
 
 ### Q2: Return and exchange policy
-**Question**: What is the return model for different product types?
-**Choices**:
-  a) Full refund within 30 days for all products
-  b) Exchange-only for live animals, refund for products
-  c) Custom policy by category
-**Recommendation**: b
-**Answer**: b — Live animals are exchange-only with health guarantee; products have 30-day returns
+What is the return model for different product types?
+A. Full refund within 30 days for all products
+B. Exchange-only for live animals, refund for products
+C. Custom policy by category
+**Recommendation:** B
+**Answer:** B — Live animals are exchange-only with health guarantee; products have 30-day returns
 
 ### Q3: Loyalty program structure
-**Question**: What does the loyalty program look like?
-**Choices**:
-  a) Points-based (earn per dollar, redeem for discounts)
-  b) Tier-based (bronze, silver, gold with escalating benefits)
-  c) Subscription model (monthly delivery with discounts)
-  d) No formal loyalty program
-**Recommendation**: a
-**Answer**: a — Points-based: 1 point per dollar, 100 points = $5 discount
+What does the loyalty program look like?
+A. Points-based (earn per dollar, redeem for discounts)
+B. Tier-based (bronze, silver, gold with escalating benefits)
+C. Subscription model (monthly delivery with discounts)
+D. No formal loyalty program
+**Recommendation:** A
+**Answer:** A — Points-based: 1 point per dollar, 100 points = $5 discount
 
 ## Data Modeling
 
 ### Q4: Source systems
-**Question**: What are the primary source systems?
-**Choices**:
-  a) Single POS system
-  b) POS + separate inventory management system
-  c) POS + inventory + e-commerce platform
-**Recommendation**: c
-**Answer**: b — POS system (Lightspeed) plus inventory management (proprietary), no e-commerce yet
+What are the primary source systems?
+A. Single POS system
+B. POS + separate inventory management system
+C. POS + inventory + e-commerce platform
+**Recommendation:** C
+**Answer:** B — POS system (Lightspeed) plus inventory management (proprietary), no e-commerce yet
 
 ### Q5: Historical data depth
-**Question**: How far back does historical transaction data go?
-**Choices**:
-  a) Less than 1 year
-  b) 1-3 years
-  c) 3+ years
-**Recommendation**: c
-**Answer**: c — 5 years of transaction history available
+How far back does historical transaction data go?
+A. Less than 1 year
+B. 1-3 years
+C. 3+ years
+**Recommendation:** C
+**Answer:** C — 5 years of transaction history available
 
 ### Q6: Multi-location
-**Question**: Is this a single store or multi-location?
-**Choices**:
-  a) Single location
-  b) 2-5 locations (small chain)
-  c) 5+ locations (regional chain)
-**Recommendation**: b
-**Answer**: b — 3 locations in the metro area, each with slightly different product mix
+Is this a single store or multi-location?
+A. Single location
+B. 2-5 locations (small chain)
+C. 5+ locations (regional chain)
+**Recommendation:** B
+**Answer:** B — 3 locations in the metro area, each with slightly different product mix
 EOF
 }
 
@@ -174,70 +164,64 @@ create_fixture_t4_consolidate() {
 ## Entity Research
 
 ### Q1: Seasonal patterns
-**Question**: Does the business have strong seasonal patterns?
-**Choices**:
-  a) Yes, holiday-driven (Christmas, adoption events)
-  b) Yes, weather-driven (flea/tick season, winter supplies)
-  c) Both
-**Recommendation**: c
-**Answer**:
+Does the business have strong seasonal patterns?
+A. Yes, holiday-driven (Christmas, adoption events)
+B. Yes, weather-driven (flea/tick season, winter supplies)
+C. Both
+**Recommendation:** C
+**Answer:**
 
 ### Q2: Return policy
-**Question**: What is the return model?
-**Choices**:
-  a) Full refund within 30 days
-  b) Exchange-only for live animals, refund for products
-  c) Custom policy
-**Recommendation**: b
-**Answer**:
+What is the return model?
+A. Full refund within 30 days
+B. Exchange-only for live animals, refund for products
+C. Custom policy
+**Recommendation:** B
+**Answer:**
 EOF
 
   cat > "$dir/context/research-metrics.md" << 'EOF'
 ## Metrics Research
 
 ### Q1: Loyalty program
-**Question**: What does the loyalty program look like?
-**Choices**:
-  a) Points-based
-  b) Tier-based
-  c) Subscription model
-  d) No formal program
-**Recommendation**: a
-**Answer**:
+What does the loyalty program look like?
+A. Points-based
+B. Tier-based
+C. Subscription model
+D. No formal program
+**Recommendation:** A
+**Answer:**
 EOF
 
   cat > "$dir/context/clarifications-practices.md" << 'EOF'
 ## Practice Research
 
 ### Q1: Source systems
-**Question**: What are the primary source systems?
-**Choices**:
-  a) Single POS
-  b) POS + inventory management
-  c) POS + inventory + e-commerce
-**Recommendation**: c
-**Answer**:
+What are the primary source systems?
+A. Single POS
+B. POS + inventory management
+C. POS + inventory + e-commerce
+**Recommendation:** C
+**Answer:**
 
 ### Q2: Seasonal patterns
-**Question**: Are there seasonal trends in the data?
-**Choices**:
-  a) Yes, holiday-driven
-  b) Yes, weather-driven
-  c) Both
-**Recommendation**: c
-**Answer**:
+Are there seasonal trends in the data?
+A. Yes, holiday-driven
+B. Yes, weather-driven
+C. Both
+**Recommendation:** C
+**Answer:**
 EOF
 
   cat > "$dir/context/clarifications-implementation.md" << 'EOF'
 ## Implementation Research
 
 ### Q1: Historical data
-**Question**: How far back does data go?
-**Choices**:
-  a) Less than 1 year
-  b) 1-3 years
-  c) 3+ years
-**Recommendation**: c
-**Answer**:
+How far back does data go?
+A. Less than 1 year
+B. 1-3 years
+C. 3+ years
+**Recommendation:** C
+**Answer:**
 EOF
 }

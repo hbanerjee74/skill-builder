@@ -54,7 +54,7 @@ The research planner determined the skill scope is too broad. See `clarification
 
 Skip this step if you wrote the scope recommendation marker in Step 2.
 
-**Auto-fill rule:** If any `**Answer**:` field is empty, use that question's `**Recommendation**:` as the answer. Do not ask for clarification.
+**Auto-fill rule:** If any `**Answer:**` field is empty, use that question's `**Recommendation:**` as the answer. Do not ask for clarification.
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
 
@@ -90,16 +90,16 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 
 ```
 ### D1: Customer Hierarchy Depth
-- **Question**: How many levels should the customer hierarchy support?
-- **Decision**: Two levels — parent company and subsidiary
-- **Implication**: Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
-- **Status**: resolved
+- **Original question:** How many levels should the customer hierarchy support?
+- **Decision:** Two levels — parent company and subsidiary
+- **Implication:** Need a self-referencing FK in dim_customer; gold layer aggregates must roll up at both levels
+- **Status:** resolved
 
 ### D2: Revenue Recognition Timing
-- **Question**: When should revenue be recognized — at booking, invoicing, or payment?
-- **Implication**: PM said "at invoicing" but also answered "track bookings for pipeline forecasting" — both imply the skill needs booking-to-invoice lifecycle tracking, not just a single recognition point
-- **Decision**: Track full lifecycle (booking → invoice → payment) with invoice as the primary recognition event
-- **Status**: conflict-resolved
+- **Original question:** When should revenue be recognized — at booking, invoicing, or payment?
+- **Decision:** Track full lifecycle (booking → invoice → payment) with invoice as the primary recognition event
+- **Implication:** PM said "at invoicing" but also answered "track bookings for pipeline forecasting" — both imply the skill needs booking-to-invoice lifecycle tracking, not just a single recognition point
+- **Status:** conflict-resolved
 ```
 
 </output_format>

@@ -32,10 +32,10 @@ run_t1() {
   # ---- T1.3: Agent file count (30 flat agents) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_29" "29" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_30" "30" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="companion-recommender confirm-decisions consolidate-research detailed-research generate-skill refine-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods test-skill validate-quality validate-skill"
+  local all_agents="answer-evaluator companion-recommender confirm-decisions consolidate-research detailed-research generate-skill refine-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods test-skill validate-quality validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
@@ -64,7 +64,7 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       consolidate-research|confirm-decisions|research-planner) echo "opus" ;;
-      research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state|test-skill) echo "haiku" ;;
+      answer-evaluator|research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state|test-skill) echo "haiku" ;;
       *) echo "sonnet" ;;
     esac
   }
@@ -111,6 +111,48 @@ run_t1() {
     done
   else
     record_result "$tier" "plugin_json_exists" "FAIL" "file not found"
+  fi
+
+  # ---- T1.11: Agent prompt canonical format compliance ----
+  # Scan all agent .md files for anti-patterns that violate the canonical format spec.
+  local format_errors=0
+  for agent_file in "$PLUGIN_DIR"/agents/*.md; do
+    [ -f "$agent_file" ] || continue
+    local agent_basename
+    agent_basename=$(basename "$agent_file")
+
+    # **Answer**: (colon outside bold) — canonical is **Answer:**
+    if grep -qE '\*\*Answer\*\*:' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_answer_colon_outside_bold_${agent_basename}" "FAIL" "Found **Answer**: in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Recommendation**: (colon outside bold) — canonical is **Recommendation:**
+    if grep -qE '\*\*Recommendation\*\*:' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_recommendation_colon_outside_bold_${agent_basename}" "FAIL" "Found **Recommendation**: in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # - [ ] checkbox choice format — canonical is A. text
+    if grep -qE '^[[:space:]]*- \[([ x])\]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_checkbox_choices_${agent_basename}" "FAIL" "Found checkbox choices in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Choices**: label (not needed)
+    if grep -qE '\*\*Choices\*\*[:\*]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_choices_label_${agent_basename}" "FAIL" "Found **Choices**: label in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+
+    # **Question**: label (not needed)
+    if grep -qE '\*\*Question\*\*[:\*]' "$agent_file" 2>/dev/null; then
+      record_result "$tier" "format_no_question_label_${agent_basename}" "FAIL" "Found **Question**: label in $agent_basename"
+      format_errors=$((format_errors + 1))
+    fi
+  done
+  if [ $format_errors -eq 0 ]; then
+    record_result "$tier" "agent_canonical_format_compliance" "PASS"
   fi
 
   # ---- T1.10: Coordinator references key concepts ----

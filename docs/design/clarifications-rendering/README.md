@@ -58,17 +58,17 @@ Drops the split entirely. One full-width document where the markdown structure i
 
 ### How it works
 
-**Shared parser (same as 2a):** Reads `clarifications.md` into structured data — sections, questions, choices, answer status, refinements. The clarifications format is well-defined (YAML frontmatter, `##` sections, `###` questions, `**Answer**:` fields, `#### Refinements`), so this is pattern-matching against a known schema, not general markdown parsing.
+**Shared parser (same as 2a):** Reads `clarifications.md` into structured data — sections, questions, choices, answer status, refinements. The clarifications format is well-defined (YAML frontmatter, `##` sections, `###` questions, `**Answer:**` fields, `#### Refinements`), so this is pattern-matching against a known schema, not general markdown parsing.
 
-**Write-back is targeted, not full serialization:** When the user types in an answer field, only the corresponding `**Answer**:` line in the markdown is updated — the rest of the file stays untouched. This is a line-level splice (find the `**Answer**:` line by question ID, replace the content after the colon), not a full markdown round-trip. Same mechanism the Rust `autofill_answers` function already uses (VD-782).
+**Write-back is targeted, not full serialization:** When the user types in an answer field, only the corresponding `**Answer:**` line in the markdown is updated — the rest of the file stays untouched. This is a line-level splice (find the `**Answer:**` line by question ID, replace the content after the colon), not a full markdown round-trip. Same mechanism the Rust `autofill_answers` function already uses (VD-782).
 
 **Auto-save:** Debounced write after typing stops. The file on disk is always the source of truth — the structured UI is a projection of it, not a replacement.
 
 ### Risk assessment
 
-The original concern about "a reliable markdown parser that can write edits back" overstated the risk. The write path only touches `**Answer**:` lines, which have a fixed format. The actual risks are:
+The original concern about "a reliable markdown parser that can write edits back" overstated the risk. The write path only touches `**Answer:**` lines, which have a fixed format. The actual risks are:
 
-- **Edge case:** User pastes multi-line content with `**Answer**:` as a substring — the line-finder must match the exact indentation/bold pattern, not substrings.
+- **Edge case:** User pastes multi-line content with `**Answer:**` as a substring — the line-finder must match the exact indentation/bold pattern, not substrings.
 - **Escape hatch quality:** The "Edit raw markdown" toggle must preserve unsaved structured edits and vice versa. Simplest approach: flush to disk before switching modes.
 - **New question types:** If the clarifications format evolves (new field types beyond Answer/Recommendation/Choices), the parser needs updating. Mitigated by the format being controlled by our own agents.
 

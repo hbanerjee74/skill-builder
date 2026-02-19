@@ -119,6 +119,10 @@ run_unit() {
   else
     fail "Sidecar unit tests"
   fi
+
+  # Canonical format compliance is now covered by:
+  # - Agent prompts: ./scripts/test-plugin.sh t1 (T1.11)
+  # - Mock templates / fixtures: vitest canonical-format.test.ts (included in unit tests above)
 }
 
 # ---------------------------------------------------------------------------

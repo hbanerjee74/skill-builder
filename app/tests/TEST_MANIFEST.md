@@ -78,6 +78,21 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 
+## Cross-Boundary: Agent ↔ App Format Compliance
+
+Agent prompts define artifact formats (`clarifications.md`, `decisions.md`). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract.
+
+| Source | Artifact | Compliance Test |
+|---|---|---|
+| `agents/*.md` (all agent prompts) | Anti-pattern checks (colon placement, checkboxes, labels) | `./scripts/test-plugin.sh t1` (T1.11 canonical format) |
+| `app/sidecar/mock-templates/outputs/*/context/*.md` | Mock template structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/e2e/fixtures/agent-responses/review-content.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/sidecar/mock-templates/outputs/gate-answer-evaluator/context/answer-evaluation.json` | JSON schema validation | `npm run test:unit` (`canonical-format.test.ts`) |
+| `app/src-tauri/src/commands/workflow.rs` (`autofill_answers`) | Rust parser patterns | `cargo test commands::workflow` |
+| `app/src/lib/reasoning-parser.ts` (`countDecisions`) | TS parser patterns | `npm run test:unit` (`reasoning-parser.test.ts`) |
+
+Canonical format spec: `docs/design/clarifications-rendering/canonical-format.md`
+
 ## Quick Reference
 
 ```bash

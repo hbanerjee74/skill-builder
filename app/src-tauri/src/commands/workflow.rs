@@ -1388,9 +1388,9 @@ fn autofill_answers(content: &str) -> (String, u32) {
     for line in content.lines() {
         let trimmed = line.trim();
 
-        // Reset recommendation at each new question heading to prevent
-        // a previous question's recommendation from bleeding into the next.
-        if trimmed.starts_with("## ") {
+        // Reset recommendation at each new section (##) or question (###) heading
+        // to prevent a previous question's recommendation from bleeding into the next.
+        if trimmed.starts_with("## ") || trimmed.starts_with("### ") {
             last_recommendation = String::new();
         }
 
@@ -2634,6 +2634,46 @@ mod tests {
         let input = "## Q1\n- Recommendation: Use PostgreSQL\n**Answer:** I prefer MySQL\n\n## Q2\n**Answer:**\n";
         let (out, count) = super::autofill_answers(input);
         assert_eq!(count, 0, "Q2 should not get Q1's recommendation");
+        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
+    }
+
+    #[test]
+    fn test_autofill_does_not_bleed_recommendation_across_questions_same_section() {
+        // Two questions in the same ## section, each with a different **Recommendation:**.
+        // The second question's empty **Answer:** should get ITS OWN recommendation,
+        // not the first question's.
+        let input = "\
+## Section 1\n\
+\n\
+### Q1: First Question\n\
+**Recommendation:** Use Redis\n\
+**Answer:** Already using Memcached\n\
+\n\
+### Q2: Second Question\n\
+**Recommendation:** Use gRPC\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 1, "Only Q2's answer should be filled");
+        assert!(out.contains("**Answer:** Use gRPC"), "Q2 should get its own recommendation (Use gRPC)");
+        assert!(out.contains("**Answer:** Already using Memcached"), "Q1's answer should be unchanged");
+        assert!(!out.contains("**Answer:** Use Redis\n"), "Q2 must not get Q1's recommendation");
+    }
+
+    #[test]
+    fn test_autofill_no_bleed_when_q2_has_no_recommendation() {
+        // The actual bug scenario: Q2 has no Recommendation of its own.
+        // Without the ### reset, Q1's recommendation would leak into Q2.
+        let input = "\
+## Section 1\n\
+\n\
+### Q1: First Question\n\
+**Recommendation:** Use Redis\n\
+**Answer:** Already using Memcached\n\
+\n\
+### Q2: Second Question\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 has no recommendation and should not be filled");
         assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
     }
 

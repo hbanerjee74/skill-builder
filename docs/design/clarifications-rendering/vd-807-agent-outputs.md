@@ -20,31 +20,37 @@ The parent is always embedded in the ID:
 
 ```markdown
 ### Q1: MRR Definition by Service Type [MUST ANSWER]
-How is MRR calculated...?
+How is MRR calculated across your three service categories?
 
-A. Option A...
-B. Option B...
+A. Managed Services MRR = recurring monthly fee. PS <12mo = TCV / engagement months.
+B. Managed Services MRR = monthly fee. PS <12mo treated as one-time (excluded).
+C. MRR applies only to Managed Services. All PS deals tracked as TCV.
 D. Other (please specify)
 
 _Consolidated from: Metrics Q1, Segmentation Q2, Business Rules Q5_
 
-**Answer**: Managed services is already MRR, PS projects < 12 months are total value / 10...
+**Recommendation:** A — Use recurring fee for MS; spread TCV for PS.
+
+**Answer:** Managed services is already MRR, PS projects < 12 months are total value / 10...
 
 #### Refinements
 
 ##### R1.1: Why TCV/10 for PS Projects Under 12 Months
 Rationale for why this matters given the answer above...
 
-A. 10 is a fixed company-wide assumption...
-B. 10 approximates billable months...
+A. 10 is a fixed company-wide assumption for average PS engagement length
+B. 10 approximates billable months after excluding ramp/close
+C. It varies — divisor is negotiated or set at deal level
 D. Other (please specify)
 
-**Answer**: A
+**Recommendation:** A — Fixed assumption simplifies the formula.
+
+**Answer:** A
 
 ##### R1.2: Definition of "Year 1 Value" for PS Projects Over 12 Months
 ...
 
-**Answer**: B
+**Answer:** B
 ```
 
 Sub-refinements follow the same pattern but are generated when a refinement answer opens another gap:
@@ -52,12 +58,12 @@ Sub-refinements follow the same pattern but are generated when a refinement answ
 ```markdown
 ##### R12.1: Stage Threshold for Committed Pipeline
 ...
-**Answer**: A (specific named stage)
+**Answer:** A (specific named stage)
 
 ##### R12.1a: Which Named Stage Is the Committed Pipeline Threshold?
 The PM confirmed named stage — but which one?
 ...
-**Answer**: Proposal Sent
+**Answer:** Proposal Sent
 ```
 
 ---
@@ -163,13 +169,13 @@ decision_count: 12
 ### D1: MRR Calculation Formula
 - **Source**: Q1
 - **Section**: Core Concepts and Definitions
-- **Answer**: Managed services is already MRR, PS < 12mo = TCV/10, PS > 12mo = Year 1 ACV / 12
+- **Answer:** Managed services is already MRR, PS < 12mo = TCV/10, PS > 12mo = Year 1 ACV / 12
 - **Status**: draft
 
 ### D2: Committed Pipeline Signal
 - **Source**: Q2
 - **Section**: Core Concepts and Definitions
-- **Answer**: Stage governs pipeline metrics, forecast flag governs commit calls, both tracked separately
+- **Answer:** Stage governs pipeline metrics, forecast flag governs commit calls, both tracked separately
 - **Status**: draft
 ```
 
@@ -192,18 +198,20 @@ Each sub-agent receives:
 - The per-question verdicts for their section (which items need refinement)
 - The user's answers to clear questions in the same section (for cross-reference)
 
-Sub-agents produce refinement questions using the standard format:
+Sub-agents produce refinement questions using the canonical format:
 ```
 Refinements for Q6:
 
 ##### R6.1: Follow-up topic
-Rationale...
+Rationale for why this matters given the answer above...
 
 A. Choice a
 B. Choice b
 C. Other (please specify)
 
-**Answer**:
+**Recommendation:** A — Reason.
+
+**Answer:**
 
 ```
 
@@ -253,13 +261,13 @@ No other coordinator changes.
 
 ```
 Step 1:  consolidate-research creates    Q1, Q2, ... Q23
-Step 2:  user fills in                   **Answer**: fields
+Step 2:  user fills in                   **Answer:** fields
 Gate:    answer-evaluator emits          per_question: [{ question_id: "Q1", verdict: "clear" }, ...]
 Step 3:  detailed-research reads         per_question verdicts keyed by Q-numbers
          Phase 1: drafts                 D1 (source: Q1), D2 (source: Q2), ...
          Phase 2: sub-agents create      R6.1, R7.1, R9.1, ... (only for non-clear Q's)
          Phase 3: writes                 refinements into clarifications.md
-Step 4:  user fills in                   **Answer**: fields for R{n}.{m}
+Step 4:  user fills in                   **Answer:** fields for R{n}.{m}
 Step 5:  confirm-decisions reads         draft decisions.md + answered refinements
          merges into final               D1 (resolved), D2 (resolved), ...
 ```
@@ -270,101 +278,95 @@ Every ID traces back to the original question. The `Source` field in decisions t
 
 ## Prerequisite: Canonicalize `clarifications.md` Format
 
-Both VD-807 (agent redesign) and VD-817 (UI parser) depend on a single, consistent `clarifications.md` format. A format audit found **8 inconsistencies** between agent prompts, mock templates, E2E fixtures, and the Rust parser. These must be resolved before either issue starts.
+Tracked in **VD-819**. Blocks VD-807 and VD-817.
 
-### What's inconsistent
+Both VD-807 (agent redesign) and VD-817 (UI parser) depend on a single, consistent `clarifications.md` format. A format audit found **8 inconsistencies** between agent prompts, mock templates, E2E fixtures, and the Rust parser.
 
-#### 1. Answer field: `**Answer**:` vs `**Answer:**`
+### Decisions
 
-Agent prompts (`consolidate-research.md`, `detailed-research.md`) specify `**Answer**:` (bold closes before colon). The Rust `autofill_answers` parser only matches `**Answer:**` (colon inside bold). Mock templates and E2E fixtures use `**Answer:**`.
+#### 1. Answer field → `**Answer:**` (colon inside bold)
 
-**This is a live bug** — agents may write a format the app can't parse.
+Agent prompts write `**Answer:**` (bold closes before colon). The Rust `autofill_answers` parser only matches `**Answer:**` (colon inside bold). Mock templates use `**Answer:**`.
 
-**Resolution:** `**Answer:**` is canonical (colon inside bold). Fix agent prompts and all examples in this design doc.
+**Decision:** `**Answer:**` is canonical. Fix agent prompts (`consolidate-research.md`, `detailed-research.md`) and all design doc examples.
 
-#### 2. Choices: three different formats
+#### 2. Choices → `A. Choice text` (lettered with period)
 
-| Source | Format |
-|---|---|
-| This design doc | `A. Choice text` |
-| Mock templates | `- [ ] a) Choice text` |
-| E2E fixture | `- a) Choice text` |
-| detailed-research agent spec | `- [ ] Choice a` |
+**Decision:** `A. Choice text` format. Clean, self-evident (no label needed), matches design mockups. Update mock templates (currently `- [ ] a) text`) and E2E fixture (currently `- a) text`). Agent prompts updated to specify this format.
 
-**Resolution:** Pick one. The mock templates' `- [ ] a) Choice text` is the most testable (checkboxes give answer-marking capability), but `A. Choice text` is cleaner for the accordion UI. Either works — but all sources must agree.
+No `**Choices**:` label needed — the `A.` / `B.` / `C.` pattern is unambiguous to both humans and parsers.
 
-#### 3. Refinement heading: ATX `#####` vs bold `**R1.1:**`
+#### 3. Refinement heading → `##### R1.1: Title` (ATX level 5)
 
-| Source | Format |
-|---|---|
-| This design doc | `##### R1.1: Title` (ATX heading) |
-| Mock templates + detailed-research agent | `**R1.1: Title**` (bold text) |
+**Decision:** ATX heading `##### R1.1: Title`. Easier to parse (regex `^#####`), consistent heading hierarchy (`## section` → `### question` → `#### Refinements` → `##### refinement`). Update agent prompts (`detailed-research.md` currently specifies bold `**R1.1:**`) and mock templates.
 
-**Resolution:** Pick one. ATX headings are easier to parse (regex on `^#####`). Bold text is what the agents currently produce. If we pick ATX, update agent prompts. If bold, update this design doc.
+#### 4. Recommendation field → `**Recommendation:** Full sentence.`
 
-#### 4. Missing `**Recommendation:**` field
+**Decision:** Include `**Recommendation:**` between choices and answer. Required for auto-fill (VD-782). Placed after choices, before answer. Format: `**Recommendation:** Full sentence.` (colon inside bold, matching the answer field convention).
 
-Mock templates include `**Recommendation:** Full sentence.` between choices and answer. This design doc and the design mockup omit it. The Rust autofill parser specifically looks for this field to auto-fill empty answers.
+#### 5. Question body → short heading + body text
 
-**Resolution:** Include `**Recommendation:**` in the canonical format. It's required for auto-fill (VD-782) to work.
+**Decision:** `### Q1: Short Title` as the heading, question body text on the next line(s). The heading becomes the accordion card title; body text becomes expandable detail.
 
-#### 5. Question body format — three conventions
+```markdown
+### Q1: MRR Definition by Service Type [MUST ANSWER]
+How is MRR calculated across your three service categories?
+```
 
-| Source | Pattern |
-|---|---|
-| This design doc | Short heading + body text: `### Q1: Title` then question below |
-| Mock templates | Question IS the heading: `### Q1: What is the primary use case...?` |
-| E2E fixture | Short heading + label: `### Q1: Title` then `**Question:** text` |
+Update mock templates (currently question IS the heading) and E2E fixture (currently uses `**Question:**` label).
 
-**Resolution:** Pick one. Short heading + body text is cleanest for the accordion (heading = card title, body = expandable detail).
+#### 6. Frontmatter fields → documented set
 
-#### 6. Missing `**Choices**:` label
+**Decision:** Canonical frontmatter fields:
 
-Mock templates use `**Choices**:` as an explicit label before the list. This design doc omits it. An explicit label makes parser detection unambiguous.
+```yaml
+---
+question_count: 26        # required — total Q-level questions
+sections: 6               # required — number of ## sections
+duplicates_removed: 17    # required — consolidation stat
+refinement_count: 16      # required — total R-level items (0 for step 0)
+status: pending           # optional — workflow status
+priority_questions: [Q1, Q2, Q3]  # optional — MUST ANSWER question IDs
+scope_recommendation: true        # optional — set by scope advisor, checked by downstream agents
+---
+```
 
-**Resolution:** Include `**Choices**:` label if the format uses checkbox/bullet lists. Omit if using `A. B. C.` lettered format (letters are self-evident).
+`consolidate-research.md` spec updated to list all fields. `scope_recommendation` documented as valid (already checked by Scope Recommendation Guard protocol).
 
-#### 7. Frontmatter fields
+#### 7. Rust autofill parser → add `###` heading reset
 
-`status` and `priority_questions` appear only in the design mockup — not in agent specs. `scope_recommendation` is checked by downstream agents but not listed in `consolidate-research.md`'s spec.
+**Decision:** Add `###` heading reset to `autofill_answers` so recommendations don't bleed between questions in the same `##` section. Add a unit test for this case.
 
-**Resolution:** Document all valid frontmatter fields in the canonical format spec.
+#### 8. Draft decisions.md → contradiction and critical gap statuses
 
-#### 8. Draft decisions.md — contradiction and critical gap format
-
-Phase 1 flags contradictions and critical gaps but the format for these entries isn't specified in the draft `decisions.md` structure.
-
-**Resolution:** Add format examples:
+**Decision:** Add two new status values for draft entries:
 
 ```markdown
 ### D13: [Critical Gap] Win Rate Definition
-- **Source**: Q17
-- **Section**: Metrics and Calculations
-- **Answer**: (not answered)
-- **Status**: critical-gap
-- **Note**: This is a [MUST ANSWER] question required for skill generation.
+- **Source:** Q17
+- **Section:** Metrics and Calculations
+- **Answer:** (not answered)
+- **Status:** critical-gap
+- **Note:** This is a [MUST ANSWER] question required for skill generation.
 
 ### D14: [Contradiction] Pipeline Entry vs. Committed Stage
-- **Source**: Q2, Q12
-- **Section**: Cross-cutting
-- **Answer (Q2)**: Stage beyond "Prospecting" enters pipeline
-- **Answer (Q12)**: "Proposal Sent" is the committed threshold
-- **Status**: contradiction
-- **Note**: Q2 implies early-stage entry; Q12 implies late-stage commitment. These may be compatible (entry ≠ commitment) but the PM should confirm the distinction.
+- **Source:** Q2, Q12
+- **Section:** Cross-cutting
+- **Answer (Q2):** Stage beyond "Prospecting" enters pipeline
+- **Answer (Q12):** "Proposal Sent" is the committed threshold
+- **Status:** contradiction
+- **Note:** Q2 implies early-stage entry; Q12 implies late-stage commitment. These may be compatible (entry ≠ commitment) but the PM should confirm.
 ```
 
-### Prep work (before VD-807 and VD-817)
+### Canonical format reference
 
-1. **Define canonical format** — write a `docs/design/clarifications-rendering/canonical-format.md` with the authoritative spec: heading hierarchy, numbering, choices format, answer/recommendation fields, frontmatter fields, refinement headings. All examples in this doc and the README should reference it.
+After VD-819 is implemented, the authoritative spec lives at `docs/design/clarifications-rendering/canonical-format.md`. All agent prompts, mock templates, E2E fixtures, and design docs reference it.
 
-2. **Fix agent prompts** — update `agents/consolidate-research.md` and `agents/detailed-research.md` to match the canonical format (especially `**Answer:**` colon placement).
+### Implementation checklist (VD-819)
 
-3. **Update mock templates** — align `app/sidecar/mock-templates/outputs/step0/` and `step2/` to canonical format.
-
-4. **Update E2E fixture** — align `app/e2e/fixtures/agent-responses/review-content.md` to canonical format.
-
-5. **Update this design doc** — replace all markdown examples with canonical format.
-
-6. **Fix Rust parser scope bug** — `autofill_answers` resets recommendation tracking at `##` but not `###`, allowing recommendation bleed between questions in the same section. Add `###` reset.
-
-This prep can be a single commit or a small XS issue. It's a prerequisite for both VD-807 and VD-817 — without it, the parser targets a moving format.
+1. Write `canonical-format.md` with the full spec based on the decisions above
+2. Fix agent prompts — `**Answer:**`, `A. Choice text`, `##### R1.1:`, `**Recommendation:**`, short heading + body
+3. Update mock templates — step0 and step2 aligned to canonical format
+4. Update E2E fixture — aligned to canonical format
+5. Update design doc examples — this file and README.md
+6. Fix Rust `autofill_answers` — add `###` reset + unit test
