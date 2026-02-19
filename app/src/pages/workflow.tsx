@@ -51,6 +51,7 @@ import {
   getDisabledSteps,
   runAnswerEvaluator,
   autofillClarifications,
+  logGateDecision,
   type AnswerEvaluation,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
@@ -626,7 +627,7 @@ export default function WorkflowPage() {
       );
 
       if (evaluation.verdict === "insufficient") {
-        console.log("[workflow] Answers insufficient — proceeding to detailed research");
+        logGateDecision(skillName, "insufficient", "auto_proceed").catch(() => {});
         proceedNormally();
       } else {
         // Show the transition dialog — gateLoading cleared, but step stays incomplete
@@ -657,16 +658,15 @@ export default function WorkflowPage() {
   };
 
   const handleGateSkip = () => {
-    console.log("[workflow] User chose: skip detailed research (answers sufficient)");
+    logGateDecision(skillName, gateVerdict ?? "unknown", "skip").catch(() => {});
     skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
   const handleGateAutofillAndSkip = async () => {
-    console.log("[workflow] User chose: auto-fill missing answers and skip detailed research");
+    logGateDecision(skillName, gateVerdict ?? "unknown", "autofill_and_skip").catch(() => {});
     setIsAutofilling(true);
     try {
       const filled = await autofillClarifications(skillName);
-      console.log(`[workflow] Auto-filled ${filled} answers`);
       setIsAutofilling(false);
       skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
     } catch (err) {
@@ -676,7 +676,7 @@ export default function WorkflowPage() {
   };
 
   const handleGateContinue = () => {
-    console.log("[workflow] User chose: continue to detailed research despite gate recommendation");
+    logGateDecision(skillName, gateVerdict ?? "unknown", "continue_research").catch(() => {});
     closeGateDialog();
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();

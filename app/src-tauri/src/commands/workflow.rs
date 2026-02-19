@@ -1365,6 +1365,17 @@ pub fn autofill_clarifications(
     Ok(count)
 }
 
+/// Log the user's gate decision so it appears in the backend log stream.
+#[tauri::command]
+pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) {
+    log::info!(
+        "gate_decision: skill={} verdict={} decision={}",
+        skill_name,
+        verdict,
+        decision
+    );
+}
+
 /// Pure function: parse clarifications.md content and copy Recommendation -> Answer
 /// for each empty Answer field. Returns (updated_content, count_filled).
 fn autofill_answers(content: &str) -> (String, u32) {
