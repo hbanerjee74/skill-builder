@@ -6,7 +6,7 @@
  * lock acquisition failure redirect.
  */
 import { test, expect } from "@playwright/test";
-import { emitTauriEvent } from "../helpers/agent-simulator";
+import { emitTauriEvent, simulateAgentRun } from "../helpers/agent-simulator";
 import { waitForAppReady } from "../helpers/app-helpers";
 import {
   WORKFLOW_OVERRIDES,
@@ -172,6 +172,41 @@ test.describe("Workflow Navigation Guards", { tag: "@workflow" }, () => {
 
     // Should now be on step 1 (Research)
     await expect(page.getByText("Step 1: Research")).toBeVisible();
+  });
+
+  test("review/update toggle is disabled while agent is running", async ({ page }) => {
+    await navigateToWorkflowUpdateMode(page);
+
+    // Agent auto-starts in update mode — wait for init indicator
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+
+    // Simulate agent init so the UI is in running state
+    await emitTauriEvent(page, "agent-init-progress", {
+      agent_id: "agent-001",
+      subtype: "init_start",
+      timestamp: Date.now(),
+    });
+    await page.waitForTimeout(100);
+
+    // The "Review" button in the toggle should be disabled while agent is running
+    const reviewToggleButton = page.locator("header").getByRole("button", { name: "Review" });
+    await expect(reviewToggleButton).toBeDisabled();
+
+    // The "Update" button should also be disabled (both sides locked)
+    const updateToggleButton = page.locator("header").getByRole("button", { name: "Update" });
+    await expect(updateToggleButton).toBeDisabled();
+
+    // Simulate agent completion — full run with result and exit
+    await simulateAgentRun(page, {
+      agentId: "agent-001",
+      messages: ["Processing..."],
+      result: "Done.",
+    });
+    await page.waitForTimeout(500);
+
+    // After agent completes, the toggle should be enabled again
+    await expect(reviewToggleButton).toBeEnabled({ timeout: 5_000 });
+    await expect(updateToggleButton).toBeEnabled();
   });
 
   test("lock acquisition failure redirects to dashboard with error toast", async ({ page }) => {
