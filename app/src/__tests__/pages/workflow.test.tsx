@@ -46,6 +46,10 @@ vi.mock("@/lib/tauri", () => ({
   endWorkflowSession: vi.fn(() => Promise.resolve()),
   verifyStepOutput: vi.fn(() => Promise.resolve(true)),
   previewStepReset: vi.fn(() => Promise.resolve([])),
+  getDisabledSteps: vi.fn(() => Promise.resolve([])),
+  runAnswerEvaluator: vi.fn(() => Promise.reject("not available")),
+  autofillClarifications: vi.fn(() => Promise.resolve(0)),
+  logGateDecision: vi.fn(() => Promise.resolve()),
 }));
 
 // Mock MDEditor — renders a textarea that calls onChange on input
@@ -911,10 +915,14 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
 
     render(<WorkflowPage />);
 
-    // Wait for artifact detection and error UI to render
+    // Wait for artifact detection to complete (readFile resolves asynchronously)
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Reset Step/ })).toBeTruthy();
+      expect(vi.mocked(readFile)).toHaveBeenCalledWith(
+        expect.stringContaining("research-plan.md")
+      );
     });
+    // Flush promise so errorHasArtifacts state updates
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 
     // Click "Reset Step" — should show confirmation dialog (since artifacts exist)
     await act(async () => {
@@ -1326,5 +1334,74 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
       expect(screen.getByText("Agent Running")).toBeTruthy();
       expect(screen.getByText("An agent is still running on this step. Leaving will abandon it.")).toBeTruthy();
     });
+  });
+});
+
+describe("WorkflowPage — review mode default state", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockBlocker.status = "idle";
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(runWorkflowStep).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  it("shows 'Switch to Update mode' message in review mode on pending agent step", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    // reviewMode defaults to true from initWorkflow
+
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Switch to Update mode to run this step.")).toBeTruthy();
+    });
+
+    // Should NOT show the initializing indicator
+    expect(screen.queryByText("Initializing agent")).toBeNull();
+    // Should NOT have called runWorkflowStep (no auto-start in review mode)
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
+  });
+
+  it("consumeCreateMode works even when getWorkflowState returns saved state", async () => {
+    // Simulate the race: create-flow sets pendingCreateMode, but persistence
+    // saved state before getWorkflowState resolved, so state.run exists.
+    useWorkflowStore.getState().setPendingCreateMode(true);
+
+    vi.mocked(getWorkflowState).mockResolvedValueOnce({
+      run: {
+        skill_name: "test-skill",
+        domain: "test domain",
+        current_step: 0,
+        status: "pending",
+        skill_type: "domain",
+      },
+      steps: [],
+    });
+
+    render(<WorkflowPage />);
+
+    // After init, reviewMode should be false (create flow) even though state.run exists
+    await waitFor(() => {
+      expect(useWorkflowStore.getState().hydrated).toBe(true);
+    });
+    expect(useWorkflowStore.getState().reviewMode).toBe(false);
   });
 });
