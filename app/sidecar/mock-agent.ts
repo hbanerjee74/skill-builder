@@ -22,6 +22,7 @@ function resolveStepTemplate(agentName: string | undefined): string | null {
   if (agentName === "validate-skill") return "step6-validate-skill";
   if (agentName === "refine-skill") return "refine";
   if (agentName === "rewrite-skill") return "rewrite-skill";
+  if (agentName === "answer-evaluator") return "gate-answer-evaluator";
 
   // All research-related agents (orchestrator, planner, dimension agents, consolidate)
   if (
@@ -46,6 +47,7 @@ function getOutputDir(stepTemplate: string): string {
     "step6-validate-skill": "step6",
     "refine": "refine",
     "rewrite-skill": "refine",
+    "gate-answer-evaluator": "gate-answer-evaluator",
   };
   return stepMap[stepTemplate] || "";
 }
