@@ -31,10 +31,8 @@ interface CacheKeyParams {
   skillType: string
   industry?: string | null
   functionRole?: string | null
-  existingTags?: string[]
   domain?: string
   scope?: string
-  currentTags?: string[]
 }
 
 function makeCacheKey(params: CacheKeyParams): string {
@@ -43,10 +41,8 @@ function makeCacheKey(params: CacheKeyParams): string {
     skillType: params.skillType,
     industry: params.industry ?? "",
     functionRole: params.functionRole ?? "",
-    existingTags: (params.existingTags ?? []).slice().sort().join(","),
     domain: params.domain ?? "",
     scope: params.scope ?? "",
-    currentTags: (params.currentTags ?? []).slice().sort().join(","),
   })
 }
 
@@ -137,7 +133,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   // Ghost suggestion state
   const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
   const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
-  const [contextualTags, setContextualTags] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const fetchVersionRef = useRef(0)
   const step3VersionRef = useRef(0)
@@ -152,13 +147,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const canAdvanceStep1 = skillName.trim() !== "" && nameValid && skillType !== ""
   const submitLabel = isEdit ? "Save" : "Create"
   const stepDescriptions = STEP_DESCRIPTIONS[props.mode]
-
-  // Merged tag suggestions: existing workspace tags + AI-generated tags (deduped)
-  const aiTags = contextualTags.length > 0 ? contextualTags : (suggestions?.tags ?? [])
-  const mergedTagSuggestions = [
-    ...tagSuggestions,
-    ...aiTags.filter((t) => !tagSuggestions.includes(t)),
-  ]
 
   // --- Form population and reset ---
 
@@ -175,7 +163,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setClaudeMistakes("")
     setSuggestions(null)
     setStep3Suggestions(null)
-    setContextualTags([])
     setError(null)
     setSubmitting(false)
     fetchVersionRef.current++
@@ -224,14 +211,14 @@ export default function SkillDialog(props: SkillDialogProps) {
       const version = ++fetchVersionRef.current
       debounceRef.current = setTimeout(async () => {
         try {
-          const key = makeCacheKey({ name, skillType: type, industry, functionRole, existingTags: tagSuggestions })
+          const key = makeCacheKey({ name, skillType: type, industry, functionRole })
           const cached = suggestionCache.current.get(key)
           if (cached) {
             if (version === fetchVersionRef.current) setSuggestions(cached)
             return
           }
           const result = await generateSuggestions(name, type, {
-            industry, functionRole, existingTags: tagSuggestions,
+            industry, functionRole,
           })
           if (version === fetchVersionRef.current) {
             suggestionCache.current.set(key, result)
@@ -242,7 +229,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         }
       }, 800)
     },
-    [industry, functionRole, tagSuggestions],
+    [industry, functionRole],
   )
 
   // Build cache key and API params for step 3 suggestions
@@ -250,16 +237,13 @@ export default function SkillDialog(props: SkillDialogProps) {
     const effectiveDomain = domain || suggestions?.domain
     const effectiveScope = scope || suggestions?.scope
     const opts = {
-      industry, functionRole, existingTags: tagSuggestions,
+      industry, functionRole,
       domain: effectiveDomain, scope: effectiveScope,
-      currentTags: tags,
     }
     const key = makeCacheKey({
       name: skillName, skillType, industry, functionRole,
-      existingTags: tagSuggestions,
       domain: effectiveDomain ?? "",
       scope: effectiveScope ?? "",
-      currentTags: tags,
     })
     return { key, opts }
   }
@@ -287,7 +271,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         console.warn("[skill-dialog] Step 3 suggestion fetch failed:", err)
       }
     })()
-  }, [skillName, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions?.domain, suggestions?.scope])
+  }, [skillName, skillType, industry, functionRole, domain, scope, suggestions?.domain, suggestions?.scope])
 
   // Trigger step 2 suggestion fetch when name or type changes
   useEffect(() => {
@@ -315,7 +299,6 @@ export default function SkillDialog(props: SkillDialogProps) {
         const result = await generateSuggestions(skillName, skillType, opts)
         if (version === step3VersionRef.current) {
           suggestionCache.current.set(key, result)
-          if (result.tags.length > 0) setContextualTags(result.tags)
           console.debug("[skill-dialog] Pre-fetched step 3 suggestions")
         }
       } catch (err) {
@@ -326,7 +309,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     return () => {
       if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
     }
-  }, [step, domain, scope, skillName, skillType, industry, functionRole, tagSuggestions, tags, suggestions?.domain, suggestions?.scope])
+  }, [step, domain, scope, skillName, skillType, industry, functionRole, suggestions?.domain, suggestions?.scope])
 
   // --- Submit ---
 
@@ -532,7 +515,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <TagInput
                     tags={tags}
                     onChange={setTags}
-                    suggestions={mergedTagSuggestions}
+                    suggestions={tagSuggestions}
                     disabled={submitting}
                     placeholder="e.g., salesforce, analytics"
                   />

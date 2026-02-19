@@ -667,23 +667,19 @@ pub struct FieldSuggestions {
     pub scope: String,
     pub unique_setup: String,
     pub claude_mistakes: String,
-    pub tags: Vec<String>,
 }
 
 /// Call Haiku to generate field suggestions. Two modes:
-/// - Step 2: provide skill_name + skill_type → get domain, scope, tags
-/// - Step 3: additionally provide domain + scope + tags → get audience, challenges, etc.
-#[allow(clippy::too_many_arguments)]
+/// - Step 2: provide skill_name + skill_type → get domain, scope
+/// - Step 3: additionally provide domain + scope → get audience, challenges, etc.
 #[tauri::command]
 pub async fn generate_suggestions(
     skill_name: String,
     skill_type: String,
     industry: Option<String>,
     function_role: Option<String>,
-    existing_tags: Option<Vec<String>>,
     domain: Option<String>,
     scope: Option<String>,
-    current_tags: Option<Vec<String>>,
     db: tauri::State<'_, Db>,
 ) -> Result<FieldSuggestions, String> {
     log::info!("[generate_suggestions] skill={} type={}", skill_name, skill_type);
@@ -721,25 +717,10 @@ pub async fn generate_suggestions(
         format!(" User context: {}.", context_parts.join(", "))
     };
 
-    // Build the tag instruction
-    let tag_instruction = if let Some(ref et) = existing_tags {
-        if et.is_empty() {
-            String::from("\"tags\": [\"<up to 3 relevant lowercase tags>\"]")
-        } else {
-            format!(
-                "\"tags\": [\"<up to 3 relevant lowercase tags — prefer reusing from existing: {}>\"]",
-                et.join(", ")
-            )
-        }
-    } else {
-        String::from("\"tags\": [\"<up to 3 relevant lowercase tags>\"]")
-    };
-
-    // If Step 3 context (domain, scope, tags) is provided, include it for better suggestions
+    // If Step 3 context (domain, scope) is provided, include it for better suggestions
     let step3_context = match (domain.as_deref().filter(|s| !s.is_empty()),
-                               scope.as_deref().filter(|s| !s.is_empty()),
-                               current_tags.as_ref().filter(|t| !t.is_empty())) {
-        (None, None, None) => String::new(),
+                               scope.as_deref().filter(|s| !s.is_empty())) {
+        (None, None) => String::new(),
         _ => {
             let mut parts = Vec::new();
             if let Some(d) = domain.as_deref().filter(|s| !s.is_empty()) {
@@ -747,9 +728,6 @@ pub async fn generate_suggestions(
             }
             if let Some(s) = scope.as_deref().filter(|s| !s.is_empty()) {
                 parts.push(format!("Scope: {}", s));
-            }
-            if let Some(t) = current_tags.as_ref().filter(|t| !t.is_empty()) {
-                parts.push(format!("Tags: {}", t.join(", ")));
             }
             format!(" Skill details: {}.", parts.join("; "))
         }
@@ -768,8 +746,7 @@ pub async fn generate_suggestions(
          \"challenges\": \"<1 sentence key challenges>\", \
          \"scope\": \"<1 sentence scope>\", \
          \"unique_setup\": \"<1 sentence: what might make a typical {skill_type} setup for {readable_name} different from standard implementations?>\", \
-         \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\", \
-         {tag_instruction}}}"
+         \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\"}}"
     );
 
     log::debug!("[generate_suggestions] prompt={}", prompt);
@@ -836,11 +813,6 @@ pub async fn generate_suggestions(
         suggestions[key].as_str().unwrap_or("").to_string()
     };
 
-    let tags: Vec<String> = suggestions["tags"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_lowercase())).collect())
-        .unwrap_or_default();
-
     Ok(FieldSuggestions {
         domain: field("domain"),
         audience: field("audience"),
@@ -848,7 +820,6 @@ pub async fn generate_suggestions(
         scope: field("scope"),
         unique_setup: field("unique_setup"),
         claude_mistakes: field("claude_mistakes"),
-        tags,
     })
 }
 
