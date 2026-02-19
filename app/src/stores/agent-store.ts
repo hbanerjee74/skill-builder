@@ -140,7 +140,7 @@ interface AgentState {
   activeAgentId: string | null;
   startRun: (agentId: string, model: string) => void;
   /** Register a run for streaming without setting activeAgentId.
-   *  Used by refine page and reasoning-review component that manage their own lifecycle.
+   *  Used by refine page which manages its own agent lifecycle.
    *  Pass skillName so usage data is attributed correctly (otherwise defaults to workflow store). */
   registerRun: (agentId: string, model: string, skillName?: string) => void;
   addMessage: (agentId: string, message: AgentMessage) => void;
