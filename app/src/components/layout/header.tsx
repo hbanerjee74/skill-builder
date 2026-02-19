@@ -7,7 +7,6 @@ import { ReviewModeToggle } from "@/components/review-mode-toggle";
 function getPageTitle(path: string): string {
   if (path === "/") return "Skills";
   if (path === "/settings") return "Settings";
-  if (path === "/prompts") return "Prompts";
   if (path === "/usage") return "Usage";
   if (path === "/refine") return "Refine";
   if (path.startsWith("/skill/")) return decodeURIComponent(path.slice("/skill/".length));
