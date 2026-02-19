@@ -14,6 +14,8 @@ This workspace generates skills for **data engineering** on the following stack:
 | Platform | **Microsoft Fabric** on Azure | Lakehouse, Delta tables, SQL analytics |
 | CI/CD | **GitHub Actions** | Slim CI, OIDC auth, SQLFluff |
 
+**Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack. Agents should use Context7 (via `resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on what's missing from official docs.
+
 All agents should calibrate content depth, examples, and anti-patterns to this stack. Skills outside it still work but won't receive specialized guidance.
 
 ## Protocols
@@ -48,7 +50,7 @@ Exception: sub-agents may write files directly when the orchestrator explicitly 
 
 ## Content Principles
 
-1. **Omit what LLMs already know** — standard SQL syntax, basic dbt commands (`dbt run`, `dbt test`), general Python, well-documented REST APIs. Test: "Would Claude produce correct output without the skill?"
+1. **Omit what's already in Context7 or LLM training data** — standard SQL syntax, basic dbt commands, general Python, official API docs and data model references. Context7 provides current docs for dbt, dlt, elementary, Fabric, and GitHub Actions — don't duplicate it. Test: "Would Claude get this from Context7 + its training data?"
 2. **Focus on domain-specific data engineering patterns** — how the domain's entities, metrics, and business rules map to medallion layers. Also: Fabric/T-SQL quirks, dlt-to-dbt handoff patterns, elementary test placement. These are where LLMs consistently fail.
 3. **Guide WHAT and WHY, not HOW** — "Silver models need lookback windows for late-arriving data because..." not step-by-step dbt tutorials. Exception: be prescriptive when exactness matters (metric formulas, surrogate key macros, CI pipeline YAML).
 4. **Calibrate to the medallion architecture** — every data skill has a layer context (bronze/silver/gold). Content should address the right layer's constraints and patterns.
@@ -65,6 +67,16 @@ When a skill covers a business domain, agents must translate domain concepts int
 - **Historization → SCD patterns**: Which entities need historical tracking? Slowly changing dimensions → dbt snapshots (SCD2). Rapidly changing measures → incremental fact tables with effective dates.
 - **Data quality → Elementary tests by layer**: Map domain-specific quality rules to concrete tests. "Account balance must never be negative" → `column_anomalies` on silver. "Revenue totals must reconcile" → custom test on gold.
 - **Grain decisions are critical**: Every model needs an explicit grain statement. Mismatched grain is the #1 cause of wrong metrics. State the grain, the primary key, and the expected row count pattern.
+
+### Source & Platform Skills
+
+For skills about source systems (APIs, databases, SaaS platforms) or platform tools, Context7 already provides official API docs, data model references, and configuration examples. Skills must go beyond what's in those docs:
+
+- **Undocumented behaviors** — rate limit patterns that aren't in the API docs, pagination quirks, eventual consistency windows, silent data truncation
+- **Field semantics** — fields whose meaning isn't obvious from the schema (e.g., `status=3` means "soft-deleted", `amount` is in cents not dollars, `updated_at` only reflects metadata changes not data changes)
+- **Integration patterns** — how this source's data lands in bronze (dlt resource config, write disposition, incremental cursor field), what breaks during schema evolution
+- **Data quality traps** — fields that go null without warning, timestamp timezone inconsistencies, IDs that aren't actually unique, late-arriving records
+- **Operational knowledge** — API outage patterns, backfill strategies, how to handle historical loads vs incremental, retry-safe vs non-idempotent endpoints
 
 ## Stack Conventions
 
