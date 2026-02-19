@@ -195,8 +195,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     } else {
       setInternalOpen(open)
     }
-    if (!open) resetForm()
-  }, [editOnOpenChange, resetForm])
+  }, [editOnOpenChange])
 
   // --- Ghost suggestions ---
 
@@ -299,7 +298,7 @@ export default function SkillDialog(props: SkillDialogProps) {
         const result = await generateSuggestions(skillName, skillType, opts)
         if (version === step3VersionRef.current) {
           suggestionCache.current.set(key, result)
-          console.debug("[skill-dialog] Pre-fetched step 3 suggestions")
+          console.log("[skill-dialog] Pre-fetched step 3 suggestions")
         }
       } catch (err) {
         console.error("[skill-dialog] Step 3 pre-fetch failed:", err)
