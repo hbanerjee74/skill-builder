@@ -756,7 +756,11 @@ pub async fn generate_suggestions(
     };
 
     let prompt = format!(
-        "Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{step3_context}\n\n\
+        "Skills are loaded into Claude Code to help engineers build silver and gold tables for data engineering use cases. \
+         Claude already knows standard methodologies (Kimball, SCD types, star schemas, standard object models) from its training data. \
+         A skill must encode the delta -- the customer-specific and domain-specific knowledge that Claude gets wrong or misses when working without the skill.\n\n\
+         For every field, ask: \"What would a data engineer joining this team need to know to build correct dbt silver/gold models on day one that Claude can't already tell them?\"\n\n\
+         Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{step3_context}\n\n\
          Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
          Respond in exactly this JSON format (no markdown, no extra text):\n\
          {{\"domain\": \"<1 sentence domain description>\", \
