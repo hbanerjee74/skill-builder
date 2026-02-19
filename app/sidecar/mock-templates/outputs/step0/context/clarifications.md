@@ -9,75 +9,75 @@ refinement_count: 0
 
 ## Section 1: Core Concepts
 
-### Q1: What is the primary use case for this skill?
+### Q1: Primary Use Case
+What is the primary use case for this skill?
 
-**Choices**:
-- [ ] a) Focus on the most common workflow patterns that engineers encounter daily
-- [ ] b) Focus on advanced/niche patterns for experienced engineers
-- [ ] c) Cover both common and advanced patterns with equal depth
-- [ ] Other (please specify)
+A. Focus on the most common workflow patterns that engineers encounter daily
+B. Focus on advanced/niche patterns for experienced engineers
+C. Cover both common and advanced patterns with equal depth
+D. Other (please specify)
 
 **Recommendation:** Focus on the most common workflow patterns that engineers encounter daily.
 
 **Answer:**
 
-### Q2: What level of expertise should this skill assume?
+### Q2: Target Expertise Level
+What level of expertise should this skill assume?
 
-**Choices**:
-- [ ] a) Beginner — needs step-by-step guidance on fundamentals
-- [ ] b) Intermediate — familiar with basic concepts but needs guidance on best practices and edge cases
-- [ ] c) Advanced — already knows best practices, needs deep domain-specific insight
-- [ ] Other (please specify)
+A. Beginner — needs step-by-step guidance on fundamentals
+B. Intermediate — familiar with basic concepts but needs guidance on best practices and edge cases
+C. Advanced — already knows best practices, needs deep domain-specific insight
+D. Other (please specify)
 
 **Recommendation:** Intermediate — familiar with basic concepts but needs guidance on best practices and edge cases.
 
 **Answer:**
 
-### Q3: Should this skill cover both greenfield and brownfield scenarios?
+### Q3: Greenfield vs Brownfield Coverage
+Should this skill cover both greenfield and brownfield scenarios?
 
-**Choices**:
-- [ ] a) Greenfield only — new projects from scratch
-- [ ] b) Both, with emphasis on greenfield but include migration guidance for existing systems
-- [ ] c) Both with equal depth
-- [ ] Other (please specify)
+A. Greenfield only — new projects from scratch
+B. Both, with emphasis on greenfield but include migration guidance for existing systems
+C. Both with equal depth
+D. Other (please specify)
 
-**Recommendation:** Yes, with emphasis on greenfield but include migration guidance for existing systems.
+**Recommendation:** Both, with emphasis on greenfield but include migration guidance for existing systems.
 
 **Answer:**
 
 ## Section 2: Architecture & Design
 
-### Q4: What architectural patterns should be prioritized?
+### Q4: Architectural Pattern Priority
+What architectural patterns should be prioritized?
 
-**Choices**:
-- [ ] a) Start with the most widely adopted patterns, then layer in alternatives for specific constraints
-- [ ] b) Cover all patterns equally and let the reader choose
-- [ ] c) Focus on opinionated best-practice patterns only
-- [ ] Other (please specify)
+A. Start with the most widely adopted patterns, then layer in alternatives for specific constraints
+B. Cover all patterns equally and let the reader choose
+C. Focus on opinionated best-practice patterns only
+D. Other (please specify)
 
 **Recommendation:** Start with the most widely adopted patterns, then layer in alternatives for specific constraints.
 
 **Answer:**
 
-### Q5: How should the skill handle technology-specific vs technology-agnostic guidance?
+### Q5: Technology-Specific vs Agnostic Guidance
+How should the skill handle technology-specific vs technology-agnostic guidance?
 
-**Choices**:
-- [ ] a) Lead with technology-agnostic principles, then provide concrete examples for the most common tools
-- [ ] b) Organize entirely by technology/tool
-- [ ] c) Technology-agnostic only — no tool-specific examples
-- [ ] Other (please specify)
+A. Lead with technology-agnostic principles, then provide concrete examples for the most common tools
+B. Organize entirely by technology/tool
+C. Technology-agnostic only — no tool-specific examples
+D. Other (please specify)
 
 **Recommendation:** Lead with technology-agnostic principles, then provide concrete examples for the most common tools.
 
 **Answer:**
 
-### Q6: Should performance optimization be covered in the main skill or references?
+### Q6: Performance Optimization Placement
+Should performance optimization be covered in the main skill or references?
 
-**Choices**:
-- [ ] a) Cover key performance principles in SKILL.md, detailed optimization in references
-- [ ] b) All performance content in references only
-- [ ] c) Inline performance guidance alongside each pattern
-- [ ] Other (please specify)
+A. Cover key performance principles in SKILL.md, detailed optimization in references
+B. All performance content in references only
+C. Inline performance guidance alongside each pattern
+D. Other (please specify)
 
 **Recommendation:** Cover key performance principles in SKILL.md, detailed optimization in references.
 
@@ -85,37 +85,37 @@ refinement_count: 0
 
 ## Section 3: Implementation Details
 
-### Q7: What level of code examples should be included?
+### Q7: Code Example Depth
+What level of code examples should be included?
 
-**Choices**:
-- [ ] a) Copy-paste-ready templates for the most common patterns
-- [ ] b) Pseudocode/conceptual examples only
-- [ ] c) Full working examples with test harnesses
-- [ ] Other (please specify)
+A. Copy-paste-ready templates for the most common patterns
+B. Pseudocode/conceptual examples only
+C. Full working examples with test harnesses
+D. Other (please specify)
 
 **Recommendation:** Include copy-paste-ready templates for the most common patterns.
 
 **Answer:**
 
-### Q8: Should testing guidance be included?
+### Q8: Testing Guidance Scope
+Should testing guidance be included?
 
-**Choices**:
-- [ ] a) Yes, include a testing strategy section with concrete patterns
-- [ ] b) Brief mention only — testing is out of scope
-- [ ] c) Comprehensive testing guide as a separate reference file
-- [ ] Other (please specify)
+A. Yes, include a testing strategy section with concrete patterns
+B. Brief mention only — testing is out of scope
+C. Comprehensive testing guide as a separate reference file
+D. Other (please specify)
 
 **Recommendation:** Yes, include a testing strategy section with concrete patterns.
 
 **Answer:**
 
-### Q9: How should error handling be addressed?
+### Q9: Error Handling Approach
+How should error handling be addressed?
 
-**Choices**:
-- [ ] a) Cover common failure modes with specific recovery patterns
-- [ ] b) General error handling principles only
-- [ ] c) Detailed error taxonomy with per-pattern recovery strategies
-- [ ] Other (please specify)
+A. Cover common failure modes with specific recovery patterns
+B. General error handling principles only
+C. Detailed error taxonomy with per-pattern recovery strategies
+D. Other (please specify)
 
 **Recommendation:** Cover common failure modes with specific recovery patterns.
 
