@@ -49,7 +49,11 @@ import {
   verifyStepOutput,
   endWorkflowSession,
   getDisabledSteps,
+  runAnswerEvaluator,
+  autofillClarifications,
+  type AnswerEvaluation,
 } from "@/lib/tauri";
+import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
 
 // --- Step config ---
 
@@ -92,6 +96,8 @@ export default function WorkflowPage() {
     hydrated,
     reviewMode,
     disabledSteps,
+    gateLoading,
+    setGateLoading,
     initWorkflow,
     setCurrentStep,
     updateStepStatus,
@@ -231,6 +237,12 @@ export default function WorkflowPage() {
 
   // Confirmation dialog for resetting steps with partial output
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Transition gate dialog state
+  const [showGateDialog, setShowGateDialog] = useState(false);
+  const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
+  const [isAutofilling, setIsAutofilling] = useState(false);
+  const gateAgentIdRef = useRef<string | null>(null);
 
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
@@ -412,6 +424,29 @@ export default function WorkflowPage() {
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
   const activeRunStatus = activeRun?.status;
 
+  // Watch for gate agent (answer evaluator) completion — separate from workflow step agents
+  useEffect(() => {
+    if (!activeRunStatus || !activeAgentId) return;
+    if (gateAgentIdRef.current !== activeAgentId) return; // not the gate agent
+
+    if (activeRunStatus === "completed" || activeRunStatus === "error") {
+      gateAgentIdRef.current = null;
+      setActiveAgent(null);
+      clearRuns();
+
+      if (activeRunStatus === "error") {
+        console.warn("[workflow] Gate evaluation failed — proceeding normally");
+        setGateLoading(false);
+        updateStepStatus(currentStep, "completed");
+        advanceToNextStep();
+        return;
+      }
+
+      // Read the evaluation result
+      finishGateEvaluation();
+    }
+  }, [activeRunStatus, activeAgentId]);
+
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
     // Guard: only complete steps that are actively running an agent
@@ -532,6 +567,105 @@ export default function WorkflowPage() {
         return;
       }
     }
+
+    // Gate: after step 1, evaluate answers before advancing
+    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+      runGateEvaluation();
+      return;
+    }
+
+    // All other review steps: advance normally
+    updateStepStatus(currentStep, "completed");
+    advanceToNextStep();
+  };
+
+  const runGateEvaluation = async () => {
+    if (!workspacePath) return;
+    console.log("[workflow] Running answer evaluator gate");
+    setGateLoading(true);
+
+    try {
+      const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      gateAgentIdRef.current = agentId;
+      agentStartRun(agentId, "haiku");
+      setActiveAgent(agentId);
+    } catch (err) {
+      console.error("[workflow] Gate evaluation failed:", err);
+      setGateLoading(false);
+      // Fail-open: proceed normally
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    }
+  };
+
+  const finishGateEvaluation = async () => {
+    if (!skillsPath) {
+      setGateLoading(false);
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+      return;
+    }
+
+    try {
+      const raw = await readFile(`${skillsPath}/${skillName}/context/answer-evaluation.json`);
+      const evaluation: AnswerEvaluation = JSON.parse(raw);
+      console.log("[workflow] Gate evaluation result:", evaluation.verdict);
+      setGateLoading(false);
+
+      if (evaluation.verdict === "insufficient") {
+        // Proceed normally — no dialog
+        updateStepStatus(currentStep, "completed");
+        advanceToNextStep();
+      } else {
+        // Show the transition dialog
+        setGateVerdict(evaluation.verdict);
+        setShowGateDialog(true);
+      }
+    } catch (err) {
+      console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
+      setGateLoading(false);
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    }
+  };
+
+  const handleGateSkip = () => {
+    setShowGateDialog(false);
+    setGateVerdict(null);
+    // Mark steps 2 and 3 as completed (skipped)
+    updateStepStatus(1, "completed");
+    updateStepStatus(2, "completed");
+    updateStepStatus(3, "completed");
+    setCurrentStep(4);
+    toast.success("Skipped detailed research — answers were sufficient");
+  };
+
+  const handleGateAutofillAndSkip = async () => {
+    setIsAutofilling(true);
+    try {
+      const filled = await autofillClarifications(skillName);
+      console.log(`[workflow] Auto-filled ${filled} answers`);
+      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} from recommendations`);
+    } catch (err) {
+      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsAutofilling(false);
+      return;
+    }
+    setIsAutofilling(false);
+    setShowGateDialog(false);
+    setGateVerdict(null);
+    // Mark steps as completed and skip to decisions
+    updateStepStatus(1, "completed");
+    updateStepStatus(2, "completed");
+    updateStepStatus(3, "completed");
+    setCurrentStep(4);
+    toast.success("Skipped detailed research — answers auto-filled from recommendations");
+  };
+
+  const handleGateContinue = () => {
+    setShowGateDialog(false);
+    setGateVerdict(null);
+    // Proceed normally to step 2
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
@@ -758,9 +892,12 @@ export default function WorkflowPage() {
                         handleReviewContinue();
                       }
                     }}
+                    disabled={gateLoading}
                   >
-                    <CheckCircle2 className="size-3.5" />
-                    Complete Step
+                    {gateLoading
+                      ? <Loader2 className="size-3.5 animate-spin" />
+                      : <CheckCircle2 className="size-3.5" />}
+                    {gateLoading ? "Evaluating..." : "Complete Step"}
                   </Button>
                 </div>
               </div>
@@ -1024,6 +1161,16 @@ export default function WorkflowPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Transition gate dialog — shown after step 1 when answers are sufficient or mixed */}
+      <TransitionGateDialog
+        open={showGateDialog}
+        verdict={gateVerdict}
+        onSkip={handleGateSkip}
+        onAutofillAndSkip={handleGateAutofillAndSkip}
+        onContinue={handleGateContinue}
+        isAutofilling={isAutofilling}
+      />
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
         <WorkflowSidebar

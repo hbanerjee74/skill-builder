@@ -395,3 +395,23 @@ export const sendRefineMessage = (
   command?: string,
 ) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 
+// --- Answer Evaluation (Transition Gate) ---
+
+export interface AnswerEvaluation {
+  verdict: "sufficient" | "mixed" | "insufficient";
+  answered_count: number;
+  empty_count: number;
+  vague_count: number;
+  total_count: number;
+  reasoning: string;
+}
+
+export const runAnswerEvaluator = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("run_answer_evaluator", { skillName, workspacePath });
+
+export const autofillClarifications = (
+  skillName: string,
+) => invoke<number>("autofill_clarifications", { skillName });
+
