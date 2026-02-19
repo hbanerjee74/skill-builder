@@ -101,14 +101,8 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
 
 **If `topic_relevance: not_relevant` OR `len(selected) == 0`:**
 
-1. Skip Phase 3 and Phase 4 entirely.
-2. Spawn the **scope-advisor** sub-agent via Task tool (subagent_type: general-purpose, model: default). Pass it:
-   - The skill name, domain, skill type
-   - The full text of `research-plan.md`
-   - `trigger_reason: irrelevant_topic`
-   - The context directory path and workspace directory
-3. Write the returned `clarifications.md` content to `{context_dir}/clarifications.md`.
-4. Return immediately — do not proceed to Phase 3 or Phase 4.
+1. Write `{context_dir}/clarifications.md` directly with `scope_recommendation: true` in the YAML frontmatter and a brief explanation that the domain is not a valid topic for this skill type. No need to spawn the scope-advisor — there are no dimensions to analyze.
+2. Return immediately — skip Phase 3 and Phase 4.
 
 **If len(selected) > max_dimensions:**
 
