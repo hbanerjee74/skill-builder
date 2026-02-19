@@ -1,25 +1,34 @@
+---
+question_count: 2
+sections: 2
+duplicates_removed: 0
+refinement_count: 0
+---
+
 # Clarifications
 
 ## Domain Concepts
 
-### Q1: Primary focus area
+### Q1: Primary Focus Area
+What is the primary focus area for this skill?
 
-**Question:** What is the primary focus area for this skill?
+A. Sales forecasting — predict future revenue
+B. Pipeline management — track deal progression
+C. Other (please specify)
 
-- a) Sales forecasting — predict future revenue
-- b) Pipeline management — track deal progression **(recommended)**
-- c) Other (please specify)
+**Recommendation:** Pipeline management — track deal progression.
 
 **Answer:** b
 
 ## Technical Stack
 
-### Q2: Primary database
+### Q2: Primary Database
+What database does your team primarily use?
 
-**Question:** What database does your team primarily use?
+A. PostgreSQL
+B. Snowflake
+C. BigQuery
 
-- a) PostgreSQL
-- b) Snowflake **(recommended)**
-- c) BigQuery
+**Recommendation:** Snowflake.
 
 **Answer:**
