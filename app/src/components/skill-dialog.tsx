@@ -24,26 +24,10 @@ import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, SKILL_TYPE_DESCRIPTIONS, INTAKE_PLACEHOLDERS } from "@/lib/types"
 
-// --- Cache key helpers ---
+// --- Cache key helper ---
 
-interface CacheKeyParams {
-  name: string
-  skillType: string
-  industry?: string | null
-  functionRole?: string | null
-  domain?: string
-  scope?: string
-}
-
-function makeCacheKey(params: CacheKeyParams): string {
-  return JSON.stringify({
-    name: params.name,
-    skillType: params.skillType,
-    industry: params.industry ?? "",
-    functionRole: params.functionRole ?? "",
-    domain: params.domain ?? "",
-    scope: params.scope ?? "",
-  })
+function makeCacheKey(group: string, params: Record<string, string | null | undefined>): string {
+  return JSON.stringify({ group, ...params })
 }
 
 // --- Intake JSON parsing ---
@@ -88,13 +72,13 @@ export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
 
 const STEP_DESCRIPTIONS = {
   create: {
-    1: "Name your skill and choose its type.",
-    2: "Describe the domain, scope, and tags.",
+    1: "Name your skill, choose its type, and add tags.",
+    2: "Describe the domain and scope.",
     3: "Add optional details to guide research.",
   },
   edit: {
-    1: "Update name and type.",
-    2: "Update domain, scope, and tags.",
+    1: "Update name, type, and tags.",
+    2: "Update domain and scope.",
     3: "Update optional details.",
   },
 } as const
@@ -130,14 +114,24 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Ghost suggestion state
-  const [suggestions, setSuggestions] = useState<FieldSuggestions | null>(null)
-  const [step3Suggestions, setStep3Suggestions] = useState<FieldSuggestions | null>(null)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fetchVersionRef = useRef(0)
-  const step3VersionRef = useRef(0)
+  // Ghost suggestion state — one per cascading group
+  const [domainSuggestion, setDomainSuggestion] = useState<string | null>(null)
+  const [scopeSuggestion, setScopeSuggestion] = useState<string | null>(null)
+  const [audienceSuggestion, setAudienceSuggestion] = useState<string | null>(null)
+  const [challengesSuggestion, setChallengesSuggestion] = useState<string | null>(null)
+  const [uniqueSetupSuggestion, setUniqueSetupSuggestion] = useState<string | null>(null)
+  const [claudeMistakesSuggestion, setClaudeMistakesSuggestion] = useState<string | null>(null)
+
+  // Version refs and debounce timers for each group
+  const domainVersionRef = useRef(0)
+  const scopeVersionRef = useRef(0)
+  const group3VersionRef = useRef(0)
+  const group4VersionRef = useRef(0)
+  const domainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scopeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const group3DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const group4DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
-  const step3PrefetchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Derived state
   const placeholders = INTAKE_PLACEHOLDERS[skillType] || INTAKE_PLACEHOLDERS.domain
@@ -161,14 +155,23 @@ export default function SkillDialog(props: SkillDialogProps) {
     setScope("")
     setUniqueSetup("")
     setClaudeMistakes("")
-    setSuggestions(null)
-    setStep3Suggestions(null)
+    setDomainSuggestion(null)
+    setScopeSuggestion(null)
+    setAudienceSuggestion(null)
+    setChallengesSuggestion(null)
+    setUniqueSetupSuggestion(null)
+    setClaudeMistakesSuggestion(null)
     setError(null)
     setSubmitting(false)
-    fetchVersionRef.current++
-    step3VersionRef.current++
+    domainVersionRef.current++
+    scopeVersionRef.current++
+    group3VersionRef.current++
+    group4VersionRef.current++
     suggestionCache.current.clear()
-    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    if (domainDebounceRef.current) clearTimeout(domainDebounceRef.current)
+    if (scopeDebounceRef.current) clearTimeout(scopeDebounceRef.current)
+    if (group3DebounceRef.current) clearTimeout(group3DebounceRef.current)
+    if (group4DebounceRef.current) clearTimeout(group4DebounceRef.current)
   }, [])
 
   // Populate form in edit mode when dialog opens; reset on close for both modes
@@ -197,118 +200,121 @@ export default function SkillDialog(props: SkillDialogProps) {
     }
   }, [editOnOpenChange])
 
-  // --- Ghost suggestions ---
+  // --- Cascading ghost suggestions ---
+  // Group 1: domain ← name, industry, function
+  // Group 2: scope ← name, industry, function, domain
+  // Group 3: audience + challenges ← name, industry, function, domain, scope
+  // Group 4: unique_setup + claude_mistakes ← name, industry, function, domain, audience, challenges
 
-  // Step 2 suggestions: triggered by name + type
-  const fetchSuggestions = useCallback(
-    (name: string, type: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (!name || !type) {
-        setSuggestions(null)
-        return
-      }
-      const version = ++fetchVersionRef.current
-      debounceRef.current = setTimeout(async () => {
+  // Generic fetch helper: debounce → cache check → API call → set state
+  const fetchGroup = useCallback(
+    (opts: {
+      group: string
+      fields: string[]
+      params: Record<string, string | null | undefined>
+      apiOpts: Parameters<typeof generateSuggestions>[2]
+      versionRef: React.MutableRefObject<number>
+      debounceRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
+      debounceMs: number
+      onResult: (result: FieldSuggestions) => void
+    }) => {
+      if (opts.debounceRef.current) clearTimeout(opts.debounceRef.current)
+      if (!skillName || !skillType) return
+
+      const version = ++opts.versionRef.current
+      opts.debounceRef.current = setTimeout(async () => {
         try {
-          const key = makeCacheKey({ name, skillType: type, industry, functionRole })
+          const key = makeCacheKey(opts.group, opts.params)
           const cached = suggestionCache.current.get(key)
           if (cached) {
-            if (version === fetchVersionRef.current) setSuggestions(cached)
+            if (version === opts.versionRef.current) opts.onResult(cached)
             return
           }
-          const result = await generateSuggestions(name, type, {
-            industry, functionRole,
+          const result = await generateSuggestions(skillName, skillType, {
+            ...opts.apiOpts,
+            fields: opts.fields,
           })
-          if (version === fetchVersionRef.current) {
+          if (version === opts.versionRef.current) {
             suggestionCache.current.set(key, result)
-            setSuggestions(result)
+            opts.onResult(result)
           }
         } catch (err) {
-          console.error("[skill-dialog] Ghost suggestion fetch failed:", err)
+          console.error(`[skill-dialog] ${opts.group} suggestion fetch failed:`, err)
         }
-      }, 800)
+      }, opts.debounceMs)
     },
-    [industry, functionRole],
+    [skillName, skillType],
   )
 
-  // Build cache key and API params for step 3 suggestions
-  function buildStep3Params(): { key: string; opts: Parameters<typeof generateSuggestions>[2] } {
-    const effectiveDomain = domain || suggestions?.domain
-    const effectiveScope = scope || suggestions?.scope
-    const opts = {
-      industry, functionRole,
-      domain: effectiveDomain, scope: effectiveScope,
-    }
-    const key = makeCacheKey({
-      name: skillName, skillType, industry, functionRole,
-      domain: effectiveDomain ?? "",
-      scope: effectiveScope ?? "",
+  // Group 1: fetch domain when name + type are set
+  useEffect(() => {
+    if (!skillName || !skillType) { setDomainSuggestion(null); return }
+    const params = { name: skillName, skillType, industry, functionRole }
+    fetchGroup({
+      group: "domain", fields: ["domain"], params,
+      apiOpts: { industry, functionRole },
+      versionRef: domainVersionRef, debounceRef: domainDebounceRef,
+      debounceMs: 800,
+      onResult: (r) => setDomainSuggestion(r.domain || null),
     })
-    return { key, opts }
-  }
+    return () => { if (domainDebounceRef.current) clearTimeout(domainDebounceRef.current) }
+  }, [skillName, skillType, industry, functionRole, fetchGroup])
 
-  // Step 3 suggestions: triggered when entering step 3
-  const fetchStep3Suggestions = useCallback(() => {
-    if (!skillName || !skillType) return
-    const { key, opts } = buildStep3Params()
-
-    const cached = suggestionCache.current.get(key)
-    if (cached) {
-      setStep3Suggestions(cached)
-      return
-    }
-
-    const version = ++step3VersionRef.current
-    ;(async () => {
-      try {
-        const result = await generateSuggestions(skillName, skillType, opts)
-        if (version === step3VersionRef.current) {
-          suggestionCache.current.set(key, result)
-          setStep3Suggestions(result)
-        }
-      } catch (err) {
-        console.error("[skill-dialog] Step 3 suggestion fetch failed:", err)
-      }
-    })()
-  }, [skillName, skillType, industry, functionRole, domain, scope, suggestions?.domain, suggestions?.scope])
-
-  // Trigger step 2 suggestion fetch when name or type changes
+  // Group 2: fetch scope when domain is available
+  const effectiveDomain = domain || domainSuggestion
   useEffect(() => {
-    if (skillName && skillType) {
-      fetchSuggestions(skillName, skillType)
-    } else {
-      setSuggestions(null)
-    }
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-    }
-  }, [skillName, skillType, fetchSuggestions])
+    if (!effectiveDomain) { setScopeSuggestion(null); return }
+    const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain }
+    fetchGroup({
+      group: "scope", fields: ["scope"], params,
+      apiOpts: { industry, functionRole, domain: effectiveDomain },
+      versionRef: scopeVersionRef, debounceRef: scopeDebounceRef,
+      debounceMs: 800,
+      onResult: (r) => setScopeSuggestion(r.scope || null),
+    })
+    return () => { if (scopeDebounceRef.current) clearTimeout(scopeDebounceRef.current) }
+  }, [skillName, skillType, industry, functionRole, effectiveDomain, fetchGroup])
 
-  // Pre-fetch step 3 suggestions while user is on step 2
+  // Group 3: fetch audience + challenges when scope is available
+  const effectiveScope = scope || scopeSuggestion
   useEffect(() => {
-    if (step !== 2) return
-    if (!skillName || !skillType || !(domain || suggestions?.domain)) return
-
-    if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
-    const version = ++step3VersionRef.current
-    step3PrefetchRef.current = setTimeout(async () => {
-      const { key, opts } = buildStep3Params()
-      if (suggestionCache.current.has(key)) return
-      try {
-        const result = await generateSuggestions(skillName, skillType, opts)
-        if (version === step3VersionRef.current) {
-          suggestionCache.current.set(key, result)
-          console.log("[skill-dialog] Pre-fetched step 3 suggestions")
-        }
-      } catch (err) {
-        console.error("[skill-dialog] Step 3 pre-fetch failed:", err)
-      }
-    }, 1500)
-
-    return () => {
-      if (step3PrefetchRef.current) clearTimeout(step3PrefetchRef.current)
+    if (!effectiveDomain || !effectiveScope) {
+      setAudienceSuggestion(null); setChallengesSuggestion(null); return
     }
-  }, [step, domain, scope, skillName, skillType, industry, functionRole, suggestions?.domain, suggestions?.scope])
+    const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain, scope: effectiveScope }
+    fetchGroup({
+      group: "audience+challenges", fields: ["audience", "challenges"], params,
+      apiOpts: { industry, functionRole, domain: effectiveDomain, scope: effectiveScope },
+      versionRef: group3VersionRef, debounceRef: group3DebounceRef,
+      debounceMs: 800,
+      onResult: (r) => {
+        setAudienceSuggestion(r.audience || null)
+        setChallengesSuggestion(r.challenges || null)
+      },
+    })
+    return () => { if (group3DebounceRef.current) clearTimeout(group3DebounceRef.current) }
+  }, [skillName, skillType, industry, functionRole, effectiveDomain, effectiveScope, fetchGroup])
+
+  // Group 4: fetch unique_setup + claude_mistakes when audience + challenges are available
+  const effectiveAudience = audience || audienceSuggestion
+  const effectiveChallenges = challenges || challengesSuggestion
+  useEffect(() => {
+    if (!effectiveDomain || !effectiveAudience || !effectiveChallenges) {
+      setUniqueSetupSuggestion(null); setClaudeMistakesSuggestion(null); return
+    }
+    const params = { name: skillName, skillType, industry, functionRole, domain: effectiveDomain, audience: effectiveAudience, challenges: effectiveChallenges }
+    fetchGroup({
+      group: "unique_setup+claude_mistakes", fields: ["unique_setup", "claude_mistakes"], params,
+      apiOpts: { industry, functionRole, domain: effectiveDomain, audience: effectiveAudience, challenges: effectiveChallenges },
+      versionRef: group4VersionRef, debounceRef: group4DebounceRef,
+      debounceMs: 800,
+      onResult: (r) => {
+        setUniqueSetupSuggestion(r.unique_setup || null)
+        setClaudeMistakesSuggestion(r.claude_mistakes || null)
+      },
+    })
+    return () => { if (group4DebounceRef.current) clearTimeout(group4DebounceRef.current) }
+  }, [skillName, skillType, industry, functionRole, effectiveDomain, effectiveAudience, effectiveChallenges, fetchGroup])
 
   // --- Submit ---
 
@@ -417,7 +423,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
-            {/* Step 1: Name + Type */}
+            {/* Step 1: Name + Type + Tags */}
             {step === 1 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -473,10 +479,20 @@ export default function SkillDialog(props: SkillDialogProps) {
                     ))}
                   </RadioGroup>
                 </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="tags">Tags</Label>
+                  <TagInput
+                    tags={tags}
+                    onChange={setTags}
+                    suggestions={tagSuggestions}
+                    disabled={submitting}
+                    placeholder="e.g., salesforce, analytics"
+                  />
+                </div>
               </>
             )}
 
-            {/* Step 2: Domain + Scope + Tags */}
+            {/* Step 2: Domain + Scope */}
             {step === 2 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -486,7 +502,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder="What does this skill cover?"
                     value={domain}
                     onChange={setDomain}
-                    suggestion={suggestions?.domain ?? null}
+                    suggestion={domainSuggestion}
                     onAccept={setDomain}
                     disabled={submitting}
                   />
@@ -501,23 +517,13 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={placeholders.scope}
                     value={scope}
                     onChange={setScope}
-                    suggestion={suggestions?.scope ?? null}
+                    suggestion={scopeSuggestion}
                     onAccept={setScope}
                     disabled={submitting}
                   />
                   <p className="text-xs text-muted-foreground">
                     Helps agents focus research on what matters most
                   </p>
-                </div>
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="tags">Tags</Label>
-                  <TagInput
-                    tags={tags}
-                    onChange={setTags}
-                    suggestions={tagSuggestions}
-                    disabled={submitting}
-                    placeholder="e.g., salesforce, analytics"
-                  />
                 </div>
 
                 {/* Skills output location (create mode only) */}
@@ -539,7 +545,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={placeholders.audience}
                     value={audience}
                     onChange={setAudience}
-                    suggestion={step3Suggestions?.audience ?? null}
+                    suggestion={audienceSuggestion}
                     onAccept={setAudience}
                     disabled={submitting}
                   />
@@ -551,7 +557,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={placeholders.challenges}
                     value={challenges}
                     onChange={setChallenges}
-                    suggestion={step3Suggestions?.challenges ?? null}
+                    suggestion={challengesSuggestion}
                     onAccept={setChallenges}
                     disabled={submitting}
                   />
@@ -563,7 +569,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={placeholders.unique_setup}
                     value={uniqueSetup}
                     onChange={setUniqueSetup}
-                    suggestion={step3Suggestions?.unique_setup ?? null}
+                    suggestion={uniqueSetupSuggestion}
                     onAccept={setUniqueSetup}
                     disabled={submitting}
                   />
@@ -575,7 +581,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={placeholders.claude_mistakes}
                     value={claudeMistakes}
                     onChange={setClaudeMistakes}
-                    suggestion={step3Suggestions?.claude_mistakes ?? null}
+                    suggestion={claudeMistakesSuggestion}
                     onAccept={setClaudeMistakes}
                     disabled={submitting}
                   />
@@ -623,7 +629,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => { setStep(3); fetchStep3Suggestions(); }}
+                  onClick={() => setStep(3)}
                   disabled={submitting}
                 >
                   Next

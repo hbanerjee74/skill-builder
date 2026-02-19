@@ -669,9 +669,10 @@ pub struct FieldSuggestions {
     pub claude_mistakes: String,
 }
 
-/// Call Haiku to generate field suggestions. Two modes:
-/// - Step 2: provide skill_name + skill_type → get domain, scope
-/// - Step 3: additionally provide domain + scope → get audience, challenges, etc.
+/// Call Haiku to generate field suggestions in cascading groups.
+/// The `fields` param controls which fields to generate; context params provide
+/// prior field values so each group builds on the last.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn generate_suggestions(
     skill_name: String,
@@ -680,9 +681,15 @@ pub async fn generate_suggestions(
     function_role: Option<String>,
     domain: Option<String>,
     scope: Option<String>,
+    audience: Option<String>,
+    challenges: Option<String>,
+    fields: Option<Vec<String>>,
     db: tauri::State<'_, Db>,
 ) -> Result<FieldSuggestions, String> {
-    log::info!("[generate_suggestions] skill={} type={}", skill_name, skill_type);
+    log::info!(
+        "[generate_suggestions] skill={} type={} fields={:?}",
+        skill_name, skill_type, fields
+    );
 
     let api_key = {
         let conn = db.0.lock().map_err(|e| {
@@ -717,19 +724,21 @@ pub async fn generate_suggestions(
         format!(" User context: {}.", context_parts.join(", "))
     };
 
-    // If Step 3 context (domain, scope) is provided, include it for better suggestions
-    let step3_parts: Vec<String> = [
+    // Build skill detail context from prior fields
+    let detail_parts: Vec<String> = [
         domain.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Domain: {}", s)),
         scope.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Scope: {}", s)),
+        audience.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Target audience: {}", s)),
+        challenges.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Key challenges: {}", s)),
     ]
     .into_iter()
     .flatten()
     .collect();
 
-    let step3_context = if step3_parts.is_empty() {
+    let detail_context = if detail_parts.is_empty() {
         String::new()
     } else {
-        format!(" Skill details: {}.", step3_parts.join("; "))
+        format!(" Skill details: {}.", detail_parts.join("; "))
     };
 
     let framing = match skill_type.as_str() {
@@ -747,17 +756,38 @@ pub async fn generate_suggestions(
         }
     };
 
+    // Determine which fields to generate (default: all)
+    let all_fields = vec!["domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes"];
+    let requested: Vec<&str> = fields
+        .as_ref()
+        .map(|f| f.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_else(|| all_fields.clone());
+
+    // Build JSON schema for requested fields only
+    let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
+        match *f {
+            "domain" => Some("\"domain\": \"<1 sentence domain description>\"".to_string()),
+            "scope" => Some("\"scope\": \"<1 sentence scope>\"".to_string()),
+            "audience" => Some("\"audience\": \"<1 sentence target audience>\"".to_string()),
+            "challenges" => Some("\"challenges\": \"<1 sentence key challenges>\"".to_string()),
+            "unique_setup" => Some(format!(
+                "\"unique_setup\": \"<1 sentence: what might make a typical {} setup for {} different from standard implementations?>\"",
+                skill_type, readable_name
+            )),
+            "claude_mistakes" => Some(format!(
+                "\"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {} in the {} domain?>\"",
+                readable_name, skill_type
+            )),
+            _ => None,
+        }
+    }).collect();
+
     let prompt = format!(
         "{framing}\n\n\
-         Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{step3_context}\n\n\
+         Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{detail_context}\n\n\
          Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
          Respond in exactly this JSON format (no markdown, no extra text):\n\
-         {{\"domain\": \"<1 sentence domain description>\", \
-         \"audience\": \"<1 sentence target audience>\", \
-         \"challenges\": \"<1 sentence key challenges>\", \
-         \"scope\": \"<1 sentence scope>\", \
-         \"unique_setup\": \"<1 sentence: what might make a typical {skill_type} setup for {readable_name} different from standard implementations?>\", \
-         \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\"}}"
+         {{{}}}", field_schemas.join(", ")
     );
 
     log::debug!("[generate_suggestions] prompt={}", prompt);

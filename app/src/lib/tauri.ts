@@ -57,6 +57,9 @@ export const generateSuggestions = (
     functionRole?: string | null;
     domain?: string;
     scope?: string;
+    audience?: string;
+    challenges?: string;
+    fields?: string[];
   },
 ) => invoke<FieldSuggestions>("generate_suggestions", {
   skillName,
@@ -65,6 +68,9 @@ export const generateSuggestions = (
   functionRole: opts?.functionRole ?? null,
   domain: opts?.domain ?? null,
   scope: opts?.scope ?? null,
+  audience: opts?.audience ?? null,
+  challenges: opts?.challenges ?? null,
+  fields: opts?.fields ?? null,
 });
 
 // --- Agent ---

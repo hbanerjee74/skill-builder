@@ -77,7 +77,7 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByText("Create New Skill")).toBeInTheDocument();
     expect(
-      screen.getByText("Name your skill and choose its type."),
+      screen.getByText("Name your skill, choose its type, and add tags."),
     ).toBeInTheDocument();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
   });
@@ -175,11 +175,10 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
     expect(
-      screen.getByText("Describe the domain, scope, and tags."),
+      screen.getByText("Describe the domain and scope."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
     expect(screen.getByLabelText("Scope")).toBeInTheDocument();
-    expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
   it("shows skills output location on Step 2 when skillsPath is set", async () => {
@@ -354,18 +353,24 @@ describe("SkillDialog (create mode)", () => {
     });
   });
 
-  it("passes tags to invoke when tags are added on Step 2", async () => {
+  it("passes tags to invoke when tags are added on Step 1", async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "test-domain", /Source/i);
 
+    // Fill name + type on step 1
+    await user.type(screen.getByLabelText("Skill Name"), "test-domain");
+    await user.click(screen.getByRole("radio", { name: /Source/i }));
+
+    // Add tags on step 1
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "analytics{Enter}");
     await user.type(tagInput, "salesforce{Enter}");
 
+    // Advance to step 2 and submit
+    await user.click(screen.getByRole("button", { name: /Next/i }));
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -444,12 +449,11 @@ describe("SkillDialog (create mode)", () => {
 
   // --- Tag autocomplete ---
 
-  it("forwards tagSuggestions to TagInput as suggestions", async () => {
+  it("forwards tagSuggestions to TagInput as suggestions on Step 1", async () => {
     const user = userEvent.setup();
     renderDialog({ tagSuggestions: ["analytics", "salesforce", "workday"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ana");
@@ -466,7 +470,10 @@ describe("SkillDialog (create mode)", () => {
     renderDialog({ tagSuggestions: ["analytics", "salesforce", "workday"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "test");
+
+    // Fill name + type first
+    await user.type(screen.getByLabelText("Skill Name"), "test");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");
@@ -484,7 +491,8 @@ describe("SkillDialog (create mode)", () => {
     // Dropdown should be dismissed
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
-    // Submit to verify the selected suggestion is included in the invoke call
+    // Advance to step 2 and submit
+    await user.click(screen.getByRole("button", { name: /Next/i }));
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -505,7 +513,6 @@ describe("SkillDialog (create mode)", () => {
     renderDialog({ tagSuggestions: ["Analytics", "Salesforce"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ANA");
@@ -521,7 +528,6 @@ describe("SkillDialog (create mode)", () => {
     renderDialog({ tagSuggestions: ["analytics", "anomaly"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
 

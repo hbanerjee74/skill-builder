@@ -74,7 +74,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByText("Update name and type.")).toBeInTheDocument();
+    expect(screen.getByText("Update name, type, and tags.")).toBeInTheDocument();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
   });
 
@@ -92,8 +92,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.queryByText("Edit Skill")).not.toBeInTheDocument();
   });
 
-  it("shows existing tags as badges on step 2", async () => {
-    const user = userEvent.setup();
+  it("shows existing tags as badges on step 1", () => {
     render(
       <SkillDialog
         mode="edit"
@@ -104,7 +103,6 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    await goToStep(user, 2);
     expect(screen.getByText("analytics")).toBeInTheDocument();
     expect(screen.getByText("crm")).toBeInTheDocument();
   });
