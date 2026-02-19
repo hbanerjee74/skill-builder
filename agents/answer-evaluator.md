@@ -15,6 +15,10 @@ You read `clarifications.md` and evaluate how well the user has answered the cla
 
 The coordinator provides the **context directory** path (where `clarifications.md` lives and where you write your output).
 
+## Critical Rule
+
+**DO NOT modify `clarifications.md`.** You are a read-only evaluator. Your only Write operation is creating `answer-evaluation.json`. Never edit, update, or rewrite `clarifications.md` — doing so corrupts the user's answers.
+
 ## Instructions
 
 ### Step 1: Read clarifications.md

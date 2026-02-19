@@ -1294,7 +1294,7 @@ pub async fn run_answer_evaluator(
         api_key,
         cwd: workspace_path.clone(),
         allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
-        max_turns: Some(10),
+        max_turns: Some(4),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
         betas: None,
