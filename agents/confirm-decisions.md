@@ -68,7 +68,7 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 
 **`contradictory_inputs` flag**: Set `contradictory_inputs: true` when the user's answers are logically incompatible — you cannot build a coherent data model that satisfies both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach (e.g., "SCD Type 2" vs "SCD Type 1"), pick the more reasonable option and document the trade-off — do not flag.
 
-**`decision_count: 0`**: If `clarifications.md` is present but all user answers are empty and there are no meaningful recommendations to make, write `decision_count: 0` in the frontmatter. The downstream guard will disable steps 5-6.
+**`decision_count: 0`**: Only used in the scope recommendation path — when `clarifications.md` has `scope_recommendation: true`, write the stub `decisions.md` with `decision_count: 0`. In normal flows, answers are always present (auto-filled from recommendations if the user left them empty), so `decision_count` will always be > 0.
 
 Example frontmatter:
 ```yaml
