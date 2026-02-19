@@ -30,7 +30,6 @@ import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
 import { RuntimeErrorDialog } from "@/components/runtime-error-dialog";
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
-import { ReasoningReview } from "@/components/reasoning-review";
 import ResetStepDialog from "@/components/reset-step-dialog";
 import "@/hooks/use-agent-stream";
 import { useWorkflowStore } from "@/stores/workflow-store";
@@ -433,9 +432,11 @@ export default function WorkflowPage() {
   const [pendingAutoStart, setPendingAutoStart] = useState(false);
 
   /** After resetting to a step, auto-start if it's an agent step in update mode. */
+  const isAgentType = stepConfig?.type === "agent" || stepConfig?.type === "reasoning";
+
   const autoStartAfterReset = (stepId: number) => {
     const cfg = STEP_CONFIGS[stepId];
-    if (cfg?.type === "agent" && !useWorkflowStore.getState().reviewMode) {
+    if ((cfg?.type === "agent" || cfg?.type === "reasoning") && !useWorkflowStore.getState().reviewMode) {
       setPendingAutoStart(true);
     }
   };
@@ -453,30 +454,31 @@ export default function WorkflowPage() {
     const nextConfig = STEP_CONFIGS[nextStep];
     if (nextConfig?.type === "human") {
       updateStepStatus(nextStep, "waiting_for_user");
-    } else if (nextConfig?.type === "agent") {
+    } else {
+      // Agent and reasoning steps auto-start
       setPendingAutoStart(true);
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus]);
 
-  // Auto-start agent steps:
+  // Auto-start agent/reasoning steps:
   // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
-  // 2. On initial page load when step is agent type and hasn't started yet
+  // 2. On initial page load when step hasn't started yet
   useEffect(() => {
     if (!pendingAutoStart) return;
-    if (stepConfig?.type !== "agent") return;
+    if (!isAgentType) return;
     if (isRunning) return;
     setPendingAutoStart(false);
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoStart, currentStep]);
 
-  // Auto-start agent step on page load or when switching to update mode.
+  // Auto-start on page load or when switching to update mode.
   // Fires on hydration (initial load) and reviewMode toggle (review → update).
   useEffect(() => {
     if (!hydrated) return;
     if (reviewMode) return; // review mode is read-only, don't start agents
     if (!workspacePath) return;
-    if (stepConfig?.type !== "agent") return;
+    if (stepConfig?.type === "human") return; // human steps don't auto-start
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return; // already started, completed, or errored
     if (isRunning || pendingAutoStart) return;
@@ -484,6 +486,17 @@ export default function WorkflowPage() {
     setPendingAutoStart(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, reviewMode]);
+
+  // Reposition to first incomplete step when switching to Update mode (AC 3).
+  useEffect(() => {
+    if (!hydrated || reviewMode) return;
+    const first = steps.find((s) => s.status !== "completed");
+    const target = first ? first.id : steps.length - 1;
+    if (target !== currentStep) {
+      setCurrentStep(target);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewMode]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -613,6 +626,7 @@ export default function WorkflowPage() {
 
     switch (stepConfig.type) {
       case "agent":
+      case "reasoning":
         return handleStartAgentStep();
       case "human":
         // Human steps don't have a "start" — they just show the form
@@ -843,190 +857,43 @@ export default function WorkflowPage() {
 
   // --- Render content ---
 
-  const renderContent = () => {
-    // Completed step with output files.
-    if (
-      currentStepDef?.status === "completed" &&
-      !activeAgentId
-    ) {
-      // Check if workflow is halted: next step (or all subsequent steps) are disabled
-      const nextStep = currentStep + 1;
-      const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
-      const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
-      const handleClose = () => navigate({ to: "/" });
+  // --- Render helpers ---
 
-      // When halted, show a scope-too-broad message instead of normal completion
-      if (isWorkflowHalted && !reviewMode) {
-        const outputFiles = stepConfig?.outputFiles ?? [];
-        return (
-          <WorkflowStepComplete
-            stepName={currentStepDef.name}
-            outputFiles={outputFiles}
-            onClose={handleClose}
-            isLastStep={true}
-            reviewMode={reviewMode}
-            skillName={skillName}
-            workspacePath={workspacePath ?? undefined}
-            skillsPath={skillsPath}
-          />
-        );
-      }
+  /** Render completed agent/reasoning step with output files. */
+  const renderCompletedStep = () => {
+    const nextStep = currentStep + 1;
+    const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
+    const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
+    const handleClose = () => navigate({ to: "/" });
 
-      if (stepConfig?.outputFiles) {
-        return (
-          <WorkflowStepComplete
-            stepName={currentStepDef.name}
-            stepId={currentStep}
-            outputFiles={stepConfig.outputFiles}
-            onNextStep={advanceToNextStep}
-            onClose={handleClose}
-            isLastStep={isLastStep}
-            reviewMode={reviewMode}
-            skillName={skillName}
-            workspacePath={workspacePath ?? undefined}
-            skillsPath={skillsPath}
-          />
-        );
-      }
-      // Human steps or steps without output files
+    return (
+      <WorkflowStepComplete
+        stepName={currentStepDef.name}
+        stepId={currentStep}
+        outputFiles={stepConfig?.outputFiles ?? []}
+        onNextStep={advanceToNextStep}
+        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
+        onClose={handleClose}
+        isLastStep={isLastStep || isWorkflowHalted}
+        reviewMode={reviewMode}
+        skillName={skillName}
+        workspacePath={workspacePath ?? undefined}
+        skillsPath={skillsPath}
+      />
+    );
+  };
+
+  /** Render human review step (all states: loading, active, completed). */
+  const renderHumanContent = () => {
+    if (loadingReview) {
       return (
-        <WorkflowStepComplete
-          stepName={currentStepDef.name}
-          stepId={currentStep}
-          outputFiles={[]}
-          onNextStep={advanceToNextStep}
-          onClose={handleClose}
-          isLastStep={isLastStep}
-          reviewMode={reviewMode}
-          skillName={skillName}
-          workspacePath={workspacePath ?? undefined}
-          skillsPath={skillsPath}
-        />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
       );
     }
 
-    // Human review step — editable markdown editor (active) or read-only preview (review mode)
-    if (isHumanReviewStep) {
-      if (loadingReview) {
-        return (
-          <div className="flex flex-1 items-center justify-center">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
-        );
-      }
-
-      if (reviewContent !== null) {
-        // Review mode: read-only markdown preview
-        if (reviewMode) {
-          return (
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between pb-3">
-                <p className="text-xs text-muted-foreground font-mono">
-                  {reviewFilePath}
-                </p>
-              </div>
-              <ScrollArea className="min-h-0 flex-1 rounded-md border">
-                <div className="markdown-body compact max-w-none p-4">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {reviewContent}
-                  </ReactMarkdown>
-                </div>
-              </ScrollArea>
-            </div>
-          );
-        }
-
-        // Check if the workflow is halted at this review step
-        const nextStepAfterReview = currentStep + 1;
-        const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
-
-        // Active editing mode: MDEditor
-        return (
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between pb-3">
-              <p className="text-xs text-muted-foreground font-mono">
-                {reviewFilePath}
-              </p>
-            </div>
-            <div className="min-h-0 flex-1" data-color-mode="dark">
-              <MDEditor
-                value={editorContent}
-                onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
-                height="100%"
-                visibleDragbar={false}
-              />
-            </div>
-            {isReviewHalted ? (
-              <div className="border-t pt-4">
-                <div className="flex flex-col items-center gap-3 py-4">
-                  <CheckCircle2 className="size-8 text-green-500" />
-                  <div className="text-center max-w-md">
-                    <p className="text-base font-medium">Scope Too Broad</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      The research phase determined this skill topic is too broad for a single skill.
-                      Review the scope recommendations above, then start a new workflow with a narrower focus.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate({ to: "/" })}
-                  >
-                    <Home className="size-3.5" />
-                    Return to Dashboard
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between border-t px-4 py-4">
-                <p className="text-sm text-muted-foreground">
-                  Edit the markdown above, then save and continue.
-                </p>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSave}
-                    disabled={!hasUnsavedChanges || isSaving}
-                  >
-                    {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                    Save
-                    {hasUnsavedChanges && (
-                      <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                    )}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleReviewReload}
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Reload
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      if (hasUnsavedChanges) {
-                        setShowUnsavedDialog(true);
-                      } else {
-                        handleReviewContinue();
-                      }
-                    }}
-                    disabled={gateLoading}
-                  >
-                    {gateLoading
-                      ? <Loader2 className="size-3.5 animate-spin" />
-                      : <CheckCircle2 className="size-3.5" />}
-                    {gateLoading ? "Evaluating..." : "Complete Step"}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      // File not available — this is an error (previous step should have produced it)
+    if (reviewContent === null) {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
@@ -1041,32 +908,146 @@ export default function WorkflowPage() {
       );
     }
 
-    // Reasoning step (Step 4) — single-shot generation with review
-    if (stepConfig?.type === "reasoning") {
+    // Review mode (or completed in any mode): read-only markdown preview
+    if (reviewMode) {
       return (
-        <ReasoningReview
-          skillName={skillName}
-          domain={domain ?? ""}
-          workspacePath={workspacePath ?? ""}
-          onStepComplete={advanceToNextStep}
-        />
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between pb-3">
+            <p className="text-xs text-muted-foreground font-mono">
+              {reviewFilePath}
+            </p>
+          </div>
+          <ScrollArea className="min-h-0 flex-1 rounded-md border">
+            <div className="markdown-body compact max-w-none p-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {reviewContent}
+              </ReactMarkdown>
+            </div>
+          </ScrollArea>
+        </div>
       );
     }
 
-    // Initializing state — show spinner before first agent message arrives.
-    if (isInitializing) {
-      if (!activeAgentId || !runs[activeAgentId]?.messages.length) {
-        return <AgentInitializingIndicator />;
-      }
+    // Update mode: MDEditor
+    const isCompleted = currentStepDef?.status === "completed";
+    const nextStepAfterReview = currentStep + 1;
+    const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
+
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between pb-3">
+          <p className="text-xs text-muted-foreground font-mono">
+            {reviewFilePath}
+          </p>
+        </div>
+        <div className="min-h-0 flex-1" data-color-mode="dark">
+          <MDEditor
+            value={editorContent}
+            onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
+            height="100%"
+            visibleDragbar={false}
+          />
+        </div>
+        {isReviewHalted ? (
+          <div className="border-t pt-4">
+            <div className="flex flex-col items-center gap-3 py-4">
+              <CheckCircle2 className="size-8 text-green-500" />
+              <div className="text-center max-w-md">
+                <p className="text-base font-medium">Scope Too Broad</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The research phase determined this skill topic is too broad for a single skill.
+                  Review the scope recommendations above, then start a new workflow with a narrower focus.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate({ to: "/" })}
+              >
+                <Home className="size-3.5" />
+                Return to Dashboard
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-t px-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              {isCompleted ? "Step completed. You can still edit and save." : "Edit the markdown above, then save and continue."}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges || isSaving}
+              >
+                {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                Save
+                {hasUnsavedChanges && (
+                  <span className="ml-1 size-2 rounded-full bg-orange-500" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReviewReload}
+              >
+                <RotateCcw className="size-3.5" />
+                Reload
+              </Button>
+              {!isCompleted && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (hasUnsavedChanges) {
+                      setShowUnsavedDialog(true);
+                    } else {
+                      handleReviewContinue();
+                    }
+                  }}
+                  disabled={gateLoading}
+                >
+                  {gateLoading
+                    ? <Loader2 className="size-3.5 animate-spin" />
+                    : <CheckCircle2 className="size-3.5" />}
+                  {gateLoading ? "Evaluating..." : "Complete Step"}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // --- Render content (dispatch by step type) ---
+
+  const renderContent = () => {
+    // 1. Human review — always shows content regardless of status
+    if (isHumanReviewStep) {
+      return renderHumanContent();
     }
 
-    // Agent with output
+    // 2. Agent running — show streaming output or init spinner
     if (activeAgentId) {
+      if (isInitializing && !runs[activeAgentId]?.messages.length) {
+        return <AgentInitializingIndicator />;
+      }
       return <AgentOutputPanel agentId={activeAgentId} />;
     }
 
-    // Error state with retry
-    if (currentStepDef?.status === "error" && !activeAgentId) {
+    // 3. Agent initializing (no ID yet)
+    if (isInitializing) {
+      return <AgentInitializingIndicator />;
+    }
+
+    // 4. Completed agent/reasoning step — show output files
+    if (currentStepDef?.status === "completed") {
+      return renderCompletedStep();
+    }
+
+    // 5. Error state with retry
+    if (currentStepDef?.status === "error") {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
@@ -1102,7 +1083,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // Default empty state — agent steps auto-start in update mode
+    // 6. Pending — awaiting auto-start
     if (reviewMode) {
       return (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -1307,7 +1288,7 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {isHumanReviewStep && currentStepDef?.status !== "completed" && (
+              {isHumanReviewStep && (
                 <Badge variant="outline" className="gap-1">
                   <FileText className="size-3" />
                   Q&A Review
@@ -1318,7 +1299,7 @@ export default function WorkflowPage() {
 
           {/* Content area — reasoning/agent panels manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            ((stepConfig?.type === "reasoning" && currentStepDef?.status !== "completed") || activeAgentId) && !isHumanReviewStep
+            activeAgentId && !isHumanReviewStep
               ? ""
               : "p-4"
           }`}>
