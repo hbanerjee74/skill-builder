@@ -274,7 +274,8 @@ export default function WorkflowPage() {
       .then((state) => {
         if (cancelled) return;
         if (!state.run) {
-          // No saved state — fresh skill, safe to persist
+          // No saved state — fresh skill: start in update mode so step 0 auto-starts
+          useWorkflowStore.getState().setReviewMode(false);
           setHydrated(true);
           return;
         }
@@ -301,7 +302,8 @@ export default function WorkflowPage() {
           .catch(() => {}); // Non-fatal
       })
       .catch(() => {
-        // No saved state — fresh skill
+        // No saved state — fresh skill: start in update mode so step 0 auto-starts
+        useWorkflowStore.getState().setReviewMode(false);
         setHydrated(true);
       });
 
