@@ -123,7 +123,8 @@ export default function WorkflowPage() {
   // value is current when the router re-evaluates after proceed().
   const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
     shouldBlockFn: () => {
-      return useWorkflowStore.getState().isRunning || hasUnsavedChangesRef.current;
+      const s = useWorkflowStore.getState();
+      return s.isRunning || s.gateLoading || hasUnsavedChangesRef.current;
     },
     enableBeforeUnload: false,
     withResolver: true,
@@ -449,6 +450,8 @@ export default function WorkflowPage() {
 
   useEffect(() => {
     if (!activeRunStatus || !activeAgentId) return;
+    // Skip gate agent — handled by the dedicated gate watcher above
+    if (gateAgentIdRef.current === activeAgentId) return;
     // Guard: only complete steps that are actively running an agent
     const { steps: currentSteps, currentStep: step } = useWorkflowStore.getState();
     if (currentSteps[step]?.status !== "in_progress") return;

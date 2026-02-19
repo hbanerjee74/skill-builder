@@ -1267,6 +1267,7 @@ pub async fn run_answer_evaluator(
             "Anthropic API key not configured".to_string()
         })?;
         let sp = settings.skills_path.ok_or_else(|| {
+            log::error!("run_answer_evaluator: skills_path not configured");
             "Skills path not configured".to_string()
         })?;
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
@@ -1411,7 +1412,9 @@ fn autofill_answers(content: &str) -> (String, u32) {
             let after_prefix = trimmed.strip_prefix("**Answer:**").unwrap_or("");
             let answer_text = after_prefix.trim();
 
-            if answer_text.is_empty() && !last_recommendation.is_empty() {
+            let is_empty_or_sentinel = answer_text.is_empty()
+                || answer_text.eq_ignore_ascii_case("(accepted recommendation)");
+            if is_empty_or_sentinel && !last_recommendation.is_empty() {
                 // Replace the line, preserving leading whitespace
                 let leading_ws = &line[..line.len() - line.trim_start().len()];
                 result.push_str(leading_ws);
@@ -2579,6 +2582,15 @@ mod tests {
         let (out, count) = super::autofill_answers(input);
         assert_eq!(count, 1);
         assert!(out.contains("**Answer:** Use X"));
+    }
+
+    #[test]
+    fn test_autofill_replaces_accepted_recommendation_sentinel() {
+        let input = "   - Recommendation: Use X\n   **Answer:** (accepted recommendation)\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 1);
+        assert!(out.contains("**Answer:** Use X"));
+        assert!(!out.contains("(accepted recommendation)"));
     }
 
 }
