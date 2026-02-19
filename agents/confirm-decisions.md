@@ -54,7 +54,7 @@ The research planner determined the skill scope is too broad. See `clarification
 
 Skip this step if you wrote the scope recommendation marker in Step 2.
 
-**Auto-fill rule:** If any `**Answer**:` field is empty, use that question's `**Recommendation**:` as the answer. Do not ask for clarification.
+**Auto-fill rule:** If any `**Answer:**` field is empty, use that question's `**Recommendation:**` as the answer. Do not ask for clarification.
 
 **Goal**: Analyze the PM's answers, derive decisions with implications, and write `decisions.md` for user review.
 
