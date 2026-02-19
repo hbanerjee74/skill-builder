@@ -61,9 +61,10 @@ Check whether `clarifications.md` already exists in the context directory:
 - **New** — number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
 
 **Always:**
-- Every question must have 2-4 choices plus "Other (please specify)"
-- Every question must end with a blank `**Answer**:` line followed by an empty line
-- YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count`
+- Every question must have 2-4 choices in the format `A. Choice text` (lettered with period, no label needed) plus a final "Other (please specify)" choice
+- Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
+- Every question must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
+- YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count` (required). Add `scope_recommendation: true` if the scope advisor has set it.
 - Write the complete file to the context directory in a **single Write call**
 
 </instructions>
