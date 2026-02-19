@@ -1,8 +1,16 @@
-# Canonical `clarifications.md` Format
+# Canonical Workflow Artifact Formats
 
-Authoritative spec for the `clarifications.md` file produced by agents and consumed by the app's parser and UI. All agent prompts, mock templates, E2E fixtures, and design docs must conform to this format.
+Authoritative spec for all artifacts produced and consumed during the skill-builder workflow. Covers the agent ↔ app contract: what agents write, what the app parses, and the format both sides must agree on.
 
 Tracked in VD-819. Referenced by VD-807 (agent redesign) and VD-817 (UI parser).
+
+**Compliance tests:** Agent prompts validated by `./scripts/test-plugin.sh t1` (T1 canonical format checks). Mock templates and fixtures validated by `npm run test:unit` (`canonical-format.test.ts`). Rust parsers validated by `cargo test commands::workflow`. TS parsers validated by `npm run test:unit` (`reasoning-parser.test.ts`).
+
+---
+
+# Canonical `clarifications.md` Format
+
+Written by `consolidate-research` (Step 1). Updated by `detailed-research` (Step 3). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and the Rust `autofill_answers` / `parse_scope_recommendation` parsers.
 
 ---
 
@@ -489,17 +497,83 @@ companions:
 
 ---
 
+# Canonical `user-context.md` Format
+
+Generated at runtime by Rust `format_user_context()` in `workflow.rs`. Written to the workspace directory so agents can read it. Not a mock template artifact — generated from user settings (industry, function/role, intake form responses).
+
+## Structure
+
+```markdown
+## User Context
+- **Industry**: Financial Services
+- **Function**: Analytics Engineering
+- **Target Audience**: Intermediate data engineers
+- **Key Challenges**: Complex SCD patterns, late-arriving dimensions
+- **Scope**: Silver and gold layer modeling
+- **What Makes This Setup Unique**: Multi-region Snowflake deployment
+- **What Claude Gets Wrong**: Assumes single-tenant architecture
+```
+
+### Rules
+
+- All fields use `- **Label**: value` format (dash, bold label, colon inside bold, value)
+- Fields are only included if the user provided a non-empty value
+- The heading is always `## User Context` (H2)
+- If no fields have values, the file is not written
+- Validated by Rust unit tests (`cargo test commands::workflow`)
+
+---
+
+# Canonical `answer-evaluation.json` Format
+
+Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by Rust `evaluate_answers` command and frontend `TransitionGateDialog`.
+
+## JSON Schema
+
+```json
+{
+  "verdict": "sufficient",
+  "answered_count": 8,
+  "empty_count": 0,
+  "vague_count": 0,
+  "total_count": 8,
+  "reasoning": "All 8 questions have detailed, specific answers."
+}
+```
+
+### Field spec
+
+| Field | Type | Required | Values |
+|---|---|---|---|
+| `verdict` | string | yes | `"sufficient"`, `"mixed"`, `"insufficient"` |
+| `answered_count` | integer | yes | Count of substantive answers |
+| `empty_count` | integer | yes | Count of empty/whitespace answers |
+| `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
+| `total_count` | integer | yes | Total question count |
+| `reasoning` | string | yes | Single sentence explaining the verdict |
+
+### Rules
+
+- `answered_count + empty_count + vague_count == total_count`
+- `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
+- Output must be valid JSON with no markdown fences or extra text
+- Validated by `npm run test:unit` (`canonical-format.test.ts`)
+
+---
+
 # Artifact I/O Map
 
 Every agent's inputs and outputs, with the canonical format each expects.
 
 | Agent | Reads (input) | Writes (output) | Format reference |
 |---|---|---|---|
-| `research-planner` | user-context.md, dimension catalog (inline) | `context/research-plan.md` | research-plan.md spec above |
+| `research-planner` | `user-context.md`, dimension catalog (inline) | `context/research-plan.md` | research-plan.md spec above |
 | `research-orchestrator` | research-plan.md (via planner return) | `context/clarifications.md` (via consolidate-research) | clarifications.md spec above |
 | `consolidate-research` | sub-agent text (inline) | `context/clarifications.md` | clarifications.md spec above |
-| `answer-evaluator` | `context/clarifications.md` | `context/answer-evaluation.json` | JSON: `{verdict, answered_count, empty_count, vague_count, total_count, reasoning}` |
+| `answer-evaluator` | `context/clarifications.md` | `context/answer-evaluation.json` | answer-evaluation.json spec above |
 | `detailed-research` | `context/clarifications.md`, `context/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
 | `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above |
 | `generate-skill` | `context/decisions.md` | `SKILL.md`, `references/*.md` | Skill format (see best-practices.md) |
 | `validate-skill` | `context/decisions.md`, `SKILL.md`, `references/*.md` | `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md` | Specs above |
+
+All agents also read `user-context.md` from the workspace directory (input provided by the Rust runtime, not by other agents).
