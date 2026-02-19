@@ -55,9 +55,9 @@ test.describe("Setup Screen", { tag: "@workflow" }, () => {
     await splash.waitFor({ state: "attached", timeout: 5_000 });
     await splash.waitFor({ state: "detached", timeout: 10_000 });
 
-    // Setup screen should NOT appear, dashboard should load
+    // Setup screen should NOT appear, skills page should load
     await expect(page.getByTestId("setup-screen")).not.toBeVisible();
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Skills" })).toBeVisible();
   });
 
   test("Get Started button is disabled until both fields are filled", async ({ page }) => {
@@ -112,9 +112,9 @@ test.describe("Setup Screen", { tag: "@workflow" }, () => {
     await page.getByLabel("Anthropic API Key").fill("sk-ant-test");
     await page.getByRole("button", { name: "Get Started" }).click();
 
-    // Setup screen should disappear, dashboard should load
+    // Setup screen should disappear, skills page should load
     await expect(page.getByTestId("setup-screen")).not.toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Skills" })).toBeVisible();
   });
 
   test("Test button validates API key", async ({ page }) => {
