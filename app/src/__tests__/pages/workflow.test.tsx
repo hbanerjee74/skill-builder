@@ -408,31 +408,25 @@ describe("WorkflowPage — agent completion lifecycle", () => {
       expect(useWorkflowStore.getState().hydrated).toBe(true);
     });
 
-    // Stale agent data should be cleared
-    expect(useAgentStore.getState().activeAgentId).toBeNull();
-    expect(Object.keys(useAgentStore.getState().runs)).toHaveLength(0);
+    // Stale agent data should be cleared — "old-agent" is no longer active
+    // (auto-start may have kicked off a new agent, so we check the stale ID is gone)
+    expect(useAgentStore.getState().activeAgentId).not.toBe("old-agent");
+    expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 
-  it("always shows Start Step button (no Resume) even with partial output on disk", async () => {
-    // Simulate: step 0 was interrupted — files on disk from a previous run
-    vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path.includes("research-plan.md")) {
-        return Promise.resolve("# Partial research output");
-      }
-      return Promise.reject("not found");
-    });
-
+  it("auto-starts step 0 on initial load (no Start Step button)", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
     useWorkflowStore.getState().setReviewMode(false);
 
     render(<WorkflowPage />);
 
-    // Should always show "Start Step", never "Resume"
+    // Agent step should auto-start — runWorkflowStep is called
     await waitFor(() => {
-      expect(screen.queryByText("Start Step")).toBeTruthy();
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalled();
     });
-    expect(screen.queryByText("Resume")).toBeNull();
+    // No "Start Step" button should exist
+    expect(screen.queryByText("Start Step")).toBeNull();
   });
 
   it("renders completion screen on last step (step 6)", async () => {
@@ -992,6 +986,38 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
     // endWorkflowSession should have been called with the session ID
     await waitFor(() => {
       expect(vi.mocked(endWorkflowSession)).toHaveBeenCalledWith(sessionId);
+    });
+  });
+
+  it("shows inline Retry button on error and calls runWorkflowStep when clicked", async () => {
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+
+    // Put step 0 in error state (agent failed)
+    useWorkflowStore.getState().updateStepStatus(0, "error");
+
+    // No partial artifacts on disk
+    vi.mocked(readFile).mockRejectedValue("not found");
+
+    render(<WorkflowPage />);
+
+    // Wait for error UI to render
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
+    });
+
+    // Clear previous calls so we can assert the retry call
+    vi.mocked(runWorkflowStep).mockClear();
+
+    // Click the inline Retry button
+    await act(async () => {
+      screen.getByRole("button", { name: /Retry/ }).click();
+    });
+
+    // Should trigger the agent step to restart
+    await waitFor(() => {
+      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalled();
     });
   });
 });

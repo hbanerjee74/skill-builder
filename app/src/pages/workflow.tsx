@@ -428,7 +428,9 @@ export default function WorkflowPage() {
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus]);
 
-  // Auto-start agent steps when advancing from a completed/review step
+  // Auto-start agent steps:
+  // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
+  // 2. On initial page load when step is agent type and hasn't started yet
   useEffect(() => {
     if (!pendingAutoStart) return;
     if (stepConfig?.type !== "agent") return;
@@ -437,6 +439,19 @@ export default function WorkflowPage() {
     handleStartAgentStep();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingAutoStart, currentStep]);
+
+  // Auto-start agent step on initial page load (fresh workflow, pending step)
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!workspacePath) return;
+    if (stepConfig?.type !== "agent") return;
+    const status = steps[currentStep]?.status;
+    if (status && status !== "pending") return; // already started, completed, or errored
+    if (isRunning || pendingAutoStart) return;
+    console.log(`[workflow] Auto-starting step ${currentStep} on page load`);
+    setPendingAutoStart(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
@@ -772,14 +787,6 @@ export default function WorkflowPage() {
   };
 
   const currentStepDef = steps[currentStep];
-  const canStart =
-    stepConfig &&
-    stepConfig.type !== "human" &&
-    stepConfig.type !== "reasoning" &&
-    !isRunning &&
-    !pendingAutoStart &&
-    workspacePath &&
-    currentStepDef?.status !== "completed";
 
   // --- Render content ---
 
@@ -1055,22 +1062,9 @@ export default function WorkflowPage() {
       );
     }
 
-    // Default empty state — show loading if auto-start is pending
-    if (pendingAutoStart) {
-      return <AgentInitializingIndicator />;
-    }
-    return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        <div className="flex flex-col items-center gap-2">
-          <Play className="size-8 text-muted-foreground/50" />
-          <p className="text-sm">Press "Start Step" to begin</p>
-        </div>
-      </div>
-    );
+    // Default empty state — agent steps auto-start, so show initializing indicator
+    return <AgentInitializingIndicator />;
   };
-
-  // --- Start button label ---
-
 
   return (
     <>
@@ -1275,12 +1269,6 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {canStart && !reviewMode && (
-                <Button onClick={() => handleStartStep()} size="sm">
-                  <Play className="size-3.5" />
-                  Start Step
-                </Button>
-              )}
               {isHumanReviewStep && currentStepDef?.status !== "completed" && (
                 <Badge variant="outline" className="gap-1">
                   <FileText className="size-3" />
