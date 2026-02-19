@@ -584,16 +584,17 @@ export default function WorkflowPage() {
 
   const runGateEvaluation = async () => {
     if (!workspacePath) return;
-    console.log("[workflow] Running answer evaluator gate");
+    console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
     setGateLoading(true);
 
     try {
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
       agentStartRun(agentId, "haiku");
       setActiveAgent(agentId);
     } catch (err) {
-      console.error("[workflow] Gate evaluation failed:", err);
+      console.error("[workflow] Gate evaluation failed to start:", err);
       setGateLoading(false);
       // Fail-open: proceed normally
       updateStepStatus(currentStep, "completed");
@@ -614,15 +615,23 @@ export default function WorkflowPage() {
     }
 
     try {
-      const raw = await readFile(`${skillsPath}/${skillName}/context/answer-evaluation.json`);
+      const evalPath = `${skillsPath}/${skillName}/context/answer-evaluation.json`;
+      const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
-      console.log("[workflow] Gate evaluation result:", evaluation.verdict);
+      console.log(
+        `[workflow] Gate evaluation result: verdict=${evaluation.verdict}, ` +
+        `answered=${evaluation.answered_count}/${evaluation.total_count}, ` +
+        `empty=${evaluation.empty_count}, vague=${evaluation.vague_count}, ` +
+        `reasoning="${evaluation.reasoning}"`,
+      );
 
       if (evaluation.verdict === "insufficient") {
+        console.log("[workflow] Answers insufficient — proceeding to detailed research");
         proceedNormally();
       } else {
         // Show the transition dialog — gateLoading cleared, but step stays incomplete
         // until user chooses an action in the dialog
+        console.log(`[workflow] Showing transition gate dialog (verdict=${evaluation.verdict})`);
         setGateLoading(false);
         setGateVerdict(evaluation.verdict);
         setShowGateDialog(true);
@@ -648,10 +657,12 @@ export default function WorkflowPage() {
   };
 
   const handleGateSkip = () => {
+    console.log("[workflow] User chose: skip detailed research (answers sufficient)");
     skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
   const handleGateAutofillAndSkip = async () => {
+    console.log("[workflow] User chose: auto-fill missing answers and skip detailed research");
     setIsAutofilling(true);
     try {
       const filled = await autofillClarifications(skillName);
@@ -665,6 +676,7 @@ export default function WorkflowPage() {
   };
 
   const handleGateContinue = () => {
+    console.log("[workflow] User chose: continue to detailed research despite gate recommendation");
     closeGateDialog();
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();

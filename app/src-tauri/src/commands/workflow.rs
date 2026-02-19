@@ -1284,6 +1284,8 @@ pub async fn run_answer_evaluator(
         prompt.push_str(&ctx);
     }
 
+    log::debug!("run_answer_evaluator: prompt={}", prompt);
+
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
     let config = SidecarConfig {
