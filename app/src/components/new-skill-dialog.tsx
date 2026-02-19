@@ -170,7 +170,7 @@ export default function NewSkillDialog({
         console.warn("[new-skill] Step 3 suggestion fetch failed:", err)
       }
     })()
-  }, [name, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions])
+  }, [name, skillType, industry, functionRole, tagSuggestions, domain, scope, tags, suggestions?.domain, suggestions?.scope])
 
   // Trigger step 2 suggestion fetch when name or type changes
   useEffect(() => {
