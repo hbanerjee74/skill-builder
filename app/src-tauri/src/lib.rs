@@ -181,6 +181,8 @@ pub fn run() {
             commands::workflow::save_workflow_state,
             commands::workflow::verify_step_output,
             commands::workflow::get_disabled_steps,
+            commands::workflow::run_answer_evaluator,
+            commands::workflow::autofill_clarifications,
             commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
