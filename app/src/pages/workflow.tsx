@@ -851,7 +851,7 @@ export default function WorkflowPage() {
                 </p>
               </div>
               <ScrollArea className="min-h-0 flex-1 rounded-md border">
-                <div className="markdown-body max-w-none p-4">
+                <div className="markdown-body compact max-w-none p-4">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {reviewContent}
                   </ReactMarkdown>
@@ -1276,7 +1276,7 @@ export default function WorkflowPage() {
 
           {/* Content area — reasoning/agent panels manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            (stepConfig?.type === "reasoning" && currentStepDef?.status !== "completed") || activeAgentId
+            ((stepConfig?.type === "reasoning" && currentStepDef?.status !== "completed") || activeAgentId) && !isHumanReviewStep
               ? ""
               : "p-4"
           }`}>
