@@ -8,7 +8,6 @@ import { AppLayout } from "./components/layout/app-layout";
 import DashboardPage from "./pages/dashboard";
 import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
-import PromptsPage from "./pages/prompts";
 import UsagePage from "./pages/usage";
 import RefinePage from "./pages/refine";
 const rootRoute = createRootRoute({
@@ -33,10 +32,12 @@ const workflowRoute = createRoute({
   component: WorkflowPage,
 });
 
-const promptsRoute = createRoute({
+const promptsRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/prompts",
-  component: PromptsPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/settings", search: { tab: "prompts" } });
+  },
 });
 
 const skillsRedirectRoute = createRoute({
@@ -65,7 +66,7 @@ const refineRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
-  promptsRoute,
+  promptsRedirectRoute,
   skillsRedirectRoute,
   usageRoute,
   workflowRoute,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -66,17 +66,10 @@ export function GhostInput({
   const inputRef = useRef<HTMLInputElement>(null)
   useNativeTabCapture(inputRef, showGhost, suggestion, onAccept)
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      inputProps.onKeyDown?.(e)
-    },
-    [inputProps.onKeyDown],
-  )
-
   return (
     <div className="relative">
       {showGhost && (
-        <div className="absolute inset-px px-3 py-1 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
+        <div className="absolute inset-px px-3 pr-24 py-1 text-sm text-muted-foreground/50 italic pointer-events-none truncate">
           {suggestion}
         </div>
       )}
@@ -86,8 +79,12 @@ export function GhostInput({
         className={cn(showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
       />
+      {showGhost && (
+        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground/70 bg-background/80 px-1.5 py-0.5 rounded border border-border/50 pointer-events-none select-none">
+          Tab to accept
+        </span>
+      )}
     </div>
   )
 }
@@ -104,13 +101,6 @@ export function GhostTextarea({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   useNativeTabCapture(textareaRef, showGhost, suggestion, onAccept)
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      textareaProps.onKeyDown?.(e)
-    },
-    [textareaProps.onKeyDown],
-  )
-
   return (
     <div className="relative">
       {showGhost && (
@@ -119,13 +109,18 @@ export function GhostTextarea({
         </div>
       )}
       <Textarea
+        rows={2}
         {...textareaProps}
         ref={textareaRef}
-        className={cn(showGhost && "placeholder:text-transparent", className)}
+        className={cn("resize-y [field-sizing:fixed]", showGhost && "placeholder:text-transparent", className)}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleKeyDown}
       />
+      {showGhost && (
+        <span className="absolute right-2 bottom-2 text-xs text-muted-foreground/70 bg-background/80 px-1.5 py-0.5 rounded border border-border/50 pointer-events-none select-none">
+          Tab to accept
+        </span>
+      )}
     </div>
   )
 }

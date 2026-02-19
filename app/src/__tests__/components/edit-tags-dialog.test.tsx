@@ -10,7 +10,11 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
-import EditSkillDialog from "@/components/edit-skill-dialog";
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => vi.fn(),
+}));
+
+import SkillDialog from "@/components/skill-dialog";
 import type { SkillSummary } from "@/lib/types";
 
 const sampleSkill: SkillSummary = {
@@ -36,7 +40,7 @@ async function goToStep(user: ReturnType<typeof userEvent.setup>, target: 2 | 3)
   }
 }
 
-describe("EditSkillDialog", () => {
+describe("SkillDialog (edit mode)", () => {
   beforeEach(() => {
     resetTauriMocks();
     vi.mocked(toast.success).mockReset();
@@ -47,12 +51,13 @@ describe("EditSkillDialog", () => {
 
   it("renders dialog title when open", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
@@ -60,55 +65,57 @@ describe("EditSkillDialog", () => {
 
   it("shows step 1 description by default", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
-    expect(screen.getByText("Update name and type.")).toBeInTheDocument();
+    expect(screen.getByText("Update name, type, and tags.")).toBeInTheDocument();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
   });
 
   it("does not render when open is false", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={false}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.queryByText("Edit Skill")).not.toBeInTheDocument();
   });
 
-  it("shows existing tags as badges on step 2", async () => {
-    const user = userEvent.setup();
+  it("shows existing tags as badges on step 1", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
-    await goToStep(user, 2);
     expect(screen.getByText("analytics")).toBeInTheDocument();
     expect(screen.getByText("crm")).toBeInTheDocument();
   });
 
   it("has Cancel and Next buttons on step 1", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
@@ -118,12 +125,13 @@ describe("EditSkillDialog", () => {
   it("has Back, Next, and Save buttons on step 2", async () => {
     const user = userEvent.setup();
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     await goToStep(user, 2);
@@ -135,12 +143,13 @@ describe("EditSkillDialog", () => {
   it("has Back and Save buttons on step 3", async () => {
     const user = userEvent.setup();
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     await goToStep(user, 3);
@@ -154,12 +163,13 @@ describe("EditSkillDialog", () => {
     const onOpenChange = vi.fn();
 
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={onOpenChange}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
 
@@ -170,12 +180,13 @@ describe("EditSkillDialog", () => {
   it("navigates between steps with Next and Back", async () => {
     const user = userEvent.setup();
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
 
@@ -209,12 +220,13 @@ describe("EditSkillDialog", () => {
     mockInvoke.mockResolvedValue(undefined);
 
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={onOpenChange}
         onSaved={onSaved}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
 
@@ -243,12 +255,13 @@ describe("EditSkillDialog", () => {
     mockInvoke.mockRejectedValue(new Error("DB error"));
 
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
 
@@ -265,12 +278,13 @@ describe("EditSkillDialog", () => {
 
   it("handles null skill gracefully", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={null}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.getByText("Edit Skill")).toBeInTheDocument();
@@ -278,12 +292,13 @@ describe("EditSkillDialog", () => {
 
   it("shows skill name input pre-filled with current name", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.getByLabelText("Skill Name")).toHaveValue("sales-pipeline");
@@ -291,12 +306,13 @@ describe("EditSkillDialog", () => {
 
   it("shows skill type radio group on step 1", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     const radios = screen.getAllByRole("radio");
@@ -305,12 +321,13 @@ describe("EditSkillDialog", () => {
 
   it("shows skill type descriptions on step 1", () => {
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     expect(screen.getByText(/Business domain knowledge/)).toBeInTheDocument();
@@ -320,12 +337,13 @@ describe("EditSkillDialog", () => {
   it("shows domain input pre-filled on step 2", async () => {
     const user = userEvent.setup();
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     await goToStep(user, 2);
@@ -335,12 +353,13 @@ describe("EditSkillDialog", () => {
   it("shows intake textarea fields on step 3", async () => {
     const user = userEvent.setup();
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={sampleSkill}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     await goToStep(user, 3);
@@ -361,12 +380,13 @@ describe("EditSkillDialog", () => {
       }),
     };
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={skillWithIntake}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={vi.fn()}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
     await goToStep(user, 3);
@@ -385,12 +405,13 @@ describe("EditSkillDialog", () => {
     };
 
     render(
-      <EditSkillDialog
+      <SkillDialog
+        mode="edit"
         skill={skillWithIntake}
         open={true}
         onOpenChange={vi.fn()}
         onSaved={onSaved}
-        availableTags={[]}
+        tagSuggestions={[]}
       />
     );
 
@@ -416,12 +437,13 @@ describe("EditSkillDialog", () => {
       mockInvoke.mockResolvedValue(undefined);
 
       render(
-        <EditSkillDialog
+        <SkillDialog
+        mode="edit"
           skill={sampleSkill}
           open={true}
           onOpenChange={vi.fn()}
           onSaved={onSaved}
-          availableTags={[]}
+          tagSuggestions={[]}
         />
       );
 
@@ -462,12 +484,13 @@ describe("EditSkillDialog", () => {
       const user = userEvent.setup();
 
       render(
-        <EditSkillDialog
+        <SkillDialog
+        mode="edit"
           skill={sampleSkill}
           open={true}
           onOpenChange={vi.fn()}
           onSaved={vi.fn()}
-          availableTags={[]}
+          tagSuggestions={[]}
         />
       );
 
@@ -484,12 +507,13 @@ describe("EditSkillDialog", () => {
       const user = userEvent.setup();
 
       render(
-        <EditSkillDialog
+        <SkillDialog
+        mode="edit"
           skill={sampleSkill}
           open={true}
           onOpenChange={vi.fn()}
           onSaved={vi.fn()}
-          availableTags={[]}
+          tagSuggestions={[]}
         />
       );
 
@@ -512,12 +536,13 @@ describe("EditSkillDialog", () => {
       mockInvoke.mockResolvedValue(undefined);
 
       render(
-        <EditSkillDialog
+        <SkillDialog
+        mode="edit"
           skill={sampleSkill}
           open={true}
           onOpenChange={vi.fn()}
           onSaved={onSaved}
-          availableTags={[]}
+          tagSuggestions={[]}
         />
       );
 

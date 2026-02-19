@@ -16,7 +16,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
 }));
 
-import NewSkillDialog from "@/components/new-skill-dialog";
+import SkillDialog from "@/components/skill-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 
 // Helper: open dialog
@@ -41,17 +41,19 @@ async function advanceToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /^Next$/i }));
 }
 
-function renderDialog(props: Partial<React.ComponentProps<typeof NewSkillDialog>> = {}) {
+function renderDialog(props: Partial<{ onCreated: () => Promise<void>; tagSuggestions: string[]; existingNames: string[] }> = {}) {
   return render(
-    <NewSkillDialog
+    <SkillDialog
+      mode="create"
       workspacePath="/workspace"
       onCreated={props.onCreated ?? vi.fn<() => Promise<void>>().mockResolvedValue(undefined)}
       tagSuggestions={props.tagSuggestions}
+      existingNames={props.existingNames}
     />,
   );
 }
 
-describe("NewSkillDialog", () => {
+describe("SkillDialog (create mode)", () => {
   beforeEach(() => {
     resetTauriMocks();
     mockNavigate.mockReset();
@@ -76,7 +78,7 @@ describe("NewSkillDialog", () => {
 
     expect(screen.getByText("Create New Skill")).toBeInTheDocument();
     expect(
-      screen.getByText("Name your skill and choose its type."),
+      screen.getByText("Name your skill, choose its type, and add tags."),
     ).toBeInTheDocument();
     expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
   });
@@ -142,6 +144,18 @@ describe("NewSkillDialog", () => {
     expect(nextButton).toBeEnabled();
   });
 
+  it("disables Next button when skill name already exists", async () => {
+    const user = userEvent.setup();
+    renderDialog({ existingNames: ["sales-pipeline", "my-skill"] });
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText("Skill Name"), "sales-pipeline");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+
+    expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
+    expect(screen.getByText("A skill with this name already exists")).toBeInTheDocument();
+  });
+
   it("does not show Create button on Step 1", async () => {
     const user = userEvent.setup();
     renderDialog();
@@ -174,11 +188,10 @@ describe("NewSkillDialog", () => {
 
     expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
     expect(
-      screen.getByText("Describe the domain, scope, and tags."),
+      screen.getByText("Describe the domain and scope."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
     expect(screen.getByLabelText("Scope")).toBeInTheDocument();
-    expect(screen.getByText("Tags")).toBeInTheDocument();
   });
 
   it("shows skills output location on Step 2 when skillsPath is set", async () => {
@@ -353,18 +366,24 @@ describe("NewSkillDialog", () => {
     });
   });
 
-  it("passes tags to invoke when tags are added on Step 2", async () => {
+  it("passes tags to invoke when tags are added on Step 1", async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "test-domain", /Source/i);
 
+    // Fill name + type on step 1
+    await user.type(screen.getByLabelText("Skill Name"), "test-domain");
+    await user.click(screen.getByRole("radio", { name: /Source/i }));
+
+    // Add tags on step 1
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "analytics{Enter}");
     await user.type(tagInput, "salesforce{Enter}");
 
+    // Advance to step 2 and submit
+    await user.click(screen.getByRole("button", { name: /Next/i }));
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -443,12 +462,11 @@ describe("NewSkillDialog", () => {
 
   // --- Tag autocomplete ---
 
-  it("forwards tagSuggestions to TagInput as suggestions", async () => {
+  it("forwards tagSuggestions to TagInput as suggestions on Step 1", async () => {
     const user = userEvent.setup();
     renderDialog({ tagSuggestions: ["analytics", "salesforce", "workday"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ana");
@@ -465,7 +483,10 @@ describe("NewSkillDialog", () => {
     renderDialog({ tagSuggestions: ["analytics", "salesforce", "workday"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "test");
+
+    // Fill name + type first
+    await user.type(screen.getByLabelText("Skill Name"), "test");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");
@@ -483,7 +504,8 @@ describe("NewSkillDialog", () => {
     // Dropdown should be dismissed
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
-    // Submit to verify the selected suggestion is included in the invoke call
+    // Advance to step 2 and submit
+    await user.click(screen.getByRole("button", { name: /Next/i }));
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -504,7 +526,6 @@ describe("NewSkillDialog", () => {
     renderDialog({ tagSuggestions: ["Analytics", "Salesforce"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "ANA");
@@ -520,7 +541,6 @@ describe("NewSkillDialog", () => {
     renderDialog({ tagSuggestions: ["analytics", "anomaly"] });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user);
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
 

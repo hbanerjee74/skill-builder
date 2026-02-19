@@ -47,7 +47,6 @@ export interface FieldSuggestions {
   scope: string;
   unique_setup: string;
   claude_mistakes: string;
-  tags: string[];
 }
 
 export const generateSuggestions = (
@@ -56,20 +55,22 @@ export const generateSuggestions = (
   opts?: {
     industry?: string | null;
     functionRole?: string | null;
-    existingTags?: string[];
     domain?: string;
     scope?: string;
-    currentTags?: string[];
+    audience?: string;
+    challenges?: string;
+    fields?: string[];
   },
 ) => invoke<FieldSuggestions>("generate_suggestions", {
   skillName,
   skillType,
   industry: opts?.industry ?? null,
   functionRole: opts?.functionRole ?? null,
-  existingTags: opts?.existingTags ?? null,
   domain: opts?.domain ?? null,
   scope: opts?.scope ?? null,
-  currentTags: opts?.currentTags ?? null,
+  audience: opts?.audience ?? null,
+  challenges: opts?.challenges ?? null,
+  fields: opts?.fields ?? null,
 });
 
 // --- Agent ---

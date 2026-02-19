@@ -520,9 +520,17 @@ export default function SettingsPage() {
           </div>
           )}
 
-          {activeSection === "skills-library" && <SkillsLibraryTab />}
+          {activeSection === "skills-library" && (
+          <div className="space-y-6 p-6">
+            <SkillsLibraryTab />
+          </div>
+          )}
 
-          {activeSection === "prompts" && <PromptsPage />}
+          {activeSection === "prompts" && (
+          <div className="space-y-6 p-6">
+            <PromptsPage />
+          </div>
+          )}
 
           {activeSection === "github" && (
           <div className="space-y-6 p-6">

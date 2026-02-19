@@ -667,12 +667,11 @@ pub struct FieldSuggestions {
     pub scope: String,
     pub unique_setup: String,
     pub claude_mistakes: String,
-    pub tags: Vec<String>,
 }
 
-/// Call Haiku to generate field suggestions. Two modes:
-/// - Step 2: provide skill_name + skill_type → get domain, scope, tags
-/// - Step 3: additionally provide domain + scope + tags → get audience, challenges, etc.
+/// Call Haiku to generate field suggestions in cascading groups.
+/// The `fields` param controls which fields to generate; context params provide
+/// prior field values so each group builds on the last.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn generate_suggestions(
@@ -680,13 +679,17 @@ pub async fn generate_suggestions(
     skill_type: String,
     industry: Option<String>,
     function_role: Option<String>,
-    existing_tags: Option<Vec<String>>,
     domain: Option<String>,
     scope: Option<String>,
-    current_tags: Option<Vec<String>>,
+    audience: Option<String>,
+    challenges: Option<String>,
+    fields: Option<Vec<String>>,
     db: tauri::State<'_, Db>,
 ) -> Result<FieldSuggestions, String> {
-    log::info!("[generate_suggestions] skill={} type={}", skill_name, skill_type);
+    log::info!(
+        "[generate_suggestions] skill={} type={} fields={:?}",
+        skill_name, skill_type, fields
+    );
 
     let api_key = {
         let conn = db.0.lock().map_err(|e| {
@@ -721,52 +724,73 @@ pub async fn generate_suggestions(
         format!(" User context: {}.", context_parts.join(", "))
     };
 
-    // Build the tag instruction
-    let tag_instruction = if let Some(ref et) = existing_tags {
-        if et.is_empty() {
-            String::from("\"tags\": [\"<up to 3 relevant lowercase tags>\"]")
-        } else {
-            format!(
-                "\"tags\": [\"<up to 3 relevant lowercase tags — prefer reusing from existing: {}>\"]",
-                et.join(", ")
-            )
-        }
+    // Build skill detail context from prior fields
+    let detail_parts: Vec<String> = [
+        domain.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Domain: {}", s)),
+        scope.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Scope: {}", s)),
+        audience.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Target audience: {}", s)),
+        challenges.as_deref().filter(|s| !s.is_empty()).map(|s| format!("Key challenges: {}", s)),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let detail_context = if detail_parts.is_empty() {
+        String::new()
     } else {
-        String::from("\"tags\": [\"<up to 3 relevant lowercase tags>\"]")
+        format!(" Skill details: {}.", detail_parts.join("; "))
     };
 
-    // If Step 3 context (domain, scope, tags) is provided, include it for better suggestions
-    let step3_context = match (domain.as_deref().filter(|s| !s.is_empty()),
-                               scope.as_deref().filter(|s| !s.is_empty()),
-                               current_tags.as_ref().filter(|t| !t.is_empty())) {
-        (None, None, None) => String::new(),
+    let framing = match skill_type.as_str() {
+        "data-engineering" | "source" | "platform" => {
+            "Skills are loaded into Claude Code to help engineers build data pipelines. \
+             Claude already knows standard methodologies from its training data. \
+             A skill must encode the delta -- the customer-specific and domain-specific knowledge \
+             that Claude gets wrong or misses when working without the skill."
+        }
         _ => {
-            let mut parts = Vec::new();
-            if let Some(d) = domain.as_deref().filter(|s| !s.is_empty()) {
-                parts.push(format!("Domain: {}", d));
-            }
-            if let Some(s) = scope.as_deref().filter(|s| !s.is_empty()) {
-                parts.push(format!("Scope: {}", s));
-            }
-            if let Some(t) = current_tags.as_ref().filter(|t| !t.is_empty()) {
-                parts.push(format!("Tags: {}", t.join(", ")));
-            }
-            format!(" Skill details: {}.", parts.join("; "))
+            "Skills are loaded into Claude Code to help users work effectively in their specific domain. \
+             Claude already has broad general knowledge from its training data. \
+             A skill must encode the delta -- the customer-specific and domain-specific knowledge \
+             that Claude gets wrong or misses when working without the skill."
         }
     };
+
+    // Determine which fields to generate (default: all)
+    let all_fields = vec!["domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes"];
+    let requested: Vec<&str> = fields
+        .as_ref()
+        .map(|f| f.iter().map(|s| s.as_str()).collect())
+        .unwrap_or_else(|| all_fields.clone());
+
+    // Build JSON schema for requested fields only
+    let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
+        match *f {
+            "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
+            "scope" => Some("\"scope\": \"<1 sentence scope>\"".to_string()),
+            "audience" => Some("\"audience\": \"<1 sentence target audience>\"".to_string()),
+            "challenges" => Some("\"challenges\": \"<1 sentence key challenges>\"".to_string()),
+            "unique_setup" => Some(format!(
+                "\"unique_setup\": \"<1 sentence: what might make a typical {} setup for {} different from standard implementations?>\"",
+                skill_type, readable_name
+            )),
+            "claude_mistakes" => Some(format!(
+                "\"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {} in the {} domain?>\"",
+                readable_name, skill_type
+            )),
+            _ => None,
+        }
+    }).collect();
 
     let prompt = format!(
-        "Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{step3_context}\n\n\
+        "{framing}\n\n\
+         Given a Claude skill named \"{readable_name}\" of type \"{skill_type}\".{context}{detail_context}\n\n\
          Suggest brief values for these fields. Be specific and practical, not generic.\n\n\
          Respond in exactly this JSON format (no markdown, no extra text):\n\
-         {{\"domain\": \"<1 sentence domain description>\", \
-         \"audience\": \"<1 sentence target audience>\", \
-         \"challenges\": \"<1 sentence key challenges>\", \
-         \"scope\": \"<1 sentence scope>\", \
-         \"unique_setup\": \"<1 sentence: what might make a typical {skill_type} setup for {readable_name} different from standard implementations?>\", \
-         \"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {readable_name} in the {skill_type} domain?>\", \
-         {tag_instruction}}}"
+         {{{}}}", field_schemas.join(", ")
     );
+
+    log::debug!("[generate_suggestions] prompt={}", prompt);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -810,6 +834,8 @@ pub async fn generate_suggestions(
             "No text in API response".to_string()
         })?;
 
+    log::debug!("[generate_suggestions] raw response={}", text);
+
     // Strip markdown fences if the model wrapped its response (e.g. ```json\n...\n```)
     let cleaned = text.trim();
     let cleaned = cleaned
@@ -828,11 +854,6 @@ pub async fn generate_suggestions(
         suggestions[key].as_str().unwrap_or("").to_string()
     };
 
-    let tags: Vec<String> = suggestions["tags"]
-        .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_lowercase())).collect())
-        .unwrap_or_default();
-
     Ok(FieldSuggestions {
         domain: field("domain"),
         audience: field("audience"),
@@ -840,7 +861,6 @@ pub async fn generate_suggestions(
         scope: field("scope"),
         unique_setup: field("unique_setup"),
         claude_mistakes: field("claude_mistakes"),
-        tags,
     })
 }
 
