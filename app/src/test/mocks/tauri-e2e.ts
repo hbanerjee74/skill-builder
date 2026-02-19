@@ -159,6 +159,9 @@ const mockResponses: Record<string, unknown> = {
   get_usage_by_step: [],
   get_usage_by_model: [],
   reset_usage: undefined,
+  // Transition gate (answer evaluator)
+  run_answer_evaluator: "gate-agent-001",
+  autofill_clarifications: 0,
   // Workflow extras
   write_file: undefined,
   get_disabled_steps: [],
