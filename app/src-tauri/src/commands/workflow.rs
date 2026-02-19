@@ -447,6 +447,7 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
 /// Check decisions.md for guard conditions:
 /// - decision_count: 0  → no decisions were derivable
 /// - contradictory_inputs: true → unresolvable contradictions detected
+///
 /// Returns true if steps 5-6 should be disabled.
 fn parse_decisions_guard(decisions_path: &Path) -> bool {
     let content = match std::fs::read_to_string(decisions_path) {
@@ -954,12 +955,10 @@ pub async fn run_workflow_step(
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
     // Context lives in skills_path (not workspace_path).
-    if step_id == 0 {
-        if context_dir.is_dir() {
-            log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
-            let _ = std::fs::remove_dir_all(&context_dir);
-            let _ = std::fs::create_dir_all(&context_dir);
-        }
+    if step_id == 0 && context_dir.is_dir() {
+        log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
+        let _ = std::fs::remove_dir_all(&context_dir);
+        let _ = std::fs::create_dir_all(&context_dir);
     }
 
     run_workflow_step_inner(
