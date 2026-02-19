@@ -132,7 +132,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 5: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("sufficient verdict continue button advances to step 3 normally", async ({ page }) => {
+  test("sufficient verdict research button advances to step 3", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
     await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
 
@@ -151,7 +151,7 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("mixed verdict shows auto-fill dialog, auto-fill advances to step 5", async ({ page }) => {
+  test("mixed verdict shows auto-fill dialog, auto-fill advances to step 3", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
     await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
 
@@ -162,18 +162,18 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await expect(
       page.getByRole("heading", { name: "Auto-fill Missing Answers?" }),
     ).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByRole("button", { name: "Auto-fill & Skip" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Auto-fill & Research" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
 
-    // Click Auto-fill & Skip
-    await page.getByRole("button", { name: "Auto-fill & Skip" }).click();
+    // Click Auto-fill & Research
+    await page.getByRole("button", { name: "Auto-fill & Research" }).click();
     await page.waitForTimeout(500);
 
-    // Should advance to step 5 (Confirm Decisions)
-    await expect(page.getByText("Step 5: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
+    // Should advance to step 3 (Detailed Research)
+    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("mixed verdict let-me-answer button advances to step 3 normally", async ({ page }) => {
+  test("mixed verdict let-me-answer button stays on review step", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
     await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
 
@@ -188,27 +188,30 @@ test.describe("Transition Gate", { tag: "@workflow" }, () => {
     await page.getByRole("button", { name: "Let Me Answer" }).click();
     await page.waitForTimeout(500);
 
-    // Should advance to step 3 normally
-    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    // Should stay on step 2 (Review) — dialog closes, user answers manually
+    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("insufficient verdict skips dialog and advances to step 3 directly", async ({ page }) => {
+  test("insufficient verdict shows autofill dialog, auto-fill advances to step 5", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, GATE_OVERRIDES);
     await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
 
     await clickCompleteStep(page);
     await simulateGateCompletion(page, "insufficient");
 
-    // No dialog should appear — insufficient proceeds directly
+    // Dialog should appear with insufficient verdict
     await expect(
-      page.getByRole("heading", { name: "Skip Detailed Research?" }),
-    ).not.toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Auto-fill Missing Answers?" }),
-    ).not.toBeVisible();
+      page.getByRole("heading", { name: "Use Recommended Answers?" }),
+    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("button", { name: "Auto-fill & Skip" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Let Me Answer" })).toBeVisible();
 
-    // Should advance to step 3 (Detailed Research)
-    await expect(page.getByText("Step 3: Detailed Research")).toBeVisible({ timeout: 5_000 });
+    // Click Auto-fill & Skip
+    await page.getByRole("button", { name: "Auto-fill & Skip" }).click();
+    await page.waitForTimeout(500);
+
+    // Should advance to step 5 (Confirm Decisions)
+    await expect(page.getByText("Step 5: Confirm Decisions")).toBeVisible({ timeout: 5_000 });
   });
 
   test("gate agent error fails open and advances to step 3", async ({ page }) => {

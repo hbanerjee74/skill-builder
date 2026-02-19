@@ -243,6 +243,8 @@ export default function WorkflowPage() {
   // Transition gate dialog state
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
+  const [gateTotalCount, setGateTotalCount] = useState(0);
+  const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const gateAgentIdRef = useRef<string | null>(null);
 
@@ -620,25 +622,20 @@ export default function WorkflowPage() {
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
 
-      // Determine action before logging
-      const action =
-        evaluation.verdict === "insufficient" ? "auto_proceed" : "show_dialog";
-
       // Write gate result to .vibedata (internal files) so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
-        const gateLog = JSON.stringify({ ...evaluation, action, timestamp: new Date().toISOString() });
+        const gateLog = JSON.stringify({ ...evaluation, action: "show_dialog", timestamp: new Date().toISOString() });
         writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch(() => {});
       }
 
-      if (evaluation.verdict === "insufficient") {
-        logGateDecision(skillName, "insufficient", "auto_proceed").catch(() => {});
-        proceedNormally();
-      } else {
-        setGateLoading(false);
-        setGateVerdict(evaluation.verdict);
-        setShowGateDialog(true);
-      }
+      // All verdicts show a dialog — sufficient offers skip, mixed/insufficient offer auto-fill
+      const unanswered = evaluation.empty_count + evaluation.vague_count;
+      setGateLoading(false);
+      setGateVerdict(evaluation.verdict);
+      setGateTotalCount(evaluation.total_count);
+      setGateUnansweredCount(unanswered);
+      setShowGateDialog(true);
     } catch (err) {
       console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
       proceedNormally();
@@ -667,11 +664,13 @@ export default function WorkflowPage() {
     logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
   };
 
+  /** Sufficient: skip straight to decisions. */
   const handleGateSkip = () => {
     logGateAction("skip");
     skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
+  /** Insufficient: auto-fill all answers then skip to decisions. */
   const handleGateAutofillAndSkip = async () => {
     logGateAction("autofill_and_skip");
     setIsAutofilling(true);
@@ -685,11 +684,35 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleGateContinue = () => {
-    logGateAction("continue_research");
+  /** Mixed: auto-fill empty answers then proceed to detailed research. */
+  const handleGateAutofillAndResearch = async () => {
+    logGateAction("autofill_and_research");
+    setIsAutofilling(true);
+    try {
+      const filled = await autofillClarifications(skillName);
+      setIsAutofilling(false);
+      closeGateDialog();
+      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    } catch (err) {
+      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsAutofilling(false);
+    }
+  };
+
+  /** Sufficient override: run research anyway without autofill. */
+  const handleGateResearch = () => {
+    logGateAction("research_anyway");
     closeGateDialog();
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
+  };
+
+  /** Override: go back to review so user can answer manually. */
+  const handleGateLetMeAnswer = () => {
+    logGateAction("let_me_answer");
+    closeGateDialog();
   };
 
   /** Advance without writing — used after handleSave() already persisted. */
@@ -1184,13 +1207,17 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Transition gate dialog — shown after step 1 when answers are sufficient or mixed */}
+      {/* Transition gate dialog — shown after step 1 review */}
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
+        totalCount={gateTotalCount}
+        unansweredCount={gateUnansweredCount}
         onSkip={handleGateSkip}
+        onResearch={handleGateResearch}
         onAutofillAndSkip={handleGateAutofillAndSkip}
-        onContinue={handleGateContinue}
+        onAutofillAndResearch={handleGateAutofillAndResearch}
+        onLetMeAnswer={handleGateLetMeAnswer}
         isAutofilling={isAutofilling}
       />
 
