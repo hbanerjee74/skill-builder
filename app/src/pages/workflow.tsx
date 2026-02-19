@@ -624,10 +624,12 @@ export default function WorkflowPage() {
       const action =
         evaluation.verdict === "insufficient" ? "auto_proceed" : "show_dialog";
 
-      // Write gate result to a log file so it appears in Rust [write_file] logs
-      // and persists for debugging. This uses an existing command we know works.
-      const gateLog = JSON.stringify({ ...evaluation, action, timestamp: new Date().toISOString() });
-      writeFile(`${skillsPath}/${skillName}/context/gate-result.json`, gateLog).catch(() => {});
+      // Write gate result to .vibedata (internal files) so it appears in Rust
+      // [write_file] logs and persists for debugging.
+      if (workspacePath) {
+        const gateLog = JSON.stringify({ ...evaluation, action, timestamp: new Date().toISOString() });
+        writeFile(`${workspacePath}/${skillName}/gate-result.json`, gateLog).catch(() => {});
+      }
 
       if (evaluation.verdict === "insufficient") {
         logGateDecision(skillName, "insufficient", "auto_proceed").catch(() => {});
@@ -657,11 +659,11 @@ export default function WorkflowPage() {
     toast.success(message);
   };
 
-  /** Write the user's gate decision to disk so it appears in Rust [write_file] logs. */
+  /** Write the user's gate decision to .vibedata so it appears in Rust [write_file] logs. */
   const logGateAction = (decision: string) => {
-    if (!skillsPath) return;
+    if (!workspacePath) return;
     const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
-    writeFile(`${skillsPath}/${skillName}/context/gate-result.json`, entry).catch(() => {});
+    writeFile(`${workspacePath}/${skillName}/gate-result.json`, entry).catch(() => {});
     logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
   };
 
