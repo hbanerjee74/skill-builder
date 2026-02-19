@@ -602,10 +602,14 @@ export default function WorkflowPage() {
   };
 
   const finishGateEvaluation = async () => {
-    if (!skillsPath) {
+    const proceedNormally = () => {
       setGateLoading(false);
       updateStepStatus(currentStep, "completed");
       advanceToNextStep();
+    };
+
+    if (!skillsPath) {
+      proceedNormally();
       return;
     }
 
@@ -613,34 +617,38 @@ export default function WorkflowPage() {
       const raw = await readFile(`${skillsPath}/${skillName}/context/answer-evaluation.json`);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
       console.log("[workflow] Gate evaluation result:", evaluation.verdict);
-      setGateLoading(false);
 
       if (evaluation.verdict === "insufficient") {
-        // Proceed normally — no dialog
-        updateStepStatus(currentStep, "completed");
-        advanceToNextStep();
+        proceedNormally();
       } else {
-        // Show the transition dialog
+        // Show the transition dialog — gateLoading cleared, but step stays incomplete
+        // until user chooses an action in the dialog
+        setGateLoading(false);
         setGateVerdict(evaluation.verdict);
         setShowGateDialog(true);
       }
     } catch (err) {
       console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
-      setGateLoading(false);
-      updateStepStatus(currentStep, "completed");
-      advanceToNextStep();
+      proceedNormally();
     }
   };
 
-  const handleGateSkip = () => {
+  const closeGateDialog = () => {
     setShowGateDialog(false);
     setGateVerdict(null);
-    // Mark steps 2 and 3 as completed (skipped)
+  };
+
+  const skipToDecisions = (message: string) => {
+    closeGateDialog();
     updateStepStatus(1, "completed");
     updateStepStatus(2, "completed");
     updateStepStatus(3, "completed");
     setCurrentStep(4);
-    toast.success("Skipped detailed research — answers were sufficient");
+    toast.success(message);
+  };
+
+  const handleGateSkip = () => {
+    skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
   const handleGateAutofillAndSkip = async () => {
@@ -648,27 +656,16 @@ export default function WorkflowPage() {
     try {
       const filled = await autofillClarifications(skillName);
       console.log(`[workflow] Auto-filled ${filled} answers`);
-      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} from recommendations`);
+      setIsAutofilling(false);
+      skipToDecisions(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — skipped detailed research`);
     } catch (err) {
       toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
       setIsAutofilling(false);
-      return;
     }
-    setIsAutofilling(false);
-    setShowGateDialog(false);
-    setGateVerdict(null);
-    // Mark steps as completed and skip to decisions
-    updateStepStatus(1, "completed");
-    updateStepStatus(2, "completed");
-    updateStepStatus(3, "completed");
-    setCurrentStep(4);
-    toast.success("Skipped detailed research — answers auto-filled from recommendations");
   };
 
   const handleGateContinue = () => {
-    setShowGateDialog(false);
-    setGateVerdict(null);
-    // Proceed normally to step 2
+    closeGateDialog();
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
   };
