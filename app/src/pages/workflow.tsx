@@ -408,6 +408,8 @@ export default function WorkflowPage() {
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
+  const autoStartRef = useRef(false);
+
   const advanceToNextStep = useCallback(() => {
     if (currentStep >= steps.length - 1) return;
     const { disabledSteps: disabled } = useWorkflowStore.getState();
@@ -421,8 +423,20 @@ export default function WorkflowPage() {
     const nextConfig = STEP_CONFIGS[nextStep];
     if (nextConfig?.type === "human") {
       updateStepStatus(nextStep, "waiting_for_user");
+    } else if (nextConfig?.type === "agent") {
+      autoStartRef.current = true;
     }
   }, [currentStep, steps, setCurrentStep, updateStepStatus]);
+
+  // Auto-start agent steps when advancing from a completed/review step
+  useEffect(() => {
+    if (!autoStartRef.current) return;
+    if (stepConfig?.type !== "agent") return;
+    if (isRunning) return;
+    autoStartRef.current = false;
+    handleStartAgentStep();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
 
   // Watch for agent completion
   const activeRun = activeAgentId ? runs[activeAgentId] : null;
