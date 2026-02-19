@@ -1254,8 +1254,9 @@ pub async fn run_answer_evaluator(
     // Ensure agent files are deployed to workspace
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
-    // Read settings from DB
-    let (api_key, skills_path) = {
+    // Read settings from DB — same pattern as read_workflow_settings but without
+    // step-specific validation (this is a gate, not a workflow step).
+    let (api_key, skills_path, industry, function_role, intake_json) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -1268,20 +1269,43 @@ pub async fn run_answer_evaluator(
         let sp = settings.skills_path.ok_or_else(|| {
             "Skills path not configured".to_string()
         })?;
-        (key, sp)
+        let run_row = crate::db::get_workflow_run(&conn, &skill_name)
+            .ok()
+            .flatten();
+        let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
+        (key, sp, settings.industry, settings.function_role, ij)
     };
+
+    // Write user-context.md so the agent can read it (same as workflow steps)
+    write_user_context_file(
+        &workspace_path,
+        &skill_name,
+        industry.as_deref(),
+        function_role.as_deref(),
+        intake_json.as_deref(),
+    );
 
     let context_dir = std::path::Path::new(&skills_path)
         .join(&skill_name)
         .join("context");
 
-    let prompt = format!(
+    // Build prompt with user context inline (same pattern as build_prompt)
+    let mut prompt = format!(
         "The context directory is: {dir}. \
          Read {dir}/clarifications.md, evaluate the user answers, \
          and write {dir}/answer-evaluation.json. \
          All directories already exist — do not create any directories.",
         dir = context_dir.display(),
     );
+
+    if let Some(ctx) = format_user_context(
+        industry.as_deref(),
+        function_role.as_deref(),
+        intake_json.as_deref(),
+    ) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&ctx);
+    }
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
