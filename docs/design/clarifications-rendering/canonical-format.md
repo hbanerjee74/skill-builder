@@ -318,3 +318,188 @@ Draft-specific status values: `draft`, `critical-gap`, `contradiction`. See `vd-
 | Scope recommendation | `^scope_recommendation:\s*true` | Stub file indicator |
 | Status field | `^\- \*\*Status:\*\*\s*(.+)$` | Group: status value |
 | Frontmatter | `^---$` delimited YAML block | Standard YAML frontmatter |
+
+---
+
+# Canonical `research-plan.md` Format
+
+Written by `research-planner` (Step 1, via `research-orchestrator`). Read by `companion-recommender` (Step 7). Not parsed by app code — rendered as markdown in the UI.
+
+## YAML Frontmatter
+
+```yaml
+---
+skill_type: domain                    # required — skill type
+domain: Sales Pipeline                # required — domain name
+topic_relevance: relevant             # required — "relevant" or "not_relevant"
+dimensions_evaluated: 6               # required — total dimensions scored
+dimensions_selected: 4                # required — dimensions chosen for research
+---
+```
+
+## Structure
+
+```markdown
+# Research Plan
+
+## Skill: [domain name] ([skill_type])
+
+## Dimension Scores
+
+| Dimension | Score | Reason | Companion Note |
+|-----------|-------|--------|----------------|
+| [slug] | [1-5] | [one-sentence] | [optional — for scores 2-3] |
+
+## Selected Dimensions
+
+| Dimension | Focus |
+|-----------|-------|
+| [slug] | [tailored focus line] |
+```
+
+---
+
+# Canonical `test-skill.md` Format
+
+Written by `validate-skill` orchestrator (Step 7). Read by UI (rendered as markdown). Frontmatter is structured for potential programmatic use.
+
+## YAML Frontmatter
+
+```yaml
+---
+test_date: 2026-01-01        # required — ISO date
+total_tests: 5                # required — total test count
+passed: 4                     # required — PASS count
+partial: 1                    # required — PARTIAL count
+failed: 0                     # required — FAIL count
+scope_recommendation: true    # optional — stub indicator
+---
+```
+
+## Structure
+
+```markdown
+# Skill Test Report
+
+## Summary
+- **Total**: 5 | **Passed**: 4 | **Partial**: 1 | **Failed**: 0
+
+## Test Results
+
+### Test 1: [Prompt text]
+- **Category**: [category] | **Result**: PASS | PARTIAL | FAIL
+- **Skill coverage**: [evidence from skill files]
+- **Gap**: [what's missing, or "None"]
+
+## Skill Content Issues
+### Uncovered Topic Areas
+### Vague Content Needing Detail
+### Missing SKILL.md Pointers
+
+## Suggested PM Prompts
+```
+
+---
+
+# Canonical `agent-validation-log.md` Format
+
+Written by `validate-skill` orchestrator (Step 7). Read by UI (rendered as markdown). No YAML frontmatter (unless scope recommendation stub).
+
+## Structure
+
+```markdown
+# Validation Log
+
+## Structural Checks
+- [PASS] Check description
+- [FAIL] Check description — details
+
+## Content Quality Checks
+### [filename]
+- Actionability: N/5 — description
+- Specificity: N/5 — description
+
+## Decision Coverage
+- D1 (Title): Covered in [file:section]
+- D8 (Title): Not deeply covered (minor gap)
+
+## Issues Found
+- N critical issues
+- N minor gaps
+- N items auto-fixed
+
+## Summary
+[One-sentence verdict]
+```
+
+---
+
+# Canonical `companion-skills.md` Format
+
+Written by `validate-skill` orchestrator (Step 7, via `companion-recommender`). Read by UI (YAML frontmatter is structured for programmatic parsing).
+
+## YAML Frontmatter
+
+```yaml
+---
+skill_name: sales-pipeline
+skill_type: domain
+companions:
+  - name: Salesforce Extraction
+    slug: salesforce-extraction
+    type: source
+    dimension: field-semantics
+    dimension_score: 3
+    priority: high
+    reason: "Description of why this companion is needed"
+    trigger_description: "When to use this companion skill"
+    template_match: null
+---
+```
+
+### Companion entry fields
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `name` | string | yes | Human-readable companion name |
+| `slug` | string | yes | Kebab-case identifier |
+| `type` | string | yes | `domain`, `source`, `platform`, or `data-engineering` |
+| `dimension` | string | yes | Research dimension slug this companion covers |
+| `dimension_score` | integer | yes | Score from research planner (2-3 range) |
+| `priority` | string | yes | `high`, `medium`, or `low` |
+| `reason` | string | yes | Why this companion is needed |
+| `trigger_description` | string | yes | When an engineer should use it |
+| `template_match` | string/null | yes | Matched template slug, or null |
+
+## Markdown Body
+
+```markdown
+# Companion Skill Recommendations
+
+## 1. [Name] ([type] skill)
+
+**Priority**: [High/Medium/Low] | **Dimension**: [slug] (score: N)
+
+**Why**: [Reason text]
+
+**Suggested trigger**: [Trigger description]
+
+**Template match**: [Match or "No matching template found"]
+```
+
+---
+
+# Artifact I/O Map
+
+Every agent's inputs and outputs, with the canonical format each expects.
+
+| Agent | Reads (input) | Writes (output) | Format reference |
+|---|---|---|---|
+| `research-planner` | user-context.md, dimension catalog (inline) | `context/research-plan.md` | research-plan.md spec above |
+| `research-orchestrator` | research-plan.md (via planner return) | `context/clarifications.md` (via consolidate-research) | clarifications.md spec above |
+| `consolidate-research` | sub-agent text (inline) | `context/clarifications.md` | clarifications.md spec above |
+| `answer-evaluator` | `context/clarifications.md` | `context/answer-evaluation.json` | JSON: `{verdict, answered_count, empty_count, vague_count, total_count, reasoning}` |
+| `detailed-research` | `context/clarifications.md`, `context/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
+| `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above |
+| `generate-skill` | `context/decisions.md` | `SKILL.md`, `references/*.md` | Skill format (see best-practices.md) |
+| `validate-skill` | `context/decisions.md`, `SKILL.md`, `references/*.md` | `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md` | Specs above |

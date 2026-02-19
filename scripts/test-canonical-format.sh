@@ -399,6 +399,68 @@ if [[ ${#DECISION_FILES[@]} -gt 0 ]]; then
     '\*\*Status\*\*:'
 fi
 
+# ---------- Structural checks on research-plan ----------
+
+research_plan="app/sidecar/mock-templates/outputs/step0/context/research-plan.md"
+if [[ -f "$ROOT_DIR/$research_plan" ]]; then
+  echo ""
+  echo "=== Structural Checks (research-plan) ==="
+
+  check_in_file() {
+    local description="$1"
+    local file="$2"
+    local pattern="$3"
+    if grep -qE "$pattern" "$ROOT_DIR/$file" 2>/dev/null; then
+      pass "$description"
+    else
+      fail "$description"
+      if [[ $VERBOSE -eq 1 ]]; then
+        echo -e "${DIM}    Pattern: $pattern in $file${RESET}"
+      fi
+    fi
+  }
+
+  check_in_file "Frontmatter: \`skill_type\` present" "$research_plan" '^skill_type:'
+  check_in_file "Frontmatter: \`domain\` present" "$research_plan" '^domain:'
+  check_in_file "Frontmatter: \`dimensions_evaluated\` present" "$research_plan" '^dimensions_evaluated:'
+  check_in_file "Frontmatter: \`dimensions_selected\` present" "$research_plan" '^dimensions_selected:'
+  check_in_file "Has \`## Dimension Scores\` section" "$research_plan" '^## Dimension Scores'
+  check_in_file "Has \`## Selected Dimensions\` section" "$research_plan" '^## Selected Dimensions'
+fi
+
+# ---------- Structural checks on validate-skill outputs ----------
+
+test_skill="app/sidecar/mock-templates/outputs/step6/context/test-skill.md"
+validation_log="app/sidecar/mock-templates/outputs/step6/context/agent-validation-log.md"
+companion_skills="app/sidecar/mock-templates/outputs/step6/context/companion-skills.md"
+
+has_step6=0
+if [[ -f "$ROOT_DIR/$test_skill" || -f "$ROOT_DIR/$validation_log" || -f "$ROOT_DIR/$companion_skills" ]]; then
+  has_step6=1
+  echo ""
+  echo "=== Structural Checks (validate-skill outputs) ==="
+fi
+
+if [[ -f "$ROOT_DIR/$test_skill" ]]; then
+  check_in_file "test-skill: Frontmatter \`total_tests\` present" "$test_skill" '^total_tests:'
+  check_in_file "test-skill: Frontmatter \`passed\` present" "$test_skill" '^passed:'
+  check_in_file "test-skill: Frontmatter \`failed\` present" "$test_skill" '^failed:'
+  check_in_file "test-skill: Has \`### Test\` entries" "$test_skill" '^### Test [0-9]+:'
+  check_in_file "test-skill: Has Result with PASS/PARTIAL/FAIL" "$test_skill" '\*\*Result\*\*.*: (PASS|PARTIAL|FAIL)'
+fi
+
+if [[ -f "$ROOT_DIR/$validation_log" ]]; then
+  check_in_file "validation-log: Has \`## Structural Checks\` section" "$validation_log" '^## Structural Checks'
+  check_in_file "validation-log: Has \`## Decision Coverage\` section" "$validation_log" '^## Decision Coverage'
+  check_in_file "validation-log: Has \`[PASS]\` or \`[FAIL]\` markers" "$validation_log" '\[(PASS|FAIL)\]'
+fi
+
+if [[ -f "$ROOT_DIR/$companion_skills" ]]; then
+  check_in_file "companion-skills: Frontmatter \`skill_name\` present" "$companion_skills" '^skill_name:'
+  check_in_file "companion-skills: Frontmatter \`skill_type\` present" "$companion_skills" '^skill_type:'
+  check_in_file "companion-skills: Frontmatter \`companions\` array" "$companion_skills" '^companions:'
+fi
+
 # ---------- Summary ----------
 echo ""
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
