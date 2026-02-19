@@ -1389,6 +1389,8 @@ describe("WorkflowPage — review mode default state", () => {
         current_step: 0,
         status: "pending",
         skill_type: "domain",
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
       },
       steps: [],
     });
