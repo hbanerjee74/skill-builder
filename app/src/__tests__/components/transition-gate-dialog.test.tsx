@@ -5,7 +5,7 @@ import { TransitionGateDialog } from "@/components/transition-gate-dialog";
 
 const defaultProps = {
   open: true,
-  verdict: null as const,
+  verdict: null as null,
   onSkip: vi.fn(),
   onAutofillAndSkip: vi.fn(),
   onContinue: vi.fn(),

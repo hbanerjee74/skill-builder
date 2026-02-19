@@ -415,3 +415,9 @@ export const autofillClarifications = (
   skillName: string,
 ) => invoke<number>("autofill_clarifications", { skillName });
 
+export const logGateDecision = (
+  skillName: string,
+  verdict: string,
+  decision: string,
+) => invoke<void>("log_gate_decision", { skillName, verdict, decision });
+
