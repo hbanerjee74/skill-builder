@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { FolderOpen, Search, Filter, AlertCircle, Settings } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
+  const [createOpen, setCreateOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -211,13 +212,10 @@ export default function DashboardPage() {
             remoteConfigured={remoteConfigured}
             isLoggedIn={isLoggedIn}
           />
-          <SkillDialog
-            mode="create"
-            workspacePath={workspacePath}
-            onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-            tagSuggestions={availableTags}
-            existingNames={existingSkillNames}
-          />
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New Skill
+          </Button>
         </div>
       )}
 
@@ -333,13 +331,10 @@ export default function DashboardPage() {
           </CardHeader>
           {workspacePath && skillsPath && (
             <CardContent className="flex justify-center">
-              <SkillDialog
-                mode="create"
-                workspacePath={workspacePath}
-                onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-                tagSuggestions={availableTags}
-                existingNames={existingSkillNames}
-              />
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                New Skill
+              </Button>
             </CardContent>
           )}
         </Card>
@@ -373,6 +368,18 @@ export default function DashboardPage() {
             />
           ))}
         </div>
+      )}
+
+      {workspacePath && (
+        <SkillDialog
+          mode="create"
+          workspacePath={workspacePath}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+          tagSuggestions={availableTags}
+          existingNames={existingSkillNames}
+        />
       )}
 
       <SkillDialog

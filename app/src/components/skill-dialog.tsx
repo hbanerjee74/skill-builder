@@ -58,6 +58,8 @@ interface SkillDialogCreateProps {
   onCreated: () => Promise<void>
   tagSuggestions?: string[]
   existingNames?: string[]
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 interface SkillDialogEditProps {
@@ -96,12 +98,15 @@ export default function SkillDialog(props: SkillDialogProps) {
   const editOnSaved = isEdit ? (props as SkillDialogEditProps).onSaved : undefined
   const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
+  const createOnOpenChange = !isEdit ? (props as SkillDialogCreateProps).onOpenChange : undefined
   const tagSuggestions = props.tagSuggestions ?? []
   const existingNames = props.existingNames ?? []
 
-  // Dialog open state — edit is controlled, create is internal
+  // Dialog open state — controlled (edit always, create optionally) or internal
   const [internalOpen, setInternalOpen] = useState(false)
-  const dialogOpen = isEdit ? (props as SkillDialogEditProps).open : internalOpen
+  const dialogOpen = isEdit
+    ? (props as SkillDialogEditProps).open
+    : (props as SkillDialogCreateProps).open ?? internalOpen
 
   // Form state
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -199,10 +204,12 @@ export default function SkillDialog(props: SkillDialogProps) {
   const handleOpenChange = useCallback((open: boolean) => {
     if (editOnOpenChange) {
       editOnOpenChange(open)
+    } else if (createOnOpenChange) {
+      createOnOpenChange(open)
     } else {
       setInternalOpen(open)
     }
-  }, [editOnOpenChange])
+  }, [editOnOpenChange, createOnOpenChange])
 
   // --- Cascading ghost suggestions ---
   // Group 1: domain ← name, industry, function
@@ -396,7 +403,7 @@ export default function SkillDialog(props: SkillDialogProps) {
 
   return (
     <Dialog open={dialogOpen} onOpenChange={handleOpenChange}>
-      {!isEdit && (
+      {!isEdit && !createOnOpenChange && (
         <DialogTrigger asChild>
           <Button>
             <Plus className="size-4" />
