@@ -766,7 +766,7 @@ pub async fn generate_suggestions(
     // Build JSON schema for requested fields only
     let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
         match *f {
-            "domain" => Some("\"domain\": \"<1 sentence domain description>\"".to_string()),
+            "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
             "scope" => Some("\"scope\": \"<1 sentence scope>\"".to_string()),
             "audience" => Some("\"audience\": \"<1 sentence target audience>\"".to_string()),
             "challenges" => Some("\"challenges\": \"<1 sentence key challenges>\"".to_string()),
