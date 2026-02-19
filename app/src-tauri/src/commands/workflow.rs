@@ -444,6 +444,30 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     false
 }
 
+/// Check decisions.md for guard conditions:
+/// - decision_count: 0  → no decisions were derivable
+/// - contradictory_inputs: true → unresolvable contradictions detected
+///
+/// Returns true if steps 5-6 should be disabled.
+fn parse_decisions_guard(decisions_path: &Path) -> bool {
+    let content = match std::fs::read_to_string(decisions_path) {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    if !content.starts_with("---") {
+        return false;
+    }
+    let after_start = &content[3..];
+    let end = match after_start.find("---") {
+        Some(pos) => pos,
+        None => return false,
+    };
+    let frontmatter = &after_start[..end];
+    frontmatter
+        .lines()
+        .any(|line| line.trim() == "contradictory_inputs: true")
+}
+
 /// Derive agent name from prompt template.
 /// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
 /// this to register the agent). Falls back to the phase name if the
@@ -631,7 +655,6 @@ const VALID_PHASES: &[&str] = &[
     "research-planner",
     "confirm-decisions",
     "generate-skill",
-    "scope-advisor",
     "validate-skill",
     "detailed-research",
     "consolidate-research",
@@ -900,12 +923,13 @@ pub async fn run_workflow_step(
         settings.industry, settings.function_role,
     );
 
-    // Gate: reject disabled steps when scope_recommendation is active
+    // Gate: reject disabled steps when guard conditions are active
+    let context_dir = Path::new(&settings.skills_path)
+        .join(&skill_name)
+        .join("context");
+
     if step_id >= 2 {
-        let clarifications_path = Path::new(&settings.skills_path)
-            .join(&skill_name)
-            .join("context")
-            .join("clarifications.md");
+        let clarifications_path = context_dir.join("clarifications.md");
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
                 "Step {} is disabled: the research phase determined the skill scope is too broad. \
@@ -916,16 +940,25 @@ pub async fn run_workflow_step(
         }
     }
 
+    if step_id >= 5 {
+        let decisions_path = context_dir.join("decisions.md");
+        if parse_decisions_guard(&decisions_path) {
+            return Err(format!(
+                "Step {} is disabled: the reasoning agent found unresolvable \
+                 contradictions in decisions.md. Reset to step 3 and revise \
+                 your answers before retrying.",
+                step_id
+            ));
+        }
+    }
+
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
     // Context lives in skills_path (not workspace_path).
-    if step_id == 0 {
-        let context_dir = Path::new(&settings.skills_path).join(&skill_name).join("context");
-        if context_dir.is_dir() {
-            log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
-            let _ = std::fs::remove_dir_all(&context_dir);
-            let _ = std::fs::create_dir_all(&context_dir);
-        }
+    if step_id == 0 && context_dir.is_dir() {
+        log::debug!("[run_workflow_step] step 0: wiping context dir {}", context_dir.display());
+        let _ = std::fs::remove_dir_all(&context_dir);
+        let _ = std::fs::create_dir_all(&context_dir);
     }
 
     run_workflow_step_inner(
@@ -1227,13 +1260,16 @@ pub fn get_disabled_steps(
     log::info!("[get_disabled_steps] skill={}", skill_name);
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured".to_string())?;
-    let clarifications_path = Path::new(&skills_path)
+    let context_dir = Path::new(&skills_path)
         .join(&skill_name)
-        .join("context")
-        .join("clarifications.md");
+        .join("context");
+    let clarifications_path = context_dir.join("clarifications.md");
+    let decisions_path = context_dir.join("decisions.md");
 
     if parse_scope_recommendation(&clarifications_path) {
         Ok(vec![2, 3, 4, 5, 6])
+    } else if parse_decisions_guard(&decisions_path) {
+        Ok(vec![5, 6])
     } else {
         Ok(vec![])
     }
@@ -2339,6 +2375,47 @@ mod tests {
         assert!(prompt.contains("**Target Audience**: Analysts"));
         assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
         assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
+    }
+
+    // --- VD-801: parse_decisions_guard tests ---
+
+    #[test]
+    fn test_parse_decisions_guard_zero_count_no_trigger() {
+        // decision_count: 0 is only used in scope recommendation path,
+        // which is already caught by checkpoint 1 — not a checkpoint 2 trigger
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("decisions.md");
+        std::fs::write(&path, "---\ndecision_count: 0\nround: 1\n---\n## No decisions").unwrap();
+        assert!(!parse_decisions_guard(&path));
+    }
+
+    #[test]
+    fn test_parse_decisions_guard_contradictory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("decisions.md");
+        std::fs::write(&path, "---\ndecision_count: 3\ncontradictory_inputs: true\n---\n").unwrap();
+        assert!(parse_decisions_guard(&path));
+    }
+
+    #[test]
+    fn test_parse_decisions_guard_normal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("decisions.md");
+        std::fs::write(&path, "---\ndecision_count: 5\nround: 1\n---\n### D1: ...").unwrap();
+        assert!(!parse_decisions_guard(&path));
+    }
+
+    #[test]
+    fn test_parse_decisions_guard_missing_file() {
+        assert!(!parse_decisions_guard(Path::new("/tmp/nonexistent-vd801-decisions.md")));
+    }
+
+    #[test]
+    fn test_parse_decisions_guard_no_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("decisions.md");
+        std::fs::write(&path, "## Decisions\n### D1: something").unwrap();
+        assert!(!parse_decisions_guard(&path));
     }
 
 }

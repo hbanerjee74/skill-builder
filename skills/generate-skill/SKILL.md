@@ -127,7 +127,7 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
    ```
    TaskCreate(subject: "Research <domain>", description: "Research relevant dimensions for this domain. Write consolidated output to ./<skillname>/context/clarifications.md")
    ```
-2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`. If the planner selects more dimensions than the configured threshold, the orchestrator spawns the scope-advisor agent instead, which writes a scope recommendation to `clarifications.md` (with `scope_recommendation: true` in frontmatter). When this happens, downstream steps (detailed research, confirm decisions, generate skill, validate skill) detect the flag and gracefully no-op.
+2. Spawn the research orchestrator agent as a teammate. This agent uses an opus planner to select relevant dimensions from 18 available research agents, launches them in parallel, and consolidates results into `clarifications.md`. If the planner selects more dimensions than the configured threshold or finds the topic irrelevant, the orchestrator writes a scope recommendation to `clarifications.md` directly (with `scope_recommendation: true` in frontmatter). When this happens, downstream steps (detailed research, confirm decisions, generate skill, validate skill) detect the flag and gracefully no-op.
    ```
    Task(
      subagent_type: "skill-builder:research-orchestrator",

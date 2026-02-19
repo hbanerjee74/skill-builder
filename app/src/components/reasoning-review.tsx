@@ -17,6 +17,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   runWorkflowStep,
   readFile,
+  getDisabledSteps,
 } from "@/lib/tauri";
 import { countDecisions } from "@/lib/reasoning-parser";
 import { AgentStatusHeader } from "@/components/agent-status-header";
@@ -158,6 +159,22 @@ export function ReasoningReview({
 
     updateStepStatus(currentStep, "completed");
     setRunning(false);
+
+    // Checkpoint 2: check for decisions guard (contradictory inputs)
+    try {
+      const disabled = await getDisabledSteps(skillName);
+      useWorkflowStore.getState().setDisabledSteps(disabled);
+      if (disabled.includes(5)) {
+        toast.warning(
+          "The reasoning step found contradictions in your responses. Review the decisions above, then navigate back to revise your answers.",
+          { duration: Infinity },
+        );
+        return; // Don't advance — user sees decisions.md content and navigates back
+      }
+    } catch {
+      // Non-fatal: proceed normally
+    }
+
     toast.success("Reasoning step completed");
     onStepComplete();
   }, [skillName, skillsPath, currentStep, updateStepStatus, setRunning, onStepComplete]);

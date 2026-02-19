@@ -64,7 +64,19 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
-**Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
+**Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. Optionally include `contradictory_inputs: true` when unresolvable contradictions exist (see below). For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
+
+**`contradictory_inputs` flag**: Set `contradictory_inputs: true` when the user's answers are logically incompatible — you cannot build a coherent data model that satisfies both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach (e.g., "SCD Type 2" vs "SCD Type 1"), pick the more reasonable option and document the trade-off — do not flag.
+
+Example frontmatter:
+```yaml
+---
+decision_count: N
+conflicts_resolved: N
+round: 1
+contradictory_inputs: true    # only when unresolvable contradictions exist
+---
+```
 
 ## Error Handling
 

@@ -69,9 +69,9 @@ The orchestrator selects the dimension set matching the skill type before passin
 | 5 | Lifecycle & State Research | `lifecycle-and-state` |
 | 6 | Reconciliation Research | `reconciliation` |
 
-## Scope Advisor
+## Scope Advisor (inline)
 
-When the planner selects more dimensions than the configured threshold (passed as "maximum research dimensions" in the coordinator prompt), the orchestrator skips dimension agents entirely and spawns a **scope-advisor** agent instead. The scope-advisor returns the `clarifications.md` content as text, and the orchestrator writes it to disk.
+When the planner selects more dimensions than the configured threshold (passed as "maximum research dimensions" in the coordinator prompt), the orchestrator skips dimension agents entirely and writes `clarifications.md` directly with scope recommendations (see Phase 2).
 
 </context>
 
@@ -97,17 +97,18 @@ The planner scores each dimension, selects the top dimensions, writes `context/r
 
 ## Phase 2: Scope Check
 
-After the planner returns, parse its scored YAML output. Extract the `selected` list and count the number of selected dimensions. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
+After the planner returns, parse its scored YAML output. Extract the `selected` list, count the number of selected dimensions, and check for `topic_relevance`. Extract the **maximum dimensions** threshold from the coordinator prompt (look for "The maximum research dimensions before scope warning is: N").
+
+**If `topic_relevance: not_relevant` OR `len(selected) == 0`:**
+
+1. Write `{context_dir}/clarifications.md` directly with `scope_recommendation: true` in the YAML frontmatter and a brief explanation that the domain is not a valid topic for this skill type. No need to spawn the scope-advisor — there are no dimensions to analyze.
+2. Return immediately — skip Phase 3 and Phase 4.
 
 **If len(selected) > max_dimensions:**
 
 1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
-2. Spawn the **scope-advisor** agent (`name: "scope-advisor"`, `model: "opus"`) via the Task tool. Pass it:
-   - The **domain name**, **skill name**, **skill type**
-   - The full text of `research-plan.md` (the planner's output)
-   - The **dimension threshold** and **number of dimensions chosen**
-   - **User context** and **workspace directory** (per protocol)
-3. The scope-advisor returns the full `clarifications.md` content as text. **You (the orchestrator) write it** to `{context_dir}/clarifications.md` using the Write tool.
+2. Analyze the research plan to understand which dimensions were chosen and how they cluster into natural groupings. Recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
+3. Write `{context_dir}/clarifications.md` with `scope_recommendation: true` in YAML frontmatter. After the frontmatter, explain why the scope is too broad and describe each narrower skill with its name, type, focus, covered dimensions, and when to use it.
 4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
 
 **If dimensions_chosen <= max_dimensions:** Proceed to Phase 3.
@@ -147,4 +148,4 @@ The consolidation agent writes `clarifications.md` to the context directory. The
 - Consolidation agent writes `clarifications.md` to the context directory
 - `clarifications.md` exists on disk before the orchestrator returns
 - Cross-cutting questions that span multiple research dimensions are identified and grouped
-- When dimensions exceed threshold, scope-advisor is spawned and no dimension agents run
+- When dimensions exceed threshold, orchestrator writes scope recommendation directly and no dimension agents run
