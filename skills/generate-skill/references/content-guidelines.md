@@ -1,9 +1,22 @@
 ## Content Principles
 
 1. **Omit what LLMs already know** — standard SQL syntax, basic dbt commands (`dbt run`, `dbt test`), general Python, well-documented REST APIs. Test: "Would Claude produce correct output without the skill?"
-2. **Focus on stack-specific gotchas** — Fabric/T-SQL quirks, dlt-to-dbt handoff patterns, elementary test placement by layer, OIDC federation setup. These are where LLMs consistently fail.
+2. **Focus on domain-specific data engineering patterns** — how the domain's entities, metrics, and business rules map to medallion layers. Also: Fabric/T-SQL quirks, dlt-to-dbt handoff patterns, elementary test placement. These are where LLMs consistently fail.
 3. **Guide WHAT and WHY, not HOW** — "Silver models need lookback windows for late-arriving data because..." not step-by-step dbt tutorials. Exception: be prescriptive when exactness matters (metric formulas, surrogate key macros, CI pipeline YAML).
 4. **Calibrate to the medallion architecture** — every data skill has a layer context (bronze/silver/gold). Content should address the right layer's constraints and patterns.
+5. **Translate domain knowledge into data engineering artifacts** — skills about business domains (e.g., fund transfer pricing, claims processing) must bridge domain concepts to implementable dbt models, not just explain the domain.
+
+## Domain-to-Data-Engineering Mapping
+
+When a skill covers a business domain, agents must translate domain concepts into medallion-aligned data engineering patterns. Every domain skill should address:
+
+- **Entities → Models**: Identify domain entities. Classify as dimensions (`dim_`) or facts (`fct_`). Map mutable reference data to dimensions, events/transactions to facts. Define the grain (what is one row?).
+- **Metrics → Gold aggregations**: Identify KPIs and business metrics. Specify exact formulas, not vague descriptions. Define where each metric is computed — intermediate models for reusable calculations, mart models for final business-facing aggregates.
+- **Business rules → Silver transforms**: Domain-specific rules (rate calculations, adjudication logic, classification criteria) belong in `int_` models as testable, auditable SQL. Not in gold — gold consumes clean, rule-applied data.
+- **Source systems → Bronze ingestion**: Identify source systems and their update patterns (full snapshot, CDC, event stream). This determines dlt write disposition (`append`, `merge`, `replace`) and dbt incremental strategy.
+- **Historization → SCD patterns**: Which entities need historical tracking? Slowly changing dimensions → dbt snapshots (SCD2). Rapidly changing measures → incremental fact tables with effective dates.
+- **Data quality → Elementary tests by layer**: Map domain-specific quality rules to concrete tests. "Account balance must never be negative" → `column_anomalies` on silver. "Revenue totals must reconcile" → custom test on gold.
+- **Grain decisions are critical**: Every model needs an explicit grain statement. Mismatched grain is the #1 cause of wrong metrics. State the grain, the primary key, and the expected row count pattern.
 
 ## Stack Conventions
 
