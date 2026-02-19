@@ -171,6 +171,122 @@ check_anti_pattern \
   "No \`**Question**:\` label — body text follows heading directly" \
   '\*\*Question\*\*[:\*]'
 
+# ---------- Structural checks on clarifications files ----------
+# These validate that clarifications .md files use the canonical heading hierarchy,
+# frontmatter, and numbering. Only applied to actual clarifications content files,
+# not agent prompts (which describe the format but don't contain it).
+
+CLARIFICATION_FILES=()
+for f in app/sidecar/mock-templates/outputs/*/context/clarifications.md; do
+  [[ -f "$f" ]] && CLARIFICATION_FILES+=("$f")
+done
+if [[ -f "app/e2e/fixtures/agent-responses/review-content.md" ]]; then
+  CLARIFICATION_FILES+=("app/e2e/fixtures/agent-responses/review-content.md")
+fi
+
+check_present() {
+  local description="$1"
+  local pattern="$2"
+  local found=0
+
+  for f in "${CLARIFICATION_FILES[@]}"; do
+    if grep -qE "$pattern" "$ROOT_DIR/$f" 2>/dev/null; then
+      found=1
+      break
+    fi
+  done
+
+  if [[ $found -eq 1 ]]; then
+    pass "$description"
+  else
+    fail "$description"
+    if [[ $VERBOSE -eq 1 ]]; then
+      echo -e "${DIM}    Pattern: $pattern${RESET}"
+      echo -e "${DIM}    Files checked: ${CLARIFICATION_FILES[*]}${RESET}"
+    fi
+  fi
+}
+
+check_each_file() {
+  local description="$1"
+  local pattern="$2"
+  local all_pass=1
+
+  for f in "${CLARIFICATION_FILES[@]}"; do
+    if ! grep -qE "$pattern" "$ROOT_DIR/$f" 2>/dev/null; then
+      all_pass=0
+      if [[ $VERBOSE -eq 1 ]]; then
+        echo -e "${DIM}    Missing in: $f${RESET}"
+      fi
+    fi
+  done
+
+  if [[ $all_pass -eq 1 ]]; then
+    pass "$description"
+  else
+    fail "$description"
+  fi
+}
+
+if [[ ${#CLARIFICATION_FILES[@]} -gt 0 ]]; then
+  echo ""
+  echo "=== Structural Checks (clarifications files) ==="
+
+  # Frontmatter: required fields
+  check_each_file \
+    "Frontmatter: \`question_count\` present" \
+    '^question_count:'
+
+  check_each_file \
+    "Frontmatter: \`sections\` present" \
+    '^sections:'
+
+  check_each_file \
+    "Frontmatter: \`refinement_count\` present" \
+    '^refinement_count:'
+
+  # Heading hierarchy: ## section headings
+  check_present \
+    "Has \`## Section\` headings (H2)" \
+    '^## [A-Z]'
+
+  # Heading hierarchy: ### Q{n}: question headings
+  check_present \
+    "Has \`### Q{n}: Title\` question headings (H3)" \
+    '^### Q[0-9]+:'
+
+  # Answer fields exist
+  check_each_file \
+    "Has \`**Answer:**\` fields (canonical format)" \
+    '^\*\*Answer:\*\*'
+
+  # Recommendation fields exist
+  check_each_file \
+    "Has \`**Recommendation:**\` fields" \
+    '^\*\*Recommendation:\*\*'
+
+  # Choices use lettered format
+  check_present \
+    "Choices use \`A.\` lettered format" \
+    '^[A-D]\. '
+
+  # Refinements use #### container + ##### heading (only check step2 which has refinements)
+  step2_file="app/sidecar/mock-templates/outputs/step2/context/clarifications.md"
+  if [[ -f "$ROOT_DIR/$step2_file" ]]; then
+    if grep -qE '^#### Refinements' "$ROOT_DIR/$step2_file" 2>/dev/null; then
+      pass "Step2: \`#### Refinements\` container heading (H4)"
+    else
+      fail "Step2: \`#### Refinements\` container heading (H4)"
+    fi
+
+    if grep -qE '^##### R[0-9]+\.[0-9]+' "$ROOT_DIR/$step2_file" 2>/dev/null; then
+      pass "Step2: \`##### R{n}.{m}: Title\` refinement headings (H5)"
+    else
+      fail "Step2: \`##### R{n}.{m}: Title\` refinement headings (H5)"
+    fi
+  fi
+fi
+
 # ---------- Summary ----------
 echo ""
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
