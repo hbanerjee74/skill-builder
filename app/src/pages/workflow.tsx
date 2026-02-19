@@ -619,20 +619,20 @@ export default function WorkflowPage() {
       const evalPath = `${skillsPath}/${skillName}/context/answer-evaluation.json`;
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
-      console.log(
-        `[workflow] Gate evaluation result: verdict=${evaluation.verdict}, ` +
-        `answered=${evaluation.answered_count}/${evaluation.total_count}, ` +
-        `empty=${evaluation.empty_count}, vague=${evaluation.vague_count}, ` +
-        `reasoning="${evaluation.reasoning}"`,
-      );
+
+      // Determine action before logging
+      const action =
+        evaluation.verdict === "insufficient" ? "auto_proceed" : "show_dialog";
+
+      // Write gate result to a log file so it appears in Rust [write_file] logs
+      // and persists for debugging. This uses an existing command we know works.
+      const gateLog = JSON.stringify({ ...evaluation, action, timestamp: new Date().toISOString() });
+      writeFile(`${skillsPath}/${skillName}/context/gate-result.json`, gateLog).catch(() => {});
 
       if (evaluation.verdict === "insufficient") {
         logGateDecision(skillName, "insufficient", "auto_proceed").catch(() => {});
         proceedNormally();
       } else {
-        // Show the transition dialog — gateLoading cleared, but step stays incomplete
-        // until user chooses an action in the dialog
-        console.log(`[workflow] Showing transition gate dialog (verdict=${evaluation.verdict})`);
         setGateLoading(false);
         setGateVerdict(evaluation.verdict);
         setShowGateDialog(true);
@@ -657,13 +657,21 @@ export default function WorkflowPage() {
     toast.success(message);
   };
 
+  /** Write the user's gate decision to disk so it appears in Rust [write_file] logs. */
+  const logGateAction = (decision: string) => {
+    if (!skillsPath) return;
+    const entry = JSON.stringify({ decision, verdict: gateVerdict, timestamp: new Date().toISOString() });
+    writeFile(`${skillsPath}/${skillName}/context/gate-result.json`, entry).catch(() => {});
+    logGateDecision(skillName, gateVerdict ?? "unknown", decision).catch(() => {});
+  };
+
   const handleGateSkip = () => {
-    logGateDecision(skillName, gateVerdict ?? "unknown", "skip").catch(() => {});
+    logGateAction("skip");
     skipToDecisions("Skipped detailed research — answers were sufficient");
   };
 
   const handleGateAutofillAndSkip = async () => {
-    logGateDecision(skillName, gateVerdict ?? "unknown", "autofill_and_skip").catch(() => {});
+    logGateAction("autofill_and_skip");
     setIsAutofilling(true);
     try {
       const filled = await autofillClarifications(skillName);
@@ -676,7 +684,7 @@ export default function WorkflowPage() {
   };
 
   const handleGateContinue = () => {
-    logGateDecision(skillName, gateVerdict ?? "unknown", "continue_research").catch(() => {});
+    logGateAction("continue_research");
     closeGateDialog();
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
@@ -870,7 +878,7 @@ export default function WorkflowPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-between border-t pt-4">
+              <div className="flex items-center justify-between border-t px-4 py-4">
                 <p className="text-sm text-muted-foreground">
                   Edit the markdown above, then save and continue.
                 </p>
