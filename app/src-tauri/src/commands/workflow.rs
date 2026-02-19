@@ -1388,6 +1388,12 @@ fn autofill_answers(content: &str) -> (String, u32) {
     for line in content.lines() {
         let trimmed = line.trim();
 
+        // Reset recommendation at each new question heading to prevent
+        // a previous question's recommendation from bleeding into the next.
+        if trimmed.starts_with("## ") {
+            last_recommendation = String::new();
+        }
+
         // Track the most recent Recommendation value.
         // Handle both `- Recommendation: ...` and `**Recommendation:** ...` formats.
         if let Some(rest) = trimmed.strip_prefix("- Recommendation:") {
@@ -2621,6 +2627,14 @@ mod tests {
         assert_eq!(count, 1);
         assert!(out.contains("**Answer:** Use X"));
         assert!(!out.contains("(accepted recommendation)"));
+    }
+
+    #[test]
+    fn test_autofill_does_not_bleed_recommendation_across_questions() {
+        let input = "## Q1\n- Recommendation: Use PostgreSQL\n**Answer:** I prefer MySQL\n\n## Q2\n**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 should not get Q1's recommendation");
+        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
     }
 
 }

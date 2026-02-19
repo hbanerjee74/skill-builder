@@ -152,6 +152,7 @@ export default function WorkflowPage() {
     }
 
     useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setGateLoading(false);
     // Clear session ID so the next "Continue" starts a fresh session
     useWorkflowStore.setState({ workflowSessionId: null });
     useAgentStore.getState().clearRuns();
@@ -185,6 +186,7 @@ export default function WorkflowPage() {
         useWorkflowStore.getState().setRunning(false);
         useAgentStore.getState().clearRuns();
       }
+      useWorkflowStore.getState().setGateLoading(false);
       // Clear session ID so the next "Continue" starts a fresh session
       useWorkflowStore.setState({ workflowSessionId: null });
 
@@ -680,6 +682,13 @@ export default function WorkflowPage() {
       const raw = await readFile(evalPath);
       const evaluation: AnswerEvaluation = JSON.parse(raw);
 
+      // Validate verdict shape — if the Haiku agent wrote malformed output, proceed normally
+      if (!["sufficient", "mixed", "insufficient"].includes(evaluation.verdict)) {
+        console.warn("[workflow] Invalid gate verdict:", evaluation.verdict);
+        proceedNormally();
+        return;
+      }
+
       // Write gate result to .vibedata (internal files) so it appears in Rust
       // [write_file] logs and persists for debugging.
       if (workspacePath) {
@@ -1110,11 +1119,13 @@ export default function WorkflowPage() {
         <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>{isRunning ? "Agent Running" : "Unsaved Changes"}</DialogTitle>
+              <DialogTitle>{isRunning ? "Agent Running" : gateLoading ? "Evaluating Answers" : "Unsaved Changes"}</DialogTitle>
               <DialogDescription>
                 {isRunning
                   ? "An agent is still running on this step. Leaving will abandon it."
-                  : "You have unsaved edits that will be lost if you leave."}
+                  : gateLoading
+                    ? "The answer evaluator is still running. Leaving will abandon it."
+                    : "You have unsaved edits that will be lost if you leave."}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
