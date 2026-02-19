@@ -862,8 +862,7 @@ export default function WorkflowPage() {
   /** Render completed agent/reasoning step with output files. */
   const renderCompletedStep = () => {
     const nextStep = currentStep + 1;
-    const isWorkflowHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStep);
-    const isLastStep = isWorkflowHalted || currentStep >= steps.length - 1;
+    const isLastStep = disabledSteps.includes(nextStep) || currentStep >= steps.length - 1;
     const handleClose = () => navigate({ to: "/" });
 
     return (
@@ -874,7 +873,7 @@ export default function WorkflowPage() {
         onNextStep={advanceToNextStep}
         onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         onClose={handleClose}
-        isLastStep={isLastStep || isWorkflowHalted}
+        isLastStep={isLastStep}
         reviewMode={reviewMode}
         skillName={skillName}
         workspacePath={workspacePath ?? undefined}
@@ -931,7 +930,7 @@ export default function WorkflowPage() {
     // Update mode: MDEditor
     const isCompleted = currentStepDef?.status === "completed";
     const nextStepAfterReview = currentStep + 1;
-    const isReviewHalted = disabledSteps.length > 0 && disabledSteps.includes(nextStepAfterReview);
+    const isReviewHalted = disabledSteps.includes(nextStepAfterReview);
 
     return (
       <div className="flex h-full flex-col">
@@ -1094,6 +1093,19 @@ export default function WorkflowPage() {
     return <AgentInitializingIndicator />;
   };
 
+  // Navigation guard dialog helpers — avoids nested ternaries in JSX
+  const navGuardTitle = (): string => {
+    if (isRunning) return "Agent Running";
+    if (gateLoading) return "Evaluating Answers";
+    return "Unsaved Changes";
+  };
+
+  const navGuardDescription = (): string => {
+    if (isRunning) return "An agent is still running on this step. Leaving will abandon it.";
+    if (gateLoading) return "The answer evaluator is still running. Leaving will abandon it.";
+    return "You have unsaved edits that will be lost if you leave.";
+  };
+
   return (
     <>
       {/* Navigation guard dialog — shown when user tries to leave while agent is running or unsaved changes */}
@@ -1101,14 +1113,8 @@ export default function WorkflowPage() {
         <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>{isRunning ? "Agent Running" : gateLoading ? "Evaluating Answers" : "Unsaved Changes"}</DialogTitle>
-              <DialogDescription>
-                {isRunning
-                  ? "An agent is still running on this step. Leaving will abandon it."
-                  : gateLoading
-                    ? "The answer evaluator is still running. Leaving will abandon it."
-                    : "You have unsaved edits that will be lost if you leave."}
-              </DialogDescription>
+              <DialogTitle>{navGuardTitle()}</DialogTitle>
+              <DialogDescription>{navGuardDescription()}</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={handleNavStay}>
@@ -1297,11 +1303,9 @@ export default function WorkflowPage() {
             </div>
           </div>
 
-          {/* Content area — reasoning/agent panels manage their own padding */}
+          {/* Content area — agent output panel manages its own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            activeAgentId && !isHumanReviewStep
-              ? ""
-              : "p-4"
+            activeAgentId && !isHumanReviewStep ? "" : "p-4"
           }`}>
             {renderContent()}
           </div>
