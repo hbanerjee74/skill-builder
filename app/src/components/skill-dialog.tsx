@@ -400,7 +400,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
