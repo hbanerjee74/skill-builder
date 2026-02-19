@@ -415,19 +415,21 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     expect(useAgentStore.getState().runs).not.toHaveProperty("old-agent");
   });
 
-  it("auto-starts step 0 on initial load (no Start Step button)", async () => {
+  it("shows Start Step button on initial create-flow load (no auto-start)", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setPendingCreateMode(true);
     useWorkflowStore.getState().setReviewMode(false);
 
     render(<WorkflowPage />);
 
-    // Agent step should auto-start — runWorkflowStep is called
-    await waitFor(() => {
-      expect(vi.mocked(runWorkflowStep)).toHaveBeenCalled();
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
     });
-    // No "Start Step" button should exist
-    expect(screen.queryByText("Start Step")).toBeNull();
+
+    // New skills show Start Step button — auto-start only on review→update toggle
+    expect(screen.getByText("Start Step")).toBeDefined();
+    expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
   });
 
   it("renders completion screen on last step (step 6)", async () => {
