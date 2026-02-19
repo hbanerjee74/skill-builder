@@ -179,7 +179,6 @@ pub fn run() {
             commands::workflow::preview_step_reset,
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,
-            commands::workflow::get_agent_prompt,
             commands::workflow::verify_step_output,
             commands::workflow::get_disabled_steps,
             commands::lifecycle::has_running_agents,

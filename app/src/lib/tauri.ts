@@ -259,11 +259,6 @@ export const releaseLock = (skillName: string) =>
 export const getLockedSkills = () =>
   invoke<SkillLock[]>("get_locked_skills");
 
-// --- Agent Prompts ---
-
-export const getAgentPrompt = (skillType: string, phase: string) =>
-  invoke<string>("get_agent_prompt", { skillType, phase });
-
 // --- Usage Tracking ---
 
 export const persistAgentRun = (params: {

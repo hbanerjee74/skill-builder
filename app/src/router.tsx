@@ -32,14 +32,6 @@ const workflowRoute = createRoute({
   component: WorkflowPage,
 });
 
-const promptsRedirectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/prompts",
-  beforeLoad: () => {
-    throw redirect({ to: "/settings", search: { tab: "prompts" } });
-  },
-});
-
 const skillsRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/skills",
@@ -66,7 +58,6 @@ const refineRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
-  promptsRedirectRoute,
   skillsRedirectRoute,
   usageRoute,
   workflowRoute,
