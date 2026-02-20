@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import { parsePromptPaths, resolveStepTemplate } from "../mock-agent.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // resolveStepTemplate
@@ -91,5 +96,97 @@ describe("parsePromptPaths", () => {
     expect(paths.contextDir).toBeNull();
     expect(paths.skillOutputDir).toBeNull();
     expect(paths.skillDir).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mock-agent drift detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Agents that intentionally have no mock template mapping.
+ * If you add a new agent that should be mocked, add a mapping in
+ * resolveStepTemplate() — don't just add it here.
+ */
+const AGENTS_WITHOUT_MOCK = new Set([
+  "companion-recommender",
+  "test-skill",
+  "validate-quality",
+]);
+
+describe("mock-agent drift detection", () => {
+  it("every agent in agents/ has a mock template mapping or is explicitly excluded", async () => {
+    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const files = await fs.readdir(agentsDir);
+    const agentNames = files
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.replace(/\.md$/, ""));
+
+    expect(agentNames.length).toBeGreaterThan(0);
+
+    const unmapped: string[] = [];
+    for (const name of agentNames) {
+      const template = resolveStepTemplate(name);
+      if (template === null && !AGENTS_WITHOUT_MOCK.has(name)) {
+        unmapped.push(name);
+      }
+    }
+
+    expect(
+      unmapped,
+      `These agents have no mock template mapping and are not in the exclusion list. ` +
+        `Either add a mapping in resolveStepTemplate() or add them to AGENTS_WITHOUT_MOCK:\n` +
+        unmapped.join("\n"),
+    ).toEqual([]);
+  });
+
+  it("each mapped template resolves to a valid template name", async () => {
+    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const files = await fs.readdir(agentsDir);
+    const agentNames = files
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.replace(/\.md$/, ""));
+
+    const templateNames = new Set<string>();
+    for (const name of agentNames) {
+      const template = resolveStepTemplate(name);
+      if (template !== null) {
+        templateNames.add(template);
+      }
+    }
+
+    // Each template should have a corresponding .jsonl file in mock-templates/
+    const templatesDir = path.resolve(__dirname, "../mock-templates");
+    for (const template of templateNames) {
+      const jsonlPath = path.join(templatesDir, `${template}.jsonl`);
+      let exists = false;
+      try {
+        await fs.access(jsonlPath);
+        exists = true;
+      } catch {
+        // file doesn't exist
+      }
+      expect(
+        exists,
+        `Template "${template}" mapped by resolveStepTemplate() but ` +
+          `${template}.jsonl not found in mock-templates/`,
+      ).toBe(true);
+    }
+  });
+
+  it("exclusion list only contains agents that actually exist", async () => {
+    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const files = await fs.readdir(agentsDir);
+    const agentNames = new Set(
+      files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, "")),
+    );
+
+    for (const excluded of AGENTS_WITHOUT_MOCK) {
+      expect(
+        agentNames.has(excluded),
+        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agents/${excluded}.md exists. ` +
+          `Remove it from the exclusion list.`,
+      ).toBe(true);
+    }
   });
 });
