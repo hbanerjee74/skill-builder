@@ -1535,10 +1535,18 @@ impl SidecarPool {
 
     /// Shutdown a single skill's sidecar. Sends a shutdown message, waits up to 3 seconds,
     /// then kills if necessary.
+    ///
+    /// The pool lock is released immediately after removing the sidecar entry so that
+    /// concurrent `shutdown_skill` calls (via `join_all` in `shutdown_all`) can proceed
+    /// in parallel rather than serializing on the 3-second child.wait().
     pub async fn shutdown_skill(&self, skill_name: &str, app_handle: &tauri::AppHandle) -> Result<(), String> {
-        let mut pool = self.sidecars.lock().await;
+        // Short lock: remove sidecar from the pool so other skills can proceed concurrently
+        let maybe_sidecar = {
+            let mut pool = self.sidecars.lock().await;
+            pool.remove(skill_name)
+        };
 
-        if let Some(mut sidecar) = pool.remove(skill_name) {
+        if let Some(mut sidecar) = maybe_sidecar {
             log::info!(
                 "Shutting down persistent sidecar for '{}' (pid {})",
                 skill_name,
@@ -1588,7 +1596,7 @@ impl SidecarPool {
                 let _ = stdin.flush().await;
             }
 
-            // Wait up to 3 seconds for graceful exit
+            // Wait up to 3 seconds for graceful exit (pool lock NOT held — true parallelism)
             let wait_result = tokio::time::timeout(
                 std::time::Duration::from_secs(3),
                 sidecar.child.wait(),

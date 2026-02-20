@@ -236,7 +236,9 @@ export default function WorkflowPage() {
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
-  /** Abandon the active agent and switch to a different step (step-switch guard "Leave"). */
+  /** Abandon the active agent and switch to a different step (step-switch guard "Leave").
+   *  Unlike handleNavLeave, we do NOT release the skill lock or shut down the sidecar
+   *  because the user is still in the workflow — the next step will reuse both. */
   const handleStepSwitchLeave = useCallback(() => {
     const targetStep = pendingStepSwitch;
     const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
@@ -244,15 +246,14 @@ export default function WorkflowPage() {
       useWorkflowStore.getState().updateStepStatus(step, "pending");
     }
     useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setGateLoading(false);
     useAgentStore.getState().clearRuns();
 
     endActiveSession();
-    cleanupSkillSidecar(skillName).catch(() => {});
-    releaseLock(skillName).catch(() => {});
 
     setPendingStepSwitch(null);
     setCurrentStep(targetStep!);
-  }, [pendingStepSwitch, skillName, endActiveSession, setCurrentStep]);
+  }, [pendingStepSwitch, endActiveSession, setCurrentStep]);
 
   // Track whether error state has partial artifacts
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
