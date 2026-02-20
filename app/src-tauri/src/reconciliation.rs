@@ -82,7 +82,7 @@ pub fn reconcile_on_startup(
                     // disk_step + 1 is the normal state after step N completes.
                     //
                     // Additionally, current_step can be disk_step + 2 when the step after
-                    // the last agent step is a human review (1, 3) or refinement (7) that
+                    // the last agent step is a human review (1, 3) that
                     // auto-advances without producing files.
                     //
                     // Count how many non-detectable (file-less) steps sit between disk_step
