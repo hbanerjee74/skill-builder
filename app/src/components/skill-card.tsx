@@ -67,7 +67,7 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
 }
 
 interface IconActionProps {
-  icon: JSX.Element
+  icon: React.ReactElement
   label: string
   tooltip: string
   onClick: () => void
@@ -75,7 +75,7 @@ interface IconActionProps {
   className?: string
 }
 
-function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): JSX.Element {
+function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
   const button = (
     <Button
       variant="ghost"
