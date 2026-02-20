@@ -139,12 +139,17 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         }
     }
 
+    // Trim all fields — frontmatter values may have leading/trailing whitespace or newlines
+    let trim_opt = |s: Option<String>| -> Option<String> {
+        s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+    };
+
     Frontmatter {
-        name,
-        description,
-        domain,
-        skill_type,
-        trigger,
+        name: trim_opt(name),
+        description: trim_opt(description),
+        domain: trim_opt(domain),
+        skill_type: trim_opt(skill_type),
+        trigger: trim_opt(trigger),
     }
 }
 
