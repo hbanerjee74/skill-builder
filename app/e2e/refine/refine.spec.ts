@@ -344,8 +344,9 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
       result: "Done.",
     });
 
-    // Wait for agent to finish
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
 
     // Verify turn 1 diff
     const diffToggle = page.getByTestId("refine-diff-toggle");
@@ -364,6 +365,7 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await page.getByTestId("refine-send-button").click();
 
     const agentId2 = await getAgentId(page);
+    expect(agentId2).toBe("refine-test-skill-e2e-002");
 
     // Swap mock to return SKILL.md with BOTH Quick Start AND Tips
     await page.evaluate(() => {
@@ -425,8 +427,9 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
       result: "Done.",
     });
 
-    // Wait for agent to finish
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
 
     // Toggle diff on — SKILL.md is the active file
     const diffToggle = page.getByTestId("refine-diff-toggle");
@@ -472,8 +475,9 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
       result: "Done.",
     });
 
-    // Wait for agent to finish
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
     await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
 
     // Verify diff toggle enabled and turn 1 diff works
     const diffToggle = page.getByTestId("refine-diff-toggle");
@@ -494,12 +498,13 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     await page.getByTestId("refine-send-button").click();
 
     const agentId2 = await getAgentId(page);
+    expect(agentId2).toBe("refine-error-e2e-001");
 
     // Simulate agent error (init_start → sdk_ready → exit with success=false)
     await simulateAgentError(page, agentId2);
 
     // Verify error toast
-    await expect(page.getByText("Agent failed").first()).toBeVisible();
+    await expect(page.getByText("Agent failed — check the chat for details").first()).toBeVisible();
 
     // Verify chat input is still enabled (user can retry)
     await expect(page.getByTestId("refine-chat-input")).toBeEnabled();
