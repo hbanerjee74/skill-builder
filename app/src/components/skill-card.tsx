@@ -31,6 +31,7 @@ interface SkillCardProps {
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
   onEdit?: (skill: SkillSummary) => void
+  onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
@@ -126,6 +127,7 @@ export default function SkillCard({
   onDelete,
   onDownload,
   onEdit,
+  onEditWorkflow,
   onRefine,
   onPushToRemote,
   remoteConfigured,
@@ -185,9 +187,9 @@ export default function SkillCard({
           <div className="flex items-center gap-0.5">
             <IconAction
               icon={<Pencil className="size-3" />}
-              label="Edit skill"
+              label="Edit workflow"
               tooltip="Edit workflow"
-              onClick={() => onContinue(skill)}
+              onClick={() => onEditWorkflow?.(skill)}
             />
             {canDownload && onRefine && (
               <IconAction

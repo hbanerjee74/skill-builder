@@ -110,7 +110,7 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} />
     );
-    expect(screen.getByRole("button", { name: /Edit skill/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 
   it("shows Refine icon only when workflow is complete", () => {

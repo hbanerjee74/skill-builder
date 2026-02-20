@@ -31,6 +31,7 @@ import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useAuthStore } from "@/stores/auth-store"
+import { useWorkflowStore } from "@/stores/workflow-store"
 import { packageSkill, getLockedSkills, pushSkillToRemote } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
@@ -149,6 +150,11 @@ export default function DashboardPage() {
   const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
 
   const handleContinue = (skill: SkillSummary) => {
+    navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
+  }
+
+  const handleEditWorkflow = (skill: SkillSummary) => {
+    useWorkflowStore.getState().setReviewMode(false)
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
@@ -361,6 +367,7 @@ export default function DashboardPage() {
               onDelete={setDeleteTarget}
               onDownload={handleDownload}
               onEdit={setEditTarget}
+              onEditWorkflow={handleEditWorkflow}
               onRefine={handleRefine}
               onPushToRemote={handlePushToRemote}
               remoteConfigured={remoteConfigured}
