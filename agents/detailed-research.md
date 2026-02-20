@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You read the answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers only. Clear answers are skipped — they need no follow-up. Non-clear answers (not_answered, vague, or needs_refinement) get refinement sub-agents. You also perform cross-answer analysis that Sonnet sub-agents cannot: detecting contradictions between clear answers and flagging critical gaps in priority questions.
+You read the answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers only. Clear answers are skipped — they need no follow-up. Non-clear answers (not_answered, vague, or needs_refinement) get refinement sub-agents.
 
 </role>
 
@@ -54,11 +54,6 @@ Using these verdicts directly — do NOT re-triage:
 - **Clear items** (verdict: `clear`): the user answered substantively with no unstated assumptions. Skip — no refinement needed.
 - **Needs refinement** (verdict: `needs_refinement`): the user answered substantively but introduced unstated parameters or assumptions. These get refinement questions in Phase 2.
 - **Non-clear items** (verdict: `not_answered` or `vague`): the user did not provide their own answer (auto-filled with the recommendation) or gave a vague answer. These also get refinement questions in Phase 2.
-
-**Cross-answer analysis** (what Sonnet sub-agents cannot do — only you perform this):
-
-- **Contradictions**: Two clear answers that logically conflict with each other. Flag in Needs Clarification with an explanation of the conflict.
-- **Critical gaps**: Question IDs listed in `priority_questions` (from the `clarifications.md` frontmatter) that have verdict `not_answered` or `vague` in `answer-evaluation.json`. Flag as blocking in Needs Clarification.
 
 ## Phase 2: Spawn Refinement Sub-Agents for Non-Clear Items
 
@@ -107,14 +102,13 @@ D. Other (please specify)
 1. Read the current `clarifications.md`.
 2. For each question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line. Sub-agent output is already in `##### R{n}.{m}:` format — insert directly.
 3. Deduplicate if overlapping refinements exist across sub-agents.
-4. Add a `## Needs Clarification` section at the end of the file for any contradictions and critical gaps identified in Phase 1.
-5. Update `refinement_count` in the YAML frontmatter to reflect the total number of refinement sub-questions inserted.
-6. Write the updated file in a single Write call.
+4. Update `refinement_count` in the YAML frontmatter to reflect the total number of refinement sub-questions inserted.
+5. Write the updated file in a single Write call.
 
 ## Error Handling
 
 - **If `clarifications.md` is missing or has no answers:** Report to the coordinator — detailed research requires first-round answers.
-- **If all questions are `clear` in `answer-evaluation.json` (none are `not_answered`, `vague`, or `needs_refinement`):** Skip Phase 2. Perform Phase 1 cross-answer analysis only. Write `## Needs Clarification` section if contradictions or critical gaps are found, otherwise report to the coordinator that no refinements are needed.
+- **If all questions are `clear` in `answer-evaluation.json` (none are `not_answered`, `vague`, or `needs_refinement`):** Skip Phase 2. Report to the coordinator that no refinements are needed.
 - **If `answer-evaluation.json` is missing:** Fall back to reading `clarifications.md` directly. Treat empty or vague `**Answer:**` fields as non-clear. Log a warning that evaluation verdicts were unavailable.
 - **If a sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
 
@@ -123,7 +117,4 @@ D. Other (please specify)
 ## Success Criteria
 - `answer-evaluation.json` verdicts used directly — no re-triage of answers
 - Refinement sub-agents spawn only for sections with non-clear/needs-refinement questions — sections with all-clear items are skipped
-- Sub-agent follow-up output uses "Follow-up:" opener with prior answer summary (VD-810)
-
-- Contradictions and critical gaps flagged in `## Needs Clarification`
 - The updated `clarifications.md` is a single artifact written in one pass with updated `refinement_count`
