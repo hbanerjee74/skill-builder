@@ -234,6 +234,7 @@ export interface ImportedSkill {
   disk_path: string
   trigger_text: string | null
   imported_at: string
+  is_bundled: boolean
 }
 
 export interface GitHubRepoInfo {

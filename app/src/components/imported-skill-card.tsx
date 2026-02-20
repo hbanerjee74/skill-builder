@@ -72,11 +72,18 @@ export default function ImportedSkillCard({
             aria-label={`Toggle ${skill.skill_name} active`}
           />
         </div>
-        {skill.domain && (
-          <Badge variant="outline" className="w-fit text-xs">
-            {skill.domain}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {skill.domain && (
+            <Badge variant="outline" className="w-fit text-xs">
+              {skill.domain}
+            </Badge>
+          )}
+          {skill.is_bundled && (
+            <Badge variant="secondary" className="w-fit text-xs">
+              Built-in
+            </Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="flex-1">
@@ -105,17 +112,19 @@ export default function ImportedSkillCard({
             <Eye className="size-3" />
             Preview
           </Button>
-          <Button
-            variant={deleteConfirm ? "destructive" : "ghost"}
-            size="icon-xs"
-            className={cn(
-              !deleteConfirm && "text-muted-foreground hover:text-destructive"
-            )}
-            aria-label={deleteConfirm ? "Confirm delete" : "Delete skill"}
-            onClick={handleDelete}
-          >
-            <Trash2 className="size-3" />
-          </Button>
+          {!skill.is_bundled && (
+            <Button
+              variant={deleteConfirm ? "destructive" : "ghost"}
+              size="icon-xs"
+              className={cn(
+                !deleteConfirm && "text-muted-foreground hover:text-destructive"
+              )}
+              aria-label={deleteConfirm ? "Confirm delete" : "Delete skill"}
+              onClick={handleDelete}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">
           {formatRelativeTime(skill.imported_at)}
