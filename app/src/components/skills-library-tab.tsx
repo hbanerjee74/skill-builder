@@ -37,7 +37,7 @@ export function SkillsLibraryTab() {
   const handleUpload = useCallback(async () => {
     const filePath = await open({
       title: "Import Skill Package",
-      filters: [{ name: "Skill Package", extensions: ["skill"] }],
+      filters: [{ name: "Skill Package", extensions: ["skill", "zip"] }],
     })
     if (!filePath) return
 
