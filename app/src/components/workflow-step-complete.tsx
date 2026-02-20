@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, RotateCcw, Loader2 } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
@@ -15,7 +15,6 @@ interface WorkflowStepCompleteProps {
   duration?: number;
   cost?: number;
   onNextStep?: () => void;
-  onResetStep?: () => void;
   onClose?: () => void;
   isLastStep?: boolean;
   reviewMode?: boolean;
@@ -39,7 +38,6 @@ export function WorkflowStepComplete({
   duration,
   cost,
   onNextStep,
-  onResetStep,
   onClose,
   isLastStep = false,
   reviewMode,
@@ -182,12 +180,6 @@ export function WorkflowStepComplete({
         </ScrollArea>
         {!reviewMode && (
           <div className="flex items-center justify-end gap-2 border-t pt-4">
-            {onResetStep && (
-              <Button variant="outline" size="sm" onClick={onResetStep}>
-                <RotateCcw className="size-3.5" />
-                Re-run Step
-              </Button>
-            )}
             {isLastStep ? (
               onClose && (
                 <Button size="sm" onClick={onClose}>
