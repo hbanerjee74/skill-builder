@@ -3,7 +3,7 @@
 #
 # Sources:
 #   - agent-sources/workspace/CLAUDE.md (protocols section)
-#   - bundled-skills/skill-builder-practices/ (content guidelines + best practices)
+#   - agent-sources/workspace/skills/skill-builder-practices/ (content guidelines + best practices)
 # Target: skills/generate-skill/references/
 #
 # The app auto-loads workspace/CLAUDE.md into every agent's system prompt.
@@ -20,7 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE="$ROOT_DIR/agent-sources/workspace/CLAUDE.md"
 REFS_DIR="$ROOT_DIR/skills/generate-skill/references"
-BUNDLED_PRACTICES="$ROOT_DIR/bundled-skills/skill-builder-practices"
+BUNDLED_PRACTICES="$ROOT_DIR/agent-sources/workspace/skills/skill-builder-practices"
 
 CHECK_MODE=false
 if [[ "${1:-}" == "--check" ]]; then

@@ -88,9 +88,10 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
     resolve_prompt_source_dirs(app_handle)
 }
 
-/// Resolve the path to the bundled-skills directory.
-/// In dev mode: repo root `bundled-skills/` (via CARGO_MANIFEST_DIR).
-/// In production: Tauri resource directory `bundled-skills/`.
+/// Resolve the path to the bundled skills directory.
+/// Derived from the workspace source path (skills live alongside CLAUDE.md).
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/workspace/skills/`.
+/// In production: Tauri resource directory `workspace/skills/`.
 pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
 
@@ -99,7 +100,9 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf());
 
-    let dev_path = repo_root.as_ref().map(|r| r.join("bundled-skills"));
+    let dev_path = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("workspace").join("skills"));
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
@@ -107,7 +110,7 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
             let resource = app_handle
                 .path()
                 .resource_dir()
-                .map(|r| r.join("bundled-skills"))
+                .map(|r| r.join("workspace").join("skills"))
                 .unwrap_or_default();
             resource
         }
@@ -286,11 +289,28 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
     if skills.is_empty() {
         return Ok(String::new());
     }
-    let mut section = String::from("\n\n## Imported Skills\n");
-    for skill in &skills {
-        let trigger = skill.trigger_text.as_deref().unwrap_or("");
-        section.push_str(&format!("\n### /{}\n{}\n", skill.skill_name, trigger));
+
+    let mut section = String::new();
+
+    // Bundled skills get a "Skill Generation Guidance" section
+    for skill in skills.iter().filter(|s| s.is_bundled) {
+        let desc = skill.description.as_deref().unwrap_or("");
+        section.push_str(&format!(
+            "\n\n## Skill Generation Guidance\n\n{}\n\nRead the skill at `.claude/skills/{}/SKILL.md` and its reference files.\n",
+            desc, skill.skill_name
+        ));
     }
+
+    // Non-bundled imported skills appear under "Imported Skills"
+    let imported: Vec<_> = skills.iter().filter(|s| !s.is_bundled).collect();
+    if !imported.is_empty() {
+        section.push_str("\n\n## Imported Skills\n");
+        for skill in &imported {
+            let trigger = skill.trigger_text.as_deref().unwrap_or("");
+            section.push_str(&format!("\n### /{}\n{}\n", skill.skill_name, trigger));
+        }
+    }
+
     Ok(section)
 }
 
@@ -366,9 +386,11 @@ pub fn update_skills_section(
         return Err("CLAUDE.md does not exist; run init_workspace first".to_string());
     };
 
-    // Extract base: everything before "## Imported Skills" or "## Customization"
+    // Extract base: everything before the first dynamic section
+    // (Skill Generation Guidance, Imported Skills, or Customization)
     let base_end = content
-        .find("\n## Imported Skills\n")
+        .find("\n## Skill Generation Guidance\n")
+        .or_else(|| content.find("\n## Imported Skills\n"))
         .or_else(|| content.find("\n## Customization\n"))
         .unwrap_or(content.len());
     let base = content[..base_end].trim_end().to_string();

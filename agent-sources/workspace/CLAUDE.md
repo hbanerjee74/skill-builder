@@ -55,10 +55,6 @@ The coordinator provides **context directory** and **skill output directory** pa
 - Write directly to the provided paths
 - Skill output structure: `SKILL.md` at root + `references/` subfolder
 
-## Skill Generation Guidance
-
-Content principles, skill structure rules, quality dimensions, stack conventions, and anti-patterns are maintained in an imported skill. Check the Imported Skills section below for the active skill providing this guidance. Agents generating, validating, or refining skills should read that skill's SKILL.md and reference files.
-
 ## Customization
 
 Add your workspace-specific instructions below. This section is preserved across app updates and skill changes.

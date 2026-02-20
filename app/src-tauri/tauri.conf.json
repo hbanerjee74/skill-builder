@@ -30,7 +30,6 @@
       "../sidecar/dist/": "sidecar/dist",
       "../../agents/": "agents",
       "../../agent-sources/workspace/": "workspace",
-      "../../bundled-skills/": "bundled-skills",
       "resources/node/": "node"
     },
     "icon": [

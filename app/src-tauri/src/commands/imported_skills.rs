@@ -742,25 +742,37 @@ pub(crate) fn seed_bundled_skills(
 
         let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
-        // Copy directory to workspace (always overwrite)
-        let dest_dir = Path::new(workspace_path)
-            .join(".claude")
-            .join("skills")
-            .join(&skill_name);
+        // Check if the skill already exists to preserve is_active
+        let existing = crate::db::get_imported_skill(conn, &skill_name)?;
+        let is_active = existing.as_ref().map_or(true, |s| s.is_active);
 
-        if dest_dir.exists() {
-            fs::remove_dir_all(&dest_dir)
+        // Copy directory to the correct workspace location based on toggle state:
+        //   active  → {workspace}/.claude/skills/{name}/
+        //   inactive → {workspace}/.claude/skills/.inactive/{name}/
+        let skills_base = Path::new(workspace_path).join(".claude").join("skills");
+        let dest_dir = if is_active {
+            skills_base.join(&skill_name)
+        } else {
+            skills_base.join(".inactive").join(&skill_name)
+        };
+
+        // Clean up both possible locations to avoid stale copies
+        let active_path = skills_base.join(&skill_name);
+        let inactive_path = skills_base.join(".inactive").join(&skill_name);
+        if active_path.exists() {
+            fs::remove_dir_all(&active_path)
                 .map_err(|e| format!("Failed to remove existing bundled skill dir: {}", e))?;
         }
+        if inactive_path.exists() {
+            fs::remove_dir_all(&inactive_path)
+                .map_err(|e| format!("Failed to remove existing inactive bundled skill dir: {}", e))?;
+        }
+
         fs::create_dir_all(&dest_dir)
             .map_err(|e| format!("Failed to create bundled skill dir: {}", e))?;
 
         copy_dir_recursive(&entry_path, &dest_dir)
             .map_err(|e| format!("Failed to copy bundled skill '{}': {}", skill_name, e))?;
-
-        // Check if the skill already exists to preserve is_active
-        let existing = crate::db::get_imported_skill(conn, &skill_name)?;
-        let is_active = existing.as_ref().map_or(true, |s| s.is_active);
 
         let skill = crate::types::ImportedSkill {
             skill_id: format!("bundled-{}", skill_name),
@@ -1682,6 +1694,12 @@ type: platform
         assert!(updated.is_bundled);
         // Description should be updated
         assert_eq!(updated.description.as_deref(), Some("Updated"));
+
+        // Verify files copied to .inactive/ (not active path)
+        let active_dest = workspace.path().join(".claude").join("skills").join("test-bundled");
+        let inactive_dest = workspace.path().join(".claude").join("skills").join(".inactive").join("test-bundled");
+        assert!(!active_dest.exists(), "inactive skill should not be in active path");
+        assert!(inactive_dest.join("SKILL.md").exists(), "inactive skill should be in .inactive/ path");
     }
 
     #[test]
