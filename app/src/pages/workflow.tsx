@@ -271,7 +271,10 @@ export default function WorkflowPage() {
     // Must check hydrated too: React StrictMode unmounts/remounts effects,
     // so skillName can match from the first (aborted) run while hydration
     // never completed.
-    if (store.skillName === skillName && store.hydrated) return;
+    if (store.skillName === skillName && store.hydrated) {
+      consumeUpdateMode();
+      return;
+    }
 
     // Clear stale agent data from previous skill so lifecycle effects
     // don't pick up a completed run from another workflow.

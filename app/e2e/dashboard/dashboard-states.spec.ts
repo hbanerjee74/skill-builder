@@ -47,7 +47,7 @@ test.describe("Dashboard States", { tag: "@dashboard" }, () => {
     await expect(page.getByText("Workspace folder not found")).not.toBeVisible();
   });
 
-  test("clicking Continue navigates to workflow page", async ({ page }) => {
+  test("clicking skill card navigates to workflow page", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         get_settings: {
@@ -70,7 +70,7 @@ test.describe("Dashboard States", { tag: "@dashboard" }, () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByText("My Skill").click();
     await expect(page).toHaveURL(/\/skill\/my-skill/);
   });
 

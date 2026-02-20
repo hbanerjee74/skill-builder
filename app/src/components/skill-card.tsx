@@ -10,11 +10,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, MessageSquare, Play, Tag, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Pencil, SquarePen, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -32,6 +31,7 @@ interface SkillCardProps {
   onDelete: (skill: SkillSummary) => void
   onDownload?: (skill: SkillSummary) => void
   onEdit?: (skill: SkillSummary) => void
+  onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
   onPushToRemote?: (skill: SkillSummary) => void
   remoteConfigured?: boolean
@@ -53,7 +53,7 @@ function parseStepProgress(currentStep: string | null, status: string | null): n
 }
 
 /**
- * Returns true only when all 8 workflow steps are complete.
+ * Returns true only when all 7 workflow steps (0-6) are complete.
  * Download should be gated on full completion -- partial progress
  * (e.g. past the Build step) is not enough.
  *
@@ -73,6 +73,52 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
+interface IconActionProps {
+  icon: React.ReactElement
+  label: string
+  tooltip: string
+  onClick: () => void
+  disabled?: boolean
+  className?: string
+}
+
+function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className={cn("text-muted-foreground", className)}
+      disabled={disabled}
+      aria-label={label}
+      tabIndex={disabled ? -1 : undefined}
+      onClick={onClick}
+    >
+      {icon}
+    </Button>
+  )
+
+  // Disabled buttons have pointer-events-none, which prevents Radix
+  // tooltip from receiving hover events. Wrap in a <span> so the
+  // tooltip still fires.
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabled ? (
+          <span className="inline-flex" tabIndex={0}>{button}</span>
+        ) : (
+          button
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function getPushDisabledReason(isGitHubLoggedIn?: boolean, remoteConfigured?: boolean): string | undefined {
+  if (!isGitHubLoggedIn) return "Sign in with GitHub in Settings"
+  if (!remoteConfigured) return "Configure remote repository in Settings"
+  return undefined
+}
 
 export default function SkillCard({
   skill,
@@ -81,6 +127,7 @@ export default function SkillCard({
   onDelete,
   onDownload,
   onEdit,
+  onEditWorkflow,
   onRefine,
   onPushToRemote,
   remoteConfigured,
@@ -88,16 +135,28 @@ export default function SkillCard({
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
   const canDownload = isWorkflowComplete(skill)
+  const pushDisabledReason = getPushDisabledReason(isGitHubLoggedIn, remoteConfigured)
 
   const cardContent = (
-    <Card className={cn("flex flex-col min-w-0 overflow-hidden", isLocked && "opacity-50 pointer-events-none")}>
-      <CardHeader>
+    <Card
+      className={cn(
+        "flex flex-col min-w-0 overflow-hidden transition-colors",
+        isLocked ? "opacity-50 pointer-events-none" : "cursor-pointer hover:border-primary/50",
+      )}
+      onClick={() => !isLocked && onContinue(skill)}
+    >
+      <CardHeader className="relative group/header">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
             {skill.name}
           </CardTitle>
           {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
+        {!isLocked && (
+          <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-1 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100">
+            Click to review
+          </span>
+        )}
         {skill.domain && (
           <Badge variant="outline" className="max-w-full min-w-0 text-xs">
             <span className="truncate">{skill.domain}</span>
@@ -123,26 +182,50 @@ export default function SkillCard({
           <Progress value={progress} className="flex-1" />
           <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
         </div>
-        <div className="flex w-full items-center gap-1.5">
-          <Button size="sm" onClick={() => onContinue(skill)}>
-            <Play className="size-3" />
-            Continue
-          </Button>
-          {canDownload && onRefine && (
-            <Button size="sm" variant="outline" onClick={() => onRefine(skill)}>
-              <MessageSquare className="size-3" />
-              Refine
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="text-muted-foreground hover:text-destructive"
-            aria-label="Delete skill"
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div className="flex w-full items-center gap-3" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-0.5">
+            <IconAction
+              icon={<Pencil className="size-3" />}
+              label="Edit workflow"
+              tooltip="Edit workflow"
+              onClick={() => onEditWorkflow?.(skill)}
+            />
+            {canDownload && onRefine && (
+              <IconAction
+                icon={<MessageSquare className="size-3" />}
+                label="Refine skill"
+                tooltip="Refine"
+                onClick={() => onRefine(skill)}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {canDownload && onPushToRemote && (
+              <IconAction
+                icon={<Upload className="size-3" />}
+                label="Push to remote"
+                tooltip={pushDisabledReason ?? "Push to remote"}
+                disabled={!remoteConfigured || !isGitHubLoggedIn}
+                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
+              />
+            )}
+            {canDownload && onDownload && (
+              <IconAction
+                icon={<Download className="size-3" />}
+                label="Download skill"
+                tooltip="Download .skill"
+                onClick={() => onDownload(skill)}
+              />
+            )}
+          </div>
+          <IconAction
+            icon={<Trash2 className="size-3" />}
+            label="Delete skill"
+            tooltip="Delete"
+            className="ml-auto hover:text-destructive"
             onClick={() => onDelete(skill)}
-          >
-            <Trash2 className="size-3" />
-          </Button>
+          />
         </div>
       </CardFooter>
     </Card>
@@ -166,56 +249,18 @@ export default function SkillCard({
   }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        {cardContent}
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={() => onEdit?.(skill)}>
-          <Tag className="size-4" />
-          Edit
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={!canDownload}
-          onSelect={() => canDownload && onDownload?.(skill)}
-        >
-          <Download className="size-4" />
-          <span className="flex flex-col">
-            <span>Download .skill</span>
-            {!canDownload && (
-              <span className="text-xs text-muted-foreground">
-                Complete all workflow steps to download
-              </span>
-            )}
-          </span>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={!canDownload || !remoteConfigured || !isGitHubLoggedIn}
-          onSelect={() => canDownload && remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
-        >
-          <Upload className="size-4" />
-          <span className="flex flex-col">
-            <span>Push to remote</span>
-            {!canDownload && (
-              <span className="text-xs text-muted-foreground">
-                Complete all workflow steps first
-              </span>
-            )}
-            {canDownload && !isGitHubLoggedIn && (
-              <span className="text-xs text-muted-foreground">
-                Sign in with GitHub in Settings
-              </span>
-            )}
-            {canDownload && isGitHubLoggedIn && !remoteConfigured && (
-              <span className="text-xs text-muted-foreground">
-                Configure remote repository in Settings
-              </span>
-            )}
-          </span>
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <TooltipProvider>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {cardContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => onEdit?.(skill)}>
+            <SquarePen className="size-4" />
+            Edit details
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    </TooltipProvider>
   )
 }
