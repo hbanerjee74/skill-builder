@@ -299,8 +299,8 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
             section.push('\n');
         }
         if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.is_empty()) {
-            section.push_str(trigger);
-            section.push('\n');
+            section.push_str(trigger.trim_end());
+            section.push(' ');
         }
         section.push_str(&format!(
             "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
