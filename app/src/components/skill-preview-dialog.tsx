@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
-import TriggerTextEditor from "@/components/trigger-text-editor"
 
 interface SkillPreviewDialogProps {
   skill: ImportedSkill | null
@@ -28,7 +27,6 @@ export default function SkillPreviewDialog({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const getSkillContent = useImportedSkillsStore((s) => s.getSkillContent)
-  const fetchSkills = useImportedSkillsStore((s) => s.fetchSkills)
 
   useEffect(() => {
     if (!open || !skill) {
@@ -70,8 +68,11 @@ export default function SkillPreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {skill && (
-          <TriggerTextEditor skill={skill} onSaved={fetchSkills} readOnly={skill.is_bundled} />
+        {skill?.trigger_text && (
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-muted-foreground">Trigger</span>
+            <p className="text-sm text-muted-foreground italic">{skill.trigger_text}</p>
+          </div>
         )}
 
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">

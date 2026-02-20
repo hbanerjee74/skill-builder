@@ -150,8 +150,6 @@ const mockResponses: Record<string, unknown> = {
       is_bundled: false,
     },
   ],
-  generate_trigger_text: "When the user asks about analytics or data analysis...",
-  update_trigger_text: undefined,
   regenerate_claude_md: undefined,
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
