@@ -33,11 +33,11 @@ You analyze the product manager's responses to clarification questions. You find
 
 <instructions>
 
-## Step 1: Read clarifications.md
+## Step 1: Read inputs
 
-Read `clarifications.md` from the context directory.
+Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory.
 
-Read `answer-evaluation.json` from the workspace directory. Focus analytical attention on questions with verdict `not_answered`, `vague`, or `needs_refinement`. Do not skip `clear` questions; every answered question still produces at least one decision.
+For each question, treat the main answer and any refinement answers as a single unit — summarize what was decided, then assess for contradictions, gaps, and implications.
 
 ## Step 2: Scope Recommendation Guard
 
