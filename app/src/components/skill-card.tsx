@@ -255,7 +255,7 @@ export default function SkillCard({
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => onEdit?.(skill)}>
             <SquarePen className="size-4" />
-            Rename / Edit details
+            Edit details
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
