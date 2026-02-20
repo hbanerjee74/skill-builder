@@ -110,8 +110,6 @@ D. Other (please specify)
 
 ## Phase 3: Inline Consolidation into clarifications.md
 
-Do NOT spawn a separate `consolidate-research` agent — perform consolidation yourself.
-
 1. Read the current `clarifications.md`.
 2. For each non-clear question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line, using `##### R{n}.{m}:` headings. When inserting sub-agent output, include only the `##### R{n}.{m}:` blocks and their content (heading, body text, choices, recommendation, answer). Discard the preamble lines ("Refinements for Q{n}:", "Follow-up:", "Prior answer:", "Why this matters:") — these are context for the orchestrator, not for the final file.
 3. Deduplicate if overlapping refinements exist across sub-agents.
@@ -132,6 +130,6 @@ Do NOT spawn a separate `consolidate-research` agent — perform consolidation y
 - `answer-evaluation.json` verdicts used directly — no re-triage of answers
 - Refinement sub-agents spawn only for sections with non-clear/needs-refinement questions — sections with all-clear items are skipped
 - Sub-agent follow-up output uses "Follow-up:" opener with prior answer summary (VD-810)
-- No `consolidate-research` spawn — inline consolidation performed by the orchestrator
+
 - Contradictions and critical gaps flagged in `## Needs Clarification`
 - The updated `clarifications.md` is a single artifact written in one pass with updated `refinement_count`
