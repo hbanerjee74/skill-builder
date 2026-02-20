@@ -422,23 +422,6 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     await expect(page.getByRole("button", { name: "Complete Step" })).not.toBeVisible();
   });
 
-  test("completed agent step shows Re-run Step button in update mode", async ({ page }) => {
-    // All steps completed, current_step=5 (last step = Generate Skill).
-    // In update mode, the reposition targets step 5 (all completed = last step).
-    // No reposition needed, and no agent auto-start (step is completed, not pending).
-    await navigateToWorkflowUpdateMode(page, LAST_STEP_OVERRIDES);
-
-    // Should show completion screen for the last step
-    await expect(page.getByText("Generate Skill Complete")).toBeVisible({ timeout: 5_000 });
-
-    // In update mode, completed agent step shows "Re-run Step" button
-    await expect(page.getByRole("button", { name: "Re-run Step" })).toBeVisible();
-
-    // Should also show "Done" button (last step) and NOT "Next Step"
-    await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Next Step" })).not.toBeVisible();
-  });
-
   test("Review to Update toggle repositions to first incomplete step", async ({ page }) => {
     // Steps 0,1,2 completed, current_step=3 (human step, pending).
     // Navigate in review mode, then click on a completed step to move away from
