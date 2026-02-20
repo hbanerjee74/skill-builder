@@ -12,7 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * `research-entities`). Shared agents like `detailed-research` and
  * `confirm-decisions` use the same bare names.
  */
-function resolveStepTemplate(agentName: string | undefined): string | null {
+/** @internal Exported for testing only. */
+export function resolveStepTemplate(agentName: string | undefined): string | null {
   if (!agentName) return null;
 
   // Exact matches first
@@ -60,7 +61,8 @@ function getOutputDir(stepTemplate: string): string {
  *   "The skill output directory (SKILL.md and references/) is: /path/to/output."
  *   "The skill directory is: /path/to/skill."
  */
-function parsePromptPaths(prompt: string): {
+/** @internal Exported for testing only. */
+export function parsePromptPaths(prompt: string): {
   workspaceDir: string | null;
   contextDir: string | null;
   skillOutputDir: string | null;
