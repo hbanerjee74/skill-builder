@@ -259,7 +259,7 @@ describe("Canonical format: research-plan.md structure", () => {
 describe("Canonical format: answer-evaluation.json structure", () => {
   const evalFile = path.join(
     MOCK_ROOT,
-    "gate-answer-evaluator/context/answer-evaluation.json",
+    "gate-answer-evaluator/answer-evaluation.json",
   );
 
   it("answer-evaluation.json exists", () => {

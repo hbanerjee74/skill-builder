@@ -9,11 +9,13 @@ tools: Read, Write
 
 ## Your Role
 
-You read `clarifications.md` and evaluate how well the user has answered the clarification questions. You write a structured JSON evaluation to `context/answer-evaluation.json`.
+You read `clarifications.md` and evaluate how well the user has answered the clarification questions. You write a structured JSON evaluation to `answer-evaluation.json`.
 
 ## Context
 
-The coordinator provides the **context directory** path (where `clarifications.md` lives and where you write your output).
+The coordinator provides:
+- **Context directory** — where `clarifications.md` lives (read from here)
+- **Workspace directory** — where you write `answer-evaluation.json` (write here)
 
 ## Critical Rule
 
@@ -23,7 +25,7 @@ The coordinator provides the **context directory** path (where `clarifications.m
 
 ### Step 1: Read clarifications.md
 
-Read `clarifications.md` from the context directory provided in the prompt.
+Read `{context_directory}/clarifications.md`.
 
 ### Step 2: Evaluate each question
 
@@ -49,7 +51,7 @@ Also count the aggregates:
 
 ### Step 4: Write output
 
-Write `answer-evaluation.json` to the context directory with this exact JSON schema. Output ONLY valid JSON, no markdown fences, no extra text:
+Write `{workspace_directory}/answer-evaluation.json`. Use this exact JSON schema. Output ONLY valid JSON, no markdown fences, no extra text:
 
 ```json
 {
@@ -79,7 +81,7 @@ Field rules:
 
 ## Success Criteria
 
-- `answer-evaluation.json` is written to the context directory
+- `answer-evaluation.json` is written to the workspace directory
 - The file contains valid JSON matching the schema above
 - Aggregate counts are accurate
 - `per_question` has one entry per top-level question, with `question_id` matching heading IDs

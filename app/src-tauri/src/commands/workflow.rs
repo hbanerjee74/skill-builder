@@ -1265,14 +1265,16 @@ pub async fn run_answer_evaluator(
     let context_dir = std::path::Path::new(&skills_path)
         .join(&skill_name)
         .join("context");
+    let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
 
-    // Build prompt with user context inline (same pattern as build_prompt)
+    // Use the same standard context pattern as build_prompt — send workspace and
+    // context directories, let the agent handle file routing.
     let mut prompt = format!(
-        "The context directory is: {dir}. \
-         Read {dir}/clarifications.md, evaluate the user answers, \
-         and write {dir}/answer-evaluation.json. \
+        "The workspace directory is: {workspace}. \
+         The context directory is: {context}. \
          All directories already exist — do not create any directories.",
-        dir = context_dir.display(),
+        workspace = workspace_dir.display(),
+        context = context_dir.display(),
     );
 
     if let Some(ctx) = format_user_context(
