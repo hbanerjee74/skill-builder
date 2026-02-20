@@ -110,6 +110,13 @@ pub fn read_file_as_base64(file_path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn write_base64_to_temp_file(file_name: String, base64_content: String) -> Result<String, String> {
     log::info!("[write_base64_to_temp_file] file_name={}", file_name);
+
+    // Reject path traversal attempts: no separators, no "..", no leading "."
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
+        log::error!("[write_base64_to_temp_file] Rejected path traversal attempt: {}", file_name);
+        return Err("Invalid file name: path traversal not allowed".to_string());
+    }
+
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(&base64_content)
         .map_err(|e| format!("Invalid base64: {e}"))?;
@@ -409,5 +416,24 @@ mod tests {
             write_base64_to_temp_file("bad.txt".to_string(), "!!!not-base64!!!".to_string());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid base64"));
+    }
+
+    #[test]
+    fn test_write_base64_rejects_path_traversal() {
+        let result = write_base64_to_temp_file("../../etc/passwd".into(), "aGVsbG8=".into());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("path traversal"));
+    }
+
+    #[test]
+    fn test_write_base64_rejects_nested_path() {
+        let result = write_base64_to_temp_file("subdir/evil.txt".into(), "aGVsbG8=".into());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_base64_rejects_absolute_path() {
+        let result = write_base64_to_temp_file("/etc/passwd".into(), "aGVsbG8=".into());
+        assert!(result.is_err());
     }
 }
