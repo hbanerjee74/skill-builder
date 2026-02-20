@@ -128,6 +128,14 @@ export default function GitHubImportDialog({
       } else {
         toast.success(`Imported ${imported.length} skill${imported.length !== 1 ? "s" : ""}`)
       }
+
+      // Warn about skills missing a trigger field in SKILL.md frontmatter
+      const skillsWithoutTrigger = imported.filter(s => !s.trigger_text)
+      if (skillsWithoutTrigger.length > 0) {
+        toast.warning(
+          `${skillsWithoutTrigger.length} skill(s) missing trigger in SKILL.md -- they won't appear in agent instructions`
+        )
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("select")
