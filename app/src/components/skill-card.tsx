@@ -67,7 +67,7 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
 }
 
 interface IconActionProps {
-  icon: React.ReactNode
+  icon: JSX.Element
   label: string
   tooltip: string
   onClick: () => void
@@ -75,29 +75,20 @@ interface IconActionProps {
   className?: string
 }
 
-function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
-  const button = (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className={cn("text-muted-foreground", className)}
-      disabled={disabled}
-      aria-label={label}
-      tabIndex={disabled ? -1 : undefined}
-      onClick={onClick}
-    >
-      {icon}
-    </Button>
-  )
-
+function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): JSX.Element {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {disabled ? (
-          <span className="inline-flex" tabIndex={0}>{button}</span>
-        ) : (
-          button
-        )}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={cn("text-muted-foreground", className)}
+          disabled={disabled}
+          aria-label={label}
+          onClick={onClick}
+        >
+          {icon}
+        </Button>
       </TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
@@ -185,13 +176,13 @@ export default function SkillCard({
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {canDownload && onPushToRemote && (
+            {canDownload && (
               <IconAction
                 icon={<Upload className="size-3" />}
                 label="Push to remote"
                 tooltip={pushDisabledReason ?? "Push to remote"}
                 disabled={!remoteConfigured || !isGitHubLoggedIn}
-                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
+                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
               />
             )}
             {canDownload && onDownload && (
