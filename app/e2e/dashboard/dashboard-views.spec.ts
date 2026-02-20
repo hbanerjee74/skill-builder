@@ -341,7 +341,7 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
     await expect(page).toHaveURL("/");
   });
 
-  test("3g: list view shows domain and type badges", async ({ page }) => {
+  test("3g: list view shows domain and type as text", async ({ page }) => {
     const row = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
     await expect(row.getByText("HR", { exact: true })).toBeVisible();
     await expect(row.getByText("Domain", { exact: true })).toBeVisible();

@@ -8,7 +8,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -30,7 +29,7 @@ import {
   getPushDisabledReason,
 } from "@/components/skill-card"
 import type { SkillSummary, SkillType } from "@/lib/types"
-import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
+import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface SkillListRowProps {
@@ -70,7 +69,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_minmax(60px,2fr)_auto_minmax(60px,2fr)_8rem_auto]",
+        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_minmax(60px,2fr)_auto_minmax(60px,2fr)_7rem_auto]",
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
@@ -89,34 +88,20 @@ export default function SkillListRow({
         {skill.name}
       </span>
 
-      {/* Col 2: Domain (2fr — wide) */}
-      <div className="hidden sm:flex min-w-0">
-        {skill.domain && (
-          <Badge variant="outline" className="shrink-0 text-xs max-w-[160px]">
-            <span className="truncate">{skill.domain}</span>
-          </Badge>
-        )}
-      </div>
+      {/* Col 2: Domain (2fr — wide, plain text, truncate at 30ch) */}
+      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground max-w-[30ch]">
+        {skill.domain ?? ""}
+      </span>
 
-      {/* Col 3: Type */}
-      <div className="hidden sm:flex">
-        {skill.skill_type && (
-          <Badge className={cn("shrink-0 text-xs max-w-[120px]", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
-            <span className="truncate">
-              {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
-            </span>
-          </Badge>
-        )}
-      </div>
+      {/* Col 3: Type (plain text) */}
+      <span className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap">
+        {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+      </span>
 
-      {/* Col 4: Tags (2fr — wide) */}
-      <div className="hidden items-center gap-1 sm:flex min-w-0 flex-wrap">
-        {skill.tags?.map((tag) => (
-          <Badge key={tag} variant="secondary" className="shrink-0 text-xs max-w-[100px]">
-            <span className="truncate">{tag}</span>
-          </Badge>
-        ))}
-      </div>
+      {/* Col 4: Tags (2fr — wide, plain text, comma-separated) */}
+      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground">
+        {skill.tags?.join(", ") ?? ""}
+      </span>
 
       {/* Col 5: Progress (hidden on mobile) */}
       <div className="hidden items-center gap-1 sm:flex">
@@ -129,7 +114,6 @@ export default function SkillListRow({
         <span className="text-xs text-muted-foreground">{progress}%</span>
       </div>
 
-      {/* Col 5: Actions */}
       {/* Col 6: Actions (right-aligned) */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
