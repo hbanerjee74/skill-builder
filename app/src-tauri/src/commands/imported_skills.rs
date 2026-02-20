@@ -705,7 +705,7 @@ pub(crate) fn seed_bundled_skills(
 
         // Check if the skill already exists to preserve is_active
         let existing = crate::db::get_imported_skill(conn, &skill_name)?;
-        let is_active = existing.as_ref().map_or(true, |s| s.is_active);
+        let is_active = existing.as_ref().is_none_or(|s| s.is_active);
 
         // Copy directory to the correct workspace location based on toggle state:
         //   active  → {workspace}/.claude/skills/{name}/
