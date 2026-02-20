@@ -674,17 +674,17 @@ pub(crate) fn seed_bundled_skills(
         let is_active = existing.as_ref().map_or(true, |s| s.is_active);
 
         let skill = crate::types::ImportedSkill {
-            skill_id: "bundled-skill-builder-practices".to_string(),
+            skill_id: format!("bundled-{}", skill_name),
             skill_name: skill_name.clone(),
             domain: fm_domain,
             description: fm_description,
             is_active,
             disk_path: dest_dir.to_string_lossy().to_string(),
-            trigger_text: Some(
+            trigger_text: Some(format!(
                 "When working on any skill generation, validation, or refinement task, \
-                 read and follow the skill at `.claude/skills/skill-builder-practices/SKILL.md`."
-                    .to_string(),
-            ),
+                 read and follow the skill at `.claude/skills/{}/SKILL.md`.",
+                skill_name
+            )),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
         };
@@ -1564,7 +1564,7 @@ type: platform
 
         // Pre-insert the skill as deactivated
         let skill = ImportedSkill {
-            skill_id: "bundled-skill-builder-practices".to_string(),
+            skill_id: "bundled-test-bundled".to_string(),
             skill_name: "test-bundled".to_string(),
             domain: None,
             description: None,
