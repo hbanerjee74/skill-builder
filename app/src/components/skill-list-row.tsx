@@ -69,7 +69,8 @@ export default function SkillListRow({
       role="button"
       tabIndex={isLocked ? -1 : 0}
       className={cn(
-        "flex items-center gap-3 rounded-md border px-3 py-2 transition-colors",
+        "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
+        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(120px,1.5fr)_minmax(80px,1fr)_auto_8rem_auto]",
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
@@ -82,30 +83,40 @@ export default function SkillListRow({
         }
       }}
     >
-      {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+      {/* Col 1: Name */}
+      <span className={cn("min-w-0 truncate text-sm font-medium", isLocked && "flex items-center gap-1.5")}>
+        {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
         {skill.name}
       </span>
 
-      {skill.domain && (
-        <Badge variant="outline" className="hidden shrink-0 text-xs sm:inline-flex max-w-[120px]">
-          <span className="truncate">{skill.domain}</span>
-        </Badge>
-      )}
+      {/* Col 2: Domain + Type badges (hidden on mobile, shown at sm) */}
+      <div className="hidden items-center gap-1.5 sm:flex min-w-0">
+        {skill.domain && (
+          <Badge variant="outline" className="shrink-0 text-xs max-w-[120px]">
+            <span className="truncate">{skill.domain}</span>
+          </Badge>
+        )}
+        {skill.skill_type && (
+          <Badge className={cn("shrink-0 text-xs max-w-[120px]", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
+            <span className="truncate">
+              {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
+            </span>
+          </Badge>
+        )}
+      </div>
 
-      {skill.skill_type && (
-        <Badge className={cn("hidden shrink-0 text-xs sm:inline-flex max-w-[120px]", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
-          <span className="truncate">
-            {SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}
-          </span>
-        </Badge>
-      )}
-
-      <div className="flex shrink-0 items-center gap-1">
+      {/* Col 3: Progress (hidden on mobile) */}
+      <div className="hidden items-center gap-1 sm:flex">
         <Progress value={progress} className="w-20" />
         <span className="w-8 text-right text-xs text-muted-foreground">{progress}%</span>
       </div>
 
+      {/* Col 4: Progress on mobile only — compact */}
+      <div className="flex items-center gap-1 sm:hidden">
+        <span className="text-xs text-muted-foreground">{progress}%</span>
+      </div>
+
+      {/* Col 5: Actions */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
         <IconAction

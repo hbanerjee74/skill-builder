@@ -349,6 +349,6 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
 
   test("3h: list view shows progress percentage", async ({ page }) => {
     const completedRow = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
-    await expect(completedRow.getByText("100%")).toBeVisible();
+    await expect(completedRow.getByText("100%").first()).toBeVisible();
   });
 });
