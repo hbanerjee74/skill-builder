@@ -70,7 +70,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_auto_minmax(80px,2fr)_auto_8rem_auto]",
+        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_minmax(60px,2fr)_auto_minmax(60px,2fr)_8rem_auto]",
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
@@ -89,25 +89,16 @@ export default function SkillListRow({
         {skill.name}
       </span>
 
-      {/* Col 2: Domain badge */}
-      <div className="hidden sm:flex">
+      {/* Col 2: Domain (2fr — wide) */}
+      <div className="hidden sm:flex min-w-0">
         {skill.domain && (
-          <Badge variant="outline" className="shrink-0 text-xs max-w-[120px]">
+          <Badge variant="outline" className="shrink-0 text-xs max-w-[160px]">
             <span className="truncate">{skill.domain}</span>
           </Badge>
         )}
       </div>
 
-      {/* Col 3: Tags (widest column — 2fr) */}
-      <div className="hidden items-center gap-1 sm:flex min-w-0 flex-wrap">
-        {skill.tags?.map((tag) => (
-          <Badge key={tag} variant="secondary" className="shrink-0 text-xs max-w-[100px]">
-            <span className="truncate">{tag}</span>
-          </Badge>
-        ))}
-      </div>
-
-      {/* Col 4: Type badge */}
+      {/* Col 3: Type */}
       <div className="hidden sm:flex">
         {skill.skill_type && (
           <Badge className={cn("shrink-0 text-xs max-w-[120px]", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
@@ -118,7 +109,16 @@ export default function SkillListRow({
         )}
       </div>
 
-      {/* Col 3: Progress (hidden on mobile) */}
+      {/* Col 4: Tags (2fr — wide) */}
+      <div className="hidden items-center gap-1 sm:flex min-w-0 flex-wrap">
+        {skill.tags?.map((tag) => (
+          <Badge key={tag} variant="secondary" className="shrink-0 text-xs max-w-[100px]">
+            <span className="truncate">{tag}</span>
+          </Badge>
+        ))}
+      </div>
+
+      {/* Col 5: Progress (hidden on mobile) */}
       <div className="hidden items-center gap-1 sm:flex">
         <Progress value={progress} className="w-20" />
         <span className="w-8 text-right text-xs text-muted-foreground">{progress}%</span>
@@ -130,8 +130,9 @@ export default function SkillListRow({
       </div>
 
       {/* Col 5: Actions */}
+      {/* Col 6: Actions (right-aligned) */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
         <IconAction
           icon={<Pencil className="size-3" />}
           label="Edit workflow"
