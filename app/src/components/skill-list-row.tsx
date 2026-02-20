@@ -69,7 +69,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_minmax(60px,2fr)_auto_minmax(60px,2fr)_7rem_auto]",
+        "grid-cols-[1fr_auto] sm:grid-cols-[14%_22%_10%_22%_7rem_1fr]",
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
