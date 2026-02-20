@@ -303,7 +303,7 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
             section.push('\n');
         }
         section.push_str(&format!(
-            "read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
+            "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
             skill.skill_name
         ));
     }
