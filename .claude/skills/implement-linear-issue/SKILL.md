@@ -59,11 +59,14 @@ Given the issue (or set of child issues), deliver a working implementation that 
 - XS/S estimate + isolated changes → single agent implements directly. See [fast-path.md](references/fast-path.md). Skip team orchestration.
 - M or larger, or multi-component → plan first, then execute in parallel. See [planning-flow.md](references/planning-flow.md) and [agent-team-guidelines.md](references/agent-team-guidelines.md).
 - User can override in either direction.
-- Present the plan to the user before execution begins.
+
+**Plan approval checkpoint:**
+1. Present the plan to the user. Iterate through feedback until the user says to proceed.
+2. When the user approves, **post the approved plan to Linear** as a comment on the issue (via `linear-server:create_comment`) — then start coding. Linear always gets the final agreed plan, never a draft.
 
 **During implementation:**
 - Each coding agent checks off its ACs on Linear after tests pass via `linear-server:update_issue`.
-- Coordinator writes Implementation Updates at checkpoints. See [linear-updates.md](references/linear-updates.md).
+- When the user changes scope or rejects an approach mid-implementation, update the Linear issue description/ACs immediately.
 
 **After every code-changing turn** (during implementation only — formal testing happens in the quality gates):
 - Flag any gaps between implemented changes and the issue's requirements/ACs. If the user agrees to adjustments, update the Linear issue.
@@ -133,7 +136,11 @@ Enter when all pipeline phases pass.
 
 1. Verify all ACs are checked on Linear — for every issue being implemented (parent + children if multi-child). If any missed, spawn a fix agent and re-verify.
 2. Create PR and link to issue(s). See [git-and-pr.md](references/git-and-pr.md). For multi-child: single PR with `Fixes <child-id>` on separate lines for each child issue.
-3. Write final Implementation Updates to Linear — on the parent issue (or each child if multi-child). See [linear-updates.md](references/linear-updates.md).
+3. **Generate implementation notes** from the code (primary) and conversation context (supplemental):
+   - Run `git log --oneline main..HEAD` and `git diff main --stat` to get what actually shipped.
+   - Synthesize into a structured comment: what was implemented, files changed, key decisions made during implementation.
+   - Show the notes to the user for review/edits.
+   - When the user approves, post to Linear as a comment on each issue (via `linear-server:create_comment`).
 4. Move issue(s) to Review via `linear-server:update_issue`. For multi-child: move all children to Review.
 5. Report to user with: PR link, worktree path, recommended test mode (see [test-mode.md](references/test-mode.md)) with launch command, manual test steps from the PR test plan, and relevant E2E tags.
 6. **Do NOT remove the worktree** — user tests manually on it.
