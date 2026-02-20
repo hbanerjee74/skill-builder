@@ -252,12 +252,12 @@ export default function WorkflowPage() {
   // Target step for reset confirmation dialog (when clicking a prior step)
   const [resetTarget, setResetTarget] = useState<number | null>(null);
 
-  // Consume the pendingCreateMode flag set by the create-skill dialog.
+  // Consume the pendingUpdateMode flag set before navigation.
   // If set, switch to update mode so the first step auto-starts.
-  const consumeCreateMode = () => {
+  const consumeUpdateMode = () => {
     const store = useWorkflowStore.getState();
-    if (store.pendingCreateMode) {
-      store.setPendingCreateMode(false);
+    if (store.pendingUpdateMode) {
+      store.setPendingUpdateMode(false);
       store.setReviewMode(false);
     }
   };
@@ -285,19 +285,12 @@ export default function WorkflowPage() {
       .then((state) => {
         if (cancelled) return;
         if (!state.run) {
-          // No saved state — check if we came from the create dialog
-          consumeCreateMode();
           setHydrated(true);
           return;
         }
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
         initWorkflow(skillName, domainName, state.run.skill_type);
-        // Consume create mode after initWorkflow (which resets reviewMode to true).
-        // Handles the race where the persistence effect saves state to SQLite before
-        // getWorkflowState resolves, making a fresh create-flow skill appear as an
-        // existing skill with state.run.
-        consumeCreateMode();
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -318,9 +311,15 @@ export default function WorkflowPage() {
           .catch(() => {}); // Non-fatal
       })
       .catch(() => {
-        // No saved state — check if we came from the create dialog
-        consumeCreateMode();
         setHydrated(true);
+      })
+      .finally(() => {
+        // Consume the pendingUpdateMode flag exactly once, regardless of
+        // which path the async flow took (no saved state, has saved state,
+        // or error). Must run after initWorkflow which resets reviewMode.
+        if (!cancelled) {
+          consumeUpdateMode();
+        }
       });
 
     return () => { cancelled = true; };

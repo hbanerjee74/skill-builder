@@ -418,7 +418,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
   it("shows Start Step button on initial create-flow load (no auto-start)", async () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
     useWorkflowStore.getState().setHydrated(true);
-    useWorkflowStore.getState().setPendingCreateMode(true);
+    useWorkflowStore.getState().setPendingUpdateMode(true);
     useWorkflowStore.getState().setReviewMode(false);
 
     render(<WorkflowPage />);
@@ -1379,10 +1379,10 @@ describe("WorkflowPage — review mode default state", () => {
     expect(vi.mocked(runWorkflowStep)).not.toHaveBeenCalled();
   });
 
-  it("consumeCreateMode works even when getWorkflowState returns saved state", async () => {
-    // Simulate the race: create-flow sets pendingCreateMode, but persistence
+  it("consumeUpdateMode works even when getWorkflowState returns saved state", async () => {
+    // Simulate the race: create-flow sets pendingUpdateMode, but persistence
     // saved state before getWorkflowState resolved, so state.run exists.
-    useWorkflowStore.getState().setPendingCreateMode(true);
+    useWorkflowStore.getState().setPendingUpdateMode(true);
 
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
