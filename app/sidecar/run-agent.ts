@@ -63,7 +63,7 @@ export async function runAgentRequest(
   emitSystemEvent(onMessage, "sdk_ready");
 
   for await (const message of conversation) {
-    if (state.aborted) break;
+    if (state.abortController.signal.aborted) break;
     onMessage(message as Record<string, unknown>);
   }
 }

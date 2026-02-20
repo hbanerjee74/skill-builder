@@ -158,15 +158,18 @@ export class StreamSession {
 
     try {
       for await (const message of conversation) {
-        if (state.aborted) break;
+        if (state.abortController.signal.aborted) break;
 
         const msg = message as Record<string, unknown>;
         onMessage(this.currentRequestId, msg);
 
-        // Detect turn completion: assistant message with stop_reason "end_turn"
+        // Detect turn completion: emit for any non-tool_use stop reason.
+        // This is more robust than checking only "end_turn" since the SDK
+        // may use other stop reasons (e.g., "max_tokens", "stop_sequence").
         if (msg.type === "assistant" && msg.message) {
           const innerMsg = msg.message as Record<string, unknown>;
-          if (innerMsg.stop_reason === "end_turn") {
+          const stopReason = innerMsg.stop_reason as string | undefined;
+          if (stopReason && stopReason !== "tool_use") {
             onMessage(this.currentRequestId, { type: "turn_complete" });
           }
         }
