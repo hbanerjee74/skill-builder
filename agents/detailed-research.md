@@ -91,7 +91,7 @@ Follow the format example below:
 Refinements for Q6:
 
 Follow-up: Revenue recognition timing
-Prior answer: Invoice date is the most common convention for SaaS businesses (auto-filled recommendation).
+Prior answer: Invoice date is the most common convention for SaaS businesses.
 
 Why this matters: The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
 
