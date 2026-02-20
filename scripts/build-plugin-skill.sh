@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Package workspace agent instructions into plugin skill references.
 #
-# Source: agent-sources/workspace/CLAUDE.md
+# Sources:
+#   - agent-sources/workspace/CLAUDE.md (protocols section)
+#   - agent-sources/workspace/skills/skill-builder-practices/ (content guidelines + best practices)
 # Target: skills/generate-skill/references/
 #
 # The app auto-loads workspace/CLAUDE.md into every agent's system prompt.
@@ -18,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE="$ROOT_DIR/agent-sources/workspace/CLAUDE.md"
 REFS_DIR="$ROOT_DIR/skills/generate-skill/references"
+BUNDLED_PRACTICES="$ROOT_DIR/agent-sources/workspace/skills/skill-builder-practices"
 
 CHECK_MODE=false
 if [[ "${1:-}" == "--check" ]]; then
@@ -26,6 +29,11 @@ fi
 
 if [[ ! -f "$SOURCE" ]]; then
     echo "ERROR: Source file not found: $SOURCE"
+    exit 1
+fi
+
+if [[ ! -d "$BUNDLED_PRACTICES" ]]; then
+    echo "ERROR: Bundled practices directory not found: $BUNDLED_PRACTICES"
     exit 1
 fi
 
@@ -39,6 +47,17 @@ extract_sections() {
         capture && /^${end_pattern}/ { exit }
         capture { print }
     " "$SOURCE"
+}
+
+# Trim trailing blank lines and --- separators (macOS-compatible)
+trim_trailing() {
+    awk '
+        { lines[NR] = $0; last = NR }
+        END {
+            while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] == "---")) last--
+            for (i = 1; i <= last; i++) print lines[i]
+        }
+    '
 }
 
 generate_file() {
@@ -60,27 +79,28 @@ generate_file() {
     fi
 }
 
-# Trim trailing blank lines and --- separators (macOS-compatible)
-trim_trailing() {
-    awk '
-        { lines[NR] = $0; last = NR }
-        END {
-            while (last > 0 && (lines[last] ~ /^[[:space:]]*$/ || lines[last] == "---")) last--
-            for (i = 1; i <= last; i++) print lines[i]
-        }
-    '
+check_directory() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local label="$3"
+
+    if $CHECK_MODE; then
+        if [[ -d "$target_dir" ]] && diff -rq "$source_dir" "$target_dir" &>/dev/null; then
+            : # Fresh
+        else
+            echo "STALE: $label"
+            return 1
+        fi
+    else
+        rm -rf "$target_dir"
+        cp -R "$source_dir" "$target_dir"
+        echo "  Copied: $label/"
+    fi
 }
 
-# --- Extract sections ---
+# --- Extract protocols from workspace/CLAUDE.md ---
 
-# protocols.md: ## Protocols → ## Content Principles
-protocols=$(extract_sections "## Protocols" "## Content Principles" | trim_trailing)
-
-# content-guidelines.md: ## Content Principles through ## Output Paths (before ## Skill Best Practices)
-content_guidelines=$(extract_sections "## Content Principles" "## Skill Best Practices" | trim_trailing)
-
-# best-practices.md: ## Skill Best Practices → ## Customization
-best_practices=$(extract_sections "## Skill Best Practices" "## Customization" | trim_trailing)
+protocols=$(extract_sections "## Protocols" "## Output Paths" | trim_trailing)
 
 # --- Write or check ---
 
@@ -91,17 +111,16 @@ fi
 
 stale=0
 generate_file "$REFS_DIR/protocols.md" "$protocols" || stale=$((stale + 1))
-generate_file "$REFS_DIR/content-guidelines.md" "$content_guidelines" || stale=$((stale + 1))
-generate_file "$REFS_DIR/best-practices.md" "$best_practices" || stale=$((stale + 1))
+check_directory "$BUNDLED_PRACTICES" "$REFS_DIR/skill-builder-practices" "skill-builder-practices" || stale=$((stale + 1))
 
 if $CHECK_MODE; then
     if [[ $stale -gt 0 ]]; then
-        echo "ERROR: $stale reference file(s) are stale. Run: scripts/build-plugin-skill.sh"
+        echo "ERROR: $stale reference(s) are stale. Run: scripts/build-plugin-skill.sh"
         exit 1
     else
         echo "All reference files are fresh."
         exit 0
     fi
 else
-    echo "Done — 3 reference files in skills/generate-skill/references/"
+    echo "Done — protocols.md + skill-builder-practices/ in skills/generate-skill/references/"
 fi

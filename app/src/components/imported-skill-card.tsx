@@ -1,5 +1,8 @@
 import { useState } from "react"
-import { Eye, Trash2 } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
+import { save } from "@tauri-apps/plugin-dialog"
+import { toast } from "sonner"
+import { Download, Eye, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
+import { exportSkill } from "@/lib/tauri"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
 import { cn } from "@/lib/utils"
 
@@ -58,6 +62,28 @@ export default function ImportedSkillCard({
     }
   }
 
+  const handleDownload = async () => {
+    const toastId = toast.loading("Exporting skill...")
+    try {
+      const zipPath = await exportSkill(skill.skill_name)
+      const savePath = await save({
+        defaultPath: `${skill.skill_name}.zip`,
+        filters: [{ name: "Zip Archive", extensions: ["zip"] }],
+      })
+      if (savePath) {
+        await invoke("copy_file", { src: zipPath, dest: savePath })
+        toast.success(`Saved to ${savePath}`, { id: toastId })
+      } else {
+        toast.dismiss(toastId)
+      }
+    } catch (err) {
+      toast.error(
+        `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId, duration: Infinity }
+      )
+    }
+  }
+
   return (
     <Card className={cn("flex flex-col", !skill.is_active && "opacity-60")}>
       <CardHeader>
@@ -72,11 +98,18 @@ export default function ImportedSkillCard({
             aria-label={`Toggle ${skill.skill_name} active`}
           />
         </div>
-        {skill.domain && (
-          <Badge variant="outline" className="w-fit text-xs">
-            {skill.domain}
-          </Badge>
-        )}
+        <div className="flex items-center gap-1.5">
+          {skill.domain && (
+            <Badge variant="outline" className="w-fit text-xs">
+              {skill.domain}
+            </Badge>
+          )}
+          {skill.is_bundled && (
+            <Badge variant="secondary" className="w-fit text-xs">
+              Built-in
+            </Badge>
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="flex-1">
@@ -106,16 +139,27 @@ export default function ImportedSkillCard({
             Preview
           </Button>
           <Button
-            variant={deleteConfirm ? "destructive" : "ghost"}
+            variant="ghost"
             size="icon-xs"
-            className={cn(
-              !deleteConfirm && "text-muted-foreground hover:text-destructive"
-            )}
-            aria-label={deleteConfirm ? "Confirm delete" : "Delete skill"}
-            onClick={handleDelete}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Download skill"
+            onClick={handleDownload}
           >
-            <Trash2 className="size-3" />
+            <Download className="size-3" />
           </Button>
+          {!skill.is_bundled && (
+            <Button
+              variant={deleteConfirm ? "destructive" : "ghost"}
+              size="icon-xs"
+              className={cn(
+                !deleteConfirm && "text-muted-foreground hover:text-destructive"
+              )}
+              aria-label={deleteConfirm ? "Confirm delete" : "Delete skill"}
+              onClick={handleDelete}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">
           {formatRelativeTime(skill.imported_at)}

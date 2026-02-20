@@ -135,7 +135,19 @@ echo "=== Skill Reference Files ==="
 REFS_DIR="skills/generate-skill/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
-  for ref in protocols.md content-guidelines.md best-practices.md; do
+  # protocols.md (extracted from workspace/CLAUDE.md)
+  if [ -f "$REFS_DIR/protocols.md" ]; then
+    size=$(wc -c < "$REFS_DIR/protocols.md" | tr -d ' ')
+    if [ "$size" -gt 100 ]; then
+      pass "protocols.md exists ($size bytes)"
+    else
+      fail "protocols.md is too small ($size bytes)"
+    fi
+  else
+    fail "protocols.md missing"
+  fi
+  # skill-builder-practices/ (copied from bundled-skills/)
+  for ref in skill-builder-practices/SKILL.md skill-builder-practices/references/ba-patterns.md skill-builder-practices/references/de-patterns.md; do
     if [ -f "$REFS_DIR/$ref" ]; then
       size=$(wc -c < "$REFS_DIR/$ref" | tr -d ' ')
       if [ "$size" -gt 100 ]; then
@@ -207,17 +219,21 @@ if [ -f "skills/generate-skill/SKILL.md" ]; then
   done
 fi
 
-# ---------- Generate-skill agent: best practices in agent-sources/workspace/CLAUDE.md + references/ in generate-skill agents ----------
+# ---------- Generate-skill agent: best practices in bundled skill + references/ in generate-skill agents ----------
 echo "=== Generate-Skill Agent ==="
-# SKILL.md structure guidance is in agent-sources/workspace/CLAUDE.md (auto-loaded into all agents)
-if [ -f "agent-sources/workspace/CLAUDE.md" ]; then
-  ws_content=$(cat "agent-sources/workspace/CLAUDE.md")
-  if echo "$ws_content" | grep -q "SKILL.md Structure"; then
-    pass "agent-sources/workspace/CLAUDE.md contains SKILL.md structure guidance"
+# SKILL.md structure guidance is in the bundled skill-builder-practices skill (referenced from CLAUDE.md)
+if [ -f "agent-sources/workspace/skills/skill-builder-practices/SKILL.md" ]; then
+  bp_content=$(cat "agent-sources/workspace/skills/skill-builder-practices/SKILL.md")
+  if echo "$bp_content" | grep -q "Skill Structure"; then
+    pass "bundled skill-builder-practices contains SKILL.md structure guidance"
   else
-    fail "agent-sources/workspace/CLAUDE.md missing SKILL.md structure guidance"
+    fail "bundled skill-builder-practices missing SKILL.md structure guidance"
   fi
+else
+  fail "agent-sources/workspace/skills/skill-builder-practices/SKILL.md not found"
 fi
+# CLAUDE.md guidance section is now dynamically generated from DB at runtime,
+# so we only verify the bundled skill file exists (checked above).
 if [ -f "agents/generate-skill.md" ]; then
   build_content=$(cat "agents/generate-skill.md")
   if echo "$build_content" | grep -q "references/"; then

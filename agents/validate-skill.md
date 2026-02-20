@@ -163,6 +163,9 @@ The orchestrator writes three files. Each has a structured format that the app U
 - All Skill Best Practices checks pass (per your system prompt)
 - Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
+- `references/evaluations.md` is present with at least 3 complete evaluation scenarios
+- Decision Architecture skills (Platform, DE) have a Getting Started section
+- No process artifacts, stakeholder questions, or redundant discovery sections in skill output
 
 ### Testing
 - 5 test prompts covering all 6 categories

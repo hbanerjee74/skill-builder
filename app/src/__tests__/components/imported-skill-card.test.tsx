@@ -13,6 +13,7 @@ const baseSkill: ImportedSkill = {
   disk_path: "/skills/sales-analytics",
   trigger_text: null,
   imported_at: new Date().toISOString(),
+  is_bundled: false,
 };
 
 describe("ImportedSkillCard", () => {
@@ -222,5 +223,68 @@ describe("ImportedSkillCard", () => {
 
     const card = container.querySelector("[data-slot='card']");
     expect(card?.className).not.toContain("opacity-60");
+  });
+
+  describe("bundled skills", () => {
+    const bundledSkill: ImportedSkill = {
+      ...baseSkill,
+      skill_id: "bundled-1",
+      skill_name: "skill-builder-practices",
+      is_bundled: true,
+    };
+
+    it("shows Built-in badge for bundled skills", () => {
+      render(
+        <ImportedSkillCard
+          skill={bundledSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.getByText("Built-in")).toBeInTheDocument();
+    });
+
+    it("does not show Built-in badge for non-bundled skills", () => {
+      render(
+        <ImportedSkillCard
+          skill={baseSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.queryByText("Built-in")).not.toBeInTheDocument();
+    });
+
+    it("hides delete button for bundled skills", () => {
+      render(
+        <ImportedSkillCard
+          skill={bundledSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: /Delete skill/i })).not.toBeInTheDocument();
+    });
+
+    it("toggle still works for bundled skills", async () => {
+      const user = userEvent.setup();
+      const onToggleActive = vi.fn();
+      render(
+        <ImportedSkillCard
+          skill={bundledSkill}
+          onToggleActive={onToggleActive}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+
+      const toggle = screen.getByRole("switch");
+      expect(toggle).toBeInTheDocument();
+      await user.click(toggle);
+      expect(onToggleActive).toHaveBeenCalledWith("skill-builder-practices", false);
+    });
   });
 });

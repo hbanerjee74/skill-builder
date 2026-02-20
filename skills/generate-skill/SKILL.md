@@ -241,8 +241,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      <agent-instructions>
      {content of references/protocols.md}
-     {content of references/content-guidelines.md}
-     {content of references/best-practices.md}
+     {content of references/skill-builder-practices/SKILL.md}
+     {content of references/skill-builder-practices/references/ba-patterns.md}
+     {content of references/skill-builder-practices/references/de-patterns.md}
      </agent-instructions>
 
      Plan the skill structure before writing. Verify all decisions are reflected in the output.
@@ -270,8 +271,9 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      <agent-instructions>
      {content of references/protocols.md}
-     {content of references/content-guidelines.md}
-     {content of references/best-practices.md}
+     {content of references/skill-builder-practices/SKILL.md}
+     {content of references/skill-builder-practices/references/ba-patterns.md}
+     {content of references/skill-builder-practices/references/de-patterns.md}
      </agent-instructions>
 
      Validate the skill against best practices and generate test prompts to evaluate coverage.
@@ -325,8 +327,9 @@ Agent instructions are packaged as reference files in `$PLUGIN_ROOT/skills/gener
 | File | Contains | Used by steps |
 |------|----------|---------------|
 | `protocols.md` | Sub-agent spawning rules, output handling | 1, 3, 6, 7 |
-| `content-guidelines.md` | Content Principles, Output Paths | 6, 7 |
-| `best-practices.md` | Skill structure rules, validation checklist, anti-patterns | 6, 7 |
+| `skill-builder-practices/SKILL.md` | Content principles, skill structure, quality dimensions, anti-patterns | 6, 7 |
+| `skill-builder-practices/references/ba-patterns.md` | Domain-to-DE mapping, content depth rules | 6, 7 |
+| `skill-builder-practices/references/de-patterns.md` | Stack conventions, common LLM anti-patterns | 6, 7 |
 
 ## Passing Agent Instructions
 

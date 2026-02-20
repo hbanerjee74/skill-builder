@@ -56,14 +56,6 @@ Triggered when the user provides an existing issue ID with intent to break it do
 2. **Analyze & Propose**: Spawn a `feature-dev:code-explorer` sub-agent to map requirements to affected areas. Split into 2-4 child issues, each ≤ L estimate, with title, requirements subset, ACs, and estimate. Present to user for confirmation.
 3. **Create**: Spawn parallel sub-agents to create each child issue (`assignee: "me"`). Reference the parent issue ID in each child's context. Update the parent issue description to list the child issues.
 
-## Sub-agent Type Selection
+## Sub-agent Delegation
 
-These are `subagent_type` values for the `Task` tool — not MCP tools.
-
-| Task | subagent_type | model |
-|---|---|---|
-| Codebase feasibility | feature-dev:code-explorer | default |
-| Bug investigation (needs git history) | Explore | default |
-| External research | general-purpose | default |
-| Requirements drafting | general-purpose | sonnet |
-| Linear operations | general-purpose | haiku |
+Follows the project's Delegation Policy in CLAUDE.md (model tiers, sub-agent rules, output caps).

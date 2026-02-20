@@ -38,6 +38,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (8,  run_agent_stats_migration),
         (9,  run_intake_migration),
         (10, run_composite_pk_migration),
+        (11, run_bundled_skill_migration),
+        (12, run_drop_trigger_description_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -303,6 +305,59 @@ fn run_composite_pk_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
 
         DROP TABLE agent_runs;
         ALTER TABLE agent_runs_new RENAME TO agent_runs;",
+    )?;
+
+    Ok(())
+}
+
+fn run_bundled_skill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_is_bundled = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "is_bundled"))
+        })
+        .unwrap_or(false);
+
+    if !has_is_bundled {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN is_bundled INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+    Ok(())
+}
+
+/// Drop `trigger_text` and `description` columns from imported_skills.
+/// Skill metadata is now read from SKILL.md frontmatter on disk.
+/// SQLite < 3.35 doesn't support DROP COLUMN, so we recreate the table.
+fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Check if trigger_text column still exists (idempotent)
+    let has_trigger_text = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "trigger_text"))
+        })
+        .unwrap_or(false);
+
+    if !has_trigger_text {
+        return Ok(()); // Already migrated
+    }
+
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS imported_skills_new (
+            skill_id TEXT PRIMARY KEY,
+            skill_name TEXT NOT NULL UNIQUE,
+            domain TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            disk_path TEXT NOT NULL,
+            imported_at TEXT NOT NULL,
+            is_bundled INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO imported_skills_new (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
+            SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled FROM imported_skills;
+        DROP TABLE imported_skills;
+        ALTER TABLE imported_skills_new RENAME TO imported_skills;",
     )?;
 
     Ok(())
@@ -1205,22 +1260,32 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 
 // --- Imported Skills ---
 
+/// Read SKILL.md frontmatter from disk and populate `description` and `trigger_text`
+/// on an ImportedSkill struct. These fields are not stored in the DB.
+pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
+    let skill_md_path = std::path::Path::new(&skill.disk_path).join("SKILL.md");
+    if let Ok(content) = fs::read_to_string(&skill_md_path) {
+        let fm = crate::commands::imported_skills::parse_frontmatter_full(&content);
+        skill.description = fm.description;
+        skill.trigger_text = fm.trigger;
+    }
+}
+
 pub fn insert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
             skill.domain,
-            skill.description,
             skill.is_active as i32,
             skill.disk_path,
-            skill.trigger_text,
             skill.imported_at,
+            skill.is_bundled as i32,
         ],
     )
     .map_err(|e| {
@@ -1233,10 +1298,36 @@ pub fn insert_imported_skill(
     Ok(())
 }
 
+/// Upsert a bundled skill into the database. Uses `INSERT OR REPLACE` keyed on
+/// `skill_name` (via UNIQUE constraint) for idempotent re-seeding on startup.
+/// Preserves `is_active` if the skill already exists.
+pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT(skill_name) DO UPDATE SET
+             skill_id = excluded.skill_id,
+             domain = excluded.domain,
+             disk_path = excluded.disk_path,
+             is_bundled = excluded.is_bundled",
+        rusqlite::params![
+            skill.skill_id,
+            skill.skill_name,
+            skill.domain,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.imported_at,
+            skill.is_bundled as i32,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
              FROM imported_skills ORDER BY imported_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -1247,17 +1338,24 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 skill_id: row.get(0)?,
                 skill_name: row.get(1)?,
                 domain: row.get(2)?,
-                description: row.get(3)?,
-                is_active: row.get::<_, i32>(4)? != 0,
-                disk_path: row.get(5)?,
-                trigger_text: row.get(6)?,
-                imported_at: row.get(7)?,
+                is_active: row.get::<_, i32>(3)? != 0,
+                disk_path: row.get(4)?,
+                imported_at: row.get(5)?,
+                is_bundled: row.get::<_, i32>(6)? != 0,
+                description: None,
+                trigger_text: None,
             })
         })
         .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+    let mut skills: Vec<ImportedSkill> = rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    for skill in &mut skills {
+        hydrate_skill_metadata(skill);
+    }
+
+    Ok(skills)
 }
 
 pub fn update_imported_skill_active(
@@ -1294,7 +1392,7 @@ pub fn get_imported_skill(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
              FROM imported_skills WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1304,44 +1402,31 @@ pub fn get_imported_skill(
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
             domain: row.get(2)?,
-            description: row.get(3)?,
-            is_active: row.get::<_, i32>(4)? != 0,
-            disk_path: row.get(5)?,
-            trigger_text: row.get(6)?,
-            imported_at: row.get(7)?,
+            is_active: row.get::<_, i32>(3)? != 0,
+            disk_path: row.get(4)?,
+            imported_at: row.get(5)?,
+            is_bundled: row.get::<_, i32>(6)? != 0,
+            description: None,
+            trigger_text: None,
         })
     });
 
     match result {
-        Ok(skill) => Ok(Some(skill)),
+        Ok(mut skill) => {
+            hydrate_skill_metadata(&mut skill);
+            Ok(Some(skill))
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
 
-pub fn update_trigger_text(
-    conn: &Connection,
-    skill_name: &str,
-    trigger_text: &str,
-) -> Result<(), String> {
-    let rows = conn
-        .execute(
-            "UPDATE imported_skills SET trigger_text = ?1 WHERE skill_name = ?2",
-            rusqlite::params![trigger_text, skill_name],
-        )
-        .map_err(|e| e.to_string())?;
-    if rows == 0 {
-        return Err(format!("Imported skill '{}' not found", skill_name));
-    }
-    Ok(())
-}
-
-pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
+pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
              FROM imported_skills
-             WHERE is_active = 1 AND trigger_text IS NOT NULL
+             WHERE is_active = 1
              ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -1352,17 +1437,24 @@ pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<Importe
                 skill_id: row.get(0)?,
                 skill_name: row.get(1)?,
                 domain: row.get(2)?,
-                description: row.get(3)?,
-                is_active: row.get::<_, i32>(4)? != 0,
-                disk_path: row.get(5)?,
-                trigger_text: row.get(6)?,
-                imported_at: row.get(7)?,
+                is_active: row.get::<_, i32>(3)? != 0,
+                disk_path: row.get(4)?,
+                imported_at: row.get(5)?,
+                is_bundled: row.get::<_, i32>(6)? != 0,
+                description: None,
+                trigger_text: None,
             })
         })
         .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+    let mut skills: Vec<ImportedSkill> = rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    for skill in &mut skills {
+        hydrate_skill_metadata(skill);
+    }
+
+    Ok(skills)
 }
 
 // --- Skill Locks ---
@@ -1670,6 +1762,7 @@ mod tests {
         run_agent_stats_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
         run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
         conn
     }
 
@@ -2992,79 +3085,67 @@ mod tests {
     }
 
     #[test]
-    fn test_update_trigger_text() {
-        let conn = create_test_db();
-        let skill = ImportedSkill {
-            skill_id: "imp-test-1".to_string(),
-            skill_name: "test-skill".to_string(),
-            domain: Some("analytics".to_string()),
-            description: Some("A test".to_string()),
-            is_active: true,
-            disk_path: "/tmp/test".to_string(),
-            trigger_text: None,
-            imported_at: "2025-01-01 00:00:00".to_string(),
-        };
-        insert_imported_skill(&conn, &skill).unwrap();
-
-        update_trigger_text(&conn, "test-skill", "When the user asks about analytics").unwrap();
-        let found = get_imported_skill(&conn, "test-skill").unwrap().unwrap();
-        assert_eq!(found.trigger_text.as_deref(), Some("When the user asks about analytics"));
+    fn test_drop_trigger_description_migration_is_idempotent() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_drop_trigger_description_migration(&conn).unwrap();
+        // Running again should not error (columns already removed)
+        run_drop_trigger_description_migration(&conn).unwrap();
     }
 
     #[test]
-    fn test_update_trigger_text_not_found() {
-        let conn = create_test_db();
-        let result = update_trigger_text(&conn, "nonexistent", "some text");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not found"));
-    }
-
-    #[test]
-    fn test_list_active_skills_with_triggers() {
+    fn test_list_active_skills() {
         let conn = create_test_db();
 
-        // Skill 1: active with trigger text
+        // Skill 1: active (trigger comes from disk, not DB)
         let skill1 = ImportedSkill {
             skill_id: "imp-1".to_string(),
             skill_name: "active-with-trigger".to_string(),
             domain: None,
-            description: None,
             is_active: true,
             disk_path: "/tmp/s1".to_string(),
-            trigger_text: Some("Trigger for skill 1".to_string()),
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
+            description: None,
+            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
-        // Skill 2: active without trigger text
+        // Skill 2: active
         let skill2 = ImportedSkill {
             skill_id: "imp-2".to_string(),
             skill_name: "active-no-trigger".to_string(),
             domain: None,
-            description: None,
             is_active: true,
             disk_path: "/tmp/s2".to_string(),
-            trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
+            description: None,
+            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
-        // Skill 3: inactive with trigger text
+        // Skill 3: inactive
         let skill3 = ImportedSkill {
             skill_id: "imp-3".to_string(),
             skill_name: "inactive-with-trigger".to_string(),
             domain: None,
-            description: None,
             is_active: false,
             disk_path: "/tmp/s3".to_string(),
-            trigger_text: Some("Trigger for skill 3".to_string()),
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
+            description: None,
+            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
-        let result = list_active_skills_with_triggers(&conn).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].skill_name, "active-with-trigger");
-        assert_eq!(result[0].trigger_text.as_deref(), Some("Trigger for skill 1"));
+        // Only active skills should be returned (inactive filtered out)
+        let result = list_active_skills(&conn).unwrap();
+        assert_eq!(result.len(), 2);
+        // Sorted by skill_name
+        assert_eq!(result[0].skill_name, "active-no-trigger");
+        assert_eq!(result[1].skill_name, "active-with-trigger");
     }
 }

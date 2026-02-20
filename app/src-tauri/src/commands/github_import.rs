@@ -480,10 +480,9 @@ pub(crate) async fn import_single_skill(
         .await
         .map_err(|e| format!("Failed to read SKILL.md content: {}", e))?;
 
-    let (fm_name, fm_description, fm_domain, _fm_type) =
-        super::imported_skills::parse_frontmatter(&skill_md_content);
+    let fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
 
-    let skill_name = fm_name.unwrap_or_else(|| dir_name.to_string());
+    let skill_name = fm.name.unwrap_or_else(|| dir_name.to_string());
 
     if skill_name.is_empty() {
         return Err("Could not determine skill name".to_string());
@@ -580,15 +579,24 @@ pub(crate) async fn import_single_skill(
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
+    if fm.trigger.is_none() {
+        log::warn!(
+            "import_single_skill: skill '{}' has no trigger field in SKILL.md frontmatter",
+            skill_name
+        );
+    }
+
     Ok(ImportedSkill {
         skill_id,
         skill_name,
-        domain: fm_domain,
-        description: fm_description,
+        domain: fm.domain,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
-        trigger_text: None,
         imported_at,
+        is_bundled: false,
+        // Populated from frontmatter for the response, not stored in DB
+        description: fm.description,
+        trigger_text: fm.trigger,
     })
 }
 

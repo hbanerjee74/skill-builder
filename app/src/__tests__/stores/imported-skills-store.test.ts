@@ -13,6 +13,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/sales-analytics",
     trigger_text: null,
     imported_at: "2026-01-15T10:00:00Z",
+    is_bundled: false,
   },
   {
     skill_id: "id-2",
@@ -23,6 +24,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/hr-metrics",
     trigger_text: null,
     imported_at: "2026-01-10T08:00:00Z",
+    is_bundled: false,
   },
 ];
 
@@ -98,6 +100,7 @@ describe("useImportedSkillsStore", () => {
         disk_path: "/skills/new-skill",
         trigger_text: null,
         imported_at: "2026-02-01T12:00:00Z",
+        is_bundled: false,
       };
       mockInvokeCommands({ upload_skill: newSkill });
 

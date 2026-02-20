@@ -45,6 +45,18 @@ Verify SKILL.md uses the correct architectural pattern for the skill type:
 
 Report architectural pattern as CORRECT or MISMATCH with details.
 
+### Bundled Skill Compliance Checks
+
+1. **Process artifacts**: Check that the skill output directory contains ONLY `SKILL.md` and files under `references/`. Flag any process artifact (clarifications.md, decisions.md, research-plan.md, agent-validation-log.md, test-skill.md, companion-skills.md) as CONTAMINATION.
+
+2. **Stakeholder questions**: Scan all skill files for "Questions for your stakeholder", "Open questions", "Pending clarifications", or similar blocks. Each occurrence is a FAIL.
+
+3. **Redundant discovery**: Check that SKILL.md does NOT contain a "When to Use This Skill" section or equivalent ("When to use", "Use cases", "Trigger conditions" as a top-level heading). Trigger conditions must live in the description frontmatter only. Flag as REDUNDANT.
+
+4. **Evaluations**: Check that `references/evaluations.md` exists. If missing, flag as MISSING. If present, verify at least 3 scenarios each with a prompt, expected behavior, and pass criteria. Flag incomplete scenarios as INCOMPLETE.
+
+5. **Getting Started**: For Platform and Data Engineering skills, verify a "Getting Started" section exists in SKILL.md. If missing, flag as MISSING. For Source and Domain skills, verify NO Getting Started section exists. Flag its presence as INCORRECT.
+
 ## Pass 2: Content Quality
 
 Score each section of SKILL.md AND every reference file on the Quality Dimensions provided in the agent instructions. Flag anti-patterns. Return PASS/FAIL per section with improvement suggestions for any FAIL.

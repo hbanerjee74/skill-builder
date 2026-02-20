@@ -88,6 +88,35 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
     resolve_prompt_source_dirs(app_handle)
 }
 
+/// Resolve the path to the bundled skills directory.
+/// Derived from the workspace source path (skills live alongside CLAUDE.md).
+/// In dev mode: `{CARGO_MANIFEST_DIR}/../../agent-sources/workspace/skills/`.
+/// In production: Tauri resource directory `workspace/skills/`.
+pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    let dev_path = repo_root
+        .as_ref()
+        .map(|r| r.join("agent-sources").join("workspace").join("skills"));
+
+    match dev_path {
+        Some(ref p) if p.is_dir() => p.clone(),
+        _ => {
+            let resource = app_handle
+                .path()
+                .resource_dir()
+                .map(|r| r.join("workspace").join("skills"))
+                .unwrap_or_default();
+            resource
+        }
+    }
+}
+
 /// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
 /// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
 /// if not found (caller should check `.is_dir()` / `.is_file()` before using).
@@ -254,26 +283,76 @@ fn extract_customization_section(content: &str) -> String {
     }
 }
 
-/// Generate the "## Imported Skills" section from DB, or empty string if none.
+/// Generate the "## Custom Skills" section from DB, or empty string if none.
+/// All active skills are treated identically regardless of is_bundled.
 fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String> {
-    let skills = crate::db::list_active_skills_with_triggers(conn)?;
+    let skills = crate::db::list_active_skills(conn)?;
     if skills.is_empty() {
         return Ok(String::new());
     }
-    let mut section = String::from("\n\n## Imported Skills\n");
+
+    let mut section = String::from("\n\n## Custom Skills\n");
     for skill in &skills {
-        let trigger = skill.trigger_text.as_deref().unwrap_or("");
-        section.push_str(&format!("\n### /{}\n{}\n", skill.skill_name, trigger));
+        section.push_str(&format!("\n### /{}\n", skill.skill_name));
+        if let Some(desc) = skill.description.as_deref().filter(|d| !d.is_empty()) {
+            section.push_str(desc);
+            section.push('\n');
+        }
+        if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.is_empty()) {
+            section.push_str(trigger);
+            section.push('\n');
+        }
+        section.push_str(&format!(
+            "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
+            skill.skill_name
+        ));
     }
+
     Ok(section)
 }
 
 const DEFAULT_CUSTOMIZATION_SECTION: &str =
     "## Customization\n\nAdd your workspace-specific instructions below. This section is preserved across app updates and skill changes.\n";
 
+/// Merge base + skills + customization and write to workspace CLAUDE.md.
+fn write_claude_md(
+    base: &str,
+    workspace_path: &str,
+    conn: &rusqlite::Connection,
+) -> Result<(), String> {
+    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
+
+    let skills_section = generate_skills_section(conn)?;
+
+    let customization = if claude_md_path.is_file() {
+        let existing = std::fs::read_to_string(&claude_md_path)
+            .map_err(|e| format!("Failed to read existing CLAUDE.md: {}", e))?;
+        let section = extract_customization_section(&existing);
+        if section.is_empty() {
+            DEFAULT_CUSTOMIZATION_SECTION.to_string()
+        } else {
+            section
+        }
+    } else {
+        DEFAULT_CUSTOMIZATION_SECTION.to_string()
+    };
+
+    let mut final_content = base.to_string();
+    final_content.push_str(&skills_section);
+    final_content.push_str("\n\n");
+    final_content.push_str(&customization);
+
+    let claude_dir = Path::new(workspace_path).join(".claude");
+    std::fs::create_dir_all(&claude_dir)
+        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
+    std::fs::write(&claude_md_path, final_content)
+        .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
+    Ok(())
+}
+
 /// Rebuild workspace CLAUDE.md with a three-section merge:
 ///   1. Base (from bundled template — always overwritten)
-///   2. Imported Skills (from DB — regenerated)
+///   2. Custom Skills (from DB — regenerated)
 ///   3. Customization (from existing file — preserved)
 ///
 /// Used by `init_workspace` and `clear_workspace` which have access to
@@ -283,9 +362,6 @@ pub fn rebuild_claude_md(
     workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
-    let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
-
-    // 1. Read bundled base template (strip its own ## Customization marker if present)
     let raw_base = std::fs::read_to_string(bundled_base_path)
         .map_err(|e| format!("Failed to read bundled CLAUDE.md: {}", e))?;
     let base = if let Some(pos) = raw_base.find("\n## Customization\n") {
@@ -293,36 +369,10 @@ pub fn rebuild_claude_md(
     } else {
         raw_base.trim_end().to_string()
     };
-
-    // 2. Generate imported skills section from DB
-    let skills_section = generate_skills_section(conn)?;
-
-    // 3. Extract existing customization from workspace CLAUDE.md
-    let customization = if claude_md_path.is_file() {
-        let existing = std::fs::read_to_string(&claude_md_path)
-            .map_err(|e| format!("Failed to read existing .claude/CLAUDE.md: {}", e))?;
-        let section = extract_customization_section(&existing);
-        if section.is_empty() { DEFAULT_CUSTOMIZATION_SECTION.to_string() } else { section }
-    } else {
-        DEFAULT_CUSTOMIZATION_SECTION.to_string()
-    };
-
-    // 4. Merge: base + skills + customization (consistent \n\n between sections)
-    let mut final_content = base;
-    final_content.push_str(&skills_section);
-    final_content.push_str("\n\n");
-    final_content.push_str(&customization);
-
-    // 5. Write
-    let claude_dir = Path::new(workspace_path).join(".claude");
-    std::fs::create_dir_all(&claude_dir)
-        .map_err(|e| format!("Failed to create .claude dir: {}", e))?;
-    std::fs::write(&claude_md_path, final_content)
-        .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
-    Ok(())
+    write_claude_md(&base, workspace_path, conn)
 }
 
-/// Update only the Imported Skills zone in an existing workspace CLAUDE.md,
+/// Update only the Custom Skills zone in an existing workspace CLAUDE.md,
 /// preserving both the base section above and customization section below.
 ///
 /// Used by skill mutation callers (import, activate, delete, trigger edit)
@@ -332,41 +382,22 @@ pub fn update_skills_section(
     conn: &rusqlite::Connection,
 ) -> Result<(), String> {
     let claude_md_path = Path::new(workspace_path).join(".claude").join("CLAUDE.md");
-
     let content = if claude_md_path.is_file() {
         std::fs::read_to_string(&claude_md_path)
-            .map_err(|e| format!("Failed to read .claude/CLAUDE.md: {}", e))?
+            .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))?
     } else {
         return Err("CLAUDE.md does not exist; run init_workspace first".to_string());
     };
 
-    // Extract base: everything before "## Imported Skills" or "## Customization"
     let base_end = content
-        .find("\n## Imported Skills\n")
+        .find("\n## Custom Skills\n")
+        .or_else(|| content.find("\n## Skill Generation Guidance\n"))
+        .or_else(|| content.find("\n## Imported Skills\n"))
         .or_else(|| content.find("\n## Customization\n"))
         .unwrap_or(content.len());
     let base = content[..base_end].trim_end().to_string();
 
-    // Generate skills section from DB
-    let skills_section = generate_skills_section(conn)?;
-
-    // Extract customization (preserved verbatim)
-    let customization = extract_customization_section(&content);
-    let customization = if customization.is_empty() {
-        DEFAULT_CUSTOMIZATION_SECTION.to_string()
-    } else {
-        customization
-    };
-
-    // Merge: base + skills + customization (consistent \n\n between sections)
-    let mut final_content = base;
-    final_content.push_str(&skills_section);
-    final_content.push_str("\n\n");
-    final_content.push_str(&customization);
-
-    std::fs::write(&claude_md_path, final_content)
-        .map_err(|e| format!("Failed to write .claude/CLAUDE.md: {}", e))?;
-    Ok(())
+    write_claude_md(&base, workspace_path, conn)
 }
 
 /// Copy agent .md files from flat agents/ directory to <workspace>/.claude/agents/.
@@ -3008,6 +3039,146 @@ mod tests {
         assert!(out.contains("**Answer:** R1.1 rec"), "R1.1 should get its recommendation");
         // Q2's empty answer must not be touched by refinement autofill
         assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
+    }
+
+    // --- generate_skills_section tests ---
+
+    /// Helper: create a skill directory with a SKILL.md containing frontmatter.
+    fn create_skill_on_disk(
+        base: &std::path::Path,
+        name: &str,
+        trigger: Option<&str>,
+        description: Option<&str>,
+    ) -> String {
+        let skill_dir = base.join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let mut fm = String::from("---\n");
+        fm.push_str(&format!("name: {}\n", name));
+        if let Some(desc) = description {
+            fm.push_str(&format!("description: {}\n", desc));
+        }
+        if let Some(trig) = trigger {
+            fm.push_str(&format!("trigger: {}\n", trig));
+        }
+        fm.push_str("---\n# Skill\n");
+        std::fs::write(skill_dir.join("SKILL.md"), &fm).unwrap();
+        skill_dir.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn test_generate_skills_section_single_active_skill() {
+        let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "test-practices",
+            Some("Read the skill at .claude/skills/test-practices/SKILL.md."),
+            Some("Skill structure rules."),
+        );
+
+        let skill = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            is_active: true,
+            disk_path,
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            trigger_text: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        assert!(section.contains("## Custom Skills"), "should use unified heading");
+        assert!(section.contains("### /test-practices"), "should list skill by name");
+        assert!(section.contains("Skill structure rules."), "should include description");
+        assert!(section.contains("Read the skill at .claude/skills/test-practices/SKILL.md."), "should include trigger");
+        assert!(!section.contains("## Skill Generation Guidance"), "old bundled heading must not appear");
+        assert!(!section.contains("## Imported Skills"), "old imported heading must not appear");
+    }
+
+    #[test]
+    fn test_generate_skills_section_inactive_skill_excluded() {
+        let conn = super::super::test_utils::create_test_db();
+        let skill = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            is_active: false,
+            disk_path: "/tmp/skills/test-practices".to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            trigger_text: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+        assert!(section.is_empty(), "inactive skill should produce empty section");
+    }
+
+    #[test]
+    fn test_generate_skills_section_multiple_skills_same_format() {
+        let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path1 = create_skill_on_disk(
+            skill_tmp.path(),
+            "test-practices",
+            Some("Use for skill generation."),
+            Some("Skill structure rules."),
+        );
+        let disk_path2 = create_skill_on_disk(
+            skill_tmp.path(),
+            "data-analytics",
+            Some("Use for analytics queries."),
+            Some("Analytics patterns."),
+        );
+
+        let bundled = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            is_active: true,
+            disk_path: disk_path1,
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            trigger_text: None,
+        };
+        let imported = crate::types::ImportedSkill {
+            skill_id: "imp-data-analytics-123".to_string(),
+            skill_name: "data-analytics".to_string(),
+            domain: Some("data".to_string()),
+            is_active: true,
+            disk_path: disk_path2,
+            imported_at: "2025-01-15T10:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            trigger_text: None,
+        };
+        crate::db::insert_imported_skill(&conn, &bundled).unwrap();
+        crate::db::insert_imported_skill(&conn, &imported).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        assert!(section.contains("## Custom Skills"), "unified heading");
+        assert!(section.contains("### /test-practices"), "bundled skill listed");
+        assert!(section.contains("### /data-analytics"), "imported skill listed");
+        assert!(section.contains("Skill structure rules."), "bundled description");
+        assert!(section.contains("Analytics patterns."), "imported description");
+        // Alphabetical order: data-analytics < test-practices
+        let da_pos = section.find("### /data-analytics").unwrap();
+        let tp_pos = section.find("### /test-practices").unwrap();
+        assert!(da_pos < tp_pos, "skills sorted alphabetically");
+    }
+
+    #[test]
+    fn test_generate_skills_section_no_skills() {
+        let conn = super::super::test_utils::create_test_db();
+        let section = generate_skills_section(&conn).unwrap();
+        assert!(section.is_empty(), "no skills should produce empty section");
     }
 
 }

@@ -70,17 +70,9 @@ Run in **parallel** (two `Task` calls in one turn):
 
 Report to user: issue closed, PR merged, worktree and branches removed.
 
-## Sub-agent Type Selection
+## Sub-agent Delegation
 
-These are `subagent_type` values for the `Task` tool — not MCP tools.
-
-| Task | subagent_type | model |
-|---|---|---|
-| Fetch Linear issue | general-purpose | haiku |
-| List worktrees | Bash | default |
-| Rebase + merge | general-purpose | default |
-| Close Linear issue | general-purpose | haiku |
-| Git cleanup | general-purpose | default |
+Follows the project's Delegation Policy in CLAUDE.md (model tiers, sub-agent rules, output caps).
 
 ## Error Recovery
 

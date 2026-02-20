@@ -42,6 +42,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/sales-analytics",
     trigger_text: null,
     imported_at: new Date().toISOString(),
+    is_bundled: false,
   },
   {
     skill_id: "id-2",
@@ -52,6 +53,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/hr-metrics",
     trigger_text: null,
     imported_at: new Date().toISOString(),
+    is_bundled: false,
   },
 ];
 
@@ -155,6 +157,7 @@ describe("SkillsLibraryTab", () => {
       disk_path: "/skills/new-skill",
       trigger_text: null,
       imported_at: new Date().toISOString(),
+      is_bundled: false,
     };
 
     mockInvokeCommands({

@@ -161,13 +161,15 @@ The SKILL.md frontmatter description must follow the trigger pattern provided in
 **All types include these common sections:**
 1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
 2. **Overview** — What the skill covers, who it's for, key concepts
-3. **When to Use This Skill** — Specific trigger conditions (engineer questions, task types)
-4. **Quick Reference** — The most critical facts an engineer needs immediately
+3. **Quick Reference** — The most critical facts an engineer needs immediately
+
+The description already encodes trigger conditions via the trigger pattern — do not repeat them in the body.
 
 **Then add the 6 type-specific sections** from the Type-Specific Structure above.
 
 **For Decision Architecture types (Platform, DE) only:**
-- Include a Decision Dependency Map section immediately after Quick Reference, showing how choosing one option constrains downstream decisions
+- Include a **Getting Started** section immediately after Quick Reference and before the Decision Dependency Map. Write 5-8 ordered steps that walk a first-time user through the decision sequence.
+- Include a Decision Dependency Map section immediately after Getting Started, showing how choosing one option constrains downstream decisions
 - Use the three content tiers (decision structure, resolution criteria, context factors) within each section where applicable
 
 **Finally:**
@@ -184,10 +186,13 @@ Write each reference file from the plan to the `references/` subdirectory in the
 
 **Rewrite mode additionally:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence and consistency with the new SKILL.md structure. Use the existing content as primary source, supplemented by `decisions.md`.
 
+After writing the reference files from the plan, always write `references/evaluations.md`. This file is mandatory for every skill. Write at least 3 evaluation scenarios — concrete test prompts a consumer can run against Claude with this skill active to verify it produces correct output. Scenarios must cover distinct topic areas from the skill. Each scenario: a prompt, expected behavior, and observable pass criteria.
+
 After all files are written, self-review:
 - Re-read `decisions.md` and verify every decision is addressed in at least one file
 - Verify SKILL.md pointers accurately describe each reference file's content and when to read it
 - Fix any gaps, missing cross-references, or stale pointers directly
+- Scan all written files for 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks. Remove them entirely — unanswered questions belong in context/decisions.md, not in skill files.
 
 **Rewrite mode additionally:** Verify that no domain knowledge from the original skill was dropped during the rewrite. Compare the rewritten files against the original content. Flag any substantive knowledge loss.
 
@@ -211,7 +216,7 @@ modified: 2025-06-15
 ---
 ```
 
-Sections: Overview → When to Use → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
+Sections: Overview → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
 
 ### Output Example — Decision Architecture (Platform)
 
@@ -225,7 +230,7 @@ modified: 2025-06-15
 ---
 ```
 
-Sections: Overview → When to Use → Quick Reference → **Decision Dependency Map** → Target Architecture → Materialization Matrix → Incremental Strategy → Platform Constraints → Capacity & Cost → Testing & Deployment → Reference Files
+Sections: Overview → Quick Reference → **Getting Started** → **Decision Dependency Map** → Target Architecture → Materialization Matrix → Incremental Strategy → Platform Constraints → Capacity & Cost → Testing & Deployment → Reference Files
 
 </output_format>
 
@@ -239,4 +244,6 @@ Sections: Overview → When to Use → Quick Reference → **Decision Dependency
 - Type-specific canonical sections are present (6 per type)
 - Annotation budget respected (Source 3-5, Domain 0, Platform 3-5, DE 2-3)
 - Delta principle followed — no content Claude already knows at expert level
+- `references/evaluations.md` exists with at least 3 runnable evaluation scenarios covering distinct topic areas
+- Decision Architecture skills have a Getting Started section with 5-8 ordered steps
 - **Rewrite mode:** All domain knowledge from the original skill is preserved; the result reads as one coherent pass
