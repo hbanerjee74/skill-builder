@@ -6,8 +6,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, MessageSquare, Pencil, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Pencil, SquarePen, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -137,13 +143,18 @@ export default function SkillCard({
       )}
       onClick={() => !isLocked && onContinue(skill)}
     >
-      <CardHeader>
+      <CardHeader className="relative group/header">
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
             {skill.name}
           </CardTitle>
           {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
+        {!isLocked && (
+          <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-1 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100">
+            Click to review
+          </span>
+        )}
         {skill.domain && (
           <Badge variant="outline" className="max-w-full min-w-0 text-xs">
             <span className="truncate">{skill.domain}</span>
@@ -175,8 +186,8 @@ export default function SkillCard({
             <IconAction
               icon={<Pencil className="size-3" />}
               label="Edit skill"
-              tooltip="Edit"
-              onClick={() => onEdit?.(skill)}
+              tooltip="Edit workflow"
+              onClick={() => onContinue(skill)}
             />
             {canDownload && onRefine && (
               <IconAction
@@ -237,7 +248,17 @@ export default function SkillCard({
 
   return (
     <TooltipProvider>
-      {cardContent}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {cardContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => onEdit?.(skill)}>
+            <SquarePen className="size-4" />
+            Rename / Edit details
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     </TooltipProvider>
   )
 }
