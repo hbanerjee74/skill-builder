@@ -37,7 +37,7 @@ Use extended thinking to deeply reason about the question set before writing out
 
 ### Step 1: Understand inputs
 
-The orchestrator passes all sub-agent output as inline text. If an existing `clarifications.md` is present, read it from the context directory — the user's answers are authoritative and must not be changed.
+The orchestrator passes all sub-agent output as inline text.
 
 ### Step 2: Deduplicate and organize
 
@@ -61,10 +61,7 @@ Put these in a `## Needs Clarification` section with clear explanations. Do not 
 
 ### Step 4: Build and write the file
 
-Check whether `clarifications.md` already exists in the context directory:
-
-- **Exists** — read it, preserve all existing questions and answers exactly as-is. Insert new questions as `#### Refinements` blocks under each parent question that has follow-ups. Use IDs like R3.1, R3.2 (parent number as prefix).
-- **New** — number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
+Number questions sequentially (Q1, Q2...). Follow the Clarifications file format in the agent instructions. For consolidated questions, note the source: `_Consolidated from: [sources]_`.
 
 **Always:**
 - Every question must have 2-4 choices in the format `A. Choice text` (lettered with period, no label needed) plus a final "Other (please specify)" choice
@@ -81,7 +78,7 @@ Check whether `clarifications.md` already exists in the context directory:
 - Output reads as a cohesive questionnaire, not a concatenation of source files
 - No two questions resolve the same underlying decision
 - Questions flow logically: broad scoping → specific design → cross-cutting
-- User's existing answers are preserved exactly (refinement round)
+
 - Contradictions surfaced in a dedicated section, not silently resolved
 - Frontmatter accurately reports all counts
 - Every source question is accounted for (kept, consolidated, or eliminated with reason)
