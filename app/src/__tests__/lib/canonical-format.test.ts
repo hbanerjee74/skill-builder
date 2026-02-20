@@ -326,7 +326,7 @@ describe("Canonical format: answer-evaluation.json structure", () => {
     it("per_question entries have question_id and verdict", () => {
       for (const entry of data.per_question) {
         expect(entry.question_id).toMatch(/^Q\d+$/);
-        expect(["clear", "not_answered", "vague"]).toContain(entry.verdict);
+        expect(["clear", "needs_refinement", "not_answered", "vague"]).toContain(entry.verdict);
       }
     });
 
@@ -334,13 +334,16 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       const clear = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "clear",
       ).length;
+      const needsRefinement = data.per_question.filter(
+        (e: { verdict: string }) => e.verdict === "needs_refinement",
+      ).length;
       const notAnswered = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "not_answered",
       ).length;
       const vague = data.per_question.filter(
         (e: { verdict: string }) => e.verdict === "vague",
       ).length;
-      expect(clear).toBe(data.answered_count);
+      expect(clear + needsRefinement).toBe(data.answered_count);
       expect(notAnswered).toBe(data.empty_count);
       expect(vague).toBe(data.vague_count);
     });

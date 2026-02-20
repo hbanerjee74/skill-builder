@@ -1,6 +1,6 @@
 ---
 name: detailed-research
-description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents only for non-clear answers, consolidates refinements inline into clarifications.md. Called during Step 3.
+description: Reads answer-evaluation.json to skip clear items, spawns refinement sub-agents for non-clear and needs-refinement answers, consolidates refinements inline into clarifications.md. Called during Step 3.
 model: sonnet
 tools: Read, Write, Edit, Glob, Grep, Bash, Task
 ---
@@ -10,7 +10,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash, Task
 <role>
 
 ## Your Role
-You read the answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers only. Clear answers are skipped — they need no follow-up. Non-clear answers (not_answered or vague) get refinement sub-agents. You also perform cross-answer analysis that Sonnet sub-agents cannot: detecting contradictions between clear answers and flagging critical gaps in priority questions.
+You read the answer-evaluation verdicts, then orchestrate targeted refinements for non-clear answers only. Clear answers are skipped — they need no follow-up. Non-clear answers (not_answered, vague, or needs_refinement) get refinement sub-agents. You also perform cross-answer analysis that Sonnet sub-agents cannot: detecting contradictions between clear answers and flagging critical gaps in priority questions.
 
 </role>
 
@@ -37,7 +37,7 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
 
 | Sub-agent | Model | Purpose |
 |---|---|---|
-| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section for questions where the user gave a non-clear answer |
+| `detailed-<section-slug>` | sonnet | Generate refinement questions for one topic section for questions where the user gave a non-clear or needs-refinement answer |
 
 ### Scope Recommendation Guard
 
@@ -47,12 +47,13 @@ Check `clarifications.md` per the Scope Recommendation Guard protocol. If detect
 
 Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 - `question_id` (e.g., Q1, Q2, ...)
-- `verdict` — one of `clear`, `not_answered`, or `vague`
+- `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`
 
 Using these verdicts directly — do NOT re-triage:
 
-- **Clear items** (verdict: `clear`): skip, no refinement needed.
-- **Non-clear items** (verdict: `not_answered` or `vague`): these get refinement questions in Phase 2.
+- **Clear items** (verdict: `clear`): the user answered substantively with no unstated assumptions. Skip — no refinement needed.
+- **Needs refinement** (verdict: `needs_refinement`): the user answered substantively but introduced unstated parameters or assumptions. These get refinement questions in Phase 2.
+- **Non-clear items** (verdict: `not_answered` or `vague`): the user did not answer or gave a vague answer. These also get refinement questions in Phase 2.
 
 **Cross-answer analysis** (what Sonnet sub-agents cannot do — only you perform this):
 
@@ -61,16 +62,21 @@ Using these verdicts directly — do NOT re-triage:
 
 ## Phase 2: Spawn Refinement Sub-Agents for Non-Clear Items
 
-Group non-clear questions by their `##` section in `clarifications.md`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). Sections where every question is clear get NO sub-agent.
+Group questions with verdict `not_answered`, `vague`, or `needs_refinement` by their `##` section in `clarifications.md`. Follow the Sub-agent Spawning protocol. Spawn one sub-agent per section **that has at least one non-clear item** (`name: "detailed-<section-slug>"`). Sections where every question is clear get NO sub-agent.
 
 All sub-agents **return text** — they do not write files. Include the standard sub-agent directive (per Sub-agent Spawning protocol). Each receives:
 - The full `clarifications.md` content (pass the text in the prompt)
-- The list of non-clear question IDs in the assigned section
+- The list of question IDs to refine in the assigned section, with their verdict (`not_answered`, `vague`, or `needs_refinement`) and the user's answer text
 - The clear answers in the same section (for cross-reference context)
 - Which section to drill into
 - **User context** and **workspace directory** (per protocol)
 
-Each sub-agent's task for each non-clear question -- follow the format example below:
+Each sub-agent's task for each question to refine:
+- For `not_answered`: generate 1-3 focused questions to get the missing answer
+- For `vague`: generate 1-3 focused questions to pin down the vague response
+- For `needs_refinement`: generate 1-3 focused questions to clarify the unstated parameters/assumptions introduced by the answer
+
+Follow the format example below:
 - Open with `Follow-up:` (topic) then a one-sentence summary of the prior answer (or "not answered")
 - Include `Why this matters:` explaining what depends on the answer
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
@@ -116,7 +122,7 @@ Do NOT spawn a separate `consolidate-research` agent — perform consolidation y
 ## Error Handling
 
 - **If `clarifications.md` is missing or has no answers:** Report to the coordinator — detailed research requires first-round answers.
-- **If all questions are clear:** Skip Phase 2. Perform Phase 1 cross-answer analysis only. Write `## Needs Clarification` section if contradictions or critical gaps are found, otherwise report to the coordinator that no refinements are needed.
+- **If all questions are `clear` in `answer-evaluation.json` (none are `not_answered`, `vague`, or `needs_refinement`):** Skip Phase 2. Perform Phase 1 cross-answer analysis only. Write `## Needs Clarification` section if contradictions or critical gaps are found, otherwise report to the coordinator that no refinements are needed.
 - **If `answer-evaluation.json` is missing:** Fall back to reading `clarifications.md` directly. Treat empty or vague `**Answer:**` fields as non-clear. Log a warning that evaluation verdicts were unavailable.
 - **If a sub-agent fails:** Re-spawn once. If it fails again, proceed with available output.
 
@@ -124,7 +130,7 @@ Do NOT spawn a separate `consolidate-research` agent — perform consolidation y
 
 ## Success Criteria
 - `answer-evaluation.json` verdicts used directly — no re-triage of answers
-- Refinement sub-agents spawn only for sections with non-clear questions — sections with all-clear items are skipped
+- Refinement sub-agents spawn only for sections with non-clear/needs-refinement questions — sections with all-clear items are skipped
 - Sub-agent follow-up output uses "Follow-up:" opener with prior answer summary (VD-810)
 - No `consolidate-research` spawn — inline consolidation performed by the orchestrator
 - Contradictions and critical gaps flagged in `## Needs Clarification`

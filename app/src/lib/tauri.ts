@@ -395,7 +395,7 @@ export const sendRefineMessage = (
 
 export interface PerQuestionVerdict {
   question_id: string;
-  verdict: "clear" | "not_answered" | "vague";
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague";
 }
 
 export interface AnswerEvaluation {

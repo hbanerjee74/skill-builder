@@ -33,13 +33,14 @@ For each question in the file (identified by `### Q{n}:` headings), locate its `
 
 - **Empty** (`not_answered`): no text after the colon (or only whitespace, or the text `(accepted recommendation)`)
 - **Vague** (`vague`): contains only phrases like "not sure", "default is fine", "standard", "TBD", "N/A", or is fewer than 5 words
-- **Answered** (`clear`): has substantive, specific text
+- **Needs refinement** (`needs_refinement`): has substantive, specific text BUT introduces unstated parameters, assumptions, or named values that need pinning down (e.g., custom formulas with unexplained constants, references to undefined terms, business rules that imply unstated conditions)
+- **Answered** (`clear`): has substantive, specific text with no unstated parameters or assumptions that require follow-up
 
 Record a per-question verdict for each `Q{n}` question using its heading ID (e.g., `Q1`, `Q12`). Only evaluate top-level questions (`### Q{n}:`), not refinements (`##### R{n}.{m}:`).
 
 Also count the aggregates:
 - `total_count`: total number of top-level questions found
-- `answered_count`: number classified as `clear`
+- `answered_count`: number classified as `clear` OR `needs_refinement` (both are substantive answers)
 - `empty_count`: number classified as `not_answered`
 - `vague_count`: number classified as `vague`
 
@@ -64,7 +65,7 @@ Write `{workspace_directory}/answer-evaluation.json`. Use this exact JSON schema
   "total_count": 8,
   "reasoning": "6 of 8 questions have detailed answers; 1 is blank and 1 is vague.",
   "per_question": [
-    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q1", "verdict": "needs_refinement" },
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "not_answered" },
     { "question_id": "Q4", "verdict": "vague" },
@@ -79,7 +80,7 @@ Write `{workspace_directory}/answer-evaluation.json`. Use this exact JSON schema
 Field rules:
 - `verdict`: exactly one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: a single sentence explaining the verdict
-- `per_question`: array with one entry per top-level question, in document order. Each entry has `question_id` (the `Q{n}` ID from the heading) and `verdict` (`clear` / `not_answered` / `vague`)
+- `per_question`: array with one entry per top-level question, in document order. Each entry has `question_id` (the `Q{n}` ID from the heading) and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague`)
 
 ## Success Criteria
 

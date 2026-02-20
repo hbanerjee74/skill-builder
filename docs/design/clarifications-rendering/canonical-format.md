@@ -546,7 +546,7 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
   "total_count": 8,
   "reasoning": "All 8 questions have detailed, specific answers.",
   "per_question": [
-    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q1", "verdict": "needs_refinement" },
     { "question_id": "Q2", "verdict": "clear" }
   ]
 }
@@ -562,7 +562,7 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
 | `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
 | `total_count` | integer | yes | Total question count |
 | `reasoning` | string | yes | Single sentence explaining the verdict |
-| `per_question` | array | yes | Array of `{ question_id: string, verdict: string }` objects. Verdict values: `"clear"`, `"not_answered"`, `"vague"` |
+| `per_question` | array | yes | Array of `{ question_id: string, verdict: string }` objects. Verdict values: `"clear"`, `"needs_refinement"`, `"not_answered"`, `"vague"` |
 
 ### Rules
 
