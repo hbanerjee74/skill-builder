@@ -3,6 +3,7 @@ use std::fmt;
 use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use futures::FutureExt;
@@ -282,6 +283,13 @@ pub struct SidecarPool {
     request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
     /// Handle for the background idle cleanup task. Aborted on pool drop.
     idle_cleanup_task: Arc<Mutex<Option<JoinHandle<()>>>>,
+    /// Set to `true` in `shutdown_all` before aborting the idle cleanup task.
+    /// The idle cleanup loop checks this flag to exit gracefully instead of
+    /// being aborted mid-operation, which could orphan child processes.
+    shutdown_initiated: Arc<AtomicBool>,
+    /// Set to `true` at the end of `shutdown_all` after all sidecars are shut down.
+    /// Checked by `RunEvent::Exit` to skip redundant shutdown calls.
+    shutdown_completed: Arc<AtomicBool>,
 }
 
 impl SidecarPool {
@@ -292,6 +300,8 @@ impl SidecarPool {
             pending_requests: Arc::new(Mutex::new(HashMap::new())),
             request_logs: Arc::new(Mutex::new(HashMap::new())),
             idle_cleanup_task: Arc::new(Mutex::new(None)),
+            shutdown_initiated: Arc::new(AtomicBool::new(false)),
+            shutdown_completed: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -324,7 +334,19 @@ impl SidecarPool {
         let idle_timeout = std::time::Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS);
 
         loop {
+            // Check shutdown flag at top of each iteration for graceful exit
+            if self.shutdown_initiated.load(Ordering::SeqCst) {
+                log::debug!("[idle-cleanup] shutdown_initiated flag set, exiting loop");
+                break;
+            }
+
             tokio::time::sleep(std::time::Duration::from_secs(IDLE_CHECK_INTERVAL_SECS)).await;
+
+            // Re-check after sleep in case shutdown was initiated while sleeping
+            if self.shutdown_initiated.load(Ordering::SeqCst) {
+                log::debug!("[idle-cleanup] shutdown_initiated flag set after sleep, exiting loop");
+                break;
+            }
 
             let now = tokio::time::Instant::now();
             let mut idle_skills: Vec<String> = Vec::new();
@@ -356,6 +378,12 @@ impl SidecarPool {
 
             // Phase 2: Shut down idle sidecars (one at a time, releasing pool lock between each)
             for skill_name in &idle_skills {
+                // Check shutdown flag before each Phase 2 operation to avoid
+                // orphaning child processes if shutdown_all is running concurrently
+                if self.shutdown_initiated.load(Ordering::SeqCst) {
+                    log::debug!("[idle-cleanup] shutdown_initiated flag set during Phase 2, exiting loop");
+                    break;
+                }
                 log::info!(
                     "[idle-cleanup] Shutting down idle sidecar for '{}' (inactive for >{}s)",
                     skill_name,
@@ -1507,10 +1535,18 @@ impl SidecarPool {
 
     /// Shutdown a single skill's sidecar. Sends a shutdown message, waits up to 3 seconds,
     /// then kills if necessary.
+    ///
+    /// The pool lock is released immediately after removing the sidecar entry so that
+    /// concurrent `shutdown_skill` calls (via `join_all` in `shutdown_all`) can proceed
+    /// in parallel rather than serializing on the 3-second child.wait().
     pub async fn shutdown_skill(&self, skill_name: &str, app_handle: &tauri::AppHandle) -> Result<(), String> {
-        let mut pool = self.sidecars.lock().await;
+        // Short lock: remove sidecar from the pool so other skills can proceed concurrently
+        let maybe_sidecar = {
+            let mut pool = self.sidecars.lock().await;
+            pool.remove(skill_name)
+        };
 
-        if let Some(mut sidecar) = pool.remove(skill_name) {
+        if let Some(mut sidecar) = maybe_sidecar {
             log::info!(
                 "Shutting down persistent sidecar for '{}' (pid {})",
                 skill_name,
@@ -1560,7 +1596,7 @@ impl SidecarPool {
                 let _ = stdin.flush().await;
             }
 
-            // Wait up to 3 seconds for graceful exit
+            // Wait up to 3 seconds for graceful exit (pool lock NOT held — true parallelism)
             let wait_result = tokio::time::timeout(
                 std::time::Duration::from_secs(3),
                 sidecar.child.wait(),
@@ -1617,8 +1653,14 @@ impl SidecarPool {
     }
 
     /// Shutdown all persistent sidecars. Called on app exit.
+    /// Shuts down all sidecars concurrently using `join_all` so N sidecars
+    /// complete in ~3s (the per-sidecar timeout), well within the 5s budget.
     pub async fn shutdown_all(&self, app_handle: &tauri::AppHandle) {
-        // Abort the idle cleanup task first — no longer needed during shutdown
+        // Signal the idle cleanup loop to exit gracefully before aborting
+        self.shutdown_initiated.store(true, Ordering::SeqCst);
+
+        // Abort the idle cleanup task as a backstop — the loop will likely
+        // exit on its own via the flag check, but abort ensures it doesn't linger.
         {
             let mut guard = self.idle_cleanup_task.lock().await;
             if let Some(task) = guard.take() {
@@ -1632,13 +1674,31 @@ impl SidecarPool {
             pool.keys().cloned().collect()
         };
 
-        for skill_name in skill_names {
-            if let Err(e) = self.shutdown_skill(&skill_name, app_handle).await {
-                log::warn!("Error shutting down sidecar for '{}': {}", skill_name, e);
-            }
-        }
+        // Shut down all sidecars concurrently
+        let futures: Vec<_> = skill_names
+            .iter()
+            .map(|skill_name| {
+                let skill_name = skill_name.clone();
+                let app_handle = app_handle.clone();
+                let pool = self.clone();
+                async move {
+                    if let Err(e) = pool.shutdown_skill(&skill_name, &app_handle).await {
+                        log::warn!("Error shutting down sidecar for '{}': {}", skill_name, e);
+                    }
+                }
+            })
+            .collect();
 
+        futures::future::join_all(futures).await;
+
+        self.shutdown_completed.store(true, Ordering::SeqCst);
         log::info!("All persistent sidecars shut down");
+    }
+
+    /// Returns `true` if `shutdown_all` has already completed successfully.
+    /// Used by `RunEvent::Exit` to skip redundant shutdown calls.
+    pub fn is_shutdown_completed(&self) -> bool {
+        self.shutdown_completed.load(Ordering::SeqCst)
     }
 
     /// Shutdown all sidecars with a timeout. If the graceful shutdown exceeds
@@ -2634,5 +2694,27 @@ mod tests {
             !is_idle("almost-idle-skill", almost_idle_activity, now, idle_timeout, &pending),
             "Sidecar just under the idle timeout should not be identified as idle"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Shutdown flag tests
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_shutdown_flags_lifecycle() {
+        // Both flags start false and transition to true during shutdown_all.
+        // is_shutdown_completed() is the public accessor used by RunEvent::Exit.
+        let pool = SidecarPool::new();
+
+        assert!(!pool.shutdown_initiated.load(Ordering::SeqCst));
+        assert!(!pool.is_shutdown_completed());
+
+        // Simulate shutdown_all: set initiated first, then completed
+        pool.shutdown_initiated.store(true, Ordering::SeqCst);
+        assert!(pool.shutdown_initiated.load(Ordering::SeqCst));
+        assert!(!pool.is_shutdown_completed());
+
+        pool.shutdown_completed.store(true, Ordering::SeqCst);
+        assert!(pool.is_shutdown_completed());
     }
 }

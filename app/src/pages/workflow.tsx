@@ -236,6 +236,25 @@ export default function WorkflowPage() {
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
+  /** Abandon the active agent and switch to a different step (step-switch guard "Leave").
+   *  Unlike handleNavLeave, we do NOT release the skill lock or shut down the sidecar
+   *  because the user is still in the workflow — the next step will reuse both. */
+  const handleStepSwitchLeave = useCallback(() => {
+    const targetStep = pendingStepSwitch;
+    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    if (curSteps[step]?.status === "in_progress") {
+      useWorkflowStore.getState().updateStepStatus(step, "pending");
+    }
+    useWorkflowStore.getState().setRunning(false);
+    useWorkflowStore.getState().setGateLoading(false);
+    useAgentStore.getState().clearRuns();
+
+    endActiveSession();
+
+    setPendingStepSwitch(null);
+    setCurrentStep(targetStep!);
+  }, [pendingStepSwitch, endActiveSession, setCurrentStep]);
+
   // Track whether error state has partial artifacts
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
 
@@ -1192,17 +1211,7 @@ export default function WorkflowPage() {
               <Button variant="outline" onClick={() => setPendingStepSwitch(null)}>
                 Stay
               </Button>
-              <Button variant="destructive" onClick={() => {
-                const targetStep = pendingStepSwitch;
-                const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
-                if (curSteps[step]?.status === "in_progress") {
-                  useWorkflowStore.getState().updateStepStatus(step, "pending");
-                }
-                useWorkflowStore.getState().setRunning(false);
-                useAgentStore.getState().clearRuns();
-                setPendingStepSwitch(null);
-                setCurrentStep(targetStep);
-              }}>
+              <Button variant="destructive" onClick={handleStepSwitchLeave}>
                 Leave
               </Button>
             </DialogFooter>
