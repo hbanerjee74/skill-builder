@@ -45,9 +45,11 @@ Also count the aggregates:
 
 ### Step 3: Determine verdict
 
-- `sufficient`: `empty_count == 0` and `vague_count == 0` and `total_count > 0` — all answers are substantive
-- `mixed`: some answers are substantive but others are empty or vague
-- `insufficient`: `answered_count == 0` (no substantive answers at all)
+Use your judgment based on the overall answer quality:
+
+- `sufficient`: all or nearly all answers are substantive — enough detail to move forward without research
+- `mixed`: a meaningful portion of answers are substantive but notable gaps remain
+- `insufficient`: the user has barely engaged — most questions are unanswered or vague
 
 ### Step 4: Write output
 
