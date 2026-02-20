@@ -8,9 +8,10 @@ import type { ImportedSkill } from "@/lib/types"
 interface TriggerTextEditorProps {
   skill: ImportedSkill
   onSaved?: () => void
+  readOnly?: boolean
 }
 
-export default function TriggerTextEditor({ skill, onSaved }: TriggerTextEditorProps) {
+export default function TriggerTextEditor({ skill, onSaved, readOnly }: TriggerTextEditorProps) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(skill.trigger_text ?? "")
   const [saving, setSaving] = useState(false)
@@ -59,13 +60,15 @@ export default function TriggerTextEditor({ skill, onSaved }: TriggerTextEditorP
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-muted-foreground">Trigger</span>
-          <Button variant="ghost" size="sm" onClick={handleEdit}>
-            <Pencil className="size-3.5" />
-            Edit
-          </Button>
+          {!readOnly && (
+            <Button variant="ghost" size="sm" onClick={handleEdit}>
+              <Pencil className="size-3.5" />
+              Edit
+            </Button>
+          )}
         </div>
         <p className="text-sm text-muted-foreground italic">
-          {text || "No trigger text set. Click Edit to add one."}
+          {text || (readOnly ? "No trigger text" : "No trigger text set. Click Edit to add one.")}
         </p>
       </div>
     )
