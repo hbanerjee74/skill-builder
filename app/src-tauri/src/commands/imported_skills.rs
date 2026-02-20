@@ -19,21 +19,51 @@ pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Parsed YAML frontmatter fields from a SKILL.md file.
+pub(crate) struct Frontmatter {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub domain: Option<String>,
+    pub skill_type: Option<String>,
+    pub trigger: Option<String>,
+}
+
 /// Parse YAML frontmatter from SKILL.md content.
-/// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
+/// Extracts `name`, `description`, `domain`, `skill_type`, and `trigger` fields from YAML between `---` markers.
+/// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
 pub(crate) fn parse_frontmatter(
     content: &str,
 ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+    let fm = parse_frontmatter_full(content);
+    (fm.name, fm.description, fm.domain, fm.skill_type)
+}
+
+/// Parse YAML frontmatter returning all fields including `trigger`.
+pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return (None, None, None, None);
+        return Frontmatter {
+            name: None,
+            description: None,
+            domain: None,
+            skill_type: None,
+            trigger: None,
+        };
     }
 
     // Find the closing ---
     let after_first = &trimmed[3..];
     let end = match after_first.find("\n---") {
         Some(pos) => pos,
-        None => return (None, None, None, None),
+        None => {
+            return Frontmatter {
+                name: None,
+                description: None,
+                domain: None,
+                skill_type: None,
+                trigger: None,
+            }
+        }
     };
 
     let yaml_block = &after_first[..end];
@@ -42,21 +72,80 @@ pub(crate) fn parse_frontmatter(
     let mut description = None;
     let mut domain = None;
     let mut skill_type = None;
+    let mut trigger = None;
+
+    // Track which multi-line field we're accumulating (for `>` folded scalars)
+    let mut current_multiline: Option<&str> = None;
+    let mut multiline_buf = String::new();
 
     for line in yaml_block.lines() {
-        let line = line.trim();
-        if let Some(val) = line.strip_prefix("name:") {
+        let trimmed_line = line.trim();
+
+        // Check if this is a continuation line (indented, part of a multi-line value)
+        if current_multiline.is_some() && (line.starts_with(' ') || line.starts_with('\t')) && !trimmed_line.is_empty() {
+            if !multiline_buf.is_empty() {
+                multiline_buf.push(' ');
+            }
+            multiline_buf.push_str(trimmed_line);
+            continue;
+        }
+
+        // Flush any accumulated multi-line value
+        if let Some(field) = current_multiline.take() {
+            let val = multiline_buf.trim().to_string();
+            if !val.is_empty() {
+                match field {
+                    "description" => description = Some(val),
+                    "trigger" => trigger = Some(val),
+                    _ => {}
+                }
+            }
+            multiline_buf.clear();
+        }
+
+        // Parse new field
+        if let Some(val) = trimmed_line.strip_prefix("name:") {
             name = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
-        } else if let Some(val) = line.strip_prefix("description:") {
-            description = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
-        } else if let Some(val) = line.strip_prefix("domain:") {
+        } else if let Some(val) = trimmed_line.strip_prefix("description:") {
+            let val = val.trim();
+            if val == ">" || val == "|" {
+                current_multiline = Some("description");
+            } else {
+                description = Some(val.trim_matches('"').trim_matches('\'').to_string());
+            }
+        } else if let Some(val) = trimmed_line.strip_prefix("domain:") {
             domain = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
-        } else if let Some(val) = line.strip_prefix("type:") {
+        } else if let Some(val) = trimmed_line.strip_prefix("type:") {
             skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = trimmed_line.strip_prefix("trigger:") {
+            let val = val.trim();
+            if val == ">" || val == "|" {
+                current_multiline = Some("trigger");
+            } else {
+                trigger = Some(val.trim_matches('"').trim_matches('\'').to_string());
+            }
         }
     }
 
-    (name, description, domain, skill_type)
+    // Flush any trailing multi-line value
+    if let Some(field) = current_multiline {
+        let val = multiline_buf.trim().to_string();
+        if !val.is_empty() {
+            match field {
+                "description" => description = Some(val),
+                "trigger" => trigger = Some(val),
+                _ => {}
+            }
+        }
+    }
+
+    Frontmatter {
+        name,
+        description,
+        domain,
+        skill_type,
+        trigger,
+    }
 }
 
 /// Derive a skill name from a zip filename by removing the extension
@@ -649,9 +738,9 @@ pub(crate) fn seed_bundled_skills(
         // Read and parse SKILL.md frontmatter
         let content = fs::read_to_string(&skill_md_path)
             .map_err(|e| format!("Failed to read {}: {}", skill_md_path.display(), e))?;
-        let (fm_name, fm_description, fm_domain, _fm_type) = parse_frontmatter(&content);
+        let fm = parse_frontmatter_full(&content);
 
-        let skill_name = fm_name.unwrap_or_else(|| dir_name.clone());
+        let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
         // Copy directory to workspace (always overwrite)
         let dest_dir = Path::new(workspace_path)
@@ -676,15 +765,14 @@ pub(crate) fn seed_bundled_skills(
         let skill = crate::types::ImportedSkill {
             skill_id: format!("bundled-{}", skill_name),
             skill_name: skill_name.clone(),
-            domain: fm_domain,
-            description: fm_description,
+            domain: fm.domain,
+            description: fm.description,
             is_active,
             disk_path: dest_dir.to_string_lossy().to_string(),
-            trigger_text: Some(format!(
-                "When working on any skill generation, validation, or refinement task, \
-                 read and follow the skill at `.claude/skills/{}/SKILL.md`.",
+            trigger_text: fm.trigger.or_else(|| Some(format!(
+                "Read and follow the skill at `.claude/skills/{}/SKILL.md`.",
                 skill_name
-            )),
+            ))),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
         };
