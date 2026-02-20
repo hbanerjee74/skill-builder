@@ -24,20 +24,31 @@ When the user expands or changes scope during the conversation, update the Linea
 ## Setup (do these steps exactly)
 
 1. Fetch the issue via `linear-server:get_issue`. Get: ID, title, description, requirements, acceptance criteria, estimate, branchName, **status**.
-2. **Guard on status:**
+2. **Check for child issues:** Fetch children via `linear-server:list_issues` with `parentId` set to this issue's ID. If children exist:
+   - Present the child issues (ID, title, status, estimate) to the user.
+   - Ask: implement all children together in a single worktree, or just the parent?
+   - If the user chooses **all children together**:
+     - Use the **parent issue's branchName** for the worktree.
+     - Collect requirements and ACs from all child issues (fetch each via `linear-server:get_issue`).
+     - Apply status guards (step 3) to the parent and each included child — assign to me, move to In Progress.
+     - During planning, present a unified plan covering all children. Map each work stream to its source child issue.
+     - During implementation, check off ACs on each child's Linear issue as they're completed.
+     - During completion, create a **single PR** with `Fixes <child-id>` on separate lines for each child (see `git-and-pr.md`). Move all children to Review.
+   - If the user chooses **parent only**, proceed normally with just the parent issue.
+3. **Guard on status:**
    - **Done / Cancelled / Duplicate** → Stop and tell the user. Do not proceed.
    - **Todo** → Assign to me + move to In Progress via `linear-server:update_issue` (`assignee: "me"`, `state: "In Progress"`).
    - **In Progress** → Already active. Skip status change (assign to me if unassigned). Resume work.
    - **In Review** → Move back to In Progress via `linear-server:update_issue`. Resume work — likely addressing review feedback or continuing the pipeline.
-3. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue. Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
+4. **Create a git worktree** at `../worktrees/<branchName>` using the `branchName` from the issue (or parent's branchName if implementing children together). Reuse if it already exists. All subsequent sub-agents work in this worktree path, NOT the main repo.
 
 ## Objectives
 
-Given the issue, deliver a working implementation that satisfies all acceptance criteria, passes tests, and is ready for human review. How you get there depends on the issue. Plan your approach based on the issue's complexity and constraints, then track these outcomes:
+Given the issue (or set of child issues), deliver a working implementation that satisfies all acceptance criteria, passes tests, and is ready for human review. How you get there depends on the issue's complexity and constraints. Track these outcomes:
 
-- Issue assigned and worktree ready
+- Issue(s) assigned and worktree ready
 - Plan approved by user (if full flow)
-- All ACs implemented and checked off on Linear
+- All ACs implemented and checked off on Linear (each child issue separately if multi-child)
 - Tests passing
 - Code simplified and clean
 - Code review passed
@@ -120,10 +131,10 @@ Run E2E tests tagged for the changed areas. This is the last gate — it catches
 
 Enter when all pipeline phases pass.
 
-1. Verify all ACs are checked on Linear. If any missed, spawn a fix agent and re-verify.
-2. Create PR and link to issue. See [git-and-pr.md](references/git-and-pr.md).
-3. Write final Implementation Updates to Linear. See [linear-updates.md](references/linear-updates.md).
-4. Move issue to Review via `linear-server:update_issue`.
+1. Verify all ACs are checked on Linear — for every issue being implemented (parent + children if multi-child). If any missed, spawn a fix agent and re-verify.
+2. Create PR and link to issue(s). See [git-and-pr.md](references/git-and-pr.md). For multi-child: single PR with `Fixes <child-id>` on separate lines for each child issue.
+3. Write final Implementation Updates to Linear — on the parent issue (or each child if multi-child). See [linear-updates.md](references/linear-updates.md).
+4. Move issue(s) to Review via `linear-server:update_issue`. For multi-child: move all children to Review.
 5. Report to user with: PR link, worktree path, recommended test mode (see [test-mode.md](references/test-mode.md)) with launch command, manual test steps from the PR test plan, and relevant E2E tags.
 6. **Do NOT remove the worktree** — user tests manually on it.
 
