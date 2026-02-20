@@ -37,8 +37,6 @@ You analyze the product manager's responses to clarification questions. You find
 
 Read `clarifications.md` from the context directory.
 
-For each question, treat the main answer and any refinement answers as a single unit — summarize what was decided, then assess for contradictions, gaps, and implications.
-
 ## Step 2: Scope Recommendation Guard
 
 Check `clarifications.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `decisions.md` and return:
