@@ -1,5 +1,8 @@
 import { useState } from "react"
-import { Eye, Trash2 } from "lucide-react"
+import { invoke } from "@tauri-apps/api/core"
+import { save } from "@tauri-apps/plugin-dialog"
+import { toast } from "sonner"
+import { Download, Eye, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
+import { exportSkill } from "@/lib/tauri"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
 import { cn } from "@/lib/utils"
 
@@ -55,6 +59,28 @@ export default function ImportedSkillCard({
       setDeleteConfirm(true)
       // Auto-reset after 3 seconds
       setTimeout(() => setDeleteConfirm(false), 3000)
+    }
+  }
+
+  const handleDownload = async () => {
+    const toastId = toast.loading("Exporting skill...")
+    try {
+      const zipPath = await exportSkill(skill.skill_name)
+      const savePath = await save({
+        defaultPath: `${skill.skill_name}.zip`,
+        filters: [{ name: "Zip Archive", extensions: ["zip"] }],
+      })
+      if (savePath) {
+        await invoke("copy_file", { src: zipPath, dest: savePath })
+        toast.success(`Saved to ${savePath}`, { id: toastId })
+      } else {
+        toast.dismiss(toastId)
+      }
+    } catch (err) {
+      toast.error(
+        `Export failed: ${err instanceof Error ? err.message : String(err)}`,
+        { id: toastId, duration: Infinity }
+      )
     }
   }
 
@@ -111,6 +137,15 @@ export default function ImportedSkillCard({
           >
             <Eye className="size-3" />
             Preview
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Download skill"
+            onClick={handleDownload}
+          >
+            <Download className="size-3" />
           </Button>
           {!skill.is_bundled && (
             <Button

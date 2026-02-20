@@ -322,6 +322,11 @@ export const getUsageByModel = (hideCancelled: boolean = false) =>
 export const resetUsage = () =>
   invoke<void>("reset_usage");
 
+// --- Imported Skills ---
+
+export const exportSkill = (skillName: string) =>
+  invoke<string>("export_skill", { skillName });
+
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>

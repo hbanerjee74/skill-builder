@@ -130,6 +130,7 @@ const mockResponses: Record<string, unknown> = {
   },
   toggle_skill_active: undefined,
   delete_imported_skill: undefined,
+  export_skill: "/tmp/test-skill.zip",
   get_skill_content: "# Test Skill\n\nThis is a test skill.\n\n## Instructions\n\nFollow these steps...",
   // GitHub import
   parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
