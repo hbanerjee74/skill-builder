@@ -53,6 +53,7 @@ import {
   autofillRefinements,
   logGateDecision,
   type AnswerEvaluation,
+  type PerQuestionVerdict,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
 
@@ -266,6 +267,7 @@ export default function WorkflowPage() {
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
   const [gateTotalCount, setGateTotalCount] = useState(0);
   const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
+  const [gatePerQuestion, setGatePerQuestion] = useState<PerQuestionVerdict[]>([]);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const gateAgentIdRef = useRef<string | null>(null);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
@@ -753,6 +755,7 @@ export default function WorkflowPage() {
       setGateVerdict(evaluation.verdict);
       setGateTotalCount(evaluation.total_count);
       setGateUnansweredCount(unanswered);
+      setGatePerQuestion(evaluation.per_question ?? []);
       setShowGateDialog(true);
     } catch (err) {
       console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
@@ -1307,6 +1310,7 @@ export default function WorkflowPage() {
         verdict={gateVerdict}
         totalCount={gateTotalCount}
         unansweredCount={gateUnansweredCount}
+        perQuestion={gatePerQuestion}
         context={gateContext}
         onSkip={handleGateSkip}
         onResearch={handleGateResearch}
