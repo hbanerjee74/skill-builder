@@ -3058,4 +3058,111 @@ mod tests {
         assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
     }
 
+    // --- generate_skills_section tests ---
+
+    #[test]
+    fn test_generate_skills_section_bundled_active() {
+        let conn = super::super::test_utils::create_test_db();
+
+        // Insert an active bundled skill
+        let skill = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            description: Some("Skill structure rules and content principles for generating skills.".to_string()),
+            is_active: true,
+            disk_path: "/tmp/skills/test-practices".to_string(),
+            trigger_text: Some("Read the skill at .claude/skills/test-practices/SKILL.md".to_string()),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        // Should have Skill Generation Guidance section
+        assert!(section.contains("## Skill Generation Guidance"), "should contain guidance heading");
+        assert!(section.contains("Skill structure rules and content principles"), "should contain description");
+        assert!(section.contains(".claude/skills/test-practices/SKILL.md"), "should contain path");
+        // Should NOT have Imported Skills section (only bundled skill, no regular imports)
+        assert!(!section.contains("## Imported Skills"), "bundled skills should not appear under Imported Skills");
+    }
+
+    #[test]
+    fn test_generate_skills_section_bundled_inactive() {
+        let conn = super::super::test_utils::create_test_db();
+
+        // Insert an inactive bundled skill
+        let skill = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            description: Some("Skill structure rules.".to_string()),
+            is_active: false,
+            disk_path: "/tmp/skills/test-practices".to_string(),
+            trigger_text: Some("Read the skill".to_string()),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        // Should be empty — inactive skill produces no section
+        assert!(section.is_empty(), "inactive bundled skill should produce empty section");
+        assert!(!section.contains("Skill Generation Guidance"), "should not contain guidance when inactive");
+    }
+
+    #[test]
+    fn test_generate_skills_section_mixed_bundled_and_imported() {
+        let conn = super::super::test_utils::create_test_db();
+
+        // Active bundled skill
+        let bundled = crate::types::ImportedSkill {
+            skill_id: "bundled-test-practices".to_string(),
+            skill_name: "test-practices".to_string(),
+            domain: Some("skill-builder".to_string()),
+            description: Some("Skill structure rules.".to_string()),
+            is_active: true,
+            disk_path: "/tmp/skills/test-practices".to_string(),
+            trigger_text: Some("Read the skill".to_string()),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+        };
+        crate::db::insert_imported_skill(&conn, &bundled).unwrap();
+
+        // Active user-imported skill
+        let imported = crate::types::ImportedSkill {
+            skill_id: "imp-analytics-123".to_string(),
+            skill_name: "data-analytics".to_string(),
+            domain: Some("data".to_string()),
+            description: Some("Analytics patterns.".to_string()),
+            is_active: true,
+            disk_path: "/tmp/skills/data-analytics".to_string(),
+            trigger_text: Some("When the user asks about analytics...".to_string()),
+            imported_at: "2025-01-15T10:00:00Z".to_string(),
+            is_bundled: false,
+        };
+        crate::db::insert_imported_skill(&conn, &imported).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        // Should have BOTH sections
+        assert!(section.contains("## Skill Generation Guidance"), "should have guidance section");
+        assert!(section.contains("## Imported Skills"), "should have imported skills section");
+        assert!(section.contains("### /data-analytics"), "should list imported skill");
+        assert!(section.contains("When the user asks about analytics"), "should have trigger text");
+        // Guidance should come BEFORE Imported Skills
+        let guidance_pos = section.find("## Skill Generation Guidance").unwrap();
+        let imported_pos = section.find("## Imported Skills").unwrap();
+        assert!(guidance_pos < imported_pos, "guidance should come before imported skills");
+    }
+
+    #[test]
+    fn test_generate_skills_section_no_skills() {
+        let conn = super::super::test_utils::create_test_db();
+        let section = generate_skills_section(&conn).unwrap();
+        assert!(section.is_empty(), "no skills should produce empty section");
+    }
+
 }
