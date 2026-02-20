@@ -2927,4 +2927,87 @@ mod tests {
         assert!(!out.ends_with('\n'));
     }
 
+    // --- autofill with ### Required / ### Optional sub-headings ---
+
+    #[test]
+    fn test_autofill_with_required_optional_subheadings() {
+        // ### Required and ### Optional are H3 sub-headings that reset
+        // recommendation state (starts_with("### ")). Verify autofill
+        // still works correctly — each question gets its own recommendation.
+        let input = "\
+## Section 1: Core Concepts\n\
+\n\
+### Required\n\
+\n\
+### Q1: Primary Use Case\n\
+**Recommendation:** Focus on common workflow patterns.\n\
+**Answer:**\n\
+\n\
+### Optional\n\
+\n\
+### Q2: Target Expertise Level\n\
+**Recommendation:** Intermediate level.\n\
+**Answer:**\n\
+\n\
+### Q3: Greenfield vs Brownfield\n\
+**Recommendation:** Both with emphasis on greenfield.\n\
+**Answer:** Greenfield only.\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 2, "Q1 and Q2 should be filled, Q3 already answered");
+        assert!(out.contains("**Answer:** Focus on common workflow patterns."), "Q1 should get its recommendation");
+        assert!(out.contains("**Answer:** Intermediate level."), "Q2 should get its recommendation");
+        assert!(out.contains("**Answer:** Greenfield only."), "Q3 should keep its answer");
+    }
+
+    #[test]
+    fn test_autofill_required_subheading_resets_recommendation() {
+        // ### Required resets recommendation state. A question after
+        // ### Required with no recommendation should NOT get a previous
+        // question's recommendation.
+        let input = "\
+## Section 1\n\
+\n\
+### Q1: First\n\
+**Recommendation:** Use Redis\n\
+**Answer:** Done\n\
+\n\
+### Required\n\
+\n\
+### Q2: Second\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0, "Q2 has no recommendation — ### Required reset prevents bleed from Q1");
+        assert!(out.contains("### Q2: Second\n**Answer:**\n"), "Q2 should remain empty");
+    }
+
+    #[test]
+    fn test_autofill_refinement_with_required_optional_subheadings() {
+        // Verify refinement autofill works within the Required/Optional structure.
+        let input = "\
+## Section 1\n\
+\n\
+### Required\n\
+\n\
+### Q1: Question\n\
+**Recommendation:** Q1 rec\n\
+**Answer:** Q1 answer\n\
+\n\
+#### Refinements\n\
+\n\
+##### R1.1: Follow-up\n\
+**Recommendation:** R1.1 rec\n\
+**Answer:**\n\
+\n\
+### Optional\n\
+\n\
+### Q2: Question\n\
+**Recommendation:** Q2 rec\n\
+**Answer:**\n";
+        let (out, count) = super::autofill_refinement_answers(input);
+        assert_eq!(count, 1, "Only R1.1 should be filled");
+        assert!(out.contains("**Answer:** R1.1 rec"), "R1.1 should get its recommendation");
+        // Q2's empty answer must not be touched by refinement autofill
+        assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
+    }
+
 }
