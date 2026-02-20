@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TransitionGateDialog } from "@/components/transition-gate-dialog";
+import type { PerQuestionVerdict } from "@/lib/tauri";
 
 const defaultProps = {
   open: true,
@@ -169,6 +170,75 @@ describe("TransitionGateDialog", () => {
         <TransitionGateDialog {...defaultProps} verdict="insufficient" isAutofilling={true} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Skip/i })).toBeDisabled();
+    });
+  });
+
+  describe("per-question breakdown", () => {
+    const perQuestion: PerQuestionVerdict[] = [
+      { question_id: "Q1", verdict: "clear" },
+      { question_id: "Q2", verdict: "not_answered" },
+      { question_id: "Q3", verdict: "vague" },
+      { question_id: "Q4", verdict: "not_answered" },
+      { question_id: "Q5", verdict: "clear" },
+      { question_id: "Q6", verdict: "vague" },
+    ];
+
+    it("shows unanswered and vague IDs for mixed verdict", () => {
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={perQuestion} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).toHaveTextContent("Unanswered: Q2, Q4");
+      expect(breakdown).toHaveTextContent("Vague: Q3, Q6");
+    });
+
+    it("shows unanswered and vague IDs for insufficient verdict", () => {
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" perQuestion={perQuestion} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).toHaveTextContent("Unanswered: Q2, Q4");
+      expect(breakdown).toHaveTextContent("Vague: Q3, Q6");
+    });
+
+    it("does not show breakdown for sufficient verdict", () => {
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="sufficient" perQuestion={perQuestion} />
+      );
+      expect(screen.queryByTestId("question-breakdown")).not.toBeInTheDocument();
+    });
+
+    it("does not show breakdown when perQuestion is empty", () => {
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={[]} />
+      );
+      expect(screen.queryByTestId("question-breakdown")).not.toBeInTheDocument();
+    });
+
+    it("shows only unanswered when no vague questions", () => {
+      const onlyUnanswered: PerQuestionVerdict[] = [
+        { question_id: "Q1", verdict: "not_answered" },
+        { question_id: "Q2", verdict: "clear" },
+      ];
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={onlyUnanswered} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).toHaveTextContent("Unanswered: Q1");
+      expect(breakdown).not.toHaveTextContent("Vague:");
+    });
+
+    it("shows only vague when no unanswered questions", () => {
+      const onlyVague: PerQuestionVerdict[] = [
+        { question_id: "Q1", verdict: "vague" },
+        { question_id: "Q2", verdict: "clear" },
+      ];
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={onlyVague} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).not.toHaveTextContent("Unanswered:");
+      expect(breakdown).toHaveTextContent("Vague: Q1");
     });
   });
 });
