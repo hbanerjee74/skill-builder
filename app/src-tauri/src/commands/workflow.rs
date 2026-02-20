@@ -294,12 +294,12 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
     let mut section = String::from("\n\n## Custom Skills\n");
     for skill in &skills {
         section.push_str(&format!("\n### /{}\n", skill.skill_name));
-        if let Some(desc) = skill.description.as_deref().filter(|d| !d.trim().is_empty()) {
-            section.push_str(desc.trim());
+        if let Some(desc) = skill.description.as_deref().filter(|d| !d.is_empty()) {
+            section.push_str(desc);
             section.push('\n');
         }
-        if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.trim().is_empty()) {
-            section.push_str(trigger.trim());
+        if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.is_empty()) {
+            section.push_str(trigger);
             section.push('\n');
         }
         section.push_str(&format!(
