@@ -34,9 +34,11 @@ export function buildQueryOptions(
     // Include the full Claude Code system prompt so the model knows how to
     // use tools (Read, Write, Bash, Skill, etc.) and follows CC conventions.
     systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
-    // Load project settings (skill discovery, CLAUDE.md) and user settings
-    // (MCP servers from ~/.claude/settings.json).
-    settingSources: ['project' as const, 'user' as const],
+    // Load project settings (skill discovery, CLAUDE.md) from {cwd}/.claude/.
+    // 'user' is intentionally excluded — it causes the SDK to scan
+    // ~/.claude/skills/ (wasted reads) and the sidecar can't use the
+    // user's MCP servers anyway (those are CLI-process-only).
+    settingSources: ['project' as const],
     cwd: config.cwd,
     allowedTools: config.allowedTools,
     maxTurns: config.maxTurns ?? 50,
