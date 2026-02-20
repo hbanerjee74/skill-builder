@@ -6,15 +6,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, MessageSquare, Play, Tag, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Pencil, Trash2, Upload } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -89,8 +82,20 @@ export default function SkillCard({
   const progress = parseStepProgress(skill.current_step, skill.status)
   const canDownload = isWorkflowComplete(skill)
 
+  const pushDisabledReason = !isGitHubLoggedIn
+    ? "Sign in with GitHub in Settings"
+    : !remoteConfigured
+      ? "Configure remote repository in Settings"
+      : undefined
+
   const cardContent = (
-    <Card className={cn("flex flex-col min-w-0 overflow-hidden", isLocked && "opacity-50 pointer-events-none")}>
+    <Card
+      className={cn(
+        "flex flex-col min-w-0 overflow-hidden transition-colors",
+        isLocked ? "opacity-50 pointer-events-none" : "cursor-pointer hover:border-primary/50",
+      )}
+      onClick={() => !isLocked && onContinue(skill)}
+    >
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="min-w-0 truncate text-base">
@@ -123,26 +128,89 @@ export default function SkillCard({
           <Progress value={progress} className="flex-1" />
           <span className="shrink-0 text-xs text-muted-foreground">{progress}%</span>
         </div>
-        <div className="flex w-full items-center gap-1.5">
-          <Button size="sm" onClick={() => onContinue(skill)}>
-            <Play className="size-3" />
-            Continue
-          </Button>
-          {canDownload && onRefine && (
-            <Button size="sm" variant="outline" onClick={() => onRefine(skill)}>
-              <MessageSquare className="size-3" />
-              Refine
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="text-muted-foreground hover:text-destructive"
-            aria-label="Delete skill"
-            onClick={() => onDelete(skill)}
-          >
-            <Trash2 className="size-3" />
-          </Button>
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <div className="flex w-full items-center gap-3" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground"
+                  aria-label="Edit skill"
+                  onClick={() => onEdit?.(skill)}
+                >
+                  <Pencil className="size-3" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Edit</TooltipContent>
+            </Tooltip>
+            {canDownload && onRefine && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground"
+                    aria-label="Refine skill"
+                    onClick={() => onRefine(skill)}
+                  >
+                    <MessageSquare className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Refine</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5">
+            {canDownload && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground"
+                    disabled={!remoteConfigured || !isGitHubLoggedIn}
+                    aria-label="Push to remote"
+                    onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
+                  >
+                    <Upload className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{pushDisabledReason ?? "Push to remote"}</TooltipContent>
+              </Tooltip>
+            )}
+            {canDownload && onDownload && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground"
+                    aria-label="Download skill"
+                    onClick={() => onDownload(skill)}
+                  >
+                    <Download className="size-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Download .skill</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="ml-auto text-muted-foreground hover:text-destructive"
+                aria-label="Delete skill"
+                onClick={() => onDelete(skill)}
+              >
+                <Trash2 className="size-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Delete</TooltipContent>
+          </Tooltip>
         </div>
       </CardFooter>
     </Card>
@@ -166,56 +234,8 @@ export default function SkillCard({
   }
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        {cardContent}
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onSelect={() => onEdit?.(skill)}>
-          <Tag className="size-4" />
-          Edit
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={!canDownload}
-          onSelect={() => canDownload && onDownload?.(skill)}
-        >
-          <Download className="size-4" />
-          <span className="flex flex-col">
-            <span>Download .skill</span>
-            {!canDownload && (
-              <span className="text-xs text-muted-foreground">
-                Complete all workflow steps to download
-              </span>
-            )}
-          </span>
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          disabled={!canDownload || !remoteConfigured || !isGitHubLoggedIn}
-          onSelect={() => canDownload && remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
-        >
-          <Upload className="size-4" />
-          <span className="flex flex-col">
-            <span>Push to remote</span>
-            {!canDownload && (
-              <span className="text-xs text-muted-foreground">
-                Complete all workflow steps first
-              </span>
-            )}
-            {canDownload && !isGitHubLoggedIn && (
-              <span className="text-xs text-muted-foreground">
-                Sign in with GitHub in Settings
-              </span>
-            )}
-            {canDownload && isGitHubLoggedIn && !remoteConfigured && (
-              <span className="text-xs text-muted-foreground">
-                Configure remote repository in Settings
-              </span>
-            )}
-          </span>
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    <TooltipProvider>
+      {cardContent}
+    </TooltipProvider>
   )
 }

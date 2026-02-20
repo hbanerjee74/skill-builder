@@ -17,6 +17,12 @@ const baseSkill: SkillSummary = {
   intake_json: null,
 };
 
+const completedSkill: SkillSummary = {
+  ...baseSkill,
+  current_step: "Step 6",
+  status: "completed",
+};
+
 describe("SkillCard", () => {
   it("renders skill name", () => {
     render(
@@ -37,7 +43,6 @@ describe("SkillCard", () => {
     render(
       <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
     );
-    // Only status badge should exist, not a domain badge
     expect(screen.queryByText("sales")).not.toBeInTheDocument();
   });
 
@@ -65,14 +70,14 @@ describe("SkillCard", () => {
     expect(screen.getByText("0%")).toBeInTheDocument();
   });
 
-  it("calls onContinue with skill when Continue is clicked", async () => {
+  it("calls onContinue when the card is clicked", async () => {
     const user = userEvent.setup();
     const onContinue = vi.fn();
     render(
       <SkillCard skill={baseSkill} onContinue={onContinue} onDelete={vi.fn()} />
     );
 
-    await user.click(screen.getByRole("button", { name: /Continue/i }));
+    await user.click(screen.getByText("sales-pipeline"));
     expect(onContinue).toHaveBeenCalledWith(baseSkill);
   });
 
@@ -88,13 +93,78 @@ describe("SkillCard", () => {
     expect(onDelete).toHaveBeenCalledWith(baseSkill);
   });
 
-  it("renders Continue button", () => {
+  it("does not trigger onContinue when an icon button is clicked", async () => {
+    const user = userEvent.setup();
+    const onContinue = vi.fn();
+    const onDelete = vi.fn();
     render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
+      <SkillCard skill={baseSkill} onContinue={onContinue} onDelete={onDelete} />
     );
-    expect(
-      screen.getByRole("button", { name: /Continue/i })
-    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Delete skill/i }));
+    expect(onDelete).toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
+  });
+
+  it("always shows Edit icon button", () => {
+    render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} />
+    );
+    expect(screen.getByRole("button", { name: /Edit skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Refine icon only when workflow is complete", () => {
+    const { rerender } = render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onRefine={vi.fn()} />
+    );
+    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
+
+    rerender(
+      <SkillCard skill={completedSkill} onContinue={vi.fn()} onDelete={vi.fn()} onRefine={vi.fn()} />
+    );
+    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Download icon only when workflow is complete", () => {
+    const { rerender } = render(
+      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onDownload={vi.fn()} />
+    );
+    expect(screen.queryByRole("button", { name: /Download skill/i })).not.toBeInTheDocument();
+
+    rerender(
+      <SkillCard skill={completedSkill} onContinue={vi.fn()} onDelete={vi.fn()} onDownload={vi.fn()} />
+    );
+    expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Push to remote disabled when GitHub not configured", () => {
+    render(
+      <SkillCard
+        skill={completedSkill}
+        onContinue={vi.fn()}
+        onDelete={vi.fn()}
+        onPushToRemote={vi.fn()}
+        isGitHubLoggedIn={false}
+        remoteConfigured={false}
+      />
+    );
+    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
+    expect(pushButton).toBeDisabled();
+  });
+
+  it("shows Push to remote enabled when GitHub is configured", () => {
+    render(
+      <SkillCard
+        skill={completedSkill}
+        onContinue={vi.fn()}
+        onDelete={vi.fn()}
+        onPushToRemote={vi.fn()}
+        isGitHubLoggedIn={true}
+        remoteConfigured={true}
+      />
+    );
+    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
+    expect(pushButton).not.toBeDisabled();
   });
 
   it("renders tag badges when tags are present", () => {
