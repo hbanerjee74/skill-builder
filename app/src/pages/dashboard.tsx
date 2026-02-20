@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
@@ -57,7 +57,7 @@ export default function DashboardPage() {
   const remoteConfigured = !!(remoteRepoOwner && remoteRepoName)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
-  const [viewModeInitialized, setViewModeInitialized] = useState(false)
+  const viewModeInitialized = useRef(false)
   const lockedSkills = useSkillStore((s) => s.lockedSkills)
   const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
   const existingSkillNames = skills.map((s) => s.name)
@@ -129,21 +129,17 @@ export default function DashboardPage() {
   }, [refreshLocks])
 
   // Initialize view mode from saved preference or auto-select based on skill count.
-  // Waits until skills have actually been fetched (skills.length > 0 or savedViewMode set).
+  // Runs once after loading completes. If no saved preference and no skills, stays on "grid".
   useEffect(() => {
-    if (loading || viewModeInitialized) return
+    if (loading || viewModeInitialized.current) return
     if (savedViewMode !== null) {
-      // Saved preference — restore immediately, don't wait for skills
-      setViewModeInitialized(true)
+      viewModeInitialized.current = true
       setViewMode(savedViewMode)
     } else if (skills.length > 0) {
-      // No saved preference — auto-select based on skill count once loaded
-      setViewModeInitialized(true)
+      viewModeInitialized.current = true
       setViewMode(skills.length >= 10 ? "list" : "grid")
     }
-    // If skills.length === 0 and no saved preference, stay on default ("grid")
-    // and don't mark initialized — the toggle+filter bar won't show anyway
-  }, [loading, viewModeInitialized, savedViewMode, skills.length])
+  }, [loading, savedViewMode, skills.length])
 
   const handleViewModeChange = useCallback(async (mode: ViewMode) => {
     setViewMode(mode)
@@ -243,6 +239,123 @@ export default function DashboardPage() {
     }
   }, [])
 
+  function sharedSkillProps(skill: SkillSummary) {
+    return {
+      skill,
+      isLocked: lockedSkills.has(skill.name),
+      onContinue: handleContinue,
+      onDelete: setDeleteTarget,
+      onDownload: handleDownload,
+      onEdit: setEditTarget,
+      onEditWorkflow: handleEditWorkflow,
+      onRefine: handleRefine,
+      onPushToRemote: handlePushToRemote,
+      remoteConfigured,
+      isGitHubLoggedIn: isLoggedIn,
+    }
+  }
+
+  function renderSkillContent(): React.ReactNode {
+    if (loading) {
+      if (viewMode === "list") {
+        return (
+          <div className="flex flex-col gap-1">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="flex items-center gap-3 rounded-md border px-3 py-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-5 w-20 rounded-full" />
+                <Skeleton className="h-2 w-24" />
+                <div className="ml-auto flex gap-1">
+                  <Skeleton className="size-6 rounded-md" />
+                  <Skeleton className="size-6 rounded-md" />
+                  <Skeleton className="size-6 rounded-md" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
+      return (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-2 w-full" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-20" />
+                  <Skeleton className="h-8 w-16" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )
+    }
+
+    if (skills.length === 0) {
+      return (
+        <Card>
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
+              <FolderOpen className="size-6 text-muted-foreground" />
+            </div>
+            <CardTitle>No skills yet</CardTitle>
+            <CardDescription>
+              Create your first skill to get started.
+            </CardDescription>
+          </CardHeader>
+          {workspacePath && skillsPath && (
+            <CardContent className="flex justify-center">
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" />
+                New Skill
+              </Button>
+            </CardContent>
+          )}
+        </Card>
+      )
+    }
+
+    if (filteredSkills.length === 0 && isFiltering) {
+      return (
+        <Card>
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
+              <Search className="size-6 text-muted-foreground" />
+            </div>
+            <CardTitle>No matching skills</CardTitle>
+            <CardDescription>
+              Try a different search term or clear your filters.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )
+    }
+
+    if (viewMode === "list") {
+      return (
+        <div className="flex flex-col gap-1">
+          {filteredSkills.map((skill) => (
+            <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
+          ))}
+        </div>
+      )
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {filteredSkills.map((skill) => (
+          <SkillCard key={skill.name} {...sharedSkillProps(skill)} />
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6 p-6">
       {workspacePath && skillsPath && (
@@ -341,113 +454,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {loading ? (
-        viewMode === "list" ? (
-          <div className="flex flex-col gap-1">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-md border px-3 py-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-2 w-24" />
-                <div className="ml-auto flex gap-1">
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-5 w-32" />
-                  <Skeleton className="h-4 w-24" />
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Skeleton className="h-2 w-full" />
-                  <div className="flex gap-2">
-                    <Skeleton className="h-8 w-20" />
-                    <Skeleton className="h-8 w-16" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )
-      ) : skills.length === 0 ? (
-        <Card>
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
-              <FolderOpen className="size-6 text-muted-foreground" />
-            </div>
-            <CardTitle>No skills yet</CardTitle>
-            <CardDescription>
-              Create your first skill to get started.
-            </CardDescription>
-          </CardHeader>
-          {workspacePath && skillsPath && (
-            <CardContent className="flex justify-center">
-              <Button onClick={() => setCreateOpen(true)}>
-                <Plus className="size-4" />
-                New Skill
-              </Button>
-            </CardContent>
-          )}
-        </Card>
-      ) : filteredSkills.length === 0 && isFiltering ? (
-        <Card>
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
-              <Search className="size-6 text-muted-foreground" />
-            </div>
-            <CardTitle>No matching skills</CardTitle>
-            <CardDescription>
-              Try a different search term or clear your filters.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      ) : viewMode === "list" ? (
-        <div className="flex flex-col gap-1">
-          {filteredSkills.map((skill) => (
-            <SkillListRow
-              key={skill.name}
-              skill={skill}
-              isLocked={lockedSkills.has(skill.name)}
-              onContinue={handleContinue}
-              onDelete={setDeleteTarget}
-              onDownload={handleDownload}
-              onEdit={setEditTarget}
-              onEditWorkflow={handleEditWorkflow}
-              onRefine={handleRefine}
-              onPushToRemote={handlePushToRemote}
-              remoteConfigured={remoteConfigured}
-              isGitHubLoggedIn={isLoggedIn}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredSkills.map((skill) => (
-            <SkillCard
-              key={skill.name}
-              skill={skill}
-              isLocked={lockedSkills.has(skill.name)}
-              onContinue={handleContinue}
-              onDelete={setDeleteTarget}
-              onDownload={handleDownload}
-              onEdit={setEditTarget}
-              onEditWorkflow={handleEditWorkflow}
-              onRefine={handleRefine}
-              onPushToRemote={handlePushToRemote}
-              remoteConfigured={remoteConfigured}
-              isGitHubLoggedIn={isLoggedIn}
-            />
-          ))}
-        </div>
-      )}
+      {renderSkillContent()}
 
       {workspacePath && (
         <SkillDialog

@@ -1,14 +1,3 @@
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  TooltipProvider,
-} from "@/components/ui/tooltip"
 import {
   Download,
   Lock,
@@ -19,21 +8,30 @@ import {
   Trash2,
   Upload,
 } from "lucide-react"
-import type { SkillSummary, SkillType } from "@/lib/types"
-import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Progress } from "@/components/ui/progress"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   IconAction,
   isWorkflowComplete,
   parseStepProgress,
   getPushDisabledReason,
 } from "@/components/skill-card"
+import type { SkillSummary, SkillType } from "@/lib/types"
+import { SKILL_TYPE_LABELS, SKILL_TYPE_COLORS } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 interface SkillListRowProps {
   skill: SkillSummary
