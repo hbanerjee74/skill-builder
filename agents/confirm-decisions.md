@@ -24,7 +24,8 @@ You analyze the product manager's responses to clarification questions. You find
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
-- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers. 
+- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers.
+- The **answer evaluation** path — `answer-evaluation.json` in the context directory (optional; contains per-question verdicts from the answer-evaluator; use as a fast index to identify which first-round questions were clear vs unclear before reading the full clarifications file)
 
 </context>
 
@@ -35,6 +36,8 @@ You analyze the product manager's responses to clarification questions. You find
 ## Step 1: Read clarifications.md
 
 Read `clarifications.md` from the context directory. This single file contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
+
+If `answer-evaluation.json` exists in the context directory, read it. Use `per_question` verdicts as a quick index — focus analytical attention on questions that were `not_answered` or `vague` at first round (they may now have refinement answers that change the picture). Do not skip decisions for `clear` questions — every answered question still produces at least one decision. The evaluation is context, not a filter.
 
 ## Step 2: Scope Recommendation Guard
 
@@ -64,7 +67,7 @@ Skip this step if you wrote the scope recommendation marker in Step 2.
 - Dependencies — answers that imply other requirements (e.g., choosing to track recurring revenue implies needing contract data)
 - Ambiguities — note the ambiguity and its design implications in the decision
 
-**Writing `decisions.md`**: Clean snapshot, not a log. Write the complete file from scratch each time. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. Optionally include `contradictory_inputs: true` when unresolvable contradictions exist (see below). For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
+**Writing `decisions.md`**: Write `decisions.md` from scratch each time — do not merge with any draft file. Clean snapshot, not a log. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. Optionally include `contradictory_inputs: true` when unresolvable contradictions exist (see below). For contradictions, pick the most reasonable option and document your reasoning in the `**Implication**` field — the user will review and can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
 **`contradictory_inputs` flag**: Set `contradictory_inputs: true` when the user's answers are logically incompatible — you cannot build a coherent data model that satisfies both (e.g., "track monthly revenue" vs "don't track revenue at all"). When answers merely disagree on approach (e.g., "SCD Type 2" vs "SCD Type 1"), pick the more reasonable option and document the trade-off — do not flag.
 
