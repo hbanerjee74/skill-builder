@@ -209,10 +209,7 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Answer evaluation: ./<skillname>/context/answer-evaluation.json
 
      Analyze all answered clarifications and produce decisions.
-     Use answer-evaluation.json as context for identifying which first-round questions were clear vs unclear — focus analytical attention on previously unclear items that may now have refinement answers.
-     Think thoroughly about contradictions, gaps, and implications across all provided answers.
-     Consider multiple interpretations where answers are ambiguous.
-     Verify your analysis is internally consistent before presenting conclusions.
+     Use answer-evaluation.json as context — focus attention on previously unclear items that may now have refinement answers.
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions

@@ -53,7 +53,7 @@ Within each `##` section, group questions under two sub-headings:
 - `### Required` — questions critical to producing a correct skill (core metric definitions, entity identifiers, must-have business rules). The skill cannot be generated without answers to these.
 - `### Optional` — questions that refine quality but where a reasonable default exists.
 
-If a section contains only required or only optional questions, include only the relevant sub-heading. Do NOT use `[MUST ANSWER]` inline tags in question headings — the sub-heading carries that meaning.
+If a section has only required or only optional questions, include only the relevant sub-heading.
 
 ### Step 3: Handle contradictions and flags
 

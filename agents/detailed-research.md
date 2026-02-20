@@ -70,17 +70,16 @@ All sub-agents **return text** — they do not write files. Include the standard
 - Which section to drill into
 - **User context** and **workspace directory** (per protocol)
 
-Each sub-agent's task for each non-clear question:
-- Open with: `Follow-up: [what the original question was asking about]` then a one-sentence summary of the prior answer (or "not answered")
-- Show ONLY the new sub-questions — do NOT re-display original question text, choices, or recommendation
+Each sub-agent's task for each non-clear question -- follow the format example below:
+- Open with `Follow-up:` (topic) then a one-sentence summary of the prior answer (or "not answered")
+- Include `Why this matters:` explaining what depends on the answer
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
-- Every sub-question: 2-4 choices in `A. Choice text` format plus "Other (please specify)" — each choice must change the skill's design
-- Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
-- Every sub-question must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
-- Include a `Why this matters:` sentence before the sub-questions explaining what depends on the answer
-- Do NOT re-ask the first-round question — build on whatever was or was not answered
+- 2-4 choices in `A. Choice text` format plus "Other (please specify)" -- each choice must change the skill's design
+- Include `**Recommendation:** Full sentence.` between choices and answer (colon inside bold)
+- End each sub-question with a blank `**Answer:**` line followed by an empty line (colon inside bold)
+- Do NOT re-display original question text, choices, or recommendation
 
-### Refinement format returned by sub-agents
+### Refinement format example
 
 ```
 Refinements for Q6:

@@ -24,8 +24,8 @@ You analyze the product manager's responses to clarification questions. You find
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
-- **Single clarifications artifact**: `clarifications.md` is the only clarifications file. It contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up questions and answers.
-- The **answer evaluation** path — `answer-evaluation.json` in the context directory (optional; contains per-question verdicts from the answer-evaluator; use as a fast index to identify which first-round questions were clear vs unclear before reading the full clarifications file)
+- **Single clarifications artifact**: `clarifications.md` contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
+- **Answer evaluation** (optional): `answer-evaluation.json` in the context directory contains per-question verdicts (`clear`, `not_answered`, `vague`). Use as a quick index to focus attention on previously unclear questions.
 
 </context>
 
@@ -35,9 +35,9 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Step 1: Read clarifications.md
 
-Read `clarifications.md` from the context directory. This single file contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
+Read `clarifications.md` from the context directory.
 
-If `answer-evaluation.json` exists in the context directory, read it. Use `per_question` verdicts as a quick index — focus analytical attention on questions that were `not_answered` or `vague` at first round (they may now have refinement answers that change the picture). Do not skip decisions for `clear` questions — every answered question still produces at least one decision. The evaluation is context, not a filter.
+If `answer-evaluation.json` exists, read it. Focus analytical attention on questions that were `not_answered` or `vague` at first round -- they may now have refinement answers that change the picture. Do not skip `clear` questions; every answered question still produces at least one decision.
 
 ## Step 2: Scope Recommendation Guard
 
