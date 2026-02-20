@@ -1200,6 +1200,12 @@ export default function WorkflowPage() {
                 }
                 useWorkflowStore.getState().setRunning(false);
                 useAgentStore.getState().clearRuns();
+
+                // Full cleanup matching the navigation guard's "Leave" handler
+                endActiveSession();
+                cleanupSkillSidecar(skillName).catch(() => {});
+                releaseLock(skillName).catch(() => {});
+
                 setPendingStepSwitch(null);
                 setCurrentStep(targetStep);
               }}>
