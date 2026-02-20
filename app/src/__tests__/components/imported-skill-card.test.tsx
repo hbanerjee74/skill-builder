@@ -14,6 +14,8 @@ const baseSkill: ImportedSkill = {
   trigger_text: null,
   imported_at: new Date().toISOString(),
   is_bundled: false,
+  match_keywords: null,
+  match_types: null,
 };
 
 describe("ImportedSkillCard", () => {

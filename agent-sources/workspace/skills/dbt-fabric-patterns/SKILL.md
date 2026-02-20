@@ -1,16 +1,10 @@
 ---
 name: dbt-fabric-patterns
-description: >
-  Practitioner-level dbt patterns for Microsoft Fabric. Covers materialization decisions,
-  incremental model gotchas, snapshot strategies, selector/tag patterns, ref() chain rules,
-  and Fabric-specific T-SQL quirks. Use when writing, reviewing, or debugging dbt models
-  on Fabric. Also use when setting up dbt_project.yml configuration or CI/CD pipelines
-  for dbt-fabric projects.
-trigger: >
-  When writing dbt models on Microsoft Fabric, configuring dbt_project.yml for Fabric,
-  debugging incremental model issues, choosing materialization strategies, setting up
-  snapshots, or working with dbt selectors and tags,
-  read and follow the skill at `.claude/skills/dbt-fabric-patterns/SKILL.md`.
+type: data-engineering
+description: Practitioner-level dbt patterns for Microsoft Fabric. Covers materialization decisions, incremental model gotchas, snapshot strategies, selector/tag patterns, ref() chain rules, and Fabric-specific T-SQL quirks. Use when writing, reviewing, or debugging dbt models on Fabric. Also use when setting up dbt_project.yml configuration or CI/CD pipelines for dbt-fabric projects.
+trigger: When writing dbt models on Microsoft Fabric, configuring dbt_project.yml for Fabric, debugging incremental model issues, choosing materialization strategies, setting up snapshots, or working with dbt selectors and tags, read and follow the skill at `.claude/skills/dbt-fabric-patterns/SKILL.md`.
+match_keywords: [dbt, fabric, incremental, snapshot, materialization, tsql, merge, unique_key, selectors, tags]
+match_types: [data-engineering, platform]
 ---
 
 # dbt on Fabric — Practitioner Patterns

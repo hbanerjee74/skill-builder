@@ -235,6 +235,8 @@ export interface ImportedSkill {
   trigger_text: string | null
   imported_at: string
   is_bundled: boolean
+  match_keywords: string[] | null
+  match_types: string[] | null
 }
 
 export interface GitHubRepoInfo {
@@ -249,6 +251,8 @@ export interface AvailableSkill {
   name: string
   domain: string | null
   description: string | null
+  match_keywords: string[] | null
+  match_types: string[] | null
 }
 
 export interface TeamRepoSkill {

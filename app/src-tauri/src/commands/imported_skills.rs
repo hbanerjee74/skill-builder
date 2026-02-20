@@ -26,6 +26,8 @@ pub(crate) struct Frontmatter {
     pub domain: Option<String>,
     pub skill_type: Option<String>,
     pub trigger: Option<String>,
+    pub match_keywords: Vec<String>,
+    pub match_types: Vec<String>,
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
@@ -48,6 +50,8 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             domain: None,
             skill_type: None,
             trigger: None,
+            match_keywords: Vec::new(),
+            match_types: Vec::new(),
         };
     }
 
@@ -62,6 +66,8 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
                 domain: None,
                 skill_type: None,
                 trigger: None,
+                match_keywords: Vec::new(),
+                match_types: Vec::new(),
             }
         }
     };
@@ -73,6 +79,8 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let mut domain = None;
     let mut skill_type = None;
     let mut trigger = None;
+    let mut match_keywords = Vec::new();
+    let mut match_types = Vec::new();
 
     // Track which multi-line field we're accumulating (for `>` folded scalars)
     let mut current_multiline: Option<&str> = None;
@@ -124,6 +132,10 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             } else {
                 trigger = Some(val.trim_matches('"').trim_matches('\'').to_string());
             }
+        } else if let Some(val) = trimmed_line.strip_prefix("match_keywords:") {
+            match_keywords = parse_yaml_inline_array(val);
+        } else if let Some(val) = trimmed_line.strip_prefix("match_types:") {
+            match_types = parse_yaml_inline_array(val);
         }
     }
 
@@ -150,7 +162,24 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         domain: trim_opt(domain),
         skill_type: trim_opt(skill_type),
         trigger: trim_opt(trigger),
+        match_keywords,
+        match_types,
     }
+}
+
+/// Parse a YAML inline array like `[foo, bar, baz]` into a Vec<String>.
+/// Handles quoted and unquoted items, returns empty Vec for invalid input.
+fn parse_yaml_inline_array(val: &str) -> Vec<String> {
+    let val = val.trim();
+    if !val.starts_with('[') || !val.ends_with(']') {
+        return Vec::new();
+    }
+    let inner = &val[1..val.len() - 1];
+    inner
+        .split(',')
+        .map(|s| s.trim().trim_matches('"').trim_matches('\'').to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// Derive a skill name from a zip filename by removing the extension
@@ -307,9 +336,10 @@ fn upload_skill_inner(
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
-        // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
         trigger_text: fm.trigger.clone(),
+        match_keywords: if fm.match_keywords.is_empty() { None } else { Some(fm.match_keywords) },
+        match_types: if fm.match_types.is_empty() { None } else { Some(fm.match_types) },
     };
 
     if fm.trigger.is_none() {
@@ -743,9 +773,10 @@ pub(crate) fn seed_bundled_skills(
             disk_path: dest_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            // Not stored in DB — read from SKILL.md frontmatter on disk
             description: None,
             trigger_text: None,
+            match_keywords: if fm.match_keywords.is_empty() { None } else { Some(fm.match_keywords) },
+            match_types: if fm.match_types.is_empty() { None } else { Some(fm.match_types) },
         };
 
         crate::db::upsert_bundled_skill(conn, &skill)?;
@@ -794,6 +825,8 @@ mod tests {
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         }
     }
 
@@ -1145,6 +1178,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1185,6 +1220,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1226,6 +1263,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1259,6 +1298,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1288,6 +1329,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
 
         let result = get_skill_content_inner(&skill).unwrap();
@@ -1306,6 +1349,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
 
         let result = get_skill_content_inner(&skill);
@@ -1368,6 +1413,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1434,6 +1481,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1480,6 +1529,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1533,6 +1584,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1581,6 +1634,8 @@ type: platform
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1617,6 +1672,8 @@ type: platform
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1679,6 +1736,8 @@ type: platform
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1783,6 +1842,8 @@ type: platform
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill).unwrap();
 
@@ -1803,6 +1864,8 @@ type: platform
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill2).unwrap();
 

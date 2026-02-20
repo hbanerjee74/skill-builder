@@ -1,5 +1,6 @@
 ---
 name: skill-builder-practices
+type: skill-builder
 description: >
   Skill structure rules, content principles, quality dimensions, and anti-patterns
   for generating data engineering skills. Use when generating, validating, refining,

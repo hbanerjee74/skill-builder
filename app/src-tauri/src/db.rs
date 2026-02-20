@@ -41,6 +41,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (11, run_bundled_skill_migration),
         (12, run_drop_trigger_description_migration),
         (13, run_remove_validate_step_migration),
+        (14, run_match_fields_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -361,6 +362,26 @@ fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusql
         ALTER TABLE imported_skills_new RENAME TO imported_skills;",
     )?;
 
+    Ok(())
+}
+
+/// Add `match_keywords` and `match_types` TEXT columns (JSON-encoded arrays)
+/// to imported_skills for marketplace template matching.
+fn run_match_fields_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_match_keywords = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "match_keywords"))
+        })
+        .unwrap_or(false);
+
+    if !has_match_keywords {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN match_keywords TEXT;
+             ALTER TABLE imported_skills ADD COLUMN match_types TEXT;",
+        )?;
+    }
     Ok(())
 }
 
@@ -1270,15 +1291,33 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 
 // --- Imported Skills ---
 
-/// Read SKILL.md frontmatter from disk and populate `description` and `trigger_text`
-/// on an ImportedSkill struct. These fields are not stored in the DB.
+/// Read SKILL.md frontmatter from disk and populate metadata fields
+/// on an ImportedSkill struct. `description` and `trigger_text` are always
+/// hydrated from disk. `match_keywords` and `match_types` are hydrated
+/// from disk if not already set from the DB.
 pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     let skill_md_path = std::path::Path::new(&skill.disk_path).join("SKILL.md");
     if let Ok(content) = fs::read_to_string(&skill_md_path) {
         let fm = crate::commands::imported_skills::parse_frontmatter_full(&content);
         skill.description = fm.description;
         skill.trigger_text = fm.trigger;
+        if skill.match_keywords.is_none() && !fm.match_keywords.is_empty() {
+            skill.match_keywords = Some(fm.match_keywords);
+        }
+        if skill.match_types.is_none() && !fm.match_types.is_empty() {
+            skill.match_types = Some(fm.match_types);
+        }
     }
+}
+
+/// Serialize a Vec<String> to JSON for DB storage, or None → NULL.
+fn vec_to_json(v: &Option<Vec<String>>) -> Option<String> {
+    v.as_ref().map(|items| serde_json::to_string(items).unwrap_or_default())
+}
+
+/// Deserialize a JSON string from DB to Vec<String>, or NULL → None.
+fn json_to_vec(s: Option<String>) -> Option<Vec<String>> {
+    s.and_then(|json| serde_json::from_str(&json).ok())
 }
 
 pub fn insert_imported_skill(
@@ -1286,8 +1325,8 @@ pub fn insert_imported_skill(
     skill: &ImportedSkill,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled, match_keywords, match_types)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1296,6 +1335,8 @@ pub fn insert_imported_skill(
             skill.disk_path,
             skill.imported_at,
             skill.is_bundled as i32,
+            vec_to_json(&skill.match_keywords),
+            vec_to_json(&skill.match_types),
         ],
     )
     .map_err(|e| {
@@ -1313,13 +1354,15 @@ pub fn insert_imported_skill(
 /// Preserves `is_active` if the skill already exists.
 pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled, match_keywords, match_types)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
              domain = excluded.domain,
              disk_path = excluded.disk_path,
-             is_bundled = excluded.is_bundled",
+             is_bundled = excluded.is_bundled,
+             match_keywords = excluded.match_keywords,
+             match_types = excluded.match_types",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1328,6 +1371,8 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
             skill.disk_path,
             skill.imported_at,
             skill.is_bundled as i32,
+            vec_to_json(&skill.match_keywords),
+            vec_to_json(&skill.match_types),
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1337,7 +1382,7 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
 pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled, match_keywords, match_types
              FROM imported_skills ORDER BY imported_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -1354,6 +1399,8 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
                 trigger_text: None,
+                match_keywords: json_to_vec(row.get(7)?),
+                match_types: json_to_vec(row.get(8)?),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1402,7 +1449,7 @@ pub fn get_imported_skill(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled, match_keywords, match_types
              FROM imported_skills WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1418,6 +1465,8 @@ pub fn get_imported_skill(
             is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
             trigger_text: None,
+            match_keywords: json_to_vec(row.get(7)?),
+            match_types: json_to_vec(row.get(8)?),
         })
     });
 
@@ -1434,7 +1483,7 @@ pub fn get_imported_skill(
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled, match_keywords, match_types
              FROM imported_skills
              WHERE is_active = 1
              ORDER BY skill_name",
@@ -1453,6 +1502,8 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
                 trigger_text: None,
+                match_keywords: json_to_vec(row.get(7)?),
+                match_types: json_to_vec(row.get(8)?),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1774,6 +1825,7 @@ mod tests {
         run_composite_pk_migration(&conn).unwrap();
         run_bundled_skill_migration(&conn).unwrap();
         run_remove_validate_step_migration(&conn).unwrap();
+        run_match_fields_migration(&conn).unwrap();
         conn
     }
 
@@ -3119,6 +3171,8 @@ mod tests {
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
@@ -3133,6 +3187,8 @@ mod tests {
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
@@ -3147,6 +3203,8 @@ mod tests {
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 

@@ -43,6 +43,8 @@ const sampleSkills: ImportedSkill[] = [
     trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    match_keywords: null,
+    match_types: null,
   },
   {
     skill_id: "id-2",
@@ -54,6 +56,8 @@ const sampleSkills: ImportedSkill[] = [
     trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    match_keywords: null,
+    match_types: null,
   },
 ];
 
@@ -158,6 +162,8 @@ describe("SkillsLibraryTab", () => {
       trigger_text: null,
       imported_at: new Date().toISOString(),
       is_bundled: false,
+      match_keywords: null,
+      match_types: null,
     };
 
     mockInvokeCommands({

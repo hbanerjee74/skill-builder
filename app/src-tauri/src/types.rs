@@ -231,6 +231,10 @@ pub struct ImportedSkill {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trigger_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_keywords: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub match_types: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

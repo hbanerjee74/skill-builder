@@ -594,9 +594,10 @@ pub(crate) async fn import_single_skill(
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
-        // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
         trigger_text: fm.trigger,
+        match_keywords: if fm.match_keywords.is_empty() { None } else { Some(fm.match_keywords) },
+        match_types: if fm.match_types.is_empty() { None } else { Some(fm.match_types) },
     })
 }
 

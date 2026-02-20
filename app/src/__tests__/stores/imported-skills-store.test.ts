@@ -14,6 +14,8 @@ const sampleSkills: ImportedSkill[] = [
     trigger_text: null,
     imported_at: "2026-01-15T10:00:00Z",
     is_bundled: false,
+    match_keywords: null,
+    match_types: null,
   },
   {
     skill_id: "id-2",
@@ -25,6 +27,8 @@ const sampleSkills: ImportedSkill[] = [
     trigger_text: null,
     imported_at: "2026-01-10T08:00:00Z",
     is_bundled: false,
+    match_keywords: null,
+    match_types: null,
   },
 ];
 
@@ -101,6 +105,8 @@ describe("useImportedSkillsStore", () => {
         trigger_text: null,
         imported_at: "2026-02-01T12:00:00Z",
         is_bundled: false,
+        match_keywords: null,
+        match_types: null,
       };
       mockInvokeCommands({ upload_skill: newSkill });
 

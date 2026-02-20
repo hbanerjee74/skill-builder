@@ -3070,6 +3070,8 @@ mod tests {
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3096,6 +3098,8 @@ mod tests {
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3130,6 +3134,8 @@ mod tests {
             is_bundled: true,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3141,6 +3147,8 @@ mod tests {
             is_bundled: false,
             description: None,
             trigger_text: None,
+            match_keywords: None,
+            match_types: None,
         };
         crate::db::insert_imported_skill(&conn, &bundled).unwrap();
         crate::db::insert_imported_skill(&conn, &imported).unwrap();
