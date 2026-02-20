@@ -507,12 +507,7 @@ pub fn persist_agent_run(
 }
 
 pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    let having = if hide_cancelled {
-        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
-    } else {
-        ""
-    };
-    let sql = format!(
+    const SQL_WITH_HAVING: &str =
         "SELECT COALESCE(SUM(sub.session_cost), 0.0),
                 COUNT(*),
                 COALESCE(AVG(sub.session_cost), 0.0)
@@ -523,11 +518,23 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<Usag
                                   AND ar.reset_marker IS NULL
            WHERE ws.reset_marker IS NULL
            GROUP BY ws.session_id
-           {}
-         ) sub",
-        having
-    );
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+           HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0
+         ) sub";
+    const SQL_WITHOUT_HAVING: &str =
+        "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                COUNT(*),
+                COALESCE(AVG(sub.session_cost), 0.0)
+         FROM (
+           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
+           FROM workflow_sessions ws
+           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                  AND ar.reset_marker IS NULL
+           WHERE ws.reset_marker IS NULL
+           GROUP BY ws.session_id
+         ) sub";
+
+    let sql = if hide_cancelled { SQL_WITH_HAVING } else { SQL_WITHOUT_HAVING };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
 
     stmt.query_row([], |row| {
         Ok(UsageSummary {
@@ -1144,6 +1151,9 @@ pub fn get_tags_for_skills(
         return Ok(map);
     }
 
+    // Safety: The format! below only injects positional bind-parameter placeholders
+    // (?1, ?2, ...) — never user-supplied values. All skill_name values are bound via
+    // rusqlite's parameterized query API, so there is no SQL injection risk.
     let placeholders: Vec<String> = (1..=skill_names.len()).map(|i| format!("?{}", i)).collect();
     let sql = format!(
         "SELECT skill_name, tag FROM skill_tags WHERE skill_name IN ({}) ORDER BY skill_name, tag",
