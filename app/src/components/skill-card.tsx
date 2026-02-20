@@ -76,19 +76,31 @@ interface IconActionProps {
 }
 
 function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): JSX.Element {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className={cn("text-muted-foreground", className)}
+      disabled={disabled}
+      aria-label={label}
+      tabIndex={disabled ? -1 : undefined}
+      onClick={onClick}
+    >
+      {icon}
+    </Button>
+  )
+
+  // Disabled buttons have pointer-events-none, which prevents Radix
+  // tooltip from receiving hover events. Wrap in a <span> so the
+  // tooltip still fires.
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className={cn("text-muted-foreground", className)}
-          disabled={disabled}
-          aria-label={label}
-          onClick={onClick}
-        >
-          {icon}
-        </Button>
+        {disabled ? (
+          <span className="inline-flex" tabIndex={0}>{button}</span>
+        ) : (
+          button
+        )}
       </TooltipTrigger>
       <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
@@ -176,13 +188,13 @@ export default function SkillCard({
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {canDownload && (
+            {canDownload && onPushToRemote && (
               <IconAction
                 icon={<Upload className="size-3" />}
                 label="Push to remote"
                 tooltip={pushDisabledReason ?? "Push to remote"}
                 disabled={!remoteConfigured || !isGitHubLoggedIn}
-                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
+                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
               />
             )}
             {canDownload && onDownload && (
