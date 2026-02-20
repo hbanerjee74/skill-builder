@@ -878,7 +878,6 @@ export default function WorkflowPage() {
         stepId={currentStep}
         outputFiles={stepConfig?.outputFiles ?? []}
         onNextStep={advanceToNextStep}
-        onResetStep={!reviewMode ? () => performStepReset(currentStep) : undefined}
         onClose={handleClose}
         isLastStep={isLastStep}
         reviewMode={reviewMode}
