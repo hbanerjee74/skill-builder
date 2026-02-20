@@ -129,17 +129,18 @@ export default function DashboardPage() {
   }, [refreshLocks])
 
   // Initialize view mode from saved preference or auto-select based on skill count.
-  // Runs once after loading completes. If no saved preference and no skills, stays on "grid".
+  // A saved preference is restored immediately. Auto-select waits until skills
+  // have actually been fetched (workspacePath is set and loading is done).
   useEffect(() => {
     if (loading || viewModeInitialized.current) return
     if (savedViewMode !== null) {
       viewModeInitialized.current = true
       setViewMode(savedViewMode)
-    } else if (skills.length > 0) {
+    } else if (workspacePath && skills.length > 0) {
       viewModeInitialized.current = true
-      setViewMode(skills.length >= 10 ? "list" : "grid")
+      if (skills.length >= 10) setViewMode("list")
     }
-  }, [loading, savedViewMode, skills.length])
+  }, [loading, savedViewMode, skills.length, workspacePath])
 
   const handleViewModeChange = useCallback(async (mode: ViewMode) => {
     setViewMode(mode)

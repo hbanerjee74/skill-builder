@@ -108,46 +108,44 @@ export default function SkillListRow({
 
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-        <TooltipProvider>
+        <IconAction
+          icon={<Pencil className="size-3" />}
+          label="Edit workflow"
+          tooltip="Edit workflow"
+          onClick={() => onEditWorkflow?.(skill)}
+        />
+        {canDownload && onRefine && (
           <IconAction
-            icon={<Pencil className="size-3" />}
-            label="Edit workflow"
-            tooltip="Edit workflow"
-            onClick={() => onEditWorkflow?.(skill)}
+            icon={<MessageSquare className="size-3" />}
+            label="Refine skill"
+            tooltip="Refine"
+            onClick={() => onRefine(skill)}
           />
-          {canDownload && onRefine && (
-            <IconAction
-              icon={<MessageSquare className="size-3" />}
-              label="Refine skill"
-              tooltip="Refine"
-              onClick={() => onRefine(skill)}
-            />
-          )}
-          {canDownload && onPushToRemote && (
-            <IconAction
-              icon={<Upload className="size-3" />}
-              label="Push to remote"
-              tooltip={pushDisabledReason ?? "Push to remote"}
-              disabled={!remoteConfigured || !isGitHubLoggedIn}
-              onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
-            />
-          )}
-          {canDownload && onDownload && (
-            <IconAction
-              icon={<Download className="size-3" />}
-              label="Download skill"
-              tooltip="Download .skill"
-              onClick={() => onDownload(skill)}
-            />
-          )}
+        )}
+        {canDownload && onPushToRemote && (
           <IconAction
-            icon={<Trash2 className="size-3" />}
-            label="Delete skill"
-            tooltip="Delete"
-            className="hover:text-destructive"
-            onClick={() => onDelete(skill)}
+            icon={<Upload className="size-3" />}
+            label="Push to remote"
+            tooltip={pushDisabledReason ?? "Push to remote"}
+            disabled={!remoteConfigured || !isGitHubLoggedIn}
+            onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
           />
-        </TooltipProvider>
+        )}
+        {canDownload && onDownload && (
+          <IconAction
+            icon={<Download className="size-3" />}
+            label="Download skill"
+            tooltip="Download .skill"
+            onClick={() => onDownload(skill)}
+          />
+        )}
+        <IconAction
+          icon={<Trash2 className="size-3" />}
+          label="Delete skill"
+          tooltip="Delete"
+          className="hover:text-destructive"
+          onClick={() => onDelete(skill)}
+        />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -184,5 +182,5 @@ export default function SkillListRow({
     )
   }
 
-  return row
+  return <TooltipProvider>{row}</TooltipProvider>
 }
