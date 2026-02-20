@@ -135,7 +135,19 @@ echo "=== Skill Reference Files ==="
 REFS_DIR="skills/generate-skill/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
-  for ref in protocols.md content-guidelines.md best-practices.md; do
+  # protocols.md (extracted from workspace/CLAUDE.md)
+  if [ -f "$REFS_DIR/protocols.md" ]; then
+    size=$(wc -c < "$REFS_DIR/protocols.md" | tr -d ' ')
+    if [ "$size" -gt 100 ]; then
+      pass "protocols.md exists ($size bytes)"
+    else
+      fail "protocols.md is too small ($size bytes)"
+    fi
+  else
+    fail "protocols.md missing"
+  fi
+  # skill-builder-practices/ (copied from bundled-skills/)
+  for ref in skill-builder-practices/SKILL.md skill-builder-practices/references/ba-patterns.md skill-builder-practices/references/de-patterns.md; do
     if [ -f "$REFS_DIR/$ref" ]; then
       size=$(wc -c < "$REFS_DIR/$ref" | tr -d ' ')
       if [ "$size" -gt 100 ]; then
