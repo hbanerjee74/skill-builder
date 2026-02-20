@@ -12,7 +12,7 @@
  * indicator / agent turn element.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { simulateAgentRun } from "../helpers/agent-simulator";
+import { simulateAgentRun, simulateAgentError } from "../helpers/agent-simulator";
 import {
   navigateToRefine,
   navigateToRefineWithSkill,
@@ -314,5 +314,207 @@ test.describe("Refine Page", { tag: "@refine" }, () => {
     // The added "Quick Start" section should appear as added lines (green, + prefix)
     await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
     await expect(page.locator("text=+ Get started in 3 steps.")).toBeVisible();
+  });
+
+  test("multi-turn refinement: second turn diff shows only that turn's changes", async ({ page }) => {
+    // --- Turn 1: Add Quick Start section ---
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("add a quick-start section");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId1 = await getAgentId(page);
+
+    // Swap mock to return SKILL.md with Quick Start added
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_skill_content_for_refine = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+    });
+
+    await simulateAgentRun(page, {
+      agentId: agentId1,
+      messages: ["Adding quick-start section..."],
+      result: "Done.",
+    });
+
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
+    await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
+
+    // Verify turn 1 diff
+    const diffToggle = page.getByTestId("refine-diff-toggle");
+    await diffToggle.click();
+    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await diffToggle.click(); // Toggle diff off
+
+    // --- Turn 2: Add Tips section ---
+    // Swap send_refine_message mock to return a new agent ID for turn 2
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.send_refine_message = "refine-test-skill-e2e-002";
+    });
+
+    await input.fill("add a tips section");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId2 = await getAgentId(page);
+    expect(agentId2).toBe("refine-test-skill-e2e-002");
+
+    // Swap mock to return SKILL.md with BOTH Quick Start AND Tips
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_skill_content_for_refine = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Tips\n\nRemember to test often.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+    });
+
+    await simulateAgentRun(page, {
+      agentId: agentId2,
+      messages: ["Adding tips section..."],
+      result: "Done.",
+    });
+
+    // Wait for agent to finish
+    await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+
+    // Verify turn 2 diff shows only turn 2 changes
+    await diffToggle.click();
+    await expect(page.locator("text=+ ## Tips")).toBeVisible();
+    await expect(page.locator("text=+ Remember to test often.")).toBeVisible();
+
+    // Quick Start was already in baseline for turn 2, should NOT appear as added
+    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
+  });
+
+  test("multi-file diff: switching files shows per-file changes", async ({ page }) => {
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("improve both files");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId = await getAgentId(page);
+
+    // Swap mock to return both files modified
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_skill_content_for_refine = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        {
+          path: "references/glossary.md",
+          content: "# Glossary\n\n- **Term**: Definition\n- **New Term**: New definition",
+        },
+      ];
+    });
+
+    await simulateAgentRun(page, {
+      agentId,
+      messages: ["Updating both files..."],
+      result: "Done.",
+    });
+
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
+    await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
+
+    // Toggle diff on — SKILL.md is the active file
+    const diffToggle = page.getByTestId("refine-diff-toggle");
+    await diffToggle.click();
+    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+
+    // Switch to glossary file
+    await page.getByTestId("refine-file-picker").click();
+    await page.getByRole("option", { name: /references\/glossary\.md/ }).click();
+
+    // Verify glossary diff shows glossary-specific changes
+    await expect(page.locator("text=+ - **New Term**: New definition")).toBeVisible();
+
+    // Verify glossary diff does NOT show SKILL.md-only changes
+    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
+  });
+
+  test("agent error mid-refine: error renders, chat usable, diff preserved", async ({ page }) => {
+    // --- Turn 1 (successful): Add Quick Start section ---
+    await navigateToRefineWithSkill(page);
+
+    const input = page.getByTestId("refine-chat-input");
+    await input.fill("improve intro");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId1 = await getAgentId(page);
+
+    // Swap mock to return modified SKILL.md with Quick Start
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.get_skill_content_for_refine = [
+        {
+          path: "SKILL.md",
+          content: "# Test Skill\n\nA skill for testing.\n\n## Quick Start\n\nGet started in 3 steps.\n\n## Instructions\n\nFollow these steps...",
+        },
+        { path: "references/glossary.md", content: "# Glossary\n\n- **Term**: Definition" },
+      ];
+    });
+
+    await simulateAgentRun(page, {
+      agentId: agentId1,
+      messages: ["Improving intro..."],
+      result: "Done.",
+    });
+
+    // Wait for agent to finish and files to reload (updateSkillFiles is async)
+    await expect(page.getByTestId("refine-agent-thinking")).not.toBeVisible();
+    await page.locator("text=Quick Start").first().waitFor();
+
+    // Verify diff toggle enabled and turn 1 diff works
+    const diffToggle = page.getByTestId("refine-diff-toggle");
+    await expect(diffToggle).toBeEnabled();
+    await diffToggle.click();
+    await expect(page.locator("text=+ ## Quick Start")).toBeVisible();
+    await diffToggle.click(); // Toggle diff off
+
+    // --- Turn 2 (error): Agent fails before modifying files ---
+    // Swap send_refine_message mock to return a new agent ID
+    await page.evaluate(() => {
+      const overrides = (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ as Record<string, unknown>;
+      overrides.send_refine_message = "refine-error-e2e-001";
+    });
+
+    // Do NOT change get_skill_content_for_refine mock (agent fails before modifying files)
+    await input.fill("add more content");
+    await page.getByTestId("refine-send-button").click();
+
+    const agentId2 = await getAgentId(page);
+    expect(agentId2).toBe("refine-error-e2e-001");
+
+    // Simulate agent error (init_start → sdk_ready → exit with success=false)
+    await simulateAgentError(page, agentId2);
+
+    // Verify error toast
+    await expect(page.getByText("Agent failed — check the chat for details").first()).toBeVisible();
+
+    // Verify chat input is still enabled (user can retry)
+    await expect(page.getByTestId("refine-chat-input")).toBeEnabled();
+
+    // Verify diff toggle is still enabled (baseline exists from turn 1)
+    await expect(diffToggle).toBeEnabled();
+
+    // Toggle diff on — should show NO added lines because baseline was
+    // re-snapshotted to post-turn-1 state and files are still in post-turn-1 state
+    await diffToggle.click();
+    await expect(page.locator("text=+ ## Quick Start")).not.toBeVisible();
   });
 });
