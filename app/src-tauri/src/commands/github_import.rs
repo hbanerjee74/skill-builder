@@ -589,6 +589,7 @@ pub(crate) async fn import_single_skill(
         disk_path: dest_dir.to_string_lossy().to_string(),
         trigger_text: None,
         imported_at,
+        is_bundled: false,
     })
 }
 

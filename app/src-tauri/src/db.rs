@@ -38,6 +38,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (8,  run_agent_stats_migration),
         (9,  run_intake_migration),
         (10, run_composite_pk_migration),
+        (11, run_bundled_skill_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -305,6 +306,23 @@ fn run_composite_pk_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
         ALTER TABLE agent_runs_new RENAME TO agent_runs;",
     )?;
 
+    Ok(())
+}
+
+fn run_bundled_skill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_is_bundled = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).any(|name| name == "is_bundled"))
+        })
+        .unwrap_or(false);
+
+    if !has_is_bundled {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN is_bundled INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
     Ok(())
 }
 
@@ -1210,8 +1228,8 @@ pub fn insert_imported_skill(
     skill: &ImportedSkill,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1221,6 +1239,7 @@ pub fn insert_imported_skill(
             skill.disk_path,
             skill.trigger_text,
             skill.imported_at,
+            skill.is_bundled as i32,
         ],
     )
     .map_err(|e| {
@@ -1233,10 +1252,40 @@ pub fn insert_imported_skill(
     Ok(())
 }
 
+/// Upsert a bundled skill into the database. Uses `INSERT OR REPLACE` keyed on
+/// `skill_name` (via UNIQUE constraint) for idempotent re-seeding on startup.
+/// Preserves `is_active` if the skill already exists.
+pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT(skill_name) DO UPDATE SET
+             skill_id = excluded.skill_id,
+             domain = excluded.domain,
+             description = excluded.description,
+             disk_path = excluded.disk_path,
+             trigger_text = excluded.trigger_text,
+             is_bundled = excluded.is_bundled",
+        rusqlite::params![
+            skill.skill_id,
+            skill.skill_name,
+            skill.domain,
+            skill.description,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.trigger_text,
+            skill.imported_at,
+            skill.is_bundled as i32,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled
              FROM imported_skills ORDER BY imported_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -1252,6 +1301,7 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 disk_path: row.get(5)?,
                 trigger_text: row.get(6)?,
                 imported_at: row.get(7)?,
+                is_bundled: row.get::<_, i32>(8)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1294,7 +1344,7 @@ pub fn get_imported_skill(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled
              FROM imported_skills WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1309,6 +1359,7 @@ pub fn get_imported_skill(
             disk_path: row.get(5)?,
             trigger_text: row.get(6)?,
             imported_at: row.get(7)?,
+            is_bundled: row.get::<_, i32>(8)? != 0,
         })
     });
 
@@ -1339,7 +1390,7 @@ pub fn update_trigger_text(
 pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at
+            "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled
              FROM imported_skills
              WHERE is_active = 1 AND trigger_text IS NOT NULL
              ORDER BY skill_name",
@@ -1357,6 +1408,7 @@ pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<Importe
                 disk_path: row.get(5)?,
                 trigger_text: row.get(6)?,
                 imported_at: row.get(7)?,
+                is_bundled: row.get::<_, i32>(8)? != 0,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1670,6 +1722,7 @@ mod tests {
         run_agent_stats_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
         run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
         conn
     }
 
@@ -3003,6 +3056,7 @@ mod tests {
             disk_path: "/tmp/test".to_string(),
             trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
         };
         insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3033,6 +3087,7 @@ mod tests {
             disk_path: "/tmp/s1".to_string(),
             trigger_text: Some("Trigger for skill 1".to_string()),
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
@@ -3046,6 +3101,7 @@ mod tests {
             disk_path: "/tmp/s2".to_string(),
             trigger_text: None,
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
@@ -3059,6 +3115,7 @@ mod tests {
             disk_path: "/tmp/s3".to_string(),
             trigger_text: Some("Trigger for skill 3".to_string()),
             imported_at: "2025-01-01 00:00:00".to_string(),
+            is_bundled: false,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 

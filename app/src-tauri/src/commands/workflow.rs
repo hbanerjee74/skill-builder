@@ -88,6 +88,32 @@ pub fn resolve_prompt_source_dirs_public(app_handle: &tauri::AppHandle) -> (Path
     resolve_prompt_source_dirs(app_handle)
 }
 
+/// Resolve the path to the bundled-skills directory.
+/// In dev mode: repo root `bundled-skills/` (via CARGO_MANIFEST_DIR).
+/// In production: Tauri resource directory `bundled-skills/`.
+pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
+    use tauri::Manager;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    let dev_path = repo_root.as_ref().map(|r| r.join("bundled-skills"));
+
+    match dev_path {
+        Some(ref p) if p.is_dir() => p.clone(),
+        _ => {
+            let resource = app_handle
+                .path()
+                .resource_dir()
+                .map(|r| r.join("bundled-skills"))
+                .unwrap_or_default();
+            resource
+        }
+    }
+}
+
 /// Resolve source paths for agents and workspace CLAUDE.md from the app handle.
 /// Returns `(agents_dir, claude_md)` as owned PathBufs. Either may be empty
 /// if not found (caller should check `.is_dir()` / `.is_file()` before using).

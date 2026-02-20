@@ -226,6 +226,8 @@ pub struct ImportedSkill {
     pub disk_path: String,
     pub trigger_text: Option<String>,
     pub imported_at: String,
+    #[serde(default)]
+    pub is_bundled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
