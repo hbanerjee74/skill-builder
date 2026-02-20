@@ -46,7 +46,7 @@ function parseStepProgress(currentStep: string | null, status: string | null): n
 }
 
 /**
- * Returns true only when all 8 workflow steps are complete.
+ * Returns true only when all 7 workflow steps (0-6) are complete.
  * Download should be gated on full completion -- partial progress
  * (e.g. past the Build step) is not enough.
  *
@@ -66,6 +66,49 @@ export function isWorkflowComplete(skill: SkillSummary): boolean {
   return false
 }
 
+interface IconActionProps {
+  icon: React.ReactNode
+  label: string
+  tooltip: string
+  onClick: () => void
+  disabled?: boolean
+  className?: string
+}
+
+function IconAction({ icon, label, tooltip, onClick, disabled, className }: IconActionProps): React.ReactElement {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className={cn("text-muted-foreground", className)}
+      disabled={disabled}
+      aria-label={label}
+      tabIndex={disabled ? -1 : undefined}
+      onClick={onClick}
+    >
+      {icon}
+    </Button>
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabled ? (
+          <span className="inline-flex" tabIndex={0}>{button}</span>
+        ) : (
+          button
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+function getPushDisabledReason(isGitHubLoggedIn?: boolean, remoteConfigured?: boolean): string | undefined {
+  if (!isGitHubLoggedIn) return "Sign in with GitHub in Settings"
+  if (!remoteConfigured) return "Configure remote repository in Settings"
+  return undefined
+}
 
 export default function SkillCard({
   skill,
@@ -81,12 +124,7 @@ export default function SkillCard({
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
   const canDownload = isWorkflowComplete(skill)
-
-  const pushDisabledReason = !isGitHubLoggedIn
-    ? "Sign in with GitHub in Settings"
-    : !remoteConfigured
-      ? "Configure remote repository in Settings"
-      : undefined
+  const pushDisabledReason = getPushDisabledReason(isGitHubLoggedIn, remoteConfigured)
 
   const cardContent = (
     <Card
@@ -131,86 +169,47 @@ export default function SkillCard({
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div className="flex w-full items-center gap-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="text-muted-foreground"
-                  aria-label="Edit skill"
-                  onClick={() => onEdit?.(skill)}
-                >
-                  <Pencil className="size-3" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Edit</TooltipContent>
-            </Tooltip>
+            <IconAction
+              icon={<Pencil className="size-3" />}
+              label="Edit skill"
+              tooltip="Edit"
+              onClick={() => onEdit?.(skill)}
+            />
             {canDownload && onRefine && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-muted-foreground"
-                    aria-label="Refine skill"
-                    onClick={() => onRefine(skill)}
-                  >
-                    <MessageSquare className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Refine</TooltipContent>
-              </Tooltip>
+              <IconAction
+                icon={<MessageSquare className="size-3" />}
+                label="Refine skill"
+                tooltip="Refine"
+                onClick={() => onRefine(skill)}
+              />
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {canDownload && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-muted-foreground"
-                    disabled={!remoteConfigured || !isGitHubLoggedIn}
-                    aria-label="Push to remote"
-                    onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote?.(skill)}
-                  >
-                    <Upload className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>{pushDisabledReason ?? "Push to remote"}</TooltipContent>
-              </Tooltip>
+            {canDownload && onPushToRemote && (
+              <IconAction
+                icon={<Upload className="size-3" />}
+                label="Push to remote"
+                tooltip={pushDisabledReason ?? "Push to remote"}
+                disabled={!remoteConfigured || !isGitHubLoggedIn}
+                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
+              />
             )}
             {canDownload && onDownload && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-muted-foreground"
-                    aria-label="Download skill"
-                    onClick={() => onDownload(skill)}
-                  >
-                    <Download className="size-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Download .skill</TooltipContent>
-              </Tooltip>
+              <IconAction
+                icon={<Download className="size-3" />}
+                label="Download skill"
+                tooltip="Download .skill"
+                onClick={() => onDownload(skill)}
+              />
             )}
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="ml-auto text-muted-foreground hover:text-destructive"
-                aria-label="Delete skill"
-                onClick={() => onDelete(skill)}
-              >
-                <Trash2 className="size-3" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Delete</TooltipContent>
-          </Tooltip>
+          <IconAction
+            icon={<Trash2 className="size-3" />}
+            label="Delete skill"
+            tooltip="Delete"
+            className="ml-auto hover:text-destructive"
+            onClick={() => onDelete(skill)}
+          />
         </div>
       </CardFooter>
     </Card>
