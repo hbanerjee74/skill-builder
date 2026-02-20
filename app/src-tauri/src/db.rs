@@ -1370,23 +1370,6 @@ pub fn get_imported_skill(
     }
 }
 
-pub fn update_trigger_text(
-    conn: &Connection,
-    skill_name: &str,
-    trigger_text: &str,
-) -> Result<(), String> {
-    let rows = conn
-        .execute(
-            "UPDATE imported_skills SET trigger_text = ?1 WHERE skill_name = ?2",
-            rusqlite::params![trigger_text, skill_name],
-        )
-        .map_err(|e| e.to_string())?;
-    if rows == 0 {
-        return Err(format!("Imported skill '{}' not found", skill_name));
-    }
-    Ok(())
-}
-
 pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
@@ -3042,35 +3025,6 @@ mod tests {
         run_trigger_text_migration(&conn).unwrap();
         // Running again should not error
         run_trigger_text_migration(&conn).unwrap();
-    }
-
-    #[test]
-    fn test_update_trigger_text() {
-        let conn = create_test_db();
-        let skill = ImportedSkill {
-            skill_id: "imp-test-1".to_string(),
-            skill_name: "test-skill".to_string(),
-            domain: Some("analytics".to_string()),
-            description: Some("A test".to_string()),
-            is_active: true,
-            disk_path: "/tmp/test".to_string(),
-            trigger_text: None,
-            imported_at: "2025-01-01 00:00:00".to_string(),
-            is_bundled: false,
-        };
-        insert_imported_skill(&conn, &skill).unwrap();
-
-        update_trigger_text(&conn, "test-skill", "When the user asks about analytics").unwrap();
-        let found = get_imported_skill(&conn, "test-skill").unwrap().unwrap();
-        assert_eq!(found.trigger_text.as_deref(), Some("When the user asks about analytics"));
-    }
-
-    #[test]
-    fn test_update_trigger_text_not_found() {
-        let conn = create_test_db();
-        let result = update_trigger_text(&conn, "nonexistent", "some text");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not found"));
     }
 
     #[test]

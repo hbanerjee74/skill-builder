@@ -262,10 +262,10 @@ fn upload_skill_inner(
     let prefix = get_archive_prefix(&skill_md_path);
 
     // Parse frontmatter for metadata
-    let (fm_name, fm_description, fm_domain, _fm_type) = parse_frontmatter(&skill_md_content);
+    let fm = parse_frontmatter_full(&skill_md_content);
 
     // Determine skill name: frontmatter name > filename
-    let skill_name = fm_name
+    let skill_name = fm.name
         .unwrap_or_else(|| derive_name_from_filename(file_path));
 
     if skill_name.is_empty() {
@@ -297,11 +297,11 @@ fn upload_skill_inner(
     let skill = ImportedSkill {
         skill_id,
         skill_name: skill_name.clone(),
-        domain: fm_domain,
-        description: fm_description,
+        domain: fm.domain,
+        description: fm.description,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
-        trigger_text: None,
+        trigger_text: fm.trigger,
         imported_at,
         is_bundled: false,
     };
@@ -576,30 +576,6 @@ fn get_skill_content_inner(skill: &ImportedSkill) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn update_trigger_text(
-    skill_name: String,
-    trigger_text: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    log::info!("[update_trigger_text] skill_name={}", skill_name);
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[update_trigger_text] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    crate::db::update_trigger_text(&conn, &skill_name, &trigger_text)?;
-
-    // Regenerate CLAUDE.md with updated trigger text
-    let settings = crate::db::read_settings(&conn)?;
-    if let Some(workspace_path) = settings.workspace_path.as_deref() {
-        if let Err(e) = super::workflow::update_skills_section(workspace_path, &conn) {
-            log::warn!("Failed to update CLAUDE.md after editing trigger text: {}", e);
-        }
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
 pub fn regenerate_claude_md(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
@@ -614,82 +590,6 @@ pub fn regenerate_claude_md(
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
     super::workflow::update_skills_section(&workspace_path, &conn)
-}
-
-#[tauri::command]
-pub async fn generate_trigger_text(
-    skill_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
-    log::info!("[generate_trigger_text] skill_name={}", skill_name);
-    let (api_key, context) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
-        let api_key = settings
-            .anthropic_api_key
-            .ok_or_else(|| "API key not configured".to_string())?;
-
-        let skill = crate::db::get_imported_skill(&conn, &skill_name)?
-            .ok_or_else(|| format!("Imported skill '{}' not found", skill_name))?;
-
-        // Use description if present, otherwise read SKILL.md content
-        let context = if let Some(ref desc) = skill.description {
-            desc.clone()
-        } else {
-            get_skill_content_inner(&skill)?
-        };
-
-        (api_key, context)
-    };
-
-    let prompt = format!(
-        "Generate a trigger description for a Claude Code skill named \"{skill_name}\". \
-         The skill's content is below.\n\n\
-         ---\n{context}\n---\n\n\
-         Output ONLY a single sentence in this exact format (no extra text):\n\
-         This skill should be used when the user wants to \"<use case 1>\", \"<use case 2>\", \
-         \"<use case 3>\", or <broader category>, \
-         read and follow the skill at `.claude/skills/{skill_name}/SKILL.md`.\n\n\
-         Use 3-5 quoted action phrases that describe when a user would invoke this skill. \
-         Keep phrases concise (3-8 words each)."
-    );
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post("https://api.anthropic.com/v1/messages")
-        .header("x-api-key", &api_key)
-        .header("anthropic-version", "2023-06-01")
-        .header("content-type", "application/json")
-        .body(
-            serde_json::json!({
-                "model": "claude-haiku-4-5-20251001",
-                "max_tokens": 300,
-                "messages": [{"role": "user", "content": prompt}]
-            })
-            .to_string(),
-        )
-        .send()
-        .await
-        .map_err(|e| format!("API request failed: {}", e))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Anthropic API error ({}): {}", status, body));
-    }
-
-    let body: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse API response: {}", e))?;
-
-    let text = body["content"][0]["text"]
-        .as_str()
-        .ok_or_else(|| "Unexpected API response format".to_string())?
-        .trim()
-        .to_string();
-
-    Ok(text)
 }
 
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
