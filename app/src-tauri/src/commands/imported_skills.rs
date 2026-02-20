@@ -1384,7 +1384,7 @@ type: platform
 
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("# Base Content"));
-        assert!(content.contains("## Imported Skills"));
+        assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /my-analytics"));
         assert!(content.contains("When the user asks about analytics, use this skill."));
         // Customization preserved
@@ -1408,7 +1408,7 @@ type: platform
 
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("# Base Content"));
-        assert!(!content.contains("## Imported Skills"));
+        assert!(!content.contains("## Custom Skills"));
         // Customization preserved
         assert!(content.contains("## Customization"));
         assert!(content.contains("My rules."));
@@ -1425,7 +1425,7 @@ type: platform
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(
             claude_dir.join("CLAUDE.md"),
-            "# Base\n\n## Imported Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
+            "# Base\n\n## Custom Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
         ).unwrap();
 
         // Insert a new active skill with trigger text
@@ -1467,7 +1467,7 @@ type: platform
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(
             claude_dir.join("CLAUDE.md"),
-            "# Base Content\n\nSome text.\n\n## Imported Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
+            "# Base Content\n\nSome text.\n\n## Custom Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
         ).unwrap();
 
         // Insert a new active skill with trigger text
@@ -1516,7 +1516,7 @@ type: platform
         fs::create_dir_all(&claude_dir).unwrap();
         fs::write(
             claude_dir.join("CLAUDE.md"),
-            "# Old Base\n\n## Imported Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
+            "# Old Base\n\n## Custom Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
         ).unwrap();
 
         // Insert an active skill
@@ -1542,7 +1542,7 @@ type: platform
         assert!(content.contains("Base content."));
         assert!(!content.contains("# Old Base"));
         // Skills regenerated from DB
-        assert!(content.contains("## Imported Skills"));
+        assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /analytics"));
         assert!(content.contains("Use for analytics."));
         // Stale skill gone
