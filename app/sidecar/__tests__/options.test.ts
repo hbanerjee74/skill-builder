@@ -156,4 +156,22 @@ describe("buildQueryOptions", () => {
     expect(opts).not.toHaveProperty("stderr");
   });
 
+  it("passes apiKey via env option when apiKey is present", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ apiKey: "sk-test-key" }),
+      new AbortController()
+    );
+    expect(opts).toHaveProperty("env");
+    const env = (opts as Record<string, unknown>).env as Record<string, string | undefined>;
+    expect(env.ANTHROPIC_API_KEY).toBe("sk-test-key");
+  });
+
+  it("omits env option when apiKey is empty", () => {
+    const opts = buildQueryOptions(
+      makeConfig({ apiKey: "" }),
+      new AbortController()
+    );
+    expect(opts).not.toHaveProperty("env");
+  });
+
 });

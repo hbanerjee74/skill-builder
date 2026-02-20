@@ -76,10 +76,6 @@ export class StreamSession {
       return;
     }
 
-    if (config.apiKey) {
-      process.env.ANTHROPIC_API_KEY = config.apiKey;
-    }
-
     const state = createAbortState();
     if (externalSignal) {
       linkExternalSignal(state, externalSignal);

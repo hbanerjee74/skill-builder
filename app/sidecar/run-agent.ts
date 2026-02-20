@@ -37,10 +37,6 @@ export async function runAgentRequest(
     return runMockAgent(config, onMessage, externalSignal);
   }
 
-  if (config.apiKey) {
-    process.env.ANTHROPIC_API_KEY = config.apiKey;
-  }
-
   const state = createAbortState();
   if (externalSignal) {
     linkExternalSignal(state, externalSignal);
