@@ -66,7 +66,7 @@ If CI or merge fails, report to user and stop.
 Run in **parallel** (two `Task` calls in one turn):
 
 - Move **all issues** to **Done**: The primary issue plus every `Fixes <issue-id>` from the PR body (which includes same-PR children identified earlier). Move each to Done via `linear-server:update_issue` and add a closing comment via `linear-server:create_comment` with the PR URL and merge commit. (model: `haiku`)
-- From the **main repo directory** (not the worktree): remove the worktree, delete the local branch, delete the remote branch (`git push origin --delete <branchName>` — do NOT rely on `--delete-branch` from the merge step), pull latest main. If worktree has uncommitted changes, report back — coordinator will ask user before force-removing.
+- From the **main repo directory** (not the worktree): remove the worktree with `git worktree remove --force` (needed because build caches like `.vite/` are gitignored but still present on disk), delete the local branch, delete the remote branch (`git push origin --delete <branchName>` — do NOT rely on `--delete-branch` from the merge step), pull latest main. If the worktree directory still exists after removal, report back — coordinator will ask user before taking further action.
 
 Report to user: issue closed, PR merged, worktree and branches removed.
 
