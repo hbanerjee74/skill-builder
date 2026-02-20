@@ -2693,53 +2693,20 @@ mod tests {
     // -----------------------------------------------------------------
 
     #[tokio::test]
-    async fn test_shutdown_completed_flag_set_after_shutdown() {
-        // Verify the shutdown_completed flag is false initially and can be set
+    async fn test_shutdown_flags_lifecycle() {
+        // Both flags start false and transition to true during shutdown_all.
+        // is_shutdown_completed() is the public accessor used by RunEvent::Exit.
         let pool = SidecarPool::new();
-        assert!(
-            !pool.shutdown_completed.load(Ordering::SeqCst),
-            "shutdown_completed should be false initially"
-        );
 
-        // Simulate what shutdown_all does at the end
-        pool.shutdown_completed.store(true, Ordering::SeqCst);
-        assert!(
-            pool.shutdown_completed.load(Ordering::SeqCst),
-            "shutdown_completed should be true after being set"
-        );
-    }
+        assert!(!pool.shutdown_initiated.load(Ordering::SeqCst));
+        assert!(!pool.is_shutdown_completed());
 
-    #[tokio::test]
-    async fn test_shutdown_initiated_flag_set_on_shutdown() {
-        // Verify the shutdown_initiated flag is false initially and can be set
-        let pool = SidecarPool::new();
-        assert!(
-            !pool.shutdown_initiated.load(Ordering::SeqCst),
-            "shutdown_initiated should be false initially"
-        );
-
-        // Simulate what shutdown_all does before aborting idle cleanup
+        // Simulate shutdown_all: set initiated first, then completed
         pool.shutdown_initiated.store(true, Ordering::SeqCst);
-        assert!(
-            pool.shutdown_initiated.load(Ordering::SeqCst),
-            "shutdown_initiated should be true after being set"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_is_shutdown_completed_returns_correct_state() {
-        // Test the public accessor method
-        let pool = SidecarPool::new();
-
-        assert!(
-            !pool.is_shutdown_completed(),
-            "is_shutdown_completed should return false initially"
-        );
+        assert!(pool.shutdown_initiated.load(Ordering::SeqCst));
+        assert!(!pool.is_shutdown_completed());
 
         pool.shutdown_completed.store(true, Ordering::SeqCst);
-        assert!(
-            pool.is_shutdown_completed(),
-            "is_shutdown_completed should return true after flag is set"
-        );
+        assert!(pool.is_shutdown_completed());
     }
 }

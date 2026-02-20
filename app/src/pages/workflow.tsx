@@ -236,6 +236,24 @@ export default function WorkflowPage() {
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
 
+  /** Abandon the active agent and switch to a different step (step-switch guard "Leave"). */
+  const handleStepSwitchLeave = useCallback(() => {
+    const targetStep = pendingStepSwitch;
+    const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
+    if (curSteps[step]?.status === "in_progress") {
+      useWorkflowStore.getState().updateStepStatus(step, "pending");
+    }
+    useWorkflowStore.getState().setRunning(false);
+    useAgentStore.getState().clearRuns();
+
+    endActiveSession();
+    cleanupSkillSidecar(skillName).catch(() => {});
+    releaseLock(skillName).catch(() => {});
+
+    setPendingStepSwitch(null);
+    setCurrentStep(targetStep!);
+  }, [pendingStepSwitch, skillName, endActiveSession, setCurrentStep]);
+
   // Track whether error state has partial artifacts
   const [errorHasArtifacts, setErrorHasArtifacts] = useState(false);
 
@@ -1192,23 +1210,7 @@ export default function WorkflowPage() {
               <Button variant="outline" onClick={() => setPendingStepSwitch(null)}>
                 Stay
               </Button>
-              <Button variant="destructive" onClick={() => {
-                const targetStep = pendingStepSwitch;
-                const { currentStep: step, steps: curSteps } = useWorkflowStore.getState();
-                if (curSteps[step]?.status === "in_progress") {
-                  useWorkflowStore.getState().updateStepStatus(step, "pending");
-                }
-                useWorkflowStore.getState().setRunning(false);
-                useAgentStore.getState().clearRuns();
-
-                // Full cleanup matching the navigation guard's "Leave" handler
-                endActiveSession();
-                cleanupSkillSidecar(skillName).catch(() => {});
-                releaseLock(skillName).catch(() => {});
-
-                setPendingStepSwitch(null);
-                setCurrentStep(targetStep);
-              }}>
+              <Button variant="destructive" onClick={handleStepSwitchLeave}>
                 Leave
               </Button>
             </DialogFooter>
