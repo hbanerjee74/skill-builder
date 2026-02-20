@@ -554,6 +554,71 @@ fn delete_imported_skill_inner(
 }
 
 #[tauri::command]
+pub fn export_skill(
+    skill_name: String,
+    db: tauri::State<'_, Db>,
+) -> Result<String, String> {
+    log::info!("[export_skill] skill_name={}", skill_name);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[export_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+
+    let skill = crate::db::get_imported_skill(&conn, &skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found", skill_name))?;
+
+    let skill_dir = Path::new(&skill.disk_path);
+    if !skill_dir.is_dir() {
+        return Err(format!("Skill directory not found: {}", skill.disk_path));
+    }
+
+    let tmp_dir = std::env::temp_dir();
+    let zip_path = tmp_dir.join(format!("{}.zip", skill_name));
+
+    let file = fs::File::create(&zip_path)
+        .map_err(|e| format!("Failed to create zip file: {}", e))?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+
+    // Walk the skill directory and add files with skill name as root prefix
+    add_dir_to_zip(&mut writer, skill_dir, &skill_name, &options)?;
+
+    writer
+        .finish()
+        .map_err(|e| format!("Failed to finalize zip: {}", e))?;
+
+    log::info!("[export_skill] exported to {}", zip_path.display());
+    Ok(zip_path.to_string_lossy().to_string())
+}
+
+fn add_dir_to_zip(
+    writer: &mut zip::ZipWriter<fs::File>,
+    dir: &Path,
+    prefix: &str,
+    options: &zip::write::SimpleFileOptions,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| format!("Failed to read dir: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
+        let name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
+
+        if path.is_dir() {
+            add_dir_to_zip(writer, &path, &name, options)?;
+        } else {
+            let content = fs::read(&path)
+                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            writer
+                .start_file(&name, *options)
+                .map_err(|e| format!("Failed to add to zip: {}", e))?;
+            std::io::Write::write_all(writer, &content)
+                .map_err(|e| format!("Failed to write zip content: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_skill_content(
     skill_name: String,
     db: tauri::State<'_, Db>,
@@ -1583,6 +1648,61 @@ type: platform
         let inactive_dest = workspace.path().join(".claude").join("skills").join(".inactive").join("test-bundled");
         assert!(!active_dest.exists(), "inactive skill should not be in active path");
         assert!(inactive_dest.join("SKILL.md").exists(), "inactive skill should be in .inactive/ path");
+    }
+
+    // --- Export skill tests ---
+
+    #[test]
+    fn test_export_skill_creates_zip_with_correct_structure() {
+        let workspace = tempdir().unwrap();
+        let skill_dir = workspace.path().join("my-export-skill");
+        fs::create_dir_all(skill_dir.join("references")).unwrap();
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: my-export-skill\n---\n# Export Test",
+        )
+        .unwrap();
+        fs::write(skill_dir.join("references").join("guide.md"), "# Guide").unwrap();
+
+        // Create the zip using add_dir_to_zip
+        let zip_dir = tempdir().unwrap();
+        let zip_path = zip_dir.path().join("my-export-skill.zip");
+        let file = fs::File::create(&zip_path).unwrap();
+        let mut writer = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        add_dir_to_zip(&mut writer, &skill_dir, "my-export-skill", &options).unwrap();
+        writer.finish().unwrap();
+
+        // Verify the zip contents
+        let zip_file = fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(zip_file).unwrap();
+
+        let mut names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        names.sort();
+
+        assert!(
+            names.contains(&"my-export-skill/SKILL.md".to_string()),
+            "Expected SKILL.md in zip, got: {:?}",
+            names
+        );
+        assert!(
+            names.contains(&"my-export-skill/references/guide.md".to_string()),
+            "Expected references/guide.md in zip, got: {:?}",
+            names
+        );
+
+        // Verify content
+        let mut skill_md = String::new();
+        archive
+            .by_name("my-export-skill/SKILL.md")
+            .unwrap()
+            .read_to_string(&mut skill_md)
+            .unwrap();
+        assert!(skill_md.contains("# Export Test"));
     }
 
     #[test]
