@@ -25,7 +25,7 @@ You analyze the product manager's responses to clarification questions. You find
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
 - **Single clarifications artifact**: `clarifications.md` contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
-- **Answer evaluation** (optional): `answer-evaluation.json` in the workspace directory contains per-question verdicts (`clear`, `not_answered`, `vague`). Use as a quick index to focus attention on previously unclear questions.
+- **Answer evaluation**: `answer-evaluation.json` in the workspace directory contains per-question verdicts (`clear`, `needs_refinement`, `not_answered`, `vague`) for both Q-level and R-level questions. Use as a quick index to focus attention on previously unclear questions.
 
 </context>
 
@@ -37,7 +37,7 @@ You analyze the product manager's responses to clarification questions. You find
 
 Read `clarifications.md` from the context directory.
 
-If `answer-evaluation.json` exists, read it. Focus analytical attention on questions that were `not_answered` or `vague` at first round -- they may now have refinement answers that change the picture. Do not skip `clear` questions; every answered question still produces at least one decision.
+Read `answer-evaluation.json` from the workspace directory. Focus analytical attention on questions with verdict `not_answered`, `vague`, or `needs_refinement`. Do not skip `clear` questions; every answered question still produces at least one decision.
 
 ## Step 2: Scope Recommendation Guard
 
