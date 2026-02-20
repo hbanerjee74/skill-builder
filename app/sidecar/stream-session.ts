@@ -18,6 +18,7 @@ const CLOSE_SENTINEL = Symbol("close");
 export class StreamSession {
   private currentRequestId: string;
   private pendingResolve: ((value: string | typeof CLOSE_SENTINEL) => void) | null = null;
+  private bufferedMessage: string | null = null;
   private closed = false;
   private sessionId: string;
 
@@ -47,6 +48,10 @@ export class StreamSession {
     if (this.pendingResolve) {
       this.pendingResolve(userMessage);
       this.pendingResolve = null;
+    } else {
+      // Generator hasn't reached its await yet — buffer the message
+      // so it's consumed on the next iteration instead of being dropped.
+      this.bufferedMessage = userMessage;
     }
   }
 
@@ -107,11 +112,18 @@ export class StreamSession {
 
       // Subsequent messages: wait for pushMessage() calls
       while (!self.closed) {
-        const nextMessage = await new Promise<string | typeof CLOSE_SENTINEL>(
-          (resolve) => {
-            self.pendingResolve = resolve;
-          },
-        );
+        // Check for a buffered message that arrived before we could await
+        let nextMessage: string | typeof CLOSE_SENTINEL;
+        if (self.bufferedMessage !== null) {
+          nextMessage = self.bufferedMessage;
+          self.bufferedMessage = null;
+        } else {
+          nextMessage = await new Promise<string | typeof CLOSE_SENTINEL>(
+            (resolve) => {
+              self.pendingResolve = resolve;
+            },
+          );
+        }
 
         if (nextMessage === CLOSE_SENTINEL || self.closed) {
           return;

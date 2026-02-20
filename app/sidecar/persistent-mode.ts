@@ -301,7 +301,10 @@ export async function runPersistent(
       // abort it before starting the new one.
       if (inFlight.size > 0 && currentAbort) {
         currentAbort.abort();
-        await Promise.allSettled(inFlight);
+        // Fire-and-forget: don't block the readline loop while the aborted
+        // request tears down. The stdout writer routes by request_id so
+        // concurrent requests with different IDs are safe.
+        void Promise.allSettled([...inFlight]);
       }
 
       const { request_id, config } = message;
