@@ -76,11 +76,11 @@ Each sub-agent's task for each question to refine:
 - For `vague`: generate 1-3 focused questions to pin down the vague response
 - For `needs_refinement`: generate 1-3 focused questions to clarify the unstated parameters/assumptions introduced by the answer
 
-Follow the format example below:
-- Open with `Follow-up:` (topic) then a one-sentence summary of the prior answer
-- Include `Why this matters:` explaining what depends on the answer
+Follow the format example below. Return ONLY `##### R{n}.{m}:` blocks — no preamble, no headers, no wrapping text. The output is inserted directly into `clarifications.md`.
+
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
-- 2-4 choices in `A. Choice text` format plus "Other (please specify)" -- each choice must change the skill's design
+- Each block starts with `##### R{n}.{m}: Short Title` then a rationale sentence
+- 2-4 choices in `A. Choice text` format plus "Other (please specify)" — each choice must change the skill's design
 - Include `**Recommendation:** Full sentence.` between choices and answer (colon inside bold)
 - End each sub-question with a blank `**Answer:**` line followed by an empty line (colon inside bold)
 - Do NOT re-display original question text, choices, or recommendation
@@ -88,14 +88,8 @@ Follow the format example below:
 ### Refinement format example
 
 ```
-Refinements for Q6:
-
-Follow-up: Revenue recognition timing
-Prior answer: Invoice date is the most common convention for SaaS businesses.
-
-Why this matters: The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
-
 ##### R6.1: Which event triggers revenue recognition?
+The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
 
 A. Booking date — revenue recognized when deal closes
 B. Invoice date — revenue recognized at billing
@@ -111,7 +105,7 @@ D. Other (please specify)
 ## Phase 3: Inline Consolidation into clarifications.md
 
 1. Read the current `clarifications.md`.
-2. For each non-clear question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line, using `##### R{n}.{m}:` headings. When inserting sub-agent output, include only the `##### R{n}.{m}:` blocks and their content (heading, body text, choices, recommendation, answer). Discard the preamble lines ("Refinements for Q{n}:", "Follow-up:", "Prior answer:", "Why this matters:") — these are context for the orchestrator, not for the final file.
+2. For each question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line. Sub-agent output is already in `##### R{n}.{m}:` format — insert directly.
 3. Deduplicate if overlapping refinements exist across sub-agents.
 4. Add a `## Needs Clarification` section at the end of the file for any contradictions and critical gaps identified in Phase 1.
 5. Update `refinement_count` in the YAML frontmatter to reflect the total number of refinement sub-questions inserted.
