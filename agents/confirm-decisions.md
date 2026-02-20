@@ -25,7 +25,7 @@ You analyze the product manager's responses to clarification questions. You find
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
 - **Single clarifications artifact**: `clarifications.md` contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
-- **Answer evaluation** (optional): `answer-evaluation.json` in the context directory contains per-question verdicts (`clear`, `not_answered`, `vague`). Use as a quick index to focus attention on previously unclear questions.
+- **Answer evaluation** (optional): `answer-evaluation.json` in the workspace directory contains per-question verdicts (`clear`, `not_answered`, `vague`). Use as a quick index to focus attention on previously unclear questions.
 
 </context>
 

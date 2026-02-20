@@ -544,7 +544,11 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
   "empty_count": 0,
   "vague_count": 0,
   "total_count": 8,
-  "reasoning": "All 8 questions have detailed, specific answers."
+  "reasoning": "All 8 questions have detailed, specific answers.",
+  "per_question": [
+    { "question_id": "Q1", "verdict": "clear" },
+    { "question_id": "Q2", "verdict": "clear" }
+  ]
 }
 ```
 
@@ -558,6 +562,7 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
 | `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
 | `total_count` | integer | yes | Total question count |
 | `reasoning` | string | yes | Single sentence explaining the verdict |
+| `per_question` | array | yes | Array of `{ question_id: string, verdict: string }` objects. Verdict values: `"clear"`, `"not_answered"`, `"vague"` |
 
 ### Rules
 
@@ -577,8 +582,8 @@ Every agent's inputs and outputs, with the canonical format each expects.
 | `research-planner` | `user-context.md`, dimension catalog (inline) | `context/research-plan.md` | research-plan.md spec above |
 | `research-orchestrator` | research-plan.md (via planner return) | `context/clarifications.md` (via consolidate-research) | clarifications.md spec above |
 | `consolidate-research` | sub-agent text (inline) | `context/clarifications.md` | clarifications.md spec above |
-| `answer-evaluator` | `context/clarifications.md` | `context/answer-evaluation.json` | answer-evaluation.json spec above |
-| `detailed-research` | `context/clarifications.md`, `context/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
+| `answer-evaluator` | `context/clarifications.md` | `workspace/answer-evaluation.json` | answer-evaluation.json spec above |
+| `detailed-research` | `context/clarifications.md`, `workspace/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
 | `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above |
 | `generate-skill` | `context/decisions.md` | `SKILL.md`, `references/*.md` | Skill format (see best-practices.md) |
 | `validate-skill` | `context/decisions.md`, `SKILL.md`, `references/*.md` | `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md` | Specs above |

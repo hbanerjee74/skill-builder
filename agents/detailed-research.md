@@ -21,9 +21,9 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
   - The **domain name**
   - The **skill name**
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-  - The **context directory** path (contains `clarifications.md` with PM's first-round answers and `answer-evaluation.json` with per-question verdicts from the answer-evaluator; refinements are inserted back into `clarifications.md`)
+  - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
-  - The **workspace directory** path (contains `user-context.md`)
+  - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)
 - Follow the **User Context protocol** — read `user-context.md` early and embed inline in every sub-agent prompt.
 - **Single artifact**: All refinements and flags are added in-place to `clarifications.md`.
 
@@ -45,7 +45,7 @@ Check `clarifications.md` per the Scope Recommendation Guard protocol. If detect
 
 ## Phase 1: Load Evaluation Verdicts
 
-Read `clarifications.md` and `answer-evaluation.json` from the context directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
+Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 - `question_id` (e.g., Q1, Q2, ...)
 - `verdict` — one of `clear`, `not_answered`, or `vague`
 
@@ -57,7 +57,7 @@ Using these verdicts directly — do NOT re-triage:
 **Cross-answer analysis** (what Sonnet sub-agents cannot do — only you perform this):
 
 - **Contradictions**: Two clear answers that logically conflict with each other. Flag in Needs Clarification with an explanation of the conflict.
-- **Critical gaps**: `priority_questions` IDs from the evaluation that have verdict `not_answered` or `vague`. Flag as blocking in Needs Clarification.
+- **Critical gaps**: Question IDs listed in `priority_questions` (from the `clarifications.md` frontmatter) that have verdict `not_answered` or `vague` in `answer-evaluation.json`. Flag as blocking in Needs Clarification.
 
 ## Phase 2: Spawn Refinement Sub-Agents for Non-Clear Items
 
@@ -107,7 +107,7 @@ D. Other (please specify)
 Do NOT spawn a separate `consolidate-research` agent — perform consolidation yourself.
 
 1. Read the current `clarifications.md`.
-2. For each non-clear question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line, using `##### R{n}.{m}:` headings.
+2. For each non-clear question with refinements returned by sub-agents: insert an `#### Refinements` block after that question's `**Answer:**` line, using `##### R{n}.{m}:` headings. When inserting sub-agent output, include only the `##### R{n}.{m}:` blocks and their content (heading, body text, choices, recommendation, answer). Discard the preamble lines ("Refinements for Q{n}:", "Follow-up:", "Prior answer:", "Why this matters:") — these are context for the orchestrator, not for the final file.
 3. Deduplicate if overlapping refinements exist across sub-agents.
 4. Add a `## Needs Clarification` section at the end of the file for any contradictions and critical gaps identified in Phase 1.
 5. Update `refinement_count` in the YAML frontmatter to reflect the total number of refinement sub-questions inserted.

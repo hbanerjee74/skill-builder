@@ -173,13 +173,14 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Skill type: <skill_type>
      Domain: <domain>
      Context directory: ./<skillname>/context/
-     Answer evaluation: ./<skillname>/context/answer-evaluation.json
+     Workspace directory: <workspace_dir>
+     Answer evaluation: <workspace_dir>/answer-evaluation.json
 
      <agent-instructions>
      {content of references/protocols.md}
      </agent-instructions>
 
-     Read answer-evaluation.json to determine which questions are non-clear, then read the answered clarifications.md and insert #### Refinements subsections only for non-clear questions that need deeper exploration.
+     Read answer-evaluation.json from the workspace directory to determine which questions are non-clear, then read the answered clarifications.md and insert #### Refinements subsections only for non-clear questions that need deeper exploration.
 
      Return a 5-10 bullet summary of the refinement questions you generated."
    )
@@ -206,7 +207,8 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
 
      Skill type: <skill_type>
      Context directory: ./<skillname>/context/
-     Answer evaluation: ./<skillname>/context/answer-evaluation.json
+     Workspace directory: <workspace_dir>
+     Answer evaluation: <workspace_dir>/answer-evaluation.json
 
      Analyze all answered clarifications and produce decisions.
      Use answer-evaluation.json as context — focus attention on previously unclear items that may now have refinement answers.
