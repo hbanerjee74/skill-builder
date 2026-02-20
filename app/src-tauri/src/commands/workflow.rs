@@ -286,7 +286,7 @@ fn extract_customization_section(content: &str) -> String {
 /// Generate the "## Custom Skills" section from DB, or empty string if none.
 /// All active skills are treated identically regardless of is_bundled.
 fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String> {
-    let skills = crate::db::list_active_skills_with_triggers(conn)?;
+    let skills = crate::db::list_active_skills(conn)?;
     if skills.is_empty() {
         return Ok(String::new());
     }
@@ -302,6 +302,10 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
             section.push_str(trigger);
             section.push('\n');
         }
+        section.push_str(&format!(
+            "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
+            skill.skill_name
+        ));
     }
 
     Ok(section)

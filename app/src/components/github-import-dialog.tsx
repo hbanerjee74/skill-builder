@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, regenerateClaudeMd } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
 
 type Step = "url" | "select" | "importing" | "done"
@@ -117,7 +117,6 @@ export default function GitHubImportDialog({
       )
       setImportedCount(imported.length)
 
-      await regenerateClaudeMd()
       await onImported()
       setStep("done")
 

@@ -199,7 +199,6 @@ pub fn run() {
             commands::imported_skills::toggle_skill_active,
             commands::imported_skills::delete_imported_skill,
             commands::imported_skills::get_skill_content,
-            commands::imported_skills::regenerate_claude_md,
             commands::feedback::create_github_issue,
             commands::github_import::parse_github_url,
             commands::github_import::list_github_skills,

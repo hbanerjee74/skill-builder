@@ -575,23 +575,6 @@ fn get_skill_content_inner(skill: &ImportedSkill) -> Result<String, String> {
         .map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
 
-#[tauri::command]
-pub fn regenerate_claude_md(
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    log::info!("[regenerate_claude_md]");
-    let conn = db.0.lock().map_err(|e| {
-        log::error!("[regenerate_claude_md] Failed to acquire DB lock: {}", e);
-        e.to_string()
-    })?;
-    let settings = crate::db::read_settings(&conn)?;
-    let workspace_path = settings
-        .workspace_path
-        .ok_or_else(|| "Workspace path not initialized".to_string())?;
-
-    super::workflow::update_skills_section(&workspace_path, &conn)
-}
-
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
 /// For each subdirectory containing SKILL.md:
 /// 1. Copies the directory to `{workspace}/.claude/skills/{name}/` (always overwrite)

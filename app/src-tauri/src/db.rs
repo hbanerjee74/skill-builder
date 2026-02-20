@@ -1370,12 +1370,12 @@ pub fn get_imported_skill(
     }
 }
 
-pub fn list_active_skills_with_triggers(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
+pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT skill_id, skill_name, domain, description, is_active, disk_path, trigger_text, imported_at, is_bundled
              FROM imported_skills
-             WHERE is_active = 1 AND trigger_text IS NOT NULL
+             WHERE is_active = 1
              ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -3028,7 +3028,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_active_skills_with_triggers() {
+    fn test_list_active_skills() {
         let conn = create_test_db();
 
         // Skill 1: active with trigger text
@@ -3073,7 +3073,7 @@ mod tests {
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
-        let result = list_active_skills_with_triggers(&conn).unwrap();
+        let result = list_active_skills(&conn).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].skill_name, "active-with-trigger");
         assert_eq!(result[0].trigger_text.as_deref(), Some("Trigger for skill 1"));
