@@ -262,12 +262,14 @@ export default function DashboardPage() {
         return (
           <div className="flex flex-col gap-1">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="grid grid-cols-[1fr_auto_8rem_auto] items-center gap-x-3 rounded-md border px-3 py-2">
-                <Skeleton className="h-4 w-40" />
-                <div className="flex gap-1.5">
-                  <Skeleton className="h-5 w-20 rounded-full" />
-                  <Skeleton className="h-5 w-24 rounded-full" />
+              <div key={i} className="grid grid-cols-[1fr_auto_2fr_auto_8rem_auto] items-center gap-x-3 rounded-md border px-3 py-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <div className="flex gap-1">
+                  <Skeleton className="h-5 w-14 rounded-full" />
+                  <Skeleton className="h-5 w-14 rounded-full" />
                 </div>
+                <Skeleton className="h-5 w-20 rounded-full" />
                 <Skeleton className="h-2 w-full" />
                 <div className="flex gap-1">
                   <Skeleton className="size-6 rounded-md" />

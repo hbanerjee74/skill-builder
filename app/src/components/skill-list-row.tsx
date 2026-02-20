@@ -70,7 +70,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(120px,1.5fr)_minmax(80px,1fr)_auto_8rem_auto]",
+        "grid-cols-[1fr_auto] sm:grid-cols-[minmax(100px,1fr)_auto_minmax(80px,2fr)_auto_8rem_auto]",
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
@@ -89,13 +89,26 @@ export default function SkillListRow({
         {skill.name}
       </span>
 
-      {/* Col 2: Domain + Type badges (hidden on mobile, shown at sm) */}
-      <div className="hidden items-center gap-1.5 sm:flex min-w-0">
+      {/* Col 2: Domain badge */}
+      <div className="hidden sm:flex">
         {skill.domain && (
           <Badge variant="outline" className="shrink-0 text-xs max-w-[120px]">
             <span className="truncate">{skill.domain}</span>
           </Badge>
         )}
+      </div>
+
+      {/* Col 3: Tags (widest column — 2fr) */}
+      <div className="hidden items-center gap-1 sm:flex min-w-0 flex-wrap">
+        {skill.tags?.map((tag) => (
+          <Badge key={tag} variant="secondary" className="shrink-0 text-xs max-w-[100px]">
+            <span className="truncate">{tag}</span>
+          </Badge>
+        ))}
+      </div>
+
+      {/* Col 4: Type badge */}
+      <div className="hidden sm:flex">
         {skill.skill_type && (
           <Badge className={cn("shrink-0 text-xs max-w-[120px]", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
             <span className="truncate">
