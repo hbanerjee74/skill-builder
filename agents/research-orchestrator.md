@@ -107,9 +107,13 @@ After the planner returns, parse its scored YAML output. Extract the `selected` 
 **If len(selected) > max_dimensions:**
 
 1. **Skip Phase 3 and Phase 4 entirely.** Do not launch any dimension agents or consolidation.
-2. Analyze the research plan to understand which dimensions were chosen and how they cluster into natural groupings. Recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
-3. Write `{context_dir}/clarifications.md` with `scope_recommendation: true` in YAML frontmatter. After the frontmatter, explain why the scope is too broad and describe each narrower skill with its name, type, focus, covered dimensions, and when to use it.
-4. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
+2. **The original broad-scope analysis is now closed and superseded.** Do not carry it forward, reference it, or include it in any output. It served only to determine that the scope is too broad.
+3. Analyze the research plan to understand which dimensions were chosen and how they cluster into natural groupings. Recommend 2-4 narrower skill alternatives that each cover a coherent subset (ideally 3-5 dimensions), are independently useful, and together cover the full original scope.
+4. Write `{context_dir}/clarifications.md` with `scope_recommendation: true` in YAML frontmatter. The body must contain **only** the narrower skill recommendations — structured as follows:
+   - One sentence explaining the scope is too broad to produce a focused skill.
+   - For each recommended narrower skill: its **name**, **type**, **focus** (one sentence), **covered dimensions** (slugs only), and **when to use it**.
+   - **Do NOT include** the full original research plan, the scored dimension table, the original dimension list, planner scores/reasons, or any other material from the broad-scope analysis. Downstream agents that check for `scope_recommendation: true` will no-op without needing original scope details.
+5. **Return immediately.** Do not proceed to Phase 3 or Phase 4.
 
 **If dimensions_chosen <= max_dimensions:** Proceed to Phase 3.
 
