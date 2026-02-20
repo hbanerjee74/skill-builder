@@ -26,6 +26,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
 
     // Numbered migrations: each runs once, tracked in schema_migrations.
     // To add a new migration, append a (version, function) entry to this array.
+    #[allow(clippy::type_complexity)]
     let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
         (1,  run_add_skill_type_migration),
         (2,  run_lock_table_migration),

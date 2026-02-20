@@ -534,7 +534,7 @@ pub fn rename_skill(
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    rename_skill_inner(&old_name, &new_name, &workspace_path, &mut *conn, skills_path.as_deref())?;
+    rename_skill_inner(&old_name, &new_name, &workspace_path, &mut conn, skills_path.as_deref())?;
 
     // Auto-commit: skill renamed
     if let Some(ref sp) = skills_path {
