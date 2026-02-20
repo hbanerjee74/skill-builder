@@ -81,6 +81,11 @@ describe("Canonical format: anti-pattern checks (all markdown files)", () => {
       const content = readFile(file);
       expect(content).not.toMatch(/\*\*Question\*\*[:\*]/);
     });
+
+    it(`${rel}: no [MUST ANSWER] inline tags`, () => {
+      const content = readFile(file);
+      expect(content).not.toMatch(/\[MUST ANSWER\]/);
+    });
   }
 });
 
@@ -135,6 +140,10 @@ describe("Canonical format: clarifications.md structure", () => {
 
       it("has A. lettered choices", () => {
         expect(content).toMatch(/^[A-D]\. /m);
+      });
+
+      it("has ### Required or ### Optional sub-headings", () => {
+        expect(content).toMatch(/^### (Required|Optional)$/m);
       });
     });
   }
