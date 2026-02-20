@@ -325,7 +325,7 @@ describe("Canonical format: answer-evaluation.json structure", () => {
 
     it("per_question entries have question_id and verdict", () => {
       for (const entry of data.per_question) {
-        expect(entry.question_id).toMatch(/^Q\d+$/);
+        expect(entry.question_id).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
         expect(["clear", "needs_refinement", "not_answered", "vague"]).toContain(entry.verdict);
       }
     });
