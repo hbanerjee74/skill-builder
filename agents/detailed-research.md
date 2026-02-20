@@ -53,7 +53,7 @@ Using these verdicts directly — do NOT re-triage:
 
 - **Clear items** (verdict: `clear`): the user answered substantively with no unstated assumptions. Skip — no refinement needed.
 - **Needs refinement** (verdict: `needs_refinement`): the user answered substantively but introduced unstated parameters or assumptions. These get refinement questions in Phase 2.
-- **Non-clear items** (verdict: `not_answered` or `vague`): the user did not answer or gave a vague answer. These also get refinement questions in Phase 2.
+- **Non-clear items** (verdict: `not_answered` or `vague`): the user did not provide their own answer (auto-filled with the recommendation) or gave a vague answer. These also get refinement questions in Phase 2.
 
 **Cross-answer analysis** (what Sonnet sub-agents cannot do — only you perform this):
 
@@ -72,12 +72,12 @@ All sub-agents **return text** — they do not write files. Include the standard
 - **User context** and **workspace directory** (per protocol)
 
 Each sub-agent's task for each question to refine:
-- For `not_answered`: generate 1-3 focused questions to get the missing answer
+- For `not_answered`: the answer contains the auto-filled recommendation — generate 1-3 focused questions to validate or refine the recommended approach
 - For `vague`: generate 1-3 focused questions to pin down the vague response
 - For `needs_refinement`: generate 1-3 focused questions to clarify the unstated parameters/assumptions introduced by the answer
 
 Follow the format example below:
-- Open with `Follow-up:` (topic) then a one-sentence summary of the prior answer (or "not answered")
+- Open with `Follow-up:` (topic) then a one-sentence summary of the prior answer
 - Include `Why this matters:` explaining what depends on the answer
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
 - 2-4 choices in `A. Choice text` format plus "Other (please specify)" -- each choice must change the skill's design
@@ -91,7 +91,7 @@ Follow the format example below:
 Refinements for Q6:
 
 Follow-up: Revenue recognition timing
-Prior answer: (not answered)
+Prior answer: Invoice date is the most common convention for SaaS businesses (auto-filled recommendation).
 
 Why this matters: The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
 
