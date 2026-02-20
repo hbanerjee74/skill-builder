@@ -10,7 +10,7 @@ Tracked in VD-819. Referenced by VD-807 (agent redesign) and VD-817 (UI parser).
 
 # Canonical `clarifications.md` Format
 
-Written by `consolidate-research` (Step 1). Updated by `detailed-research` (Step 3). Read by `answer-evaluator`, `detailed-research`, `confirm-decisions`, and the Rust `autofill_answers` / `parse_scope_recommendation` parsers.
+Written by `consolidate-research` (Step 1). Updated in-place by `detailed-research` (Step 3, inline consolidation). Read by `answer-evaluator` (both gates), `detailed-research`, `confirm-decisions`, and the Rust `autofill_answers` / `autofill_refinement_answers` / `parse_scope_recommendation` parsers.
 
 ---
 
@@ -23,7 +23,7 @@ sections: 6               # required — number of ## sections
 duplicates_removed: 17    # required — consolidation stat
 refinement_count: 16      # required — total R-level items (0 for step 0)
 status: pending           # optional — workflow status
-priority_questions: [Q1, Q2, Q3]  # optional — MUST ANSWER question IDs
+priority_questions: [Q1, Q2, Q3]  # optional — IDs of questions under ### Required sub-headings
 scope_recommendation: true        # optional — set by scope advisor, checked by downstream agents
 ---
 ```
@@ -207,8 +207,8 @@ Regex patterns for key fields (used by the Rust autofill parser and the UI rende
 |---|---|---|
 | Section heading | `^## (.+)` | Resets recommendation state |
 | Question heading | `^### (Q\d+): (.+)$` | Groups: ID, title |
-| Required group | `^### Required$` | Marks start of required questions within a section |
-| Optional group | `^### Optional$` | Marks start of optional questions within a section |
+| Required group | `^### Required$` | Marks start of required questions within a section. Also resets recommendation state in Rust `autofill_answers` (matches `starts_with("### ")`) |
+| Optional group | `^### Optional$` | Marks start of optional questions within a section. Also resets recommendation state |
 | Refinement heading | `^##### (R\d+\.\d+[a-z]?): (.+)$` | Groups: ID, title |
 | Refinement container | `^#### Refinements$` | Marks start of refinement block |
 | Choice | `^([A-Z])\. (.+)$` | Groups: letter, text |
@@ -304,22 +304,6 @@ decision_count: 0
 
 The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
 ```
-
----
-
-## VD-807 Draft Format (proposed, not yet implemented)
-
-When `detailed-research` writes a draft `decisions.md` (VD-807 Phase 1), entries use additional fields:
-
-```markdown
-### D1: MRR Calculation Formula
-- **Source:** Q1
-- **Section:** Core Concepts and Definitions
-- **Answer:** Managed services is already MRR, PS < 12mo = TCV/10
-- **Status:** draft
-```
-
-Draft-specific status values: `draft`, `critical-gap`, `contradiction`. See `vd-807-agent-outputs.md` for the full merge protocol.
 
 ---
 
@@ -533,7 +517,7 @@ Generated at runtime by Rust `format_user_context()` in `workflow.rs`. Written t
 
 # Canonical `answer-evaluation.json` Format
 
-Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by Rust `evaluate_answers` command and frontend `TransitionGateDialog`.
+Written by `answer-evaluator` (Haiku). Runs at two gates: between Step 2 and Step 3 (evaluates Q-level answers), and between Step 4 and Step 5 (evaluates both Q-level and R-level answers — fresh evaluation each time). Read by Rust `evaluate_answers` command, frontend `TransitionGateDialog`, and `detailed-research` agent.
 
 ## JSON Schema
 
@@ -557,7 +541,7 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
 | Field | Type | Required | Values |
 |---|---|---|---|
 | `verdict` | string | yes | `"sufficient"`, `"mixed"`, `"insufficient"` |
-| `answered_count` | integer | yes | Count of substantive answers |
+| `answered_count` | integer | yes | Count of substantive answers (`clear` + `needs_refinement`) |
 | `empty_count` | integer | yes | Count of empty/whitespace answers |
 | `vague_count` | integer | yes | Count of vague answers (<5 words, "TBD", etc.) |
 | `total_count` | integer | yes | Total question count |
@@ -566,7 +550,7 @@ Written by `answer-evaluator` (Haiku, gate between Step 2 and Step 3). Read by R
 
 ### Rules
 
-- `answered_count + empty_count + vague_count == total_count`
+- `answered_count + empty_count + vague_count == total_count` (where `answered_count` includes both `clear` and `needs_refinement`)
 - `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
 - Output must be valid JSON with no markdown fences or extra text
 - Validated by `npm run test:unit` (`canonical-format.test.ts`)
@@ -584,7 +568,7 @@ Every agent's inputs and outputs, with the canonical format each expects.
 | `consolidate-research` | sub-agent text (inline) | `context/clarifications.md` | clarifications.md spec above |
 | `answer-evaluator` | `context/clarifications.md` | `workspace/answer-evaluation.json` | answer-evaluation.json spec above |
 | `detailed-research` | `context/clarifications.md`, `workspace/answer-evaluation.json` | Updates `context/clarifications.md` (adds refinements) | clarifications.md spec above |
-| `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above |
+| `confirm-decisions` | `context/clarifications.md` | `context/decisions.md` | decisions.md spec above. Does NOT read `answer-evaluation.json` — gate 2 enforces answer quality before this agent runs |
 | `generate-skill` | `context/decisions.md` | `SKILL.md`, `references/*.md` | Skill format (see best-practices.md) |
 | `validate-skill` | `context/decisions.md`, `SKILL.md`, `references/*.md` | `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md` | Specs above |
 
