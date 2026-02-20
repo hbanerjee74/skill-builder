@@ -100,7 +100,7 @@ check_directory() {
 
 # --- Extract protocols from workspace/CLAUDE.md ---
 
-protocols=$(extract_sections "## Protocols" "## Content Principles" | trim_trailing)
+protocols=$(extract_sections "## Protocols" "## Output Paths" | trim_trailing)
 
 # --- Write or check ---
 
