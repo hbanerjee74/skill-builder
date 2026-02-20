@@ -49,6 +49,12 @@ For each cluster of related questions across sources:
 
 Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple areas.
 
+Within each `##` section, group questions under two sub-headings:
+- `### Required` — questions critical to producing a correct skill (core metric definitions, entity identifiers, must-have business rules). The skill cannot be generated without answers to these.
+- `### Optional` — questions that refine quality but where a reasonable default exists.
+
+If a section contains only required or only optional questions, include only the relevant sub-heading. Do NOT use `[MUST ANSWER]` inline tags in question headings — the sub-heading carries that meaning.
+
 ### Step 3: Handle contradictions and flags
 
 Put these in a `## Needs Clarification` section with clear explanations. Do not silently resolve contradictions. Sources include: sub-agent questions that conflict with each other, conflicts with user context, and **triage results** the orchestrator may pass (answer-level contradictions, vague answers too ambiguous to refine).
@@ -65,6 +71,8 @@ Check whether `clarifications.md` already exists in the context directory:
 - Include a `**Recommendation:** Full sentence.` field between choices and answer (colon inside bold)
 - Every question must end with a blank `**Answer:**` line followed by an empty line (colon inside bold)
 - YAML frontmatter must include accurate counts: `question_count`, `sections`, `duplicates_removed`, `refinement_count` (required). Add `scope_recommendation: true` if the scope advisor has set it.
+- YAML frontmatter must include `priority_questions` listing the IDs of all questions under `### Required` sub-headings (e.g., `priority_questions: [Q1, Q3, Q7]`)
+- Do NOT use `[MUST ANSWER]` inline tags in question headings
 - Write the complete file to the context directory in a **single Write call**
 
 </instructions>
