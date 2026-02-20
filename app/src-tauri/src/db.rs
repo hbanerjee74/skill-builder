@@ -18,18 +18,78 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     conn.pragma_update(None, "busy_timeout", "5000")
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    ensure_migration_table(&conn)?;
+
+    // Migration 0: base schema (always runs via CREATE TABLE IF NOT EXISTS)
     run_migrations(&conn)?;
-    run_add_skill_type_migration(&conn)?;
-    run_lock_table_migration(&conn)?;
-    run_author_migration(&conn)?;
-    run_usage_tracking_migration(&conn)?;
-    run_workflow_session_migration(&conn)?;
-    run_sessions_table_migration(&conn)?;
-    run_trigger_text_migration(&conn)?;
-    run_agent_stats_migration(&conn)?;
-    run_intake_migration(&conn)?;
-    run_composite_pk_migration(&conn)?;
+
+    if !migration_applied(&conn, 1) {
+        run_add_skill_type_migration(&conn)?;
+        mark_migration_applied(&conn, 1)?;
+    }
+    if !migration_applied(&conn, 2) {
+        run_lock_table_migration(&conn)?;
+        mark_migration_applied(&conn, 2)?;
+    }
+    if !migration_applied(&conn, 3) {
+        run_author_migration(&conn)?;
+        mark_migration_applied(&conn, 3)?;
+    }
+    if !migration_applied(&conn, 4) {
+        run_usage_tracking_migration(&conn)?;
+        mark_migration_applied(&conn, 4)?;
+    }
+    if !migration_applied(&conn, 5) {
+        run_workflow_session_migration(&conn)?;
+        mark_migration_applied(&conn, 5)?;
+    }
+    if !migration_applied(&conn, 6) {
+        run_sessions_table_migration(&conn)?;
+        mark_migration_applied(&conn, 6)?;
+    }
+    if !migration_applied(&conn, 7) {
+        run_trigger_text_migration(&conn)?;
+        mark_migration_applied(&conn, 7)?;
+    }
+    if !migration_applied(&conn, 8) {
+        run_agent_stats_migration(&conn)?;
+        mark_migration_applied(&conn, 8)?;
+    }
+    if !migration_applied(&conn, 9) {
+        run_intake_migration(&conn)?;
+        mark_migration_applied(&conn, 9)?;
+    }
+    if !migration_applied(&conn, 10) {
+        run_composite_pk_migration(&conn)?;
+        mark_migration_applied(&conn, 10)?;
+    }
+
     Ok(Db(Mutex::new(conn)))
+}
+
+fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );"
+    )
+}
+
+fn migration_applied(conn: &Connection, version: u32) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
+        rusqlite::params![version],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0
+}
+
+fn mark_migration_applied(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
+        rusqlite::params![version],
+    ).map(|_| ())
 }
 
 fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
