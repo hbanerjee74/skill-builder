@@ -138,31 +138,13 @@ Enter when all pipeline phases pass.
 5. Report to user with: PR link, worktree path, recommended test mode (see [test-mode.md](references/test-mode.md)) with launch command, manual test steps from the PR test plan, and relevant E2E tags.
 6. **Do NOT remove the worktree** — user tests manually on it.
 
-## Sub-agent Type Selection
+## Sub-agent Delegation
 
-These are `subagent_type` values for the `Task` tool — not MCP tools.
+Follows the project's Delegation Policy in CLAUDE.md (model tiers, sub-agent rules, output caps).
 
-| Task | subagent_type | model |
-|---|---|---|
-| Planning | feature-dev:code-architect | sonnet |
-| Codebase exploration | Explore | default |
-| Implementation | general-purpose | default |
-| Code simplification | code-simplifier:code-simplifier | default |
-| Code review | feature-dev:code-reviewer | default |
-| Linear updates | general-purpose | haiku |
-
-## Rules for All Sub-agents
-
+Skill-specific rules:
 - Always provide the **worktree path** (not main repo path)
-- **Concise summaries only** — no detailed exploration logs
-- **Commit + push** before reporting completion
-- **Check off your ACs on Linear** after tests pass
-- Implementation Updates section → coordinator-only
 - Sub-agents can spawn their own sub-agents for parallelism
-- **Run only relevant tests** — follow the project's test strategy
-- **Follow project logging standards** (CLAUDE-APP.md § Logging) — every new Rust command logs `info!` on entry + `error!` on failure; frontend uses `console.error/warn/log` appropriately; include context in log messages
-- **Follow project testing rules** (CLAUDE.md § Testing) — new store logic → unit test, new Rust command → `#[cfg(test)]`, new UI interaction → component test, new page/flow → E2E happy path, bug fix → regression test; use `npm run test:changed` for frontend, `cargo test <module>` for Rust
-- **Run `npx tsc --noEmit`** (from `app/`) after implementation — catches type errors in files you didn't touch but that reference changed interfaces
 
 ## Error Recovery
 

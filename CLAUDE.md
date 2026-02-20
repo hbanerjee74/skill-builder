@@ -129,6 +129,44 @@ Both frontends use the same files — no conversion needed:
 - **PR title format**: `VD-XXX: short description`
 - **PR body link**: `Fixes VD-XXX`
 
+## Delegation Policy
+
+### Hierarchy
+
+Use the lightest option that fits:
+
+1. **Inline** — trivial: one-liner, single-file read, direct answer
+2. **Task subagents** — independent workstreams, no mid-task coordination (the common case)
+3. **Teams (TeamCreate)** — agents must exchange findings mid-task or hold competing hypotheses
+
+### Model tiers
+
+| Tier | Model | When |
+|---|---|---|
+| Reasoning | sonnet | Planning, architecture, requirements drafting |
+| Implementation | default | Coding, exploration, review, merge |
+| Lightweight | haiku | Linear API calls, AC checkoffs, status updates |
+
+### Sub-agent rules
+
+- Scoped prompts with clear deliverables — prevent rabbit holes
+- Commit + push before reporting completion
+- Final response under 2000 characters — list outcomes, not process
+- Never call TaskOutput twice for the same subagent — increase timeout instead
+- Follow project logging standards (§ Logging): Rust `info!` on entry + `error!` on failure; frontend `console.error/warn/log`
+- Follow project testing rules (§ Testing): run only relevant tests, `npx tsc --noEmit` after implementation
+- Check off ACs on Linear after tests pass; Implementation Updates are coordinator-only
+
+### Skill lifecycle
+
+The custom skills form a pipeline: **Create → Implement → Close**.
+
+- `/create-linear-issue` — research, estimate, create issue(s). Can decompose into children.
+- `/implement-linear-issue` — plan, code, test, PR. Handles multi-child issues on one branch.
+- `/close-linear-issue` — verify tests, merge PR, move to Done, cleanup worktree.
+
+Each skill manages its own workflow. Child issues created by `/create` are picked up by `/implement` (detects children via `parentId`) and closed together by `/close` (detects same-PR children via `Fixes` lines).
+
 ## Custom Skills
 
 ### /create-linear-issue
