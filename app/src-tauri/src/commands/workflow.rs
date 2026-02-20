@@ -3043,19 +3043,49 @@ mod tests {
 
     // --- generate_skills_section tests ---
 
+    /// Helper: create a skill directory with a SKILL.md containing frontmatter.
+    fn create_skill_on_disk(
+        base: &std::path::Path,
+        name: &str,
+        trigger: Option<&str>,
+        description: Option<&str>,
+    ) -> String {
+        let skill_dir = base.join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        let mut fm = String::from("---\n");
+        fm.push_str(&format!("name: {}\n", name));
+        if let Some(desc) = description {
+            fm.push_str(&format!("description: {}\n", desc));
+        }
+        if let Some(trig) = trigger {
+            fm.push_str(&format!("trigger: {}\n", trig));
+        }
+        fm.push_str("---\n# Skill\n");
+        std::fs::write(skill_dir.join("SKILL.md"), &fm).unwrap();
+        skill_dir.to_string_lossy().to_string()
+    }
+
     #[test]
     fn test_generate_skills_section_single_active_skill() {
         let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "test-practices",
+            Some("Read the skill at .claude/skills/test-practices/SKILL.md."),
+            Some("Skill structure rules."),
+        );
+
         let skill = crate::types::ImportedSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             domain: Some("skill-builder".to_string()),
-            description: Some("Skill structure rules.".to_string()),
             is_active: true,
-            disk_path: "/tmp/skills/test-practices".to_string(),
-            trigger_text: Some("Read the skill at .claude/skills/test-practices/SKILL.md.".to_string()),
+            disk_path,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
+            description: None,
+            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3076,12 +3106,12 @@ mod tests {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             domain: Some("skill-builder".to_string()),
-            description: Some("Skill structure rules.".to_string()),
             is_active: false,
             disk_path: "/tmp/skills/test-practices".to_string(),
-            trigger_text: Some("Read the skill.".to_string()),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
+            description: None,
+            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3092,27 +3122,41 @@ mod tests {
     #[test]
     fn test_generate_skills_section_multiple_skills_same_format() {
         let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path1 = create_skill_on_disk(
+            skill_tmp.path(),
+            "test-practices",
+            Some("Use for skill generation."),
+            Some("Skill structure rules."),
+        );
+        let disk_path2 = create_skill_on_disk(
+            skill_tmp.path(),
+            "data-analytics",
+            Some("Use for analytics queries."),
+            Some("Analytics patterns."),
+        );
+
         let bundled = crate::types::ImportedSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
             domain: Some("skill-builder".to_string()),
-            description: Some("Skill structure rules.".to_string()),
             is_active: true,
-            disk_path: "/tmp/skills/test-practices".to_string(),
-            trigger_text: Some("Use for skill generation.".to_string()),
+            disk_path: disk_path1,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
+            description: None,
+            trigger_text: None,
         };
         let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
             skill_name: "data-analytics".to_string(),
             domain: Some("data".to_string()),
-            description: Some("Analytics patterns.".to_string()),
             is_active: true,
-            disk_path: "/tmp/skills/data-analytics".to_string(),
-            trigger_text: Some("Use for analytics queries.".to_string()),
+            disk_path: disk_path2,
             imported_at: "2025-01-15T10:00:00Z".to_string(),
             is_bundled: false,
+            description: None,
+            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &bundled).unwrap();
         crate::db::insert_imported_skill(&conn, &imported).unwrap();

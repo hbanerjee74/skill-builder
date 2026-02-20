@@ -221,13 +221,16 @@ pub struct ImportedSkill {
     pub skill_id: String,
     pub skill_name: String,
     pub domain: Option<String>,
-    pub description: Option<String>,
     pub is_active: bool,
     pub disk_path: String,
-    pub trigger_text: Option<String>,
     pub imported_at: String,
     #[serde(default)]
     pub is_bundled: bool,
+    // Populated from SKILL.md frontmatter on disk, not from DB
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

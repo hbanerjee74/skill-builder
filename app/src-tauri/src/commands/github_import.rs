@@ -579,16 +579,24 @@ pub(crate) async fn import_single_skill(
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
+    if fm.trigger.is_none() {
+        log::warn!(
+            "import_single_skill: skill '{}' has no trigger field in SKILL.md frontmatter",
+            skill_name
+        );
+    }
+
     Ok(ImportedSkill {
         skill_id,
         skill_name,
         domain: fm.domain,
-        description: fm.description,
         is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
-        trigger_text: fm.trigger,
         imported_at,
         is_bundled: false,
+        // Populated from frontmatter for the response, not stored in DB
+        description: fm.description,
+        trigger_text: fm.trigger,
     })
 }
 
