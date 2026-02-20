@@ -40,6 +40,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (10, run_composite_pk_migration),
         (11, run_bundled_skill_migration),
         (12, run_drop_trigger_description_migration),
+        (13, run_remove_validate_step_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -360,6 +361,17 @@ fn run_drop_trigger_description_migration(conn: &Connection) -> Result<(), rusql
         ALTER TABLE imported_skills_new RENAME TO imported_skills;",
     )?;
 
+    Ok(())
+}
+
+fn run_remove_validate_step_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Delete step 6 records from all skills
+    conn.execute("DELETE FROM workflow_steps WHERE step_id = 6", [])?;
+    // Reset any skill whose current_step is 6 back to 5 (completed)
+    conn.execute(
+        "UPDATE workflow_runs SET current_step = 5, status = 'completed' WHERE current_step = 6",
+        [],
+    )?;
     Ok(())
 }
 
@@ -1763,6 +1775,7 @@ mod tests {
         run_intake_migration(&conn).unwrap();
         run_composite_pk_migration(&conn).unwrap();
         run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
         conn
     }
 
