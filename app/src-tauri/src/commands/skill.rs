@@ -143,9 +143,12 @@ pub fn create_skill(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[create_skill] name={} domain={} skill_type={:?} tags={:?} intake={}", name, domain, skill_type, tags, intake_json.is_some());
-    let conn = db.0.lock().ok();
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[create_skill] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
     // Read settings from DB
-    let settings = conn.as_deref().and_then(|c| crate::db::read_settings(c).ok());
+    let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
     // Require skills_path to be configured
@@ -165,7 +168,7 @@ pub fn create_skill(
         &domain,
         tags.as_deref(),
         skill_type.as_deref(),
-        conn.as_deref(),
+        Some(&*conn),
         skills_path.as_deref(),
         author_login.as_deref(),
         author_avatar.as_deref(),
@@ -516,7 +519,7 @@ pub fn rename_skill(
         return Ok(());
     }
 
-    let conn = db.0.lock().map_err(|e| {
+    let mut conn = db.0.lock().map_err(|e| {
         log::error!("[rename_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
@@ -525,7 +528,7 @@ pub fn rename_skill(
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    rename_skill_inner(&old_name, &new_name, &workspace_path, &conn, skills_path.as_deref())?;
+    rename_skill_inner(&old_name, &new_name, &workspace_path, &mut *conn, skills_path.as_deref())?;
 
     // Auto-commit: skill renamed
     if let Some(ref sp) = skills_path {
@@ -542,7 +545,7 @@ fn rename_skill_inner(
     old_name: &str,
     new_name: &str,
     workspace_path: &str,
-    conn: &rusqlite::Connection,
+    conn: &mut rusqlite::Connection,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
     // Check new name doesn't already exist
@@ -558,66 +561,90 @@ fn rename_skill_inner(
         return Err(format!("Skill '{}' already exists", new_name));
     }
 
-    // DB first, then disk — DB failures abort cleanly without leaving orphaned directories
-    let tx_result = (|| -> Result<(), String> {
-        conn.execute_batch("BEGIN TRANSACTION").map_err(|e| e.to_string())?;
+    // DB first, then disk — DB failures abort cleanly without leaving orphaned directories.
+    // RAII transaction: automatically rolls back on drop if not committed.
+    {
+        let tx = conn.transaction().map_err(|e| {
+            log::error!("[rename_skill] Failed to begin transaction: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // workflow_runs: PK change — insert new, delete old
-        conn.execute(
+        tx.execute(
             "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json)
              SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json
              FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
-        conn.execute(
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
+        tx.execute(
             "DELETE FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![old_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // workflow_steps
-        conn.execute(
+        tx.execute(
             "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // skill_tags
-        conn.execute(
+        tx.execute(
             "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // agent_runs
-        conn.execute(
+        tx.execute(
             "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // workflow_artifacts
-        conn.execute(
+        tx.execute(
             "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // skill_locks
-        conn.execute(
+        tx.execute(
             "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
         // workflow_sessions
-        conn.execute(
+        tx.execute(
             "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| e.to_string())?;
+        ).map_err(|e| {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
 
-        conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-
-    if let Err(e) = tx_result {
-        let _ = conn.execute_batch("ROLLBACK");
-        log::error!("[rename_skill] DB transaction failed: {}", e);
-        return Err(format!("Failed to rename skill in database: {}", e));
+        tx.commit().map_err(|e| {
+            log::error!("[rename_skill] DB transaction commit failed: {}", e);
+            format!("Failed to rename skill in database: {}", e)
+        })?;
     }
 
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
@@ -1506,7 +1533,7 @@ mod tests {
         let workspace = workspace_dir.path().to_str().unwrap();
         let skills_dir = tempdir().unwrap();
         let skills_path = skills_dir.path().to_str().unwrap();
-        let conn = create_test_db();
+        let mut conn = create_test_db();
         save_skills_path_setting(&conn, skills_path);
 
         // Create skill with workspace dir, skills dir, DB record, tags, and steps
@@ -1519,7 +1546,7 @@ mod tests {
         crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
 
         // Rename
-        rename_skill_inner("old-name", "new-name", workspace, &conn, Some(skills_path)).unwrap();
+        rename_skill_inner("old-name", "new-name", workspace, &mut conn, Some(skills_path)).unwrap();
 
         // Workspace dirs moved
         assert!(!Path::new(workspace).join("old-name").exists());
@@ -1589,14 +1616,14 @@ mod tests {
     fn test_rename_skill_collision() {
         let workspace_dir = tempdir().unwrap();
         let workspace = workspace_dir.path().to_str().unwrap();
-        let conn = create_test_db();
+        let mut conn = create_test_db();
 
         // Create two skills in DB
         create_skill_inner(workspace, "skill-a", "domain-a", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
         create_skill_inner(workspace, "skill-b", "domain-b", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
 
         // Attempt to rename skill-a to skill-b (collision)
-        let result = rename_skill_inner("skill-a", "skill-b", workspace, &conn, None);
+        let result = rename_skill_inner("skill-a", "skill-b", workspace, &mut conn, None);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains("already exists"), "Error should mention collision: {}", err);
@@ -1616,14 +1643,14 @@ mod tests {
         assert_eq!(old, new);
         // The command returns Ok(()) for this case — verified by the condition.
         // We also verify rename_skill_inner would work if called (same name = collision in DB).
-        let conn = create_test_db();
+        let mut conn = create_test_db();
         let workspace_dir = tempdir().unwrap();
         let workspace = workspace_dir.path().to_str().unwrap();
         create_skill_inner(workspace, "same-name", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
 
         // rename_skill_inner with same name hits the "already exists" check in DB,
         // confirming the early-return in the wrapper is necessary.
-        let result = rename_skill_inner("same-name", "same-name", workspace, &conn, None);
+        let result = rename_skill_inner("same-name", "same-name", workspace, &mut conn, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -1632,7 +1659,7 @@ mod tests {
     fn test_rename_skill_disk_rollback_on_db_failure() {
         let workspace_dir = tempdir().unwrap();
         let workspace = workspace_dir.path().to_str().unwrap();
-        let conn = create_test_db();
+        let mut conn = create_test_db();
 
         // Create the skill on disk (workspace dir) and in DB
         create_skill_inner(workspace, "will-rollback", "analytics", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
@@ -1678,7 +1705,7 @@ mod tests {
             [],
         ).unwrap();
 
-        let result = rename_skill_inner("will-rollback", "rollback-target", workspace, &conn, None);
+        let result = rename_skill_inner("will-rollback", "rollback-target", workspace, &mut conn, None);
         assert!(result.is_err(), "Rename should fail due to DB constraint violation");
         assert!(result.unwrap_err().contains("Failed to rename skill in database"));
 
