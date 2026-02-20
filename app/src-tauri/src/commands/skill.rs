@@ -324,6 +324,12 @@ fn delete_skill_inner(
     if let Some(sp) = skills_path {
         let output_dir = Path::new(sp).join(name);
         if output_dir.exists() {
+            let canonical_sp = fs::canonicalize(sp).map_err(|e| e.to_string())?;
+            let canonical_out = fs::canonicalize(&output_dir).map_err(|e| e.to_string())?;
+            if !canonical_out.starts_with(&canonical_sp) {
+                log::error!("[delete_skill] Path traversal attempt on skills_path: {}", name);
+                return Err("Invalid skill path: path traversal not allowed".to_string());
+            }
             fs::remove_dir_all(&output_dir).map_err(|e| {
                 format!("Failed to delete skill output for '{}': {}", name, e)
             })?;
@@ -1190,6 +1196,33 @@ mod tests {
         assert!(outside_dir.exists());
         // The legitimate skill should still exist
         assert!(workspace.join("legit").exists());
+    }
+
+    #[test]
+    fn test_delete_skill_skills_path_directory_traversal() {
+        let dir = tempdir().unwrap();
+        let skills_base = dir.path().join("skills");
+        fs::create_dir_all(&skills_base).unwrap();
+        let skills_path = skills_base.to_str().unwrap();
+
+        let workspace_dir = tempdir().unwrap();
+        let workspace = workspace_dir.path().to_str().unwrap();
+
+        // Create a directory OUTSIDE the skills_path that a traversal attack would target
+        let outside_dir = dir.path().join("outside-target");
+        fs::create_dir_all(&outside_dir).unwrap();
+
+        // Attempt to delete using ".." to escape the skills_path
+        // This creates skills/../outside-target which resolves to outside_dir
+        let result = delete_skill_inner(workspace, "../outside-target", None, Some(skills_path));
+        assert!(result.is_err(), "Directory traversal on skills_path should be rejected");
+        assert!(
+            result.unwrap_err().contains("path traversal not allowed"),
+            "Error message should mention path traversal"
+        );
+
+        // The outside directory should still exist (not deleted)
+        assert!(outside_dir.exists());
     }
 
     #[test]

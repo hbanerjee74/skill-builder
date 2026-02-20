@@ -18,7 +18,7 @@ const CLOSE_SENTINEL = Symbol("close");
 export class StreamSession {
   private currentRequestId: string;
   private pendingResolve: ((value: string | typeof CLOSE_SENTINEL) => void) | null = null;
-  private bufferedMessage: string | null = null;
+  private messageQueue: string[] = [];
   private closed = false;
   private sessionId: string;
 
@@ -49,9 +49,9 @@ export class StreamSession {
       this.pendingResolve(userMessage);
       this.pendingResolve = null;
     } else {
-      // Generator hasn't reached its await yet — buffer the message
+      // Generator hasn't reached its await yet — queue the message
       // so it's consumed on the next iteration instead of being dropped.
-      this.bufferedMessage = userMessage;
+      this.messageQueue.push(userMessage);
     }
   }
 
@@ -112,18 +112,27 @@ export class StreamSession {
 
       // Subsequent messages: wait for pushMessage() calls
       while (!self.closed) {
-        // Check for a buffered message that arrived before we could await
-        let nextMessage: string | typeof CLOSE_SENTINEL;
-        if (self.bufferedMessage !== null) {
-          nextMessage = self.bufferedMessage;
-          self.bufferedMessage = null;
-        } else {
-          nextMessage = await new Promise<string | typeof CLOSE_SENTINEL>(
-            (resolve) => {
-              self.pendingResolve = resolve;
-            },
-          );
+        // Check for queued messages that arrived before we could await
+        if (self.messageQueue.length > 0) {
+          const message = self.messageQueue.shift()!;
+          yield {
+            type: "user" as const,
+            message: { role: "user" as const, content: message },
+          };
+          continue;
         }
+
+        const nextMessage = await new Promise<string | typeof CLOSE_SENTINEL>(
+          (resolve) => {
+            // Before parking, drain any message that arrived during the yield
+            if (self.messageQueue.length > 0) {
+              const message = self.messageQueue.shift()!;
+              resolve(message);
+              return;
+            }
+            self.pendingResolve = resolve;
+          },
+        );
 
         if (nextMessage === CLOSE_SENTINEL || self.closed) {
           return;
