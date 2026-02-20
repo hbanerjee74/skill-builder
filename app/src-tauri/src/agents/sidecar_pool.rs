@@ -273,8 +273,10 @@ pub struct SidecarPool {
     /// Tracks skills that are currently being spawned to prevent duplicate spawns
     /// while the pool lock is released during the spawn + sidecar_ready wait.
     spawning: Arc<Mutex<HashSet<String>>>,
-    /// Tracks agent_ids of in-flight requests (removed when result/error received).
-    pending_requests: Arc<Mutex<HashSet<String>>>,
+    /// Tracks agent_ids of in-flight requests (agent_id -> skill_name).
+    /// Removed when result/error received. The skill_name value enables O(1)
+    /// ownership lookups instead of fragile string-prefix matching.
+    pending_requests: Arc<Mutex<HashMap<String, String>>>,
     /// Per-request JSONL log files, keyed by agent_id.
     /// The stdout reader appends each message to the matching file.
     request_logs: Arc<Mutex<HashMap<String, RequestLogFile>>>,
@@ -287,7 +289,7 @@ impl SidecarPool {
         SidecarPool {
             sidecars: Arc::new(Mutex::new(HashMap::new())),
             spawning: Arc::new(Mutex::new(HashSet::new())),
-            pending_requests: Arc::new(Mutex::new(HashSet::new())),
+            pending_requests: Arc::new(Mutex::new(HashMap::new())),
             request_logs: Arc::new(Mutex::new(HashMap::new())),
             idle_cleanup_task: Arc::new(Mutex::new(None)),
         }
@@ -334,9 +336,7 @@ impl SidecarPool {
 
                 for (skill_name, sidecar) in pool.iter() {
                     // Check if this skill has any pending (in-flight) requests
-                    let has_pending = pending.iter().any(|agent_id| {
-                        agent_id.starts_with(&format!("{}-", skill_name))
-                    });
+                    let has_pending = pending.values().any(|sn| sn == skill_name);
 
                     if has_pending {
                         continue; // Active sidecar — skip
@@ -365,7 +365,7 @@ impl SidecarPool {
                 // Re-check pending requests (race protection against requests that started after Phase 1)
                 let has_pending = {
                     let pending = self.pending_requests.lock().await;
-                    pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)))
+                    pending.values().any(|sn| sn == skill_name)
                 };
                 if has_pending {
                     log::debug!("[idle-cleanup] Skipping '{}' — became active after idle check", skill_name);
@@ -1164,22 +1164,25 @@ impl SidecarPool {
 
         // Register this request as pending BEFORE sending to stdin, so the
         // stdout reader knows it's in-flight.
+        let agent_id_string = agent_id.to_string();
         {
             let mut pending = self.pending_requests.lock().await;
-            pending.insert(agent_id.to_string());
+            pending.insert(agent_id_string.clone(), skill_name.to_string());
         }
 
         // Get a clone of the Arc<Mutex<ChildStdin>> — hold pool lock only briefly
         let (stdin_handle, pid) = {
             let pool = self.sidecars.lock().await;
-            let sidecar = pool.get(skill_name).ok_or_else(|| {
-                // Remove from pending since we never sent the request
-                format!(
-                    "Sidecar for '{}' not found in pool after get_or_spawn",
-                    skill_name
-                )
-            })?;
-            (sidecar.stdin.clone(), sidecar.pid)
+            match pool.get(skill_name) {
+                Some(sidecar) => (sidecar.stdin.clone(), sidecar.pid),
+                None => {
+                    self.unregister_pending(&agent_id_string).await;
+                    return Err(format!(
+                        "Sidecar for '{}' not found in pool after get_or_spawn",
+                        skill_name
+                    ));
+                }
+            }
         };
 
         // Get the last_activity handle for this sidecar (before releasing the pool lock)
@@ -1207,6 +1210,7 @@ impl SidecarPool {
                         skill_name
                     );
                     drop(stdin_guard); // release mutex before removing
+                    self.unregister_pending(&agent_id_string).await;
                     self.remove_and_kill_sidecar(skill_name).await;
                     return Err(format!(
                         "Stdin write timed out after 10s for skill '{}'",
@@ -1214,6 +1218,7 @@ impl SidecarPool {
                     ));
                 }
                 Ok(Err(e)) => {
+                    self.unregister_pending(&agent_id_string).await;
                     return Err(format!("Failed to write to sidecar stdin: {}", e));
                 }
                 Ok(Ok(())) => {}
@@ -1232,6 +1237,7 @@ impl SidecarPool {
                         skill_name
                     );
                     drop(stdin_guard); // release mutex before removing
+                    self.unregister_pending(&agent_id_string).await;
                     self.remove_and_kill_sidecar(skill_name).await;
                     return Err(format!(
                         "Stdin flush timed out after 5s for skill '{}'",
@@ -1239,6 +1245,7 @@ impl SidecarPool {
                     ));
                 }
                 Ok(Err(e)) => {
+                    self.unregister_pending(&agent_id_string).await;
                     return Err(format!("Failed to flush sidecar stdin: {}", e));
                 }
                 Ok(Ok(())) => {}
@@ -1263,6 +1270,14 @@ impl SidecarPool {
         // working; complex agents (reasoning, merging) can take 10+ minutes.
 
         Ok(())
+    }
+
+    /// Remove an agent_id from the pending_requests map.
+    /// Called on error paths to prevent the idle-cleanup task from treating
+    /// a failed request as still in-flight.
+    async fn unregister_pending(&self, agent_id: &str) {
+        let mut pending = self.pending_requests.lock().await;
+        pending.remove(agent_id);
     }
 
     // ─── Streaming session methods (refine chat) ─────────────────────────────
@@ -1394,7 +1409,7 @@ impl SidecarPool {
         // Register as pending
         {
             let mut pending = self.pending_requests.lock().await;
-            pending.insert(agent_id.to_string());
+            pending.insert(agent_id.to_string(), skill_name.to_string());
         }
 
         let message = serde_json::json!({
@@ -1407,6 +1422,7 @@ impl SidecarPool {
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
             log::error!("[send_stream_start] Failed for session '{}': {}", session_id, e);
+            self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
             log::info!(
@@ -1437,7 +1453,7 @@ impl SidecarPool {
         // Register as pending
         {
             let mut pending = self.pending_requests.lock().await;
-            pending.insert(agent_id.to_string());
+            pending.insert(agent_id.to_string(), skill_name.to_string());
         }
 
         log::debug!(
@@ -1458,6 +1474,7 @@ impl SidecarPool {
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
             log::error!("[send_stream_message] Failed for session '{}': {}", session_id, e);
+            self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
             log::info!(
@@ -1510,8 +1527,8 @@ impl SidecarPool {
                 let mut pending = self.pending_requests.lock().await;
                 let to_shutdown: Vec<String> = pending
                     .iter()
-                    .filter(|agent_id| agent_id.starts_with(&format!("{}-", skill_name)))
-                    .cloned()
+                    .filter(|(_, sn)| sn.as_str() == skill_name)
+                    .map(|(aid, _)| aid.clone())
                     .collect();
 
                 for agent_id in &to_shutdown {
@@ -1520,7 +1537,9 @@ impl SidecarPool {
                 }
             }
 
-            // Close JSONL transcripts for this skill's requests
+            // Close JSONL transcripts for this skill's requests.
+            // Note: request_logs keys are agent_ids; we filter by prefix since
+            // the log map doesn't store skill_name (unlike pending_requests).
             {
                 let mut logs = self.request_logs.lock().await;
                 let to_close: Vec<String> = logs
@@ -2089,40 +2108,40 @@ mod tests {
     async fn test_pending_requests_insert_and_remove() {
         let pool = SidecarPool::new();
 
-        // Simulate adding a request to the pending set
+        // Simulate adding a request to the pending map
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("agent-123".to_string());
-            assert!(pending.contains("agent-123"));
+            pending.insert("agent-123".to_string(), "test-skill".to_string());
+            assert!(pending.contains_key("agent-123"));
         }
 
         // Simulate completion — removing the request
         {
             let mut pending = pool.pending_requests.lock().await;
-            assert!(pending.remove("agent-123"));
-            assert!(!pending.contains("agent-123"));
+            assert!(pending.remove("agent-123").is_some());
+            assert!(!pending.contains_key("agent-123"));
         }
     }
 
     #[tokio::test]
-    async fn test_pending_requests_remove_returns_true_if_present() {
-        // Removing a pending request should return true and clear it from the set.
+    async fn test_pending_requests_remove_returns_some_if_present() {
+        // Removing a pending request should return Some and clear it from the map.
         let pool = SidecarPool::new();
 
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("agent-pending-test".to_string());
+            pending.insert("agent-pending-test".to_string(), "test-skill".to_string());
         }
 
         let was_pending = {
             let mut pending = pool.pending_requests.lock().await;
             pending.remove("agent-pending-test")
         };
-        assert!(was_pending, "Request should have been pending");
+        assert!(was_pending.is_some(), "Request should have been pending");
 
         {
             let pending = pool.pending_requests.lock().await;
-            assert!(!pending.contains("agent-pending-test"));
+            assert!(!pending.contains_key("agent-pending-test"));
         }
     }
 
@@ -2168,14 +2187,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pending_requests_remove_returns_false_if_already_completed() {
+    async fn test_pending_requests_remove_returns_none_if_already_completed() {
         // After the stdout reader removes a completed request, a second remove
-        // should return false (idempotent).
+        // should return None (idempotent).
         let pool = SidecarPool::new();
 
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("agent-fast".to_string());
+            pending.insert("agent-fast".to_string(), "test-skill".to_string());
         }
 
         // Simulate stdout reader removing the request on completion
@@ -2184,12 +2203,12 @@ mod tests {
             pending.remove("agent-fast");
         }
 
-        // Second remove should return false
+        // Second remove should return None
         let still_pending = {
             let mut pending = pool.pending_requests.lock().await;
             pending.remove("agent-fast")
         };
-        assert!(!still_pending, "Request should have already been removed");
+        assert!(still_pending.is_none(), "Request should have already been removed");
     }
 
     #[tokio::test]
@@ -2475,20 +2494,20 @@ mod tests {
         // Add a pending request for "active-skill"
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("active-skill-step1-123456".to_string());
+            pending.insert("active-skill-step1-123456".to_string(), "active-skill".to_string());
         }
 
         // Verify the pending request is detected
         let has_pending = {
             let pending = pool.pending_requests.lock().await;
-            pending.iter().any(|id| id.starts_with("active-skill-"))
+            pending.values().any(|sn| sn == "active-skill")
         };
         assert!(has_pending, "Should detect pending requests for active skill");
 
         // Verify a different skill has no pending requests
         let other_has_pending = {
             let pending = pool.pending_requests.lock().await;
-            pending.iter().any(|id| id.starts_with("other-skill-"))
+            pending.values().any(|sn| sn == "other-skill")
         };
         assert!(!other_has_pending, "Should not detect pending requests for other skill");
     }
@@ -2506,7 +2525,7 @@ mod tests {
         // "idle-skill" has no pending requests and old last_activity
         {
             let mut pending = pool.pending_requests.lock().await;
-            pending.insert("active-skill-step3-999999".to_string());
+            pending.insert("active-skill-step3-999999".to_string(), "active-skill".to_string());
         }
 
         // Simulate checking which skills are idle (mirrors idle_cleanup_loop logic)
@@ -2516,14 +2535,14 @@ mod tests {
         // Check "active-skill": has pending request -> should be skipped
         let active_has_pending = {
             let pending = pool.pending_requests.lock().await;
-            pending.iter().any(|id| id.starts_with("active-skill-"))
+            pending.values().any(|sn| sn == "active-skill")
         };
         assert!(active_has_pending, "active-skill should have pending requests");
 
         // Check "idle-skill": no pending requests + old activity -> should be cleaned
         let idle_has_pending = {
             let pending = pool.pending_requests.lock().await;
-            pending.iter().any(|id| id.starts_with("idle-skill-"))
+            pending.values().any(|sn| sn == "idle-skill")
         };
         assert!(!idle_has_pending, "idle-skill should have no pending requests");
         let idle_duration = now.duration_since(simulated_old_activity);
@@ -2535,16 +2554,16 @@ mod tests {
 
     /// Helper: mirrors the Phase 1 idle detection logic from `idle_cleanup_loop`.
     /// Given a skill name, its last_activity instant, the current time, the idle timeout,
-    /// and the set of pending request IDs, returns whether the sidecar should be
-    /// considered idle (i.e., eligible for cleanup).
+    /// and the map of pending request IDs to skill names, returns whether the sidecar
+    /// should be considered idle (i.e., eligible for cleanup).
     fn is_idle(
         skill_name: &str,
         last_activity: tokio::time::Instant,
         now: tokio::time::Instant,
         idle_timeout: std::time::Duration,
-        pending: &HashSet<String>,
+        pending: &HashMap<String, String>,
     ) -> bool {
-        let has_pending = pending.iter().any(|id| id.starts_with(&format!("{}-", skill_name)));
+        let has_pending = pending.values().any(|sn| sn == skill_name);
         if has_pending {
             return false;
         }
@@ -2559,9 +2578,9 @@ mod tests {
         let now = tokio::time::Instant::now();
         let stale_activity = now - idle_timeout - std::time::Duration::from_secs(120);
 
-        let mut pending = HashSet::new();
-        pending.insert("my-skill-step1-abc123".to_string());
-        pending.insert("my-skill-step2-def456".to_string());
+        let mut pending = HashMap::new();
+        pending.insert("my-skill-step1-abc123".to_string(), "my-skill".to_string());
+        pending.insert("my-skill-step2-def456".to_string(), "my-skill".to_string());
 
         assert!(
             !is_idle("my-skill", stale_activity, now, idle_timeout, &pending),
@@ -2578,7 +2597,7 @@ mod tests {
         // Activity 30 seconds ago — well within the 600s timeout
         let recent_activity = now - std::time::Duration::from_secs(30);
 
-        let pending = HashSet::new(); // no pending requests
+        let pending = HashMap::new(); // no pending requests
 
         assert!(
             !is_idle("recent-skill", recent_activity, now, idle_timeout, &pending),
@@ -2595,7 +2614,7 @@ mod tests {
         // Activity 15 minutes ago — exceeds the 10-minute timeout
         let stale_activity = now - idle_timeout - std::time::Duration::from_secs(300);
 
-        let pending = HashSet::new(); // no pending requests
+        let pending = HashMap::new(); // no pending requests
 
         assert!(
             is_idle("stale-skill", stale_activity, now, idle_timeout, &pending),

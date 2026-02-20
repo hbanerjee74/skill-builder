@@ -106,19 +106,27 @@ describe("runAgentRequest", () => {
     expect(messages[0]).toMatchObject({ type: "system", subtype: "init_start" });
   });
 
-  it("sets ANTHROPIC_API_KEY when apiKey is provided", async () => {
+  it("passes apiKey via SDK env option instead of mutating process.env", async () => {
     async function* fakeConversation() {
       yield { type: "result", content: "done" };
     }
     mockQuery.mockReturnValue(fakeConversation() as ReturnType<typeof query>);
 
     const originalKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     try {
       await runAgentRequest(
         baseConfig({ apiKey: "sk-my-test-key" }),
         vi.fn(),
       );
-      expect(process.env.ANTHROPIC_API_KEY).toBe("sk-my-test-key");
+      // API key should NOT be set on process.env (no global mutation)
+      expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+
+      // API key should be passed through the SDK options.env field
+      const callArgs = mockQuery.mock.calls[0][0];
+      const opts = callArgs.options as Record<string, unknown>;
+      const env = opts.env as Record<string, string | undefined>;
+      expect(env.ANTHROPIC_API_KEY).toBe("sk-my-test-key");
     } finally {
       if (originalKey !== undefined) {
         process.env.ANTHROPIC_API_KEY = originalKey;

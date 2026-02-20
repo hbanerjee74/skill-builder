@@ -18,6 +18,7 @@ const CLOSE_SENTINEL = Symbol("close");
 export class StreamSession {
   private currentRequestId: string;
   private pendingResolve: ((value: string | typeof CLOSE_SENTINEL) => void) | null = null;
+  private messageQueue: string[] = [];
   private closed = false;
   private sessionId: string;
 
@@ -47,6 +48,10 @@ export class StreamSession {
     if (this.pendingResolve) {
       this.pendingResolve(userMessage);
       this.pendingResolve = null;
+    } else {
+      // Generator hasn't reached its await yet — queue the message
+      // so it's consumed on the next iteration instead of being dropped.
+      this.messageQueue.push(userMessage);
     }
   }
 
@@ -74,10 +79,6 @@ export class StreamSession {
       });
       onMessage(this.currentRequestId, { type: "turn_complete" });
       return;
-    }
-
-    if (config.apiKey) {
-      process.env.ANTHROPIC_API_KEY = config.apiKey;
     }
 
     const state = createAbortState();
@@ -111,8 +112,24 @@ export class StreamSession {
 
       // Subsequent messages: wait for pushMessage() calls
       while (!self.closed) {
+        // Check for queued messages that arrived before we could await
+        if (self.messageQueue.length > 0) {
+          const message = self.messageQueue.shift()!;
+          yield {
+            type: "user" as const,
+            message: { role: "user" as const, content: message },
+          };
+          continue;
+        }
+
         const nextMessage = await new Promise<string | typeof CLOSE_SENTINEL>(
           (resolve) => {
+            // Before parking, drain any message that arrived during the yield
+            if (self.messageQueue.length > 0) {
+              const message = self.messageQueue.shift()!;
+              resolve(message);
+              return;
+            }
             self.pendingResolve = resolve;
           },
         );
@@ -150,15 +167,18 @@ export class StreamSession {
 
     try {
       for await (const message of conversation) {
-        if (state.aborted) break;
+        if (state.abortController.signal.aborted) break;
 
         const msg = message as Record<string, unknown>;
         onMessage(this.currentRequestId, msg);
 
-        // Detect turn completion: assistant message with stop_reason "end_turn"
+        // Detect turn completion: emit for any non-tool_use stop reason.
+        // This is more robust than checking only "end_turn" since the SDK
+        // may use other stop reasons (e.g., "max_tokens", "stop_sequence").
         if (msg.type === "assistant" && msg.message) {
           const innerMsg = msg.message as Record<string, unknown>;
-          if (innerMsg.stop_reason === "end_turn") {
+          const stopReason = innerMsg.stop_reason as string | undefined;
+          if (stopReason && stopReason !== "tool_use") {
             onMessage(this.currentRequestId, { type: "turn_complete" });
           }
         }

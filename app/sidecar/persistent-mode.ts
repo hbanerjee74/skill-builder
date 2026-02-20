@@ -1,5 +1,5 @@
 import { createInterface, type Interface } from "node:readline";
-import { type SidecarConfig } from "./config.js";
+import { type SidecarConfig, parseSidecarConfig } from "./config.js";
 import { runAgentRequest } from "./run-agent.js";
 import { StreamSession } from "./stream-session.js";
 
@@ -100,23 +100,31 @@ export function parseIncomingMessage(line: string): IncomingMessage | null {
   if (obj.type === "agent_request") {
     if (typeof obj.request_id !== "string" || !obj.request_id) return null;
     if (typeof obj.config !== "object" || obj.config === null) return null;
-    return {
-      type: "agent_request",
-      request_id: obj.request_id,
-      config: obj.config as SidecarConfig,
-    };
+    try {
+      return {
+        type: "agent_request",
+        request_id: obj.request_id,
+        config: parseSidecarConfig(obj.config),
+      };
+    } catch {
+      return null;
+    }
   }
 
   if (obj.type === "stream_start") {
     if (typeof obj.request_id !== "string" || !obj.request_id) return null;
     if (typeof obj.session_id !== "string" || !obj.session_id) return null;
     if (typeof obj.config !== "object" || obj.config === null) return null;
-    return {
-      type: "stream_start",
-      request_id: obj.request_id,
-      session_id: obj.session_id,
-      config: obj.config as SidecarConfig,
-    };
+    try {
+      return {
+        type: "stream_start",
+        request_id: obj.request_id,
+        session_id: obj.session_id,
+        config: parseSidecarConfig(obj.config),
+      };
+    } catch {
+      return null;
+    }
   }
 
   if (obj.type === "stream_message") {
@@ -301,7 +309,10 @@ export async function runPersistent(
       // abort it before starting the new one.
       if (inFlight.size > 0 && currentAbort) {
         currentAbort.abort();
-        await Promise.allSettled(inFlight);
+        // Fire-and-forget: don't block the readline loop while the aborted
+        // request tears down. The stdout writer routes by request_id so
+        // concurrent requests with different IDs are safe.
+        void Promise.allSettled([...inFlight]);
       }
 
       const { request_id, config } = message;

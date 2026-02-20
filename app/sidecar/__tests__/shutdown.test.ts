@@ -2,23 +2,22 @@ import { describe, it, expect, vi } from "vitest";
 import { createAbortState, handleShutdown } from "../shutdown.js";
 
 describe("createAbortState", () => {
-  it("returns aborted=false and a fresh AbortController", () => {
+  it("returns a fresh AbortController with signal.aborted=false", () => {
     const state = createAbortState();
-    expect(state.aborted).toBe(false);
     expect(state.abortController).toBeInstanceOf(AbortController);
     expect(state.abortController.signal.aborted).toBe(false);
   });
 });
 
 describe("handleShutdown", () => {
-  it("sets aborted flag to true", () => {
+  it("sets signal.aborted to true via abort()", () => {
     const state = createAbortState();
     const exitFn = vi.fn();
     const timerFn = vi.fn(() => ({ unref: vi.fn() }));
 
     handleShutdown(state, exitFn, timerFn);
 
-    expect(state.aborted).toBe(true);
+    expect(state.abortController.signal.aborted).toBe(true);
   });
 
   it("calls abort() on the controller", () => {

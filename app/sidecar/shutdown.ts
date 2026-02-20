@@ -1,5 +1,4 @@
 export interface AbortState {
-  aborted: boolean;
   abortController: AbortController;
 }
 
@@ -8,7 +7,6 @@ export interface AbortState {
  */
 export function createAbortState(): AbortState {
   return {
-    aborted: false,
     abortController: new AbortController(),
   };
 }
@@ -23,13 +21,11 @@ export function linkExternalSignal(
   signal: AbortSignal,
 ): void {
   if (signal.aborted) {
-    state.aborted = true;
     state.abortController.abort();
   } else {
     signal.addEventListener(
       "abort",
       () => {
-        state.aborted = true;
         state.abortController.abort();
       },
       { once: true },
@@ -50,7 +46,6 @@ export function handleShutdown(
   exitFn: (code: number) => void = (code) => process.exit(code),
   timerFn: (cb: () => void, ms: number) => { unref(): void } = (cb, ms) => setTimeout(cb, ms),
 ) {
-  state.aborted = true;
   state.abortController.abort();
   // Force exit after 3s if SDK doesn't respond to abort
   timerFn(() => exitFn(0), 3000).unref();

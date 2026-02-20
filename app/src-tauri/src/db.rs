@@ -18,18 +18,59 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
     conn.pragma_update(None, "busy_timeout", "5000")
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+    ensure_migration_table(&conn)?;
+
+    // Migration 0: base schema (always runs via CREATE TABLE IF NOT EXISTS)
     run_migrations(&conn)?;
-    run_add_skill_type_migration(&conn)?;
-    run_lock_table_migration(&conn)?;
-    run_author_migration(&conn)?;
-    run_usage_tracking_migration(&conn)?;
-    run_workflow_session_migration(&conn)?;
-    run_sessions_table_migration(&conn)?;
-    run_trigger_text_migration(&conn)?;
-    run_agent_stats_migration(&conn)?;
-    run_intake_migration(&conn)?;
-    run_composite_pk_migration(&conn)?;
+
+    // Numbered migrations: each runs once, tracked in schema_migrations.
+    // To add a new migration, append a (version, function) entry to this array.
+    let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
+        (1,  run_add_skill_type_migration),
+        (2,  run_lock_table_migration),
+        (3,  run_author_migration),
+        (4,  run_usage_tracking_migration),
+        (5,  run_workflow_session_migration),
+        (6,  run_sessions_table_migration),
+        (7,  run_trigger_text_migration),
+        (8,  run_agent_stats_migration),
+        (9,  run_intake_migration),
+        (10, run_composite_pk_migration),
+    ];
+
+    for &(version, migrate_fn) in migrations {
+        if !migration_applied(&conn, version) {
+            migrate_fn(&conn)?;
+            mark_migration_applied(&conn, version)?;
+        }
+    }
+
     Ok(Db(Mutex::new(conn)))
+}
+
+fn ensure_migration_table(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z')
+        );"
+    )
+}
+
+fn migration_applied(conn: &Connection, version: u32) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = ?1",
+        rusqlite::params![version],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0
+}
+
+fn mark_migration_applied(conn: &Connection, version: u32) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations (version) VALUES (?1)",
+        rusqlite::params![version],
+    ).map(|_| ())
 }
 
 fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -447,12 +488,7 @@ pub fn persist_agent_run(
 }
 
 pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<UsageSummary, String> {
-    let having = if hide_cancelled {
-        "HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0"
-    } else {
-        ""
-    };
-    let sql = format!(
+    const SQL_WITH_HAVING: &str =
         "SELECT COALESCE(SUM(sub.session_cost), 0.0),
                 COUNT(*),
                 COALESCE(AVG(sub.session_cost), 0.0)
@@ -463,11 +499,23 @@ pub fn get_usage_summary(conn: &Connection, hide_cancelled: bool) -> Result<Usag
                                   AND ar.reset_marker IS NULL
            WHERE ws.reset_marker IS NULL
            GROUP BY ws.session_id
-           {}
-         ) sub",
-        having
-    );
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+           HAVING COALESCE(SUM(ar.total_cost), 0) > 0 OR COUNT(DISTINCT ar.agent_id) = 0
+         ) sub";
+    const SQL_WITHOUT_HAVING: &str =
+        "SELECT COALESCE(SUM(sub.session_cost), 0.0),
+                COUNT(*),
+                COALESCE(AVG(sub.session_cost), 0.0)
+         FROM (
+           SELECT ws.session_id, COALESCE(SUM(ar.total_cost), 0.0) as session_cost
+           FROM workflow_sessions ws
+           LEFT JOIN agent_runs ar ON ar.workflow_session_id = ws.session_id
+                                  AND ar.reset_marker IS NULL
+           WHERE ws.reset_marker IS NULL
+           GROUP BY ws.session_id
+         ) sub";
+
+    let sql = if hide_cancelled { SQL_WITH_HAVING } else { SQL_WITHOUT_HAVING };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
 
     stmt.query_row([], |row| {
         Ok(UsageSummary {
@@ -1084,6 +1132,9 @@ pub fn get_tags_for_skills(
         return Ok(map);
     }
 
+    // Safety: The format! below only injects positional bind-parameter placeholders
+    // (?1, ?2, ...) — never user-supplied values. All skill_name values are bound via
+    // rusqlite's parameterized query API, so there is no SQL injection risk.
     let placeholders: Vec<String> = (1..=skill_names.len()).map(|i| format!("?{}", i)).collect();
     let sql = format!(
         "SELECT skill_name, tag FROM skill_tags WHERE skill_name IN ({}) ORDER BY skill_name, tag",

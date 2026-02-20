@@ -1,5 +1,5 @@
 import type { SidecarConfig } from "./config.js";
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -90,6 +90,16 @@ export function parsePromptPaths(prompt: string): {
   };
 }
 
+/** Check if a path exists (async replacement for fs.existsSync). */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Run a mock agent that replays pre-recorded JSONL messages and writes
  * mock output files to disk. Used when `MOCK_AGENTS=true` is set.
@@ -131,7 +141,7 @@ export async function runMockAgent(
     `${stepTemplate}.jsonl`,
   );
 
-  if (!fs.existsSync(templatePath)) {
+  if (!(await pathExists(templatePath))) {
     // No template file — emit minimal success
     onMessage({ type: "system", subtype: "init_start", timestamp: Date.now() });
     await delay(50);
@@ -151,7 +161,7 @@ export async function runMockAgent(
     return;
   }
 
-  const content = fs.readFileSync(templatePath, "utf-8");
+  const content = await fs.readFile(templatePath, "utf-8");
   const lines = content.split("\n").filter((line) => line.trim());
 
   let emittedResult = false;
@@ -218,7 +228,7 @@ async function writeMockOutputFiles(
   const outputDir = getOutputDir(stepTemplate);
   const srcDir = path.join(__dirname, "mock-templates", "outputs", outputDir);
 
-  if (!fs.existsSync(srcDir)) return;
+  if (!(await pathExists(srcDir))) return;
 
   const paths = parsePromptPaths(config.prompt);
 
@@ -249,24 +259,24 @@ async function writeMockOutputFiles(
     }
   }
 
-  copyDirRecursive(srcDir, destRoot);
+  await copyDirRecursive(srcDir, destRoot);
 }
 
 /** Recursively copy a directory tree, creating parents as needed. */
-function copyDirRecursive(src: string, dest: string): void {
-  if (!fs.existsSync(src)) return;
+async function copyDirRecursive(src: string, dest: string): Promise<void> {
+  if (!(await pathExists(src))) return;
 
-  const entries = fs.readdirSync(src, { withFileTypes: true });
+  const entries = await fs.readdir(src, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
     if (entry.isDirectory()) {
-      fs.mkdirSync(destPath, { recursive: true });
-      copyDirRecursive(srcPath, destPath);
+      await fs.mkdir(destPath, { recursive: true });
+      await copyDirRecursive(srcPath, destPath);
     } else {
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      fs.copyFileSync(srcPath, destPath);
+      await fs.mkdir(path.dirname(destPath), { recursive: true });
+      await fs.copyFile(srcPath, destPath);
     }
   }
 }

@@ -21,9 +21,16 @@ export function buildQueryOptions(
   // (model-only) or overriding the agent's front-matter model (both).
   const modelField = config.model ? { model: config.model } : {};
 
+  // Pass the API key through the SDK's env option instead of mutating
+  // process.env, which avoids races on concurrent requests.
+  const envField = config.apiKey
+    ? { env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey } }
+    : {};
+
   return {
     ...agentField,
     ...modelField,
+    ...envField,
     // Include the full Claude Code system prompt so the model knows how to
     // use tools (Read, Write, Bash, Skill, etc.) and follows CC conventions.
     systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const },
