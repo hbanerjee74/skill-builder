@@ -100,7 +100,7 @@ Ensure unit, integration, and E2E tests cover all changed behavior. Follow the p
 
 ### Tests passing
 
-Run tests per the project's test strategy (see CLAUDE.md "Choosing which tests to run"). Max 3 attempts per failure, then escalate to user.
+Run `npx tsc --noEmit` (from the `app/` directory) first — this catches type errors in files you didn't touch but that reference changed interfaces. Then run tests per the project's test strategy (see CLAUDE.md "Choosing which tests to run"). Max 3 attempts per failure, then escalate to user.
 
 ### Logging compliant
 
@@ -162,6 +162,7 @@ These are `subagent_type` values for the `Task` tool — not MCP tools.
 - **Run only relevant tests** — follow the project's test strategy
 - **Follow project logging standards** (CLAUDE-APP.md § Logging) — every new Rust command logs `info!` on entry + `error!` on failure; frontend uses `console.error/warn/log` appropriately; include context in log messages
 - **Follow project testing rules** (CLAUDE.md § Testing) — new store logic → unit test, new Rust command → `#[cfg(test)]`, new UI interaction → component test, new page/flow → E2E happy path, bug fix → regression test; use `npm run test:changed` for frontend, `cargo test <module>` for Rust
+- **Run `npx tsc --noEmit`** (from `app/`) after implementation — catches type errors in files you didn't touch but that reference changed interfaces
 
 ## Error Recovery
 
