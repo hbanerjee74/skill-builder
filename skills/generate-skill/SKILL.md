@@ -208,10 +208,8 @@ All agents use bare names (no type prefix). Reference agents as `skill-builder:<
      Skill type: <skill_type>
      Context directory: ./<skillname>/context/
      Workspace directory: <workspace_dir>
-     Answer evaluation: <workspace_dir>/answer-evaluation.json
 
-     Analyze all answered clarifications and produce decisions.
-     Use answer-evaluation.json as context — focus attention on previously unclear items that may now have refinement answers.
+     Analyze all answered clarifications (first-round and refinements) and produce decisions.
      The agent handles conditional user interaction internally:
      - If contradictions/ambiguities/conflicts are found, it presents numbered options and waits for the user to choose
      - If no issues, it proceeds directly to writing decisions
