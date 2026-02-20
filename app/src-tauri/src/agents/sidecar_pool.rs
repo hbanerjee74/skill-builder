@@ -1176,9 +1176,7 @@ impl SidecarPool {
             match pool.get(skill_name) {
                 Some(sidecar) => (sidecar.stdin.clone(), sidecar.pid),
                 None => {
-                    // Remove from pending since we never sent the request
-                    let mut pending = self.pending_requests.lock().await;
-                    pending.remove(&agent_id_string);
+                    self.unregister_pending(&agent_id_string).await;
                     return Err(format!(
                         "Sidecar for '{}' not found in pool after get_or_spawn",
                         skill_name
@@ -1212,10 +1210,7 @@ impl SidecarPool {
                         skill_name
                     );
                     drop(stdin_guard); // release mutex before removing
-                    {
-                        let mut pending = self.pending_requests.lock().await;
-                        pending.remove(&agent_id_string);
-                    }
+                    self.unregister_pending(&agent_id_string).await;
                     self.remove_and_kill_sidecar(skill_name).await;
                     return Err(format!(
                         "Stdin write timed out after 10s for skill '{}'",
@@ -1223,8 +1218,7 @@ impl SidecarPool {
                     ));
                 }
                 Ok(Err(e)) => {
-                    let mut pending = self.pending_requests.lock().await;
-                    pending.remove(&agent_id_string);
+                    self.unregister_pending(&agent_id_string).await;
                     return Err(format!("Failed to write to sidecar stdin: {}", e));
                 }
                 Ok(Ok(())) => {}
@@ -1243,10 +1237,7 @@ impl SidecarPool {
                         skill_name
                     );
                     drop(stdin_guard); // release mutex before removing
-                    {
-                        let mut pending = self.pending_requests.lock().await;
-                        pending.remove(&agent_id_string);
-                    }
+                    self.unregister_pending(&agent_id_string).await;
                     self.remove_and_kill_sidecar(skill_name).await;
                     return Err(format!(
                         "Stdin flush timed out after 5s for skill '{}'",
@@ -1254,8 +1245,7 @@ impl SidecarPool {
                     ));
                 }
                 Ok(Err(e)) => {
-                    let mut pending = self.pending_requests.lock().await;
-                    pending.remove(&agent_id_string);
+                    self.unregister_pending(&agent_id_string).await;
                     return Err(format!("Failed to flush sidecar stdin: {}", e));
                 }
                 Ok(Ok(())) => {}
@@ -1280,6 +1270,14 @@ impl SidecarPool {
         // working; complex agents (reasoning, merging) can take 10+ minutes.
 
         Ok(())
+    }
+
+    /// Remove an agent_id from the pending_requests map.
+    /// Called on error paths to prevent the idle-cleanup task from treating
+    /// a failed request as still in-flight.
+    async fn unregister_pending(&self, agent_id: &str) {
+        let mut pending = self.pending_requests.lock().await;
+        pending.remove(agent_id);
     }
 
     // ─── Streaming session methods (refine chat) ─────────────────────────────
@@ -1424,10 +1422,7 @@ impl SidecarPool {
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
             log::error!("[send_stream_start] Failed for session '{}': {}", session_id, e);
-            {
-                let mut pending = self.pending_requests.lock().await;
-                pending.remove(agent_id);
-            }
+            self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
             log::info!(
@@ -1479,10 +1474,7 @@ impl SidecarPool {
         let result = self.write_to_sidecar_stdin(skill_name, &message).await;
         if let Err(ref e) = result {
             log::error!("[send_stream_message] Failed for session '{}': {}", session_id, e);
-            {
-                let mut pending = self.pending_requests.lock().await;
-                pending.remove(agent_id);
-            }
+            self.unregister_pending(agent_id).await;
             events::handle_sidecar_exit(app_handle, agent_id, false);
         } else {
             log::info!(

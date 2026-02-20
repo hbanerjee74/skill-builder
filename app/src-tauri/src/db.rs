@@ -24,45 +24,26 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
     // Migration 0: base schema (always runs via CREATE TABLE IF NOT EXISTS)
     run_migrations(&conn)?;
 
-    if !migration_applied(&conn, 1) {
-        run_add_skill_type_migration(&conn)?;
-        mark_migration_applied(&conn, 1)?;
-    }
-    if !migration_applied(&conn, 2) {
-        run_lock_table_migration(&conn)?;
-        mark_migration_applied(&conn, 2)?;
-    }
-    if !migration_applied(&conn, 3) {
-        run_author_migration(&conn)?;
-        mark_migration_applied(&conn, 3)?;
-    }
-    if !migration_applied(&conn, 4) {
-        run_usage_tracking_migration(&conn)?;
-        mark_migration_applied(&conn, 4)?;
-    }
-    if !migration_applied(&conn, 5) {
-        run_workflow_session_migration(&conn)?;
-        mark_migration_applied(&conn, 5)?;
-    }
-    if !migration_applied(&conn, 6) {
-        run_sessions_table_migration(&conn)?;
-        mark_migration_applied(&conn, 6)?;
-    }
-    if !migration_applied(&conn, 7) {
-        run_trigger_text_migration(&conn)?;
-        mark_migration_applied(&conn, 7)?;
-    }
-    if !migration_applied(&conn, 8) {
-        run_agent_stats_migration(&conn)?;
-        mark_migration_applied(&conn, 8)?;
-    }
-    if !migration_applied(&conn, 9) {
-        run_intake_migration(&conn)?;
-        mark_migration_applied(&conn, 9)?;
-    }
-    if !migration_applied(&conn, 10) {
-        run_composite_pk_migration(&conn)?;
-        mark_migration_applied(&conn, 10)?;
+    // Numbered migrations: each runs once, tracked in schema_migrations.
+    // To add a new migration, append a (version, function) entry to this array.
+    let migrations: &[(u32, fn(&Connection) -> Result<(), rusqlite::Error>)] = &[
+        (1,  run_add_skill_type_migration),
+        (2,  run_lock_table_migration),
+        (3,  run_author_migration),
+        (4,  run_usage_tracking_migration),
+        (5,  run_workflow_session_migration),
+        (6,  run_sessions_table_migration),
+        (7,  run_trigger_text_migration),
+        (8,  run_agent_stats_migration),
+        (9,  run_intake_migration),
+        (10, run_composite_pk_migration),
+    ];
+
+    for &(version, migrate_fn) in migrations {
+        if !migration_applied(&conn, version) {
+            migrate_fn(&conn)?;
+            mark_migration_applied(&conn, version)?;
+        }
     }
 
     Ok(Db(Mutex::new(conn)))

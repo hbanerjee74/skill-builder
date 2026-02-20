@@ -564,10 +564,12 @@ fn rename_skill_inner(
     // DB first, then disk — DB failures abort cleanly without leaving orphaned directories.
     // RAII transaction: automatically rolls back on drop if not committed.
     {
-        let tx = conn.transaction().map_err(|e| {
-            log::error!("[rename_skill] Failed to begin transaction: {}", e);
+        let tx_err = |e: rusqlite::Error| -> String {
+            log::error!("[rename_skill] DB transaction failed: {}", e);
             format!("Failed to rename skill in database: {}", e)
-        })?;
+        };
+
+        let tx = conn.transaction().map_err(&tx_err)?;
 
         // workflow_runs: PK change — insert new, delete old
         tx.execute(
@@ -575,76 +577,28 @@ fn rename_skill_inner(
              SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json
              FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
+        ).map_err(&tx_err)?;
         tx.execute(
             "DELETE FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![old_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
+        ).map_err(&tx_err)?;
 
-        // workflow_steps
-        tx.execute(
-            "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
+        // Rename foreign-key references across all related tables
+        for table in &[
+            "workflow_steps",
+            "skill_tags",
+            "agent_runs",
+            "workflow_artifacts",
+            "skill_locks",
+            "workflow_sessions",
+        ] {
+            tx.execute(
+                &format!("UPDATE {} SET skill_name = ?2 WHERE skill_name = ?1", table),
+                rusqlite::params![old_name, new_name],
+            ).map_err(&tx_err)?;
+        }
 
-        // skill_tags
-        tx.execute(
-            "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
-
-        // agent_runs
-        tx.execute(
-            "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
-
-        // workflow_artifacts
-        tx.execute(
-            "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
-
-        // skill_locks
-        tx.execute(
-            "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
-
-        // workflow_sessions
-        tx.execute(
-            "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
-            rusqlite::params![old_name, new_name],
-        ).map_err(|e| {
-            log::error!("[rename_skill] DB transaction failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
-
-        tx.commit().map_err(|e| {
-            log::error!("[rename_skill] DB transaction commit failed: {}", e);
-            format!("Failed to rename skill in database: {}", e)
-        })?;
+        tx.commit().map_err(&tx_err)?;
     }
 
     // Move directories on disk (DB already committed — if disk fails, reconciler can fix)
