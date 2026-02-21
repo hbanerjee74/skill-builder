@@ -56,6 +56,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 |---|---|---|
 | `agents/*.md` | `@agents` | t1, t4 |
 | `agent-sources/workspace/CLAUDE.md` | `@agents` | t1, t4 |
+| `agent-sources/workspace/skills/research/**` | `@agents` | t1, t4 |
 | `skills/generate-skill/SKILL.md` | `@coordinator` | t1, t2, t3 |
 | `.claude-plugin/plugin.json` | `@structure` | t1 |
 
