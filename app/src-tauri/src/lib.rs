@@ -202,6 +202,7 @@ pub fn run() {
             commands::imported_skills::export_skill,
             commands::feedback::create_github_issue,
             commands::github_import::parse_github_url,
+            commands::github_import::check_marketplace_url,
             commands::github_import::list_github_skills,
             commands::github_import::import_github_skills,
             commands::github_auth::github_start_device_flow,

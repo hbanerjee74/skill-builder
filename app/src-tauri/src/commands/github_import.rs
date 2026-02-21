@@ -146,6 +146,32 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
 }
 
 // ---------------------------------------------------------------------------
+// check_marketplace_url
+// ---------------------------------------------------------------------------
+
+/// Verify that a URL points to an accessible GitHub repository.
+///
+/// Unlike `list_github_skills`, this uses the repos API (`GET /repos/{owner}/{repo}`)
+/// which succeeds regardless of the default branch name. This avoids the 404
+/// that occurs when the repo's default branch is not "main".
+#[tauri::command]
+pub async fn check_marketplace_url(
+    db: tauri::State<'_, Db>,
+    url: String,
+) -> Result<(), String> {
+    log::info!("[check_marketplace_url] url={}", url);
+    let repo_info = parse_github_url_inner(&url)?;
+    let token = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        settings.github_oauth_token.clone()
+    };
+    let client = build_github_client(token.as_deref());
+    get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // list_github_skills
 // ---------------------------------------------------------------------------
 
@@ -802,6 +828,19 @@ mod tests {
         let result = parse_github_url_inner("https://github.com/acme/skill-library").unwrap();
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "skill-library");
+        assert_eq!(result.branch, "main");
+        assert!(result.subpath.is_none());
+    }
+
+    #[test]
+    fn test_parse_url_no_branch_defaults_to_main() {
+        // URLs pasted from a browser (no /tree/branch suffix) always default to "main"
+        // even when the repo's real default branch is different (e.g. "master").
+        // check_marketplace_url works around this by calling the repos API which
+        // returns the actual default branch instead of relying on the parsed value.
+        let result = parse_github_url_inner("https://github.com/hbanerjee74/skills").unwrap();
+        assert_eq!(result.owner, "hbanerjee74");
+        assert_eq!(result.repo, "skills");
         assert_eq!(result.branch, "main");
         assert!(result.subpath.is_none());
     }

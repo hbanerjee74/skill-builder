@@ -21,7 +21,7 @@ import type { AppSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir, parseGitHubUrl, listGitHubSkills } from "@/lib/tauri"
+import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -202,8 +202,7 @@ export default function SettingsPage() {
     setMarketplaceTesting(true)
     setMarketplaceValid(null)
     try {
-      const info = await parseGitHubUrl(marketplaceUrl.trim())
-      await listGitHubSkills(info.owner, info.repo, info.branch, info.subpath ?? undefined)
+      await checkMarketplaceUrl(marketplaceUrl.trim())
       setMarketplaceValid(true)
       toast.success("Marketplace is accessible")
     } catch (err) {
