@@ -15,6 +15,7 @@
 #   CLAUDE_BIN          Path to claude binary (default: claude)
 #   KEEP_TEMP           Set to 1 to keep temp directories after run
 #   VERBOSE             Set to 1 for verbose output
+#   FOREGROUND          Set to 1 to stream T5 Claude output live (default: background + polling)
 
 set -o pipefail
 
