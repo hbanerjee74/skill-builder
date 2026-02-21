@@ -81,9 +81,11 @@ export default function GitHubImportDialog({
         info.subpath ?? undefined
       )
       if (typeFilter && typeFilter.length > 0) {
+        console.log("[github-import] before filter:", available.map(s => `${s.name}(${s.skill_type})`))
         available = available.filter(
           (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
         )
+        console.log("[github-import] after filter (typeFilter=" + JSON.stringify(typeFilter) + "):", available.map(s => s.name))
       }
       if (available.length === 0) {
         setError("No skills found in this repository.")

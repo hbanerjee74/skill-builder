@@ -313,6 +313,11 @@ pub(crate) async fn list_github_skills_inner(
         let (fm_name, fm_description, fm_domain, fm_type) =
             super::imported_skills::parse_frontmatter(&content);
 
+        log::debug!(
+            "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
+            skill_md_path, fm_name, fm_domain, fm_type
+        );
+
         // Derive skill directory path (parent of SKILL.md)
         let skill_dir = skill_md_path
             .strip_suffix("/SKILL.md")
