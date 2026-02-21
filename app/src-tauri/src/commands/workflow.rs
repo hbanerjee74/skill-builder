@@ -290,14 +290,6 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
             section.push_str(desc);
             section.push('\n');
         }
-        if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.is_empty()) {
-            section.push_str(trigger);
-            section.push('\n');
-        }
-        section.push_str(&format!(
-            "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
-            skill.skill_name
-        ));
     }
 
     Ok(section)
@@ -3071,7 +3063,6 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3080,7 +3071,7 @@ mod tests {
         assert!(section.contains("## Custom Skills"), "should use unified heading");
         assert!(section.contains("### /test-practices"), "should list skill by name");
         assert!(section.contains("Skill structure rules."), "should include description");
-        assert!(section.contains("Read the skill at .claude/skills/test-practices/SKILL.md."), "should include trigger");
+        assert!(!section.contains("Read and follow the skill at"), "should not include path line");
         assert!(!section.contains("## Skill Generation Guidance"), "old bundled heading must not appear");
         assert!(!section.contains("## Imported Skills"), "old imported heading must not appear");
     }
@@ -3097,7 +3088,6 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3131,7 +3121,6 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3142,7 +3131,6 @@ mod tests {
             imported_at: "2025-01-15T10:00:00Z".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &bundled).unwrap();
         crate::db::insert_imported_skill(&conn, &imported).unwrap();
@@ -3165,6 +3153,42 @@ mod tests {
         let conn = super::super::test_utils::create_test_db();
         let section = generate_skills_section(&conn).unwrap();
         assert!(section.is_empty(), "no skills should produce empty section");
+    }
+
+    #[test]
+    fn test_generate_skills_section_no_trigger_no_path() {
+        // Regression test: section must never contain "Read and follow" path line or trigger text
+        let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "my-skill",
+            Some("When user asks about X, use this skill."),
+            Some("Skill description here."),
+        );
+
+        let skill = crate::types::ImportedSkill {
+            skill_id: "imp-my-skill-1".to_string(),
+            skill_name: "my-skill".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path,
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        // Must NOT contain trigger text or path directive
+        assert!(!section.contains("Read and follow"), "section must not contain 'Read and follow'");
+        assert!(!section.contains("When user asks about X"), "section must not contain trigger text");
+        assert!(!section.contains("SKILL.md"), "section must not contain skill path");
+
+        // MUST contain description
+        assert!(section.contains("Skill description here."), "section must include description");
+        assert!(section.contains("### /my-skill"), "section must include skill heading");
     }
 
 }

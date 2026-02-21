@@ -25,11 +25,10 @@ pub(crate) struct Frontmatter {
     pub description: Option<String>,
     pub domain: Option<String>,
     pub skill_type: Option<String>,
-    pub trigger: Option<String>,
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
-/// Extracts `name`, `description`, `domain`, `skill_type`, and `trigger` fields from YAML between `---` markers.
+/// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
 /// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
 pub(crate) fn parse_frontmatter(
     content: &str,
@@ -38,7 +37,7 @@ pub(crate) fn parse_frontmatter(
     (fm.name, fm.description, fm.domain, fm.skill_type)
 }
 
-/// Parse YAML frontmatter returning all fields including `trigger`.
+/// Parse YAML frontmatter returning all fields.
 pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -47,7 +46,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             description: None,
             domain: None,
             skill_type: None,
-            trigger: None,
         };
     }
 
@@ -61,7 +59,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
                 description: None,
                 domain: None,
                 skill_type: None,
-                trigger: None,
             }
         }
     };
@@ -72,7 +69,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let mut description = None;
     let mut domain = None;
     let mut skill_type = None;
-    let mut trigger = None;
 
     // Track which multi-line field we're accumulating (for `>` folded scalars)
     let mut current_multiline: Option<&str> = None;
@@ -96,7 +92,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             if !val.is_empty() {
                 match field {
                     "description" => description = Some(val),
-                    "trigger" => trigger = Some(val),
                     _ => {}
                 }
             }
@@ -117,13 +112,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             domain = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = trimmed_line.strip_prefix("type:") {
             skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
-        } else if let Some(val) = trimmed_line.strip_prefix("trigger:") {
-            let val = val.trim();
-            if val == ">" || val == "|" {
-                current_multiline = Some("trigger");
-            } else {
-                trigger = Some(val.trim_matches('"').trim_matches('\'').to_string());
-            }
         }
     }
 
@@ -133,7 +121,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         if !val.is_empty() {
             match field {
                 "description" => description = Some(val),
-                "trigger" => trigger = Some(val),
                 _ => {}
             }
         }
@@ -149,7 +136,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         description: trim_opt(description),
         domain: trim_opt(domain),
         skill_type: trim_opt(skill_type),
-        trigger: trim_opt(trigger),
     }
 }
 
@@ -309,17 +295,9 @@ fn upload_skill_inner(
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
-        trigger_text: fm.trigger.clone(),
     };
 
-    if fm.trigger.is_none() {
-        log::warn!(
-            "upload_skill_inner: skill '{}' has no trigger field in SKILL.md frontmatter",
-            skill_name
-        );
-    }
-
-    // Insert into DB (description and trigger_text are not stored)
+    // Insert into DB (description is not stored)
     crate::db::insert_imported_skill(conn, &skill)?;
 
     Ok(skill)
@@ -745,7 +723,6 @@ pub(crate) fn seed_bundled_skills(
             is_bundled: true,
             // Not stored in DB — read from SKILL.md frontmatter on disk
             description: None,
-            trigger_text: None,
         };
 
         crate::db::upsert_bundled_skill(conn, &skill)?;
@@ -793,7 +770,6 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         }
     }
 
@@ -1144,7 +1120,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1184,7 +1159,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1225,7 +1199,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1258,7 +1231,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1287,7 +1259,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
 
         let result = get_skill_content_inner(&skill).unwrap();
@@ -1305,7 +1276,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
 
         let result = get_skill_content_inner(&skill);
@@ -1354,10 +1324,10 @@ type: platform
             skill_tmp.path(),
             "my-analytics",
             Some("When the user asks about analytics, use this skill."),
-            None,
+            Some("Analytics skill for data queries."),
         );
 
-        // Insert an active skill (trigger/description come from disk)
+        // Insert an active skill (description comes from disk)
         let skill = ImportedSkill {
             skill_id: "imp-1".to_string(),
             skill_name: "my-analytics".to_string(),
@@ -1367,7 +1337,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1377,7 +1346,8 @@ type: platform
         assert!(content.contains("# Base Content"));
         assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /my-analytics"));
-        assert!(content.contains("When the user asks about analytics, use this skill."));
+        assert!(content.contains("Analytics skill for data queries."), "should include description");
+        assert!(!content.contains("When the user asks about analytics"), "trigger must not appear");
         // Customization preserved
         assert!(content.contains("## Customization"));
         assert!(content.contains("User notes."));
@@ -1419,11 +1389,11 @@ type: platform
             "# Base\n\n## Custom Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
         ).unwrap();
 
-        // Create skill on disk with trigger in frontmatter
+        // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", Some("New trigger."), None);
+        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", None, Some("New skill description."));
 
-        // Insert a new active skill (trigger/description come from disk)
+        // Insert a new active skill (description comes from disk)
         let skill = ImportedSkill {
             skill_id: "imp-new".to_string(),
             skill_name: "new-skill".to_string(),
@@ -1433,7 +1403,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1442,7 +1411,7 @@ type: platform
         let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("# Base"));
         assert!(content.contains("### /new-skill"));
-        assert!(content.contains("New trigger."));
+        assert!(content.contains("New skill description."), "should include description");
         // Old section should be replaced
         assert!(!content.contains("### /old-skill"));
         assert!(!content.contains("Old trigger text."));
@@ -1465,11 +1434,11 @@ type: platform
             "# Base Content\n\nSome text.\n\n## Custom Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
         ).unwrap();
 
-        // Create skill on disk with trigger in frontmatter
+        // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", Some("New trigger."), None);
+        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", None, Some("New skill description."));
 
-        // Insert a new active skill (trigger/description come from disk)
+        // Insert a new active skill (description comes from disk)
         let skill = ImportedSkill {
             skill_id: "imp-new".to_string(),
             skill_name: "new-skill".to_string(),
@@ -1479,7 +1448,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1491,7 +1459,7 @@ type: platform
         assert!(content.contains("Some text."));
         // New imported skills section present
         assert!(content.contains("### /new-skill"));
-        assert!(content.contains("New trigger."));
+        assert!(content.contains("New skill description."), "should include description");
         // Old skill removed
         assert!(!content.contains("### /old-skill"));
         // Customization section preserved with user content
@@ -1518,11 +1486,11 @@ type: platform
             "# Old Base\n\n## Custom Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
         ).unwrap();
 
-        // Create skill on disk with trigger in frontmatter
+        // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "analytics", Some("Use for analytics."), None);
+        let disk_path = create_skill_on_disk(skill_tmp.path(), "analytics", None, Some("Analytics skill description."));
 
-        // Insert an active skill (trigger/description come from disk)
+        // Insert an active skill (description comes from disk)
         let skill = ImportedSkill {
             skill_id: "imp-1".to_string(),
             skill_name: "analytics".to_string(),
@@ -1532,7 +1500,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1544,10 +1511,10 @@ type: platform
         assert!(content.contains("# Agent Instructions"));
         assert!(content.contains("Base content."));
         assert!(!content.contains("# Old Base"));
-        // Skills regenerated from DB (trigger read from disk)
+        // Skills regenerated from DB (description read from disk)
         assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /analytics"));
-        assert!(content.contains("Use for analytics."));
+        assert!(content.contains("Analytics skill description."), "should include description");
         // Stale skill gone
         assert!(!content.contains("### /stale-skill"));
         // User customization preserved (not replaced with default)
@@ -1580,7 +1547,6 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1616,7 +1582,6 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1651,15 +1616,14 @@ type: platform
         assert!(dest.join("SKILL.md").exists());
         assert!(dest.join("references").join("ref.md").exists());
 
-        // Verify DB record (trigger_text and description are hydrated from disk)
+        // Verify DB record (description is hydrated from disk)
         let skill = crate::db::get_imported_skill(&conn, "test-bundled").unwrap().unwrap();
         assert!(skill.is_bundled);
         assert!(skill.is_active);
         assert_eq!(skill.imported_at, "2000-01-01T00:00:00Z");
         // Description is hydrated from SKILL.md frontmatter on disk
         assert_eq!(skill.description.as_deref(), Some("A test bundled skill"));
-        // This test SKILL.md has no trigger field
-        assert!(skill.trigger_text.is_none());
+        // trigger_text field has been removed
     }
 
     #[test]
@@ -1678,7 +1642,6 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1782,7 +1745,6 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill).unwrap();
 
@@ -1802,7 +1764,6 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill2).unwrap();
 
@@ -1811,8 +1772,7 @@ type: platform
         assert!(!updated.is_active, "upsert should preserve is_active from existing row");
         // disk_path should be updated
         assert!(updated.disk_path.contains("upsert-test-v2"));
-        // description and trigger_text are hydrated from the new disk_path's SKILL.md
+        // description is hydrated from the new disk_path's SKILL.md
         assert_eq!(updated.description.as_deref(), Some("Updated"));
-        assert_eq!(updated.trigger_text.as_deref(), Some("Updated trigger"));
     }
 }

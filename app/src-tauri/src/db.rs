@@ -1270,14 +1270,13 @@ pub fn get_all_tags(conn: &Connection) -> Result<Vec<String>, String> {
 
 // --- Imported Skills ---
 
-/// Read SKILL.md frontmatter from disk and populate `description` and `trigger_text`
-/// on an ImportedSkill struct. These fields are not stored in the DB.
+/// Read SKILL.md frontmatter from disk and populate `description`
+/// on an ImportedSkill struct. This field is not stored in the DB.
 pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     let skill_md_path = std::path::Path::new(&skill.disk_path).join("SKILL.md");
     if let Ok(content) = fs::read_to_string(&skill_md_path) {
         let fm = crate::commands::imported_skills::parse_frontmatter_full(&content);
         skill.description = fm.description;
-        skill.trigger_text = fm.trigger;
     }
 }
 
@@ -1353,7 +1352,6 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 imported_at: row.get(5)?,
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
-                trigger_text: None,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1417,7 +1415,6 @@ pub fn get_imported_skill(
             imported_at: row.get(5)?,
             is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
-            trigger_text: None,
         })
     });
 
@@ -1452,7 +1449,6 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
                 imported_at: row.get(5)?,
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
-                trigger_text: None,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -3118,7 +3114,6 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
@@ -3132,7 +3127,6 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
@@ -3146,7 +3140,6 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
