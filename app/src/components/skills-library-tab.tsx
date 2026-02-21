@@ -15,6 +15,7 @@ import ImportedSkillCard from "@/components/imported-skill-card"
 import SkillPreviewDialog from "@/components/skill-preview-dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
 import type { ImportedSkill } from "@/stores/imported-skills-store"
+import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 
 export function SkillsLibraryTab() {
@@ -27,6 +28,7 @@ export function SkillsLibraryTab() {
     deleteSkill,
   } = useImportedSkillsStore()
 
+  const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
   const [previewSkillName, setPreviewSkillName] = useState<string | null>(null)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
 
@@ -184,6 +186,7 @@ export function SkillsLibraryTab() {
         onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
         mode="settings-skills"
+        initialUrl={marketplaceUrl ?? undefined}
       />
     </div>
   )

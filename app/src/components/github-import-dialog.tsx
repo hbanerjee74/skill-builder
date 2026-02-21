@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Loader2, Github, ArrowLeft, Check, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -33,6 +33,11 @@ interface GitHubImportDialogProps {
    * Defaults to 'settings-skills' for backward compatibility.
    */
   mode?: 'skill-library' | 'settings-skills'
+  /**
+   * When set, the dialog skips the URL entry step and immediately browses
+   * skills from this URL when opened. The back button is hidden in this mode.
+   */
+  initialUrl?: string
 }
 
 export default function GitHubImportDialog({
@@ -41,6 +46,7 @@ export default function GitHubImportDialog({
   onImported,
   typeFilter,
   mode = 'settings-skills',
+  initialUrl,
 }: GitHubImportDialogProps) {
   const [step, setStep] = useState<Step>("url")
   const [url, setUrl] = useState("")
@@ -53,14 +59,14 @@ export default function GitHubImportDialog({
 
   const reset = useCallback(() => {
     setStep("url")
-    setUrl("")
+    setUrl(initialUrl ?? "")
     setRepoInfo(null)
     setSkills([])
     setSelectedPaths(new Set())
     setLoading(false)
     setError(null)
     setImportedCount(0)
-  }, [])
+  }, [initialUrl])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -70,11 +76,12 @@ export default function GitHubImportDialog({
     [onOpenChange, reset]
   )
 
-  const handleBrowse = useCallback(async () => {
+  // Core browse logic — accepts an explicit URL so it can be called with initialUrl
+  const browseUrl = useCallback(async (targetUrl: string) => {
     setError(null)
     setLoading(true)
     try {
-      const info = await parseGitHubUrl(url.trim())
+      const info = await parseGitHubUrl(targetUrl.trim())
       setRepoInfo(info)
       let available = await listGitHubSkills(
         info.owner,
@@ -102,7 +109,18 @@ export default function GitHubImportDialog({
     } finally {
       setLoading(false)
     }
-  }, [url])
+  }, [typeFilter])
+
+  const handleBrowse = useCallback(() => browseUrl(url), [browseUrl, url])
+
+  // Auto-browse when opening with a pre-configured URL
+  useEffect(() => {
+    if (open && initialUrl) {
+      setUrl(initialUrl)
+      browseUrl(initialUrl)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const handleTogglePath = useCallback((path: string) => {
     setSelectedPaths((prev) => {
@@ -210,12 +228,14 @@ export default function GitHubImportDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <button
-                  onClick={() => { setStep("url"); setError(null) }}
-                  className="rounded-sm p-0.5 hover:bg-accent"
-                >
-                  <ArrowLeft className="size-4" />
-                </button>
+                {!initialUrl && (
+                  <button
+                    onClick={() => { setStep("url"); setError(null) }}
+                    className="rounded-sm p-0.5 hover:bg-accent"
+                  >
+                    <ArrowLeft className="size-4" />
+                  </button>
+                )}
                 Select Skills from {repoInfo.owner}/{repoInfo.repo}
               </DialogTitle>
               <DialogDescription>
