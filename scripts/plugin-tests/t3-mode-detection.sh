@@ -48,15 +48,15 @@ run_t3() {
   done
 
   # ---- T3.8–T3.10: Intent dispatch tests ----
-  # Brief pause to avoid API rate limiting after 9 back-to-back state detection calls.
-  sleep 5
+  # Longer pause to allow API rate limit recovery after 9 back-to-back state detection calls.
+  sleep 15
 
   # Each test creates a fixture, sends a prompt, and checks output for expected keywords.
 
   _t3_dispatch_test() {
     local test_name="$1" dir="$2" prompt="$3" pattern="$4" label="$5"
     local output
-    output=$(run_claude_unsafe "$prompt" "$budget" 90 "$dir")
+    output=$(run_claude_unsafe "$prompt" "$budget" 120 "$dir")
     if [[ -z "$output" ]]; then
       record_result "$tier" "$test_name" "FAIL" "empty output"
     elif echo "$output" | grep -qiE "$pattern"; then
