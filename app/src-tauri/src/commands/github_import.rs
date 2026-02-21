@@ -491,7 +491,7 @@ pub async fn import_marketplace_to_library(
     );
 
     // Read settings
-    let (marketplace_url, workspace_path, token) = {
+    let (marketplace_url, workspace_path, skills_path, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         let url = settings
@@ -500,7 +500,10 @@ pub async fn import_marketplace_to_library(
         let wp = settings
             .workspace_path
             .ok_or_else(|| "Workspace path not initialized".to_string())?;
-        (url, wp, settings.github_oauth_token.clone())
+        let sp = settings
+            .skills_path
+            .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
+        (url, wp, sp, settings.github_oauth_token.clone())
     };
 
     // Parse the marketplace URL into owner/repo/branch
@@ -543,7 +546,7 @@ pub async fn import_marketplace_to_library(
         .as_array()
         .ok_or("Invalid tree response: missing 'tree' array")?;
 
-    let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
+    let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
