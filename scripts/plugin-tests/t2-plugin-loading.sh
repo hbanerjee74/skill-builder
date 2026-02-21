@@ -9,7 +9,7 @@ run_t2() {
   log_verbose "Testing plugin loading with claude -p"
   local output
   output=$(run_claude_unsafe \
-    "You have a plugin loaded called skill-builder that has a skill called 'start'. Confirm you can see this plugin by replying with exactly: PLUGIN_LOADED" \
+    "You have a plugin loaded called skill-builder that has a skill called 'generate-skill'. Confirm you can see this plugin by replying with exactly: PLUGIN_LOADED" \
     "$budget" 45)
 
   if [[ -z "$output" ]]; then

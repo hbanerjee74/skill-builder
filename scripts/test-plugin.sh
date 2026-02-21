@@ -29,13 +29,14 @@ source "$TESTS_DIR/lib.sh"
 # ---------- Configuration ----------
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
 MAX_BUDGET_T2="${MAX_BUDGET_T2:-0.10}"
+MAX_BUDGET_T3="${MAX_BUDGET_T3:-0.25}"
 MAX_BUDGET_T4="${MAX_BUDGET_T4:-0.50}"
 MAX_BUDGET_T5="${MAX_BUDGET_T5:-5.00}"
 KEEP_TEMP="${KEEP_TEMP:-0}"
 VERBOSE="${VERBOSE:-0}"
 
 export PLUGIN_DIR CLAUDE_BIN TESTS_DIR
-export MAX_BUDGET_T2 MAX_BUDGET_T4 MAX_BUDGET_T5 KEEP_TEMP VERBOSE
+export MAX_BUDGET_T2 MAX_BUDGET_T3 MAX_BUDGET_T4 MAX_BUDGET_T5 KEEP_TEMP VERBOSE
 
 # ---------- Tier helpers (bash 3.2 compatible — no associative arrays) ----------
 
@@ -43,7 +44,7 @@ tier_label() {
   case "$1" in
     t1) echo "Structural Validation (no LLM)" ;;
     t2) echo "Plugin Loading" ;;
-    t3) echo "Start Mode Detection" ;;
+    t3) echo "State Detection + Intent Dispatch" ;;
     t4) echo "Agent Smoke Tests" ;;
     t5) echo "Full E2E Workflow" ;;
     *)  echo "Unknown" ;;

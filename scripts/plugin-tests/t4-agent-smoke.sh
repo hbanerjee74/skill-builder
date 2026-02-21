@@ -6,91 +6,182 @@ run_t4() {
   local skill_name="pet-store-analytics"
   source "$TESTS_DIR/fixtures.sh"
 
-  # ---- T4.1: Reasoning agent ----
-  local reason_dir
-  reason_dir=$(make_temp_dir "t4-reasoning")
-  create_fixture_t4_workspace "$reason_dir" "$skill_name"
-  log_verbose "Reasoning workspace: $reason_dir"
+  local workspace_context
+  workspace_context=$(cat "$PLUGIN_DIR/agent-sources/workspace/CLAUDE.md")
 
-  local reasoning_prompt="You are the reasoning agent for the skill-builder plugin. Your job is to \
-analyze answered clarification questions and produce decisions.
+  # ---- T4.1: research-orchestrator → creates clarifications.md ----
+  local research_dir
+  research_dir=$(make_temp_dir "t4-research-orch")
+  create_fixture_t4_research "$research_dir" "$skill_name"
+  log_verbose "T4.1 research-orchestrator workspace: $research_dir"
 
-Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/agent-sources/workspace/CLAUDE.md
+  local research_prompt
+  research_prompt="You are the research-orchestrator agent for the skill-builder plugin.
 
-Read these answered clarification files:
-- $reason_dir/context/research-entities.md
-- $reason_dir/context/clarifications.md
+Skill type: domain
+Domain: Pet Store Analytics
+Skill name: $skill_name
+Context directory: $research_dir/$skill_name/context
+Workspace directory: $research_dir/.vibedata/$skill_name
 
-Analyze the answers. Look for:
-- Gaps (unanswered or vague questions)
-- Contradictions between answers
-- Implications for data modeling decisions
+<agent-instructions>
+$workspace_context
+</agent-instructions>
 
-Write your decisions to: $reason_dir/context/decisions.md
+Research the pet store analytics domain and generate clarification questions for a skill builder.
+Write the consolidated clarification questions to: $research_dir/$skill_name/context/clarifications.md
 
-Use this format for each decision:
-### D1: [Decision title]
-- **Question**: [The original question]
-- **Decision**: [The chosen answer]
-- **Implication**: [What this means for skill design]
+The file must contain 5-10 questions grouped by dimension (e.g. Core Entities, Business Patterns, Data Modeling).
+Each question must follow this format:
+### Q<n>: <title>
+<question text>
+A. <option>
+B. <option>
+**Recommendation:** <letter>
+**Answer:**
 
-Return a summary of key conclusions, assumptions, and any conflicts found."
+Return: path to clarifications.md and question count."
 
-  log_verbose "Running reasoning agent smoke test..."
-  local reasoning_output
-  reasoning_output=$(run_claude_unsafe "$reasoning_prompt" "$MAX_BUDGET_T4" 120 "$reason_dir")
+  log_verbose "Running research-orchestrator smoke test..."
+  local research_output
+  research_output=$(run_claude_unsafe "$research_prompt" "${MAX_BUDGET_T4:-0.50}" 180 "$research_dir")
 
-  assert_file_exists "$tier" "reasoning_creates_decisions" "$reason_dir/context/decisions.md" || true
-  if [[ -f "$reason_dir/context/decisions.md" ]]; then
-    if grep -q "^### D[0-9]" "$reason_dir/context/decisions.md"; then
-      record_result "$tier" "decisions_format_valid" "PASS"
+  assert_file_exists "$tier" "research_orch_creates_clarifications" \
+    "$research_dir/$skill_name/context/clarifications.md" || true
+
+  if [[ -f "$research_dir/$skill_name/context/clarifications.md" ]]; then
+    local q_count
+    q_count=$(grep -c "^### Q[0-9]" "$research_dir/$skill_name/context/clarifications.md" || true)
+    if [[ "$q_count" -ge 5 ]]; then
+      record_result "$tier" "research_orch_min_5_questions" "PASS" "$q_count questions"
     else
-      record_result "$tier" "decisions_format_valid" "FAIL" "no D-numbered decisions found"
+      record_result "$tier" "research_orch_min_5_questions" "FAIL" "only $q_count questions (expected ≥5)"
+    fi
+
+    if grep -q "^\*\*Answer:\*\*" "$research_dir/$skill_name/context/clarifications.md"; then
+      record_result "$tier" "research_orch_answer_fields_present" "PASS"
+    else
+      record_result "$tier" "research_orch_answer_fields_present" "FAIL" "no **Answer:** fields found"
     fi
   fi
 
-  # ---- T4.2: Build agent (only if reasoning produced decisions) ----
-  if [[ -s "$reason_dir/context/decisions.md" ]]; then
-    local build_dir
-    build_dir=$(make_temp_dir "t4-build")
-    mkdir -p "$build_dir/$skill_name/references"
-    mkdir -p "$build_dir/context"
-    cp "$reason_dir/context/decisions.md" "$build_dir/context/"
-    cp "$reason_dir/context/clarifications.md" "$build_dir/context/"
-    log_verbose "Build workspace: $build_dir"
+  # ---- T4.2: answer-evaluator → creates answer-evaluation.json ----
+  local eval_dir
+  eval_dir=$(make_temp_dir "t4-answer-eval")
+  create_fixture_t4_answer_evaluator "$eval_dir" "$skill_name"
+  log_verbose "T4.2 answer-evaluator workspace: $eval_dir"
 
-    local build_prompt="You are the build agent for the skill-builder plugin. Your job is to \
-create the skill files based on decisions.
+  local eval_prompt
+  eval_prompt="You are the answer-evaluator agent for the skill-builder plugin.
 
-Read these agent instructions for expected file formats: $PLUGIN_DIR/agent-sources/workspace/CLAUDE.md
-Read the decisions file: $build_dir/context/decisions.md
+Context directory: $eval_dir/$skill_name/context
+Workspace directory: $eval_dir/.vibedata/$skill_name
 
-Domain: pet store analytics
+<agent-instructions>
+$workspace_context
+</agent-instructions>
 
-Create the skill files:
-1. Write SKILL.md to: $build_dir/$skill_name/SKILL.md
-   - Keep it under 500 lines
-   - Include: metadata, overview, when to use, quick reference, pointers to references
-2. Write at least 2 reference files to: $build_dir/$skill_name/references/
-   - Each should cover a distinct topic from the decisions
+Read the clarification file at: $eval_dir/$skill_name/context/clarifications.md
 
-Return the folder structure and a summary of what was created."
+Count answered vs unanswered questions (answered = **Answer:** has non-empty content after the colon).
+Evaluate whether the answers are sufficient to proceed to skill generation without more research.
 
-    log_verbose "Running build agent smoke test..."
-    local build_output
-    build_output=$(run_claude_unsafe "$build_prompt" "$MAX_BUDGET_T4" 120 "$build_dir")
+Write your evaluation to: $eval_dir/.vibedata/$skill_name/answer-evaluation.json
 
-    assert_file_exists "$tier" "build_creates_skill_md" "$build_dir/$skill_name/SKILL.md" || true
+The JSON must contain exactly these fields:
+{
+  \"total_questions\": <number>,
+  \"answered_count\": <number>,
+  \"empty_count\": <number>,
+  \"verdict\": \"sufficient\" | \"needs_more_research\" | \"insufficient\",
+  \"reasoning\": \"<brief explanation>\"
+}
 
-    local ref_count
-    ref_count=$(ls "$build_dir/$skill_name/references/"*.md 2>/dev/null | wc -l | tr -d ' ')
-    if [[ "$ref_count" -gt 0 ]]; then
-      record_result "$tier" "build_creates_references" "PASS" "$ref_count reference files"
+Return: the evaluation JSON contents."
+
+  log_verbose "Running answer-evaluator smoke test..."
+  local eval_output
+  eval_output=$(run_claude_unsafe "$eval_prompt" "${MAX_BUDGET_T4:-0.50}" 120 "$eval_dir")
+
+  assert_file_exists "$tier" "answer_eval_creates_json" \
+    "$eval_dir/.vibedata/$skill_name/answer-evaluation.json" || true
+
+  if [[ -f "$eval_dir/.vibedata/$skill_name/answer-evaluation.json" ]]; then
+    if python3 - << PYEOF 2>/dev/null
+import json, sys
+with open("$eval_dir/.vibedata/$skill_name/answer-evaluation.json") as f:
+    d = json.load(f)
+required = ["total_questions", "answered_count", "empty_count", "verdict", "reasoning"]
+missing = [k for k in required if k not in d]
+valid_verdicts = {"sufficient", "needs_more_research", "insufficient"}
+if missing:
+    sys.exit(1)
+if d["verdict"] not in valid_verdicts:
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+    then
+      record_result "$tier" "answer_eval_json_valid" "PASS"
     else
-      record_result "$tier" "build_creates_references" "FAIL" "no reference files created"
+      record_result "$tier" "answer_eval_json_valid" "FAIL" "JSON missing fields or invalid verdict"
+    fi
+  fi
+
+  # ---- T4.3: confirm-decisions → creates decisions.md ----
+  # Runs only if T4.2 produced answer-evaluation.json (realistic pipeline dependency)
+  if [[ -f "$eval_dir/.vibedata/$skill_name/answer-evaluation.json" ]]; then
+    local decisions_dir
+    decisions_dir=$(make_temp_dir "t4-decisions")
+    create_fixture_t4_workspace "$decisions_dir" "$skill_name"
+    cp "$eval_dir/.vibedata/$skill_name/answer-evaluation.json" \
+       "$decisions_dir/.vibedata/$skill_name/"
+    log_verbose "T4.3 confirm-decisions workspace: $decisions_dir"
+
+    local decisions_prompt
+    decisions_prompt="You are the confirm-decisions agent for the skill-builder plugin.
+
+Skill type: domain
+Domain: Pet Store Analytics
+Skill name: $skill_name
+Context directory: $decisions_dir/$skill_name/context
+Skill directory: $decisions_dir/$skill_name
+Workspace directory: $decisions_dir/.vibedata/$skill_name
+
+<agent-instructions>
+$workspace_context
+</agent-instructions>
+
+Read the answered clarifications at: $decisions_dir/$skill_name/context/clarifications.md
+
+Synthesize the answers into concrete design decisions for the skill.
+Write your decisions to: $decisions_dir/$skill_name/context/decisions.md
+
+Each decision must follow this format:
+### D<n>: <title>
+- **Question**: <the original clarification question>
+- **Decision**: <the chosen answer>
+- **Implication**: <what this means for the skill design>
+
+Return: path to decisions.md and a one-line summary of key decisions."
+
+    log_verbose "Running confirm-decisions smoke test..."
+    local decisions_output
+    decisions_output=$(run_claude_unsafe "$decisions_prompt" "${MAX_BUDGET_T4:-0.50}" 120 "$decisions_dir")
+
+    assert_file_exists "$tier" "confirm_decisions_creates_decisions_md" \
+      "$decisions_dir/$skill_name/context/decisions.md" || true
+
+    if [[ -f "$decisions_dir/$skill_name/context/decisions.md" ]]; then
+      local d_count
+      d_count=$(grep -c "^### D[0-9]" "$decisions_dir/$skill_name/context/decisions.md" || true)
+      if [[ "$d_count" -ge 3 ]]; then
+        record_result "$tier" "confirm_decisions_min_3_decisions" "PASS" "$d_count decisions"
+      else
+        record_result "$tier" "confirm_decisions_min_3_decisions" "FAIL" "only $d_count decisions (expected ≥3)"
+      fi
     fi
   else
-    record_result "$tier" "build_creates_skill_md" "SKIP" "depends on reasoning output"
-    record_result "$tier" "build_creates_references" "SKIP" "depends on reasoning output"
+    record_result "$tier" "confirm_decisions_creates_decisions_md" "SKIP" "depends on T4.2 answer-evaluator output"
+    record_result "$tier" "confirm_decisions_min_3_decisions" "SKIP" "depends on T4.2 answer-evaluator output"
   fi
 }
