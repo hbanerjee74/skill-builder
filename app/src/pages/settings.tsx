@@ -34,7 +34,7 @@ import { SkillsLibraryTab } from "@/components/skills-library-tab"
 const sections = [
   { id: "general", label: "General" },
   { id: "skill-building", label: "Skill Building" },
-  { id: "skills-library", label: "Skills Library" },
+  { id: "skills", label: "Skills" },
   { id: "github", label: "GitHub" },
   { id: "advanced", label: "Advanced" },
 ] as const
@@ -519,7 +519,7 @@ export default function SettingsPage() {
           </div>
           )}
 
-          {activeSection === "skills-library" && (
+          {activeSection === "skills" && (
           <div className="space-y-6 p-6">
             <SkillsLibraryTab />
           </div>
