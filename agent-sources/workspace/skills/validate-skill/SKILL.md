@@ -1,10 +1,12 @@
 ---
 name: validate-skill
 description: >
-  Validates a completed skill against its decisions and clarifications. Use when the
-  validate-skill orchestrator asks to validate a skill for a domain and skill type.
-  Returns a validation log, test results, and companion recommendations as inline text
-  with === VALIDATION LOG ===, === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
+  Validates a completed skill against its decisions and clarifications. Use when
+  validating a skill for a domain and skill type. Returns a validation log, test
+  results, and companion recommendations as inline text with === VALIDATION LOG ===,
+  === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
+domain: Skill Builder
+type: skill-builder
 ---
 
 # Validate Skill

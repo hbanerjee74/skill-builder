@@ -1,12 +1,12 @@
 ---
 name: research
 description: >
-  Runs the research phase for a skill. Use when the research orchestrator asks to
-  research dimensions and produce clarifications for a skill_type and domain. Selects
-  relevant dimensions, scores them inline, spawns parallel dimension research Tasks,
-  and consolidates into clarifications.md format. Returns scored dimension table and
+  Runs the research phase for a skill. Use when researching dimensions and producing
+  clarifications for a skill type and domain. Returns a scored dimension table and
   complete clarifications.md content as inline text with === RESEARCH PLAN === and
   === CLARIFICATIONS === delimiters.
+domain: Skill Builder
+type: skill-builder
 ---
 
 # Research Skill
