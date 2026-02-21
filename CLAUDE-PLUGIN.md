@@ -1,12 +1,12 @@
 # Skill Builder -- Claude Code Plugin
 
-Claude Code plugin providing the multi-agent skill-building workflow. Entry point: `/skill-builder:generate-skill`.
+Claude Code plugin providing the multi-agent skill-building workflow. Entry point: `/skill-builder:building-skills`.
 
 ## Architecture
 
 Three layers:
 
-1. **Coordinator skill** (`skills/generate-skill/SKILL.md`) -- invoked via `/skill-builder:generate-skill`. State-aware router: detects current phase from filesystem artifacts, classifies user intent, and dispatches to the right agent. Uses `` !`echo $CLAUDE_PLUGIN_ROOT` `` to resolve paths to plugin files at runtime.
+1. **Coordinator skill** (`skills/building-skills/SKILL.md`) -- invoked via `/skill-builder:building-skills`. State-aware router: detects current phase from filesystem artifacts, classifies user intent, and dispatches to the right agent. Uses `` !`echo $CLAUDE_PLUGIN_ROOT` `` to resolve paths to plugin files at runtime.
 
 2. **Subagents** (`agents/*.md`) -- each has YAML frontmatter (name, model, tools, permissions) and markdown instructions. Agents are spawned via `Task(subagent_type: "skill-builder:{agent}")`.
 
@@ -20,7 +20,7 @@ Agent files live in `agents/` (flat directory). Edit them directly.
 
 ### Modifying the workflow
 
-Edit `skills/generate-skill/SKILL.md`. This contains the full coordinator logic: state detection, intent classification, dispatch matrix, phase implementations, and workflow modes (guided/express/iterative).
+Edit `skills/building-skills/SKILL.md`. This contains the full coordinator logic: state detection, intent classification, dispatch matrix, phase implementations, and workflow modes (guided/express/iterative).
 
 ### Testing changes
 

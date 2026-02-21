@@ -112,14 +112,14 @@ fi
 
 # ---------- T1.4: Skill file ----------
 echo "=== Coordinator Skill ==="
-if [ -f "skills/generate-skill/SKILL.md" ]; then
-  if head -1 "skills/generate-skill/SKILL.md" | grep -q "^---"; then
-    pass "skills/generate-skill/SKILL.md exists with frontmatter"
+if [ -f "skills/building-skills/SKILL.md" ]; then
+  if head -1 "skills/building-skills/SKILL.md" | grep -q "^---"; then
+    pass "skills/building-skills/SKILL.md exists with frontmatter"
   else
-    fail "skills/generate-skill/SKILL.md has no YAML frontmatter"
+    fail "skills/building-skills/SKILL.md has no YAML frontmatter"
   fi
 else
-  fail "skills/generate-skill/SKILL.md not found"
+  fail "skills/building-skills/SKILL.md not found"
 fi
 
 # ---------- T1.5: Workspace CLAUDE.md ----------
@@ -132,7 +132,7 @@ fi
 
 # ---------- T1.5b: Skill reference files ----------
 echo "=== Skill Reference Files ==="
-REFS_DIR="skills/generate-skill/references"
+REFS_DIR="skills/building-skills/references"
 if [ -d "$REFS_DIR" ]; then
   pass "references/ directory exists"
   # workspace-context.md (full copy of agent-sources/workspace/CLAUDE.md)
@@ -200,8 +200,8 @@ fi
 
 # ---------- T1.8: Coordinator content checks ----------
 echo "=== Coordinator Content ==="
-if [ -f "skills/generate-skill/SKILL.md" ]; then
-  content=$(cat "skills/generate-skill/SKILL.md")
+if [ -f "skills/building-skills/SKILL.md" ]; then
+  content=$(cat "skills/building-skills/SKILL.md")
   for keyword in "CLAUDE_PLUGIN_ROOT" "skill-builder:" "references/workspace-context.md" "session.json"; do
     if echo "$content" | grep -q "$keyword"; then
       pass "coordinator references $keyword"

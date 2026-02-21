@@ -4,7 +4,7 @@
 # Sources:
 #   - agent-sources/workspace/CLAUDE.md (full copy → workspace-context.md)
 #   - agent-sources/workspace/skills/skill-builder-practices/ (content guidelines + best practices)
-# Target: skills/generate-skill/references/
+# Target: skills/building-skills/references/
 #
 # The app auto-loads workspace/CLAUDE.md into every agent's system prompt.
 # The plugin packages it as workspace-context.md so the coordinator can inject
@@ -19,7 +19,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE="$ROOT_DIR/agent-sources/workspace/CLAUDE.md"
-REFS_DIR="$ROOT_DIR/skills/generate-skill/references"
+REFS_DIR="$ROOT_DIR/skills/building-skills/references"
 BUNDLED_PRACTICES="$ROOT_DIR/agent-sources/workspace/skills/skill-builder-practices"
 
 CHECK_MODE=false
@@ -95,5 +95,5 @@ if $CHECK_MODE; then
         exit 0
     fi
 else
-    echo "Done — workspace-context.md + skill-builder-practices/ in skills/generate-skill/references/"
+    echo "Done — workspace-context.md + skill-builder-practices/ in skills/building-skills/references/"
 fi
