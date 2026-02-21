@@ -52,8 +52,9 @@ export default function SkillListRow({
   onEditWorkflow,
   onRefine,
 }: SkillListRowProps) {
-  const progress = parseStepProgress(skill.current_step, skill.status)
-  const canDownload = isWorkflowComplete(skill)
+  const isMarketplace = skill.source === 'marketplace'
+  const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
+  const canDownload = isMarketplace || isWorkflowComplete(skill)
 
   const row = (
     <div
@@ -109,12 +110,14 @@ export default function SkillListRow({
       {/* Col 6: Actions (right-aligned) */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
-        <IconAction
-          icon={<Pencil className="size-3" />}
-          label="Edit workflow"
-          tooltip="Edit workflow"
-          onClick={() => onEditWorkflow?.(skill)}
-        />
+        {!isMarketplace && (
+          <IconAction
+            icon={<Pencil className="size-3" />}
+            label="Edit workflow"
+            tooltip="Edit workflow"
+            onClick={() => onEditWorkflow?.(skill)}
+          />
+        )}
         {canDownload && onRefine && (
           <IconAction
             icon={<MessageSquare className="size-3" />}
@@ -123,7 +126,7 @@ export default function SkillListRow({
             onClick={() => onRefine(skill)}
           />
         )}
-        {canDownload && onDownload && (
+        {!isMarketplace && canDownload && onDownload && (
           <IconAction
             icon={<Download className="size-3" />}
             label="Download skill"
@@ -139,24 +142,26 @@ export default function SkillListRow({
           onClick={() => onDelete(skill)}
         />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="text-muted-foreground"
-              aria-label="More actions"
-            >
-              <MoreHorizontal className="size-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
-              <SquarePen className="size-4" />
-              Edit details
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {!isMarketplace && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="text-muted-foreground"
+                aria-label="More actions"
+              >
+                <MoreHorizontal className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
+                <SquarePen className="size-4" />
+                Edit details
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   )

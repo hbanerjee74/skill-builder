@@ -122,8 +122,9 @@ export default function SkillCard({
   onEditWorkflow,
   onRefine,
 }: SkillCardProps) {
-  const progress = parseStepProgress(skill.current_step, skill.status)
-  const canDownload = isWorkflowComplete(skill)
+  const isMarketplace = skill.source === 'marketplace'
+  const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
+  const canDownload = isMarketplace || isWorkflowComplete(skill)
 
   const cardContent = (
     <Card
@@ -173,12 +174,14 @@ export default function SkillCard({
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div className="flex w-full items-center gap-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-0.5">
-            <IconAction
-              icon={<Pencil className="size-3" />}
-              label="Edit workflow"
-              tooltip="Edit workflow"
-              onClick={() => onEditWorkflow?.(skill)}
-            />
+            {!isMarketplace && (
+              <IconAction
+                icon={<Pencil className="size-3" />}
+                label="Edit workflow"
+                tooltip="Edit workflow"
+                onClick={() => onEditWorkflow?.(skill)}
+              />
+            )}
             {canDownload && onRefine && (
               <IconAction
                 icon={<MessageSquare className="size-3" />}
@@ -189,7 +192,7 @@ export default function SkillCard({
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {canDownload && onDownload && (
+            {!isMarketplace && canDownload && onDownload && (
               <IconAction
                 icon={<Download className="size-3" />}
                 label="Download skill"
@@ -225,6 +228,10 @@ export default function SkillCard({
         </Tooltip>
       </TooltipProvider>
     )
+  }
+
+  if (isMarketplace) {
+    return <TooltipProvider>{cardContent}</TooltipProvider>
   }
 
   return (
