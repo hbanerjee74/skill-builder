@@ -13,9 +13,9 @@ Read these before starting:
 
 | Document | Purpose | Key sections |
 |----------|---------|--------------|
-| Seed vs. Build synthesis (at `/Users/shwetanksheel/scratch/99_working/scratch-ssl/skill_exploration/research/seed_vs_build/synthesis.md`) | Defines what skills actually contain, the delta principle, template structures per type, and concrete failure modes | Section 2 (convergence), Section 6.1 (procedural annotations), Section 6.2 (template structures), Section 7 (delta filter) |
-| `docs/design/dynamic-research-dimensions.md` | Current design doc — architecture, existing dimension catalog, assignment matrix | Section 2 (dimension catalog), dimension assignment matrix |
-| Architecture spec section 6.2.4 (at `/Users/shwetanksheel/scratch/99_working/vd-specs-product-architecture/vibedata-architecture.md`) | Defines the 4 skill types: domain, platform, source, data-engineering | Section 6.2.4 |
+| Seed vs. Build synthesis (external — not in this repository) | Defines what skills actually contain, the delta principle, template structures per type, and concrete failure modes | Section 2 (convergence), Section 6.1 (procedural annotations), Section 6.2 (template structures), Section 7 (delta filter) |
+| `docs/design/dynamic-research-dimensions/dynamic-research-dimensions.md` | Current design doc — architecture, existing dimension catalog, assignment matrix | Section 2 (dimension catalog), dimension assignment matrix |
+| Vibedata architecture spec (external — not in this repository) | Defines the 4 skill types: domain, platform, source, data-engineering | Section 6.2.4 |
 | `README.md` | Skill Builder overview and workflow | "How It Works" section |
 
 ---
@@ -61,8 +61,7 @@ Domain skills (6 sections):
 5. Business Logic Decisions
 6. Output Standards
 
-Platform skills: **No template structure exists yet.** The platform researcher
-(Agent 3) should propose one.
+Platform skills: **Template structure defined.** See `dynamic-research-dimensions.md` §4 (5 sections: Platform Behavioral Overrides, Configuration Patterns, Integration and Orchestration, Operational Gotchas and Failure Modes, Environment-Specific Constraints).
 
 Data-engineering skills: **No template structure exists yet.** The data-engineering
 researcher (Agent 2) should propose one.
@@ -148,10 +147,7 @@ Write output to `docs/design/research-design/stage1-domain.md`.
 
 **What data-engineering skills contain**: Pipeline load patterns, merge strategies, historization approaches, silver/gold layer design, data quality frameworks, transformation patterns.
 
-**No template structure exists yet.** As part of this research, propose a 5-7 section
-template structure for data-engineering skills, analogous to the source and domain
-templates in the synthesis. Ask: what sections would a data-engineering skill template
-need to guide an engineer through building a pipeline using this pattern?
+**Template structure defined.** See `dynamic-research-dimensions.md` §4 (6 sections: Pattern Selection & Interaction Rules, Entity & Grain Design, Load & Merge Patterns, Historization & Temporal Design, Layer Design & Materialization, Quality Gates & Testing).
 
 **Delta context**: Data-engineering skills encode *how* to build pipelines. Claude knows
 standard patterns (Kimball methodology, SCD types, incremental loading concepts) from
@@ -265,8 +261,7 @@ This should contain:
 
 ### Setup
 
-Read the debating-it-out skill at:
-`/Users/shwetanksheel/scratch/99_working/scratch-ssl/debating-it-out-plugin/skills/debating-it-out/SKILL.md`
+Read the debating-it-out skill (external — not in this repository).
 
 Follow its 7-phase protocol exactly.
 
@@ -280,8 +275,8 @@ across skill instances?"
 **Research documents**:
 - `docs/design/research-design/stage1-proposed-matrix.md` (the Stage 1 output)
 - `docs/design/dynamic-research-dimensions.md` (the current design doc)
-- `/Users/shwetanksheel/scratch/99_working/scratch-ssl/skill_exploration/research/seed_vs_build/synthesis.md` (the seed-vs-build synthesis — delta principle, template structures, failure modes)
-- `/Users/shwetanksheel/scratch/99_working/vd-specs-product-architecture/vibedata-architecture.md` (section 6.2.4)
+- Seed vs. Build synthesis (external — not in this repository; delta principle, template structures, failure modes)
+- Vibedata architecture spec (external — not in this repository; section 6.2.4)
 
 **Reference cases** (for agents to reason concretely about):
 

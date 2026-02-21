@@ -366,7 +366,7 @@ drive the section's content; secondary dimensions contribute supplementary quest
 ## 5. Agent Structure
 
 All agents are flat `.md` files in a single `agents/` directory. No subdirectories,
-no generated files, no build system. 25 files total:
+no generated files, no build system. 30 files total:
 
 ```
 agents/
@@ -391,9 +391,14 @@ agents/
 ├── research-field-semantics.md          # dimension: source
 ├── research-lifecycle-and-state.md      # dimension: source
 ├── research-reconciliation.md           # dimension: source
+├── answer-evaluator.md                  # sub-agent: step 3 (evaluates answer quality)
+├── companion-recommender.md             # sub-agent: step 7 (recommends companion skills)
 ├── confirm-decisions.md                 # step 5
 ├── detailed-research.md                 # step 3
 ├── generate-skill.md                    # step 6
+├── refine-skill.md                      # refinement flow (targeted skill edits)
+├── test-skill.md                        # sub-agent: step 7 (generates test prompts)
+├── validate-quality.md                  # sub-agent: step 7 (quality gate checks)
 └── validate-skill.md                    # step 7
 ```
 

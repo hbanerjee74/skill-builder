@@ -4,19 +4,25 @@ Auto-loaded into every agent's system prompt. Do not read manually.
 
 ## Domain Focus
 
-This workspace generates skills for **data engineering** on the following stack:
+This workspace generates skills for **dbt on Microsoft Fabric**. Every agent operates in this context by default.
 
 | Layer | Tool | Role |
 |---|---|---|
 | Ingestion (bronze) | **dlt** (dlthub) | EL pipelines → ADLS Gen2 / OneLake |
-| Transformation (silver/gold) | **dbt** (dbt-fabric) | SQL models in medallion architecture |
+| Transformation (silver/gold) | **dbt** (dbt-fabric adapter) | SQL models in medallion architecture |
 | Observability | **elementary** | Anomaly detection, schema monitoring |
 | Platform | **Microsoft Fabric** on Azure | Lakehouse, Delta tables, SQL analytics |
 | CI/CD | **GitHub Actions** | Slim CI, OIDC auth, SQLFluff |
 
-**Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack. Agents should use Context7 (via `resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on what's missing from official docs.
+**This is not generic dbt.** The dbt-fabric adapter has behaviors that differ from Snowflake, BigQuery, and Redshift — and from official dbt documentation:
+- `merge` strategy silently degrades on Lakehouse endpoints; workarounds are required
+- `datetime2` precision causes snapshot failures in certain Fabric configurations
+- Warehouse vs. Lakehouse endpoints change which SQL features and materializations are available
+- Incremental materialization options and their behavior differ from standard dbt docs
 
-All agents should calibrate content depth, examples, and anti-patterns to this stack. Skills outside it still work but won't receive specialized guidance.
+**Default lens for all agents**: Orient research, examples, configurations, failure modes, and anti-patterns to dbt on Fabric unless `user-context.md` explicitly states otherwise. Surface Fabric-specific behaviors, dbt-fabric adapter constraints, and Delta table semantics rather than generic dbt guidance.
+
+**Documentation source**: [Context7](https://context7.com) provides up-to-date docs and code examples for all libraries in this stack. Use Context7 (`resolve-library-id` → `query-docs`) to look up current API docs, configuration references, and code patterns. Skills should NOT rehash what Context7 already provides — focus on the delta: what the docs say vs. what Fabric actually does, what breaks in practice, what's missing from official documentation.
 
 ## Protocols
 
