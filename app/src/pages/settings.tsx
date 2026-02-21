@@ -21,7 +21,7 @@ import type { AppSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir } from "@/lib/tauri"
+import { getDataDir, parseGitHubUrl, listGitHubSkills } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -62,6 +62,8 @@ export default function SettingsPage() {
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
   const [marketplaceUrl, setMarketplaceUrl] = useState("")
+  const [marketplaceTesting, setMarketplaceTesting] = useState(false)
+  const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
@@ -193,6 +195,25 @@ export default function SettingsPage() {
       )
     } finally {
       setTesting(false)
+    }
+  }
+
+  const handleTestMarketplace = async () => {
+    setMarketplaceTesting(true)
+    setMarketplaceValid(null)
+    try {
+      const info = await parseGitHubUrl(marketplaceUrl.trim())
+      await listGitHubSkills(info.owner, info.repo, info.branch, info.subpath ?? undefined)
+      setMarketplaceValid(true)
+      toast.success("Marketplace is accessible")
+    } catch (err) {
+      setMarketplaceValid(false)
+      toast.error(
+        `Cannot access marketplace: ${err instanceof Error ? err.message : String(err)}`,
+        { duration: Infinity },
+      )
+    } finally {
+      setMarketplaceTesting(false)
     }
   }
 
@@ -515,10 +536,29 @@ export default function SettingsPage() {
                       id="marketplace-url"
                       placeholder="https://github.com/owner/skill-library"
                       value={marketplaceUrl}
-                      onChange={(e) => setMarketplaceUrl(e.target.value)}
+                      onChange={(e) => {
+                        setMarketplaceUrl(e.target.value)
+                        setMarketplaceValid(null)
+                      }}
                       onBlur={(e) => autoSave({ marketplaceUrl: e.target.value.trim() || null })}
                       className="text-sm"
                     />
+                    {marketplaceUrl && (
+                      <Button
+                        variant={marketplaceValid ? "default" : "outline"}
+                        size="sm"
+                        onClick={handleTestMarketplace}
+                        disabled={marketplaceTesting}
+                        className={marketplaceValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                      >
+                        {marketplaceTesting ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : marketplaceValid ? (
+                          <CheckCircle2 className="size-3.5" />
+                        ) : null}
+                        {marketplaceValid ? "Valid" : "Test"}
+                      </Button>
+                    )}
                     {marketplaceUrl && (
                       <Button
                         variant="ghost"
@@ -526,6 +566,7 @@ export default function SettingsPage() {
                         className="text-muted-foreground"
                         onClick={() => {
                           setMarketplaceUrl("")
+                          setMarketplaceValid(null)
                           autoSave({ marketplaceUrl: null })
                         }}
                       >
@@ -533,10 +574,9 @@ export default function SettingsPage() {
                       </Button>
                     )}
                   </div>
-                  {marketplaceUrl && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <CheckCircle2 className="size-3.5 text-green-600" />
-                      Marketplace URL configured. Use the Skills tab to import skills.
+                  {marketplaceValid === false && (
+                    <p className="text-xs text-destructive">
+                      Could not reach this URL. Check it is a public GitHub repository.
                     </p>
                   )}
                 </div>
