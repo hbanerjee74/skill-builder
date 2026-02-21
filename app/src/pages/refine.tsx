@@ -142,10 +142,12 @@ export default function RefinePage() {
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
+      if (store.selectedSkill?.name === skill.name) return;
+
       // Release lock on previous skill (if any) before acquiring new lock
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== skill.name) {
-        releaseLock(prevSkill.name).catch(() => {});
+        await releaseLock(prevSkill.name).catch(() => {});
         console.log("[refine] releaseLock: %s (skill switch)", prevSkill.name);
       }
 
@@ -180,6 +182,8 @@ export default function RefinePage() {
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session");
+          store.setLoadingFiles(false);
+          return;
         }
 
         const files = await loadSkillFiles(workspacePath, skill.name);

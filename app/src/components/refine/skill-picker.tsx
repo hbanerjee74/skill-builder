@@ -87,7 +87,7 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
                   >
                     <span className="truncate">{skill.name}</span>
                     {isLocked && <Lock className="ml-auto size-3 shrink-0 text-muted-foreground" />}
-                    {skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className={isLocked ? undefined : "ml-auto"} />}
+                    {!isLocked && skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className="ml-auto" />}
                   </CommandItem>
                 );
 

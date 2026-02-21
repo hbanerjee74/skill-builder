@@ -37,7 +37,7 @@ const defaultProps = {
 };
 
 function renderPicker(
-  overrides: Partial<typeof defaultProps & { lockedSkills?: Set<string> }> = {}
+  overrides: Partial<typeof defaultProps & { lockedSkills?: Set<string>; disabled?: boolean }> = {}
 ) {
   const props = { ...defaultProps, ...overrides };
   // SkillPicker uses Tooltip for locked skills, which requires TooltipProvider context
