@@ -26,11 +26,15 @@ pub fn reconcile_on_startup(
     let db_runs = crate::db::list_all_workflow_runs(conn)?;
     let mut db_names: HashSet<String> = db_runs.iter().map(|r| r.skill_name.clone()).collect();
 
-    // Collect all skill directories on disk (working dirs in workspace)
-    let workspace = Path::new(workspace_path);
+    // Collect all skill directories on disk.
+    // The skills_path (output directory) is the source of truth for which
+    // skills exist. Folders in workspace_path that don't have a matching
+    // entry in skills_path are stale working directories, not real skills.
+    let scan_root = skills_path.unwrap_or(workspace_path);
+    let scan_dir = Path::new(scan_root);
     let mut disk_dirs: HashSet<String> = HashSet::new();
-    if workspace.exists() {
-        if let Ok(entries) = std::fs::read_dir(workspace) {
+    if scan_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(scan_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if !path.is_dir() {
@@ -41,10 +45,6 @@ pub fn reconcile_on_startup(
                 if name.starts_with('.') {
                     continue;
                 }
-                // Any non-infrastructure subdirectory of the workspace is
-                // treated as a skill working directory. The workspace path
-                // itself is a DB setting, so every subfolder here is assumed
-                // to belong to a skill.
                 disk_dirs.insert(name);
             }
         }
@@ -444,9 +444,11 @@ mod tests {
     // --- Scenario 3: DB record + skill output + no working dir (orphan) ---
 
     #[test]
-    fn test_scenario_3_orphan_skill_output_no_working_dir() {
+    fn test_scenario_3_skill_in_skills_path_without_workspace_dir_reconciles_normally() {
         let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let workspace_str = workspace.to_str().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
@@ -462,21 +464,20 @@ mod tests {
         )
         .unwrap();
 
-        // Skill output exists in skills_path
+        // Skill output exists in skills_path (the driver)
         let output_dir = skills_tmp.path().join("finished-skill");
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        // No working directory in workspace
+        // No working directory in workspace — but that's fine since
+        // skills_path is the driver. The skill exists in skills_path,
+        // so it's reconciled normally (not treated as an orphan).
 
-        let result = reconcile_on_startup(&conn, workspace, Some(skills_path)).unwrap();
+        let result = reconcile_on_startup(&conn, workspace_str, Some(skills_path)).unwrap();
 
-        assert_eq!(result.orphans.len(), 1);
-        assert_eq!(result.orphans[0].skill_name, "finished-skill");
-        assert_eq!(result.orphans[0].domain, "marketing");
-        assert_eq!(result.orphans[0].skill_type, "platform");
+        // Skill is found in disk_dirs (from skills_path) → normal reconciliation
+        assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
-        assert!(result.notifications.is_empty());
     }
 
     // --- Scenario 4: DB record + no working dir + no skill output (stale) ---
@@ -845,18 +846,18 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // Scenario 1: Disk-only skill
-        create_skill_dir(tmp.path(), "disk-only", "domain-a");
-        create_step_output(tmp.path(), "disk-only", 0);
+        // Scenario 1: Skill exists in skills_path but no DB record
+        create_skill_dir(skills_tmp.path(), "disk-only", "domain-a");
+        create_step_output(skills_tmp.path(), "disk-only", 0);
 
-        // Scenario 4: Stale DB record
+        // Scenario 4: Stale DB record (not in skills_path)
         crate::db::save_workflow_run(&conn, "stale", "domain-b", 3, "in_progress", "domain")
             .unwrap();
 
-        // Scenario 5: Normal
+        // Scenario 5: Normal — skill in skills_path with matching DB record
         crate::db::save_workflow_run(&conn, "normal", "domain-c", 0, "pending", "domain").unwrap();
-        create_skill_dir(tmp.path(), "normal", "domain-c");
-        create_step_output(tmp.path(), "normal", 0);
+        create_skill_dir(skills_tmp.path(), "normal", "domain-c");
+        create_step_output(skills_tmp.path(), "normal", 0);
 
         let result = reconcile_on_startup(&conn, workspace, Some(skills_path)).unwrap();
 
@@ -1076,5 +1077,66 @@ mod tests {
         assert!(crate::db::get_workflow_run(&conn, "orphan")
             .unwrap()
             .is_none());
+    }
+
+    // --- skills_path drives discovery ---
+
+    #[test]
+    fn test_workspace_only_folder_not_adopted_when_skills_path_set() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&skills).unwrap();
+
+        let workspace_str = workspace.to_str().unwrap();
+        let skills_str = skills.to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create a folder in workspace (.vibedata) but NOT in skills_path
+        std::fs::create_dir_all(workspace.join("stale-skill").join("context")).unwrap();
+
+        // Reconcile with skills_path set — should NOT adopt the workspace-only folder
+        let result = reconcile_on_startup(&conn, workspace_str, Some(skills_str)).unwrap();
+
+        assert!(result.orphans.is_empty());
+        assert!(result.notifications.is_empty());
+        assert_eq!(result.auto_cleaned, 0);
+        // No DB record should have been created
+        assert!(crate::db::get_workflow_run(&conn, "stale-skill")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_skills_path_folder_adopted_even_without_workspace_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&skills).unwrap();
+
+        let workspace_str = workspace.to_str().unwrap();
+        let skills_str = skills.to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create a folder in skills_path but NOT in workspace
+        std::fs::create_dir_all(skills.join("real-skill").join("context")).unwrap();
+        // Create step 0 output in skills_path
+        create_step_output(&skills, "real-skill", 0);
+
+        // Reconcile — should adopt the skills_path folder
+        let result = reconcile_on_startup(&conn, workspace_str, Some(skills_str)).unwrap();
+
+        assert!(result.orphans.is_empty());
+        assert_eq!(result.auto_cleaned, 0);
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("real-skill"));
+
+        // DB record should have been created
+        let run = crate::db::get_workflow_run(&conn, "real-skill")
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.status, "pending");
     }
 }
