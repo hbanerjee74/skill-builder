@@ -18,6 +18,7 @@ run_t3() {
     local pattern
     case "$expected_phase" in
       fresh)              pattern="fresh|no.session|no.active|haven.t.started|empty.workspace|no.skill.session" ;;
+      scoping)            pattern="scoping|scope|initial|setting.up|getting.started|skill.type" ;;
       generation)         pattern="generation|generat|skill.md|skill.has.been|skill.file.exist" ;;
       refinement_pending) pattern="refinement.pending|refinement|unanswered.refinement|pending.refinement" ;;
       *)                  pattern="$expected_phase" ;;
@@ -86,13 +87,13 @@ run_t3() {
     "reset"
 
   # T3.10: research state + express → auto-fills answers and skips to decisions
-  # "express" triggers express intent → coordinator auto-fills empty answers → Decisions
+  # "skip research" / "use defaults" triggers express intent → Decisions
   local dir_express
   dir_express=$(make_temp_dir "t3-express")
   create_fixture_research "$dir_express" "$skill_name"
   log_verbose "T3.10 express dispatch workspace: $dir_express"
   _t3_dispatch_test "dispatch_express_skips_research" "$dir_express" \
-    "express mode: build a skill for pet store analytics" \
-    "express|skip|decision|generat|straight|fast" \
+    "skip research and use recommended defaults for pet store analytics" \
+    "express|skip|decision|default|recommend|proceed" \
     "express/skip"
 }
