@@ -121,88 +121,35 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 2. Derive `skill_name` (kebab-case from domain), confirm with user
 3. Create: `.vibedata/<skill-name>/`, `<skill-dir>/`, `<skill-dir>/context/`, `<skill-dir>/references/`
 4. Write `session.json`
-5. Detect mode
-6. → Research (guided) or → Decisions (express)
+5. Detect mode → Research (guided) or → Decisions (express)
 
-### Research
+### Research → `skill-builder:research-orchestrator`
 
-```
-Task(subagent_type: "skill-builder:research-orchestrator")
-Passes: skill_type, domain, context_dir, workspace_dir
-```
+After dispatch: check `clarifications.md` for `scope_recommendation: true` — surface to user and stop if found. Tell user questions are in `<context_dir>/clarifications.md`. Update `session.json`.
 
-- Checks `clarifications.md` for `scope_recommendation: true` — surface to user and stop if found
-- Tells user: questions are in `<context_dir>/clarifications.md`
-- Updates `session.json`
+### Clarification Gate → `skill-builder:answer-evaluator`
 
-### Clarification Gate (async-capable)
+After dispatch: if `empty_count > 0` and user wants auto-fill, copy each `**Recommendation:**` → `**Answer:**`; set `session.json.auto_filled = true`. Route to Detailed Research if verdict `!= sufficient`, else → Decisions.
 
-On resume with `clarifications.md` present:
+### Detailed Research → `skill-builder:detailed-research`
 
-```
-Task(subagent_type: "skill-builder:answer-evaluator")
-Passes: context_dir, workspace_dir
-```
+Skipped when `answer-evaluation.json.verdict == "sufficient"`. After dispatch: tell user refinement questions are in `context/clarifications.md` under `#### Refinements`. On resume: re-run answer-evaluator → Decisions.
 
-- Reads `answer-evaluation.json` from `.vibedata/<skill-name>/`
-- If `empty_count > 0` and user wants auto-fill: copy `**Recommendation:**` → `**Answer:**` for empty fields; set `session.json.auto_filled: true`
-- Routes to detailed-research if verdict is not `sufficient`; otherwise → Decisions
+### Decisions → `skill-builder:confirm-decisions`
 
-### Detailed Research (conditional)
+After dispatch: human gate — user reviews `context/decisions.md`. If corrections: re-spawn with correction embedded in prompt. Update `session.json`.
 
-Skipped when `answer-evaluation.json.verdict == "sufficient"`.
+### Generation → `skill-builder:generate-skill`
 
-```
-Task(subagent_type: "skill-builder:detailed-research")
-Passes: skill_type, domain, context_dir, workspace_dir
-```
+After dispatch: human gate — user reviews generated structure. Update `session.json`.
 
-- Tells user: refinement questions are in `context/clarifications.md` under `#### Refinements`
-- On resume: re-run answer-evaluator for refinement answers → Decisions
+### Validation → `skill-builder:validate-skill`
 
-### Decisions
+After dispatch: offer finalize / improve section (→ Iterative) / regenerate (→ Generation).
 
-```
-Task(subagent_type: "skill-builder:confirm-decisions")
-Passes: skill_type, domain, context_dir, skill_dir, workspace_dir
-```
+### Iterative → `skill-builder:refine-skill`
 
-- Human gate: user reviews `context/decisions.md`
-- If corrections: re-spawn with correction embedded in prompt
-- Updates `session.json`
-
-### Generation
-
-```
-Task(subagent_type: "skill-builder:generate-skill")
-Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
-        + skill-builder-practices content inline
-```
-
-- Human gate: user reviews generated structure
-- Updates `session.json`
-
-### Validation
-
-```
-Task(subagent_type: "skill-builder:validate-skill")
-Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
-        + skill-builder-practices content inline
-```
-
-- Writes: `agent-validation-log.md`, `test-skill.md`, `companion-skills.md`
-- Offers: finalize / improve section / regenerate
-
-### Iterative
-
-```
-Task(subagent_type: "skill-builder:refine-skill")
-Passes: skill_dir, context_dir, workspace_dir, skill_type,
-        conversation history, current user message
-        + skill-builder-practices content inline
-```
-
-Supports `/rewrite`, `/validate`, `@file` targeting.
+After dispatch: ask user to review changes, offer further iterations or validation.
 
 ---
 
