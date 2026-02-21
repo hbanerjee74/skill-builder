@@ -107,7 +107,7 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Upload a .skill package or import from GitHub to add skills to your library.")
+      screen.getByText("Upload a .skill package or import from Marketplace to add skills to your library.")
     ).toBeInTheDocument();
   });
 
