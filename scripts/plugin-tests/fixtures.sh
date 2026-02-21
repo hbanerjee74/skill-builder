@@ -169,6 +169,94 @@ C. 5+ locations
 EOF
 }
 
+# refinement_pending: session.json + clarifications.md with unanswered #### Refinements section
+create_fixture_refinement_pending() {
+  local dir="$1" skill_name="$2"
+  _write_session_json "$dir" "$skill_name" "refinement_pending"
+  _make_skill_dirs "$dir" "$skill_name"
+  cat > "$dir/$skill_name/context/clarifications.md" << 'EOF'
+## Core Entities
+
+### Q1: Primary entities
+What are the primary business entities in pet store analytics?
+A. Products, Customers, Transactions
+B. Products, Customers, Transactions, Inventory
+C. Other (please specify)
+**Recommendation:** B
+**Answer:** B — We track all four
+
+### Q2: Customer segmentation
+How do you segment customers?
+A. By purchase frequency
+B. By pet type
+C. Both dimensions
+**Recommendation:** C
+**Answer:** C — Both dimensions
+
+#### Refinements
+
+### R1: Inventory tracking granularity
+How granular is inventory tracking?
+A. SKU level only
+B. SKU + location level
+C. SKU + location + batch level
+**Recommendation:** B
+**Answer:**
+
+### R2: Customer merge strategy
+How are duplicate customer records handled across locations?
+A. Each location maintains separate customer records
+B. Customers are merged by email
+C. Customers are merged by loyalty card number
+**Recommendation:** B
+**Answer:**
+EOF
+}
+
+# refinement: session.json + clarifications.md with answered #### Refinements section
+create_fixture_refinement() {
+  local dir="$1" skill_name="$2"
+  _write_session_json "$dir" "$skill_name" "refinement"
+  _make_skill_dirs "$dir" "$skill_name"
+  cat > "$dir/$skill_name/context/clarifications.md" << 'EOF'
+## Core Entities
+
+### Q1: Primary entities
+What are the primary business entities in pet store analytics?
+A. Products, Customers, Transactions
+B. Products, Customers, Transactions, Inventory
+C. Other (please specify)
+**Recommendation:** B
+**Answer:** B — We track all four
+
+### Q2: Customer segmentation
+How do you segment customers?
+A. By purchase frequency
+B. By pet type
+C. Both dimensions
+**Recommendation:** C
+**Answer:** C — Both dimensions
+
+#### Refinements
+
+### R1: Inventory tracking granularity
+How granular is inventory tracking?
+A. SKU level only
+B. SKU + location level
+C. SKU + location + batch level
+**Recommendation:** B
+**Answer:** B — SKU + location level is sufficient
+
+### R2: Customer merge strategy
+How are duplicate customer records handled across locations?
+A. Each location maintains separate customer records
+B. Customers are merged by email
+C. Customers are merged by loyalty card number
+**Recommendation:** B
+**Answer:** B — Merge by email with loyalty card as fallback
+EOF
+}
+
 # decisions: session.json + decisions.md present
 create_fixture_decisions() {
   local dir="$1" skill_name="$2"
@@ -265,18 +353,14 @@ EOF
 # ---------- T4 agent fixtures ----------
 
 # T4.1: research-orchestrator — empty context dir for agent to populate
+# Same state as scoping (session.json + dirs, no artifacts)
 create_fixture_t4_research() {
-  local dir="$1" skill_name="$2"
-  _write_session_json "$dir" "$skill_name" "scoping"
-  _make_skill_dirs "$dir" "$skill_name"
+  create_fixture_scoping "$1" "$2"
 }
 
 # T4.2: answer-evaluator — clarifications.md with some answers + workspace dir
 create_fixture_t4_answer_evaluator() {
-  local dir="$1" skill_name="$2"
-  create_fixture_clarification "$dir" "$skill_name"
-  # Ensure workspace dir exists (answer-evaluator writes here)
-  mkdir -p "$dir/.vibedata/$skill_name"
+  create_fixture_clarification "$1" "$2"
 }
 
 # T4.3: confirm-decisions — fully answered clarifications for decisions agent
