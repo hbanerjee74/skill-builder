@@ -21,7 +21,10 @@ import {
   sendRefineMessage,
   closeRefineSession,
   cleanupSkillSidecar,
+  acquireLock,
+  releaseLock,
 } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
@@ -30,6 +33,13 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
+
+/** Fire-and-forget: release skill lock and shut down persistent sidecar. */
+function releaseSkillResources(skillName: string, reason: string): void {
+  releaseLock(skillName).catch(() => {});
+  console.log("[refine] releaseLock: %s (%s)", skillName, reason);
+  cleanupSkillSidecar(skillName).catch(() => {});
+}
 
 /** Load skill files from disk, returning null on failure. */
 async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
@@ -53,6 +63,7 @@ export default function RefinePage() {
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const refinableSkills = useRefineStore((s) => s.refinableSkills);
@@ -93,9 +104,8 @@ export default function RefinePage() {
       closeRefineSession(store.sessionId).catch(() => {});
     }
 
-    // Fire-and-forget: shut down persistent sidecar for this skill
     if (store.selectedSkill) {
-      cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+      releaseSkillResources(store.selectedSkill.name, "navigation");
     }
 
     proceed?.();
@@ -132,6 +142,25 @@ export default function RefinePage() {
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
+      if (store.selectedSkill?.name === skill.name) return;
+
+      // Release lock on previous skill (if any) before acquiring new lock
+      const prevSkill = store.selectedSkill;
+      if (prevSkill && prevSkill.name !== skill.name) {
+        await releaseLock(prevSkill.name).catch(() => {});
+        console.log("[refine] releaseLock: %s (skill switch)", prevSkill.name);
+      }
+
+      // Acquire lock on the new skill before proceeding
+      try {
+        await acquireLock(skill.name);
+        console.log("[refine] acquireLock: %s", skill.name);
+      } catch (err) {
+        console.error("[refine] acquireLock failed: %s", skill.name, err);
+        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+
       // Close previous backend session if any
       const prevSessionId = store.sessionId;
       if (prevSessionId) {
@@ -153,6 +182,8 @@ export default function RefinePage() {
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
           toast.error("Failed to start refine session");
+          store.setLoadingFiles(false);
+          return;
         }
 
         const files = await loadSkillFiles(workspacePath, skill.name);
@@ -239,9 +270,8 @@ export default function RefinePage() {
         closeRefineSession(store.sessionId).catch(() => {});
       }
 
-      // Fire-and-forget: shut down persistent sidecar
       if (store.selectedSkill) {
-        cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+        releaseSkillResources(store.selectedSkill.name, "unmount");
       }
     };
   }, []);
@@ -305,6 +335,7 @@ export default function RefinePage() {
           selected={selectedSkill}
           isLoading={isLoadingSkills}
           disabled={isRunning}
+          lockedSkills={lockedSkills}
           onSelect={handleSelectSkill}
         />
       </div>

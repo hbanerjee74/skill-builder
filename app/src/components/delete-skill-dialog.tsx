@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Loader2 } from "lucide-react"
+import { Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,6 +19,7 @@ interface DeleteSkillDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeleted: () => void
+  isLocked?: boolean
 }
 
 export default function DeleteSkillDialog({
@@ -27,6 +28,7 @@ export default function DeleteSkillDialog({
   open,
   onOpenChange,
   onDeleted,
+  isLocked,
 }: DeleteSkillDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -58,13 +60,28 @@ export default function DeleteSkillDialog({
         <DialogHeader>
           <DialogTitle>Delete Skill</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete{" "}
-            <span className="font-medium text-foreground">
-              {skill?.name}
-            </span>
-            ? This will permanently remove all files for this skill.
+            {isLocked ? (
+              <>
+                <span className="font-medium text-foreground">{skill?.name}</span>
+                {" "}is being edited in another window and cannot be deleted.
+              </>
+            ) : (
+              <>
+                Are you sure you want to delete{" "}
+                <span className="font-medium text-foreground">
+                  {skill?.name}
+                </span>
+                ? This will permanently remove all files for this skill.
+              </>
+            )}
           </DialogDescription>
         </DialogHeader>
+        {isLocked && (
+          <div className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+            <Lock className="size-4 shrink-0" />
+            This skill is being edited in another window and cannot be deleted
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="outline"
@@ -76,7 +93,7 @@ export default function DeleteSkillDialog({
           <Button
             variant="destructive"
             onClick={handleDelete}
-            disabled={loading}
+            disabled={loading || isLocked}
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
             Delete

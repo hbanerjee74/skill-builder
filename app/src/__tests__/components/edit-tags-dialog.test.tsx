@@ -430,6 +430,143 @@ describe("SkillDialog (edit mode)", () => {
     });
   });
 
+  // --- isLocked prop ---
+
+  describe("isLocked", () => {
+    it("shows lock banner when isLocked is true", () => {
+      render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={true}
+        />
+      );
+      expect(
+        screen.getByText("This skill is being edited in another window")
+      ).toBeInTheDocument();
+    });
+
+    it("does not show lock banner when isLocked is false", () => {
+      render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={false}
+        />
+      );
+      expect(
+        screen.queryByText("This skill is being edited in another window")
+      ).not.toBeInTheDocument();
+    });
+
+    it("disables skill name input when isLocked is true", () => {
+      render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={true}
+        />
+      );
+      expect(screen.getByLabelText("Skill Name")).toBeDisabled();
+    });
+
+    it("disables Next button on step 1 when isLocked is true", () => {
+      render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={true}
+        />
+      );
+      expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
+    });
+
+    it("disables Save button on step 2 when isLocked is true", async () => {
+      const user = userEvent.setup();
+      // Render unlocked first so the user can navigate to step 2,
+      // then re-render with isLocked to verify the Save button is disabled.
+      const { rerender } = render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={false}
+        />
+      );
+      await goToStep(user, 2);
+      rerender(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={true}
+        />
+      );
+      expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
+    });
+
+    it("does not invoke save when isLocked is true and Save is clicked", async () => {
+      const user = userEvent.setup();
+      mockInvoke.mockResolvedValue(undefined);
+
+      const { rerender } = render(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={false}
+        />
+      );
+      await goToStep(user, 2);
+      rerender(
+        <SkillDialog
+          mode="edit"
+          skill={sampleSkill}
+          open={true}
+          onOpenChange={vi.fn()}
+          onSaved={vi.fn()}
+          tagSuggestions={[]}
+          isLocked={true}
+        />
+      );
+
+      // Save button is disabled; clicking it should not trigger the save
+      const saveBtn = screen.getByRole("button", { name: /Save/i });
+      expect(saveBtn).toBeDisabled();
+      await user.click(saveBtn);
+
+      expect(mockInvoke).not.toHaveBeenCalledWith(
+        "update_skill_metadata",
+        expect.anything()
+      );
+    });
+  });
+
   describe("rename flow", () => {
     it("calls rename_skill before update_skill_metadata when name changes", async () => {
       const user = userEvent.setup();

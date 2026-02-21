@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -71,6 +71,7 @@ interface SkillDialogEditProps {
   onSaved: () => void
   tagSuggestions?: string[]
   existingNames?: string[]
+  isLocked?: boolean
 }
 
 export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
@@ -97,6 +98,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
   const editOnOpenChange = isEdit ? (props as SkillDialogEditProps).onOpenChange : undefined
   const editOnSaved = isEdit ? (props as SkillDialogEditProps).onSaved : undefined
+  const isLocked = isEdit ? ((props as SkillDialogEditProps).isLocked ?? false) : false
   const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
   const createOnOpenChange = !isEdit ? (props as SkillDialogCreateProps).onOpenChange : undefined
@@ -423,6 +425,14 @@ export default function SkillDialog(props: SkillDialogProps) {
             </DialogDescription>
           </DialogHeader>
 
+          {/* Locked banner — shown when skill is being edited in another window */}
+          {isLocked && (
+            <div className="flex items-center gap-2 rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+              <Lock className="size-4 shrink-0" />
+              This skill is being edited in another window
+            </div>
+          )}
+
           {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 py-3">
             {[1, 2, 3].map((s) => (
@@ -447,7 +457,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
                     value={skillName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                     autoFocus={!isEdit}
                   />
                   {!isEdit && (
@@ -480,7 +490,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     value={skillType}
                     onValueChange={setSkillType}
                     className="grid grid-cols-2 gap-2"
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   >
                     {SKILL_TYPES.map((type) => (
                       <label
@@ -504,7 +514,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     tags={tags}
                     onChange={setTags}
                     suggestions={tagSuggestions}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                     placeholder="e.g., salesforce, analytics"
                   />
                 </div>
@@ -523,7 +533,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setDomain}
                     suggestion={domainSuggestion}
                     onAccept={setDomain}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                   <p className="text-xs text-muted-foreground">
                     Brief description of the skill&apos;s domain
@@ -538,7 +548,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setScope}
                     suggestion={scopeSuggestion}
                     onAccept={setScope}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                   <p className="text-xs text-muted-foreground">
                     Helps agents focus research on what matters most
@@ -566,7 +576,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setAudience}
                     suggestion={audienceSuggestion}
                     onAccept={setAudience}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -578,7 +588,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setChallenges}
                     suggestion={challengesSuggestion}
                     onAccept={setChallenges}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -590,7 +600,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setUniqueSetup}
                     suggestion={uniqueSetupSuggestion}
                     onAccept={setUniqueSetup}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -602,7 +612,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setClaudeMistakes}
                     suggestion={claudeMistakesSuggestion}
                     onAccept={setClaudeMistakes}
-                    disabled={submitting}
+                    disabled={submitting || isLocked}
                   />
                 </div>
               </>
@@ -626,7 +636,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </Button>
                 <Button
                   type="button"
-                  disabled={!canAdvanceStep1}
+                  disabled={!canAdvanceStep1 || isLocked}
                   onClick={() => setStep(2)}
                 >
                   Next
@@ -656,7 +666,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || !canAdvanceStep1}
+                  disabled={submitting || isLocked || !canAdvanceStep1}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitLabel}
@@ -676,7 +686,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={submitting || !canAdvanceStep1}
+                  disabled={submitting || isLocked || !canAdvanceStep1}
                 >
                   {submitting && <Loader2 className="size-4 animate-spin" />}
                   {submitLabel}
