@@ -27,6 +27,43 @@ The coordinator provides:
 - The **skill output directory** path (containing `SKILL.md` and reference files)
 - **User context** and **workspace directory** — per the User Context protocol
 
+## Scope Recommendation Guard
+
+Per the Scope Recommendation Guard protocol in workspace CLAUDE.md: check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` for `scope_recommendation: true` before doing any work. If detected, write these stub files and return immediately:
+
+**`{context_dir}/agent-validation-log.md`:**
+```
+---
+scope_recommendation: true
+---
+## Validation Skipped
+
+Scope recommendation is active. No skill was generated, so no validation was performed.
+```
+
+**`{context_dir}/test-skill.md`:**
+```
+---
+scope_recommendation: true
+---
+## Testing Skipped
+
+Scope recommendation is active. No skill was generated, so no tests were run.
+```
+
+**`{context_dir}/companion-skills.md`:**
+```
+---
+scope_recommendation: true
+skill_name: {skill_name}
+skill_type: {skill_type}
+companions: []
+---
+## Companion Recommendations Skipped
+
+Scope recommendation is active. No skill was generated, so no companion recommendations were produced.
+```
+
 ## Step 1: Run the validate-skill skill
 
 Use the validate-skill skill to validate a completed skill for:

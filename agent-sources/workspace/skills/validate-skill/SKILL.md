@@ -34,40 +34,9 @@ This is a **read-only computation unit** — it reads skill files, runs validati
 
 ---
 
-## Step 1 — Scope Guard and File Inventory
+## Step 1 — File Inventory
 
-Check if `decisions.md` exists in `context_dir`. If it does not exist (e.g., called from refine context), skip this guard and proceed to Step 2.
-
-If `decisions.md` exists, check for `scope_recommendation: true` in its YAML frontmatter. If detected, return immediately:
-
-```
-=== VALIDATION LOG ===
----
-scope_recommendation: true
----
-## Validation Skipped
-
-Scope recommendation is active. No skill was generated, so no validation was performed.
-=== TEST RESULTS ===
----
-scope_recommendation: true
----
-## Testing Skipped
-
-Scope recommendation is active. No skill was generated, so no tests were run.
-=== COMPANION SKILLS ===
----
-scope_recommendation: true
-skill_name: [skill_name]
-skill_type: [skill_type]
-companions: []
----
-## Companion Recommendations Skipped
-
-Scope recommendation is active. No skill was generated, so no companion recommendations were produced.
-```
-
-Otherwise, glob `references/` in `skill_output_dir` to collect all reference file paths.
+Glob `references/` in `skill_output_dir` to collect all reference file paths.
 
 ---
 
