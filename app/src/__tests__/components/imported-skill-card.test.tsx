@@ -11,9 +11,14 @@ const baseSkill: ImportedSkill = {
   description: "Analytics skill for sales data pipelines",
   is_active: true,
   disk_path: "/skills/sales-analytics",
-  trigger_text: null,
   imported_at: new Date().toISOString(),
   is_bundled: false,
+  skill_type: null,
+  version: null,
+  model: null,
+  argument_hint: null,
+  user_invocable: null,
+  disable_model_invocation: null,
 };
 
 describe("ImportedSkillCard", () => {
@@ -68,8 +73,8 @@ describe("ImportedSkillCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders trigger text when set", () => {
-    const skill = { ...baseSkill, trigger_text: "Use when analyzing sales data" };
+  it("renders argument_hint when set", () => {
+    const skill = { ...baseSkill, argument_hint: "Use when analyzing sales data" };
     render(
       <ImportedSkillCard
         skill={skill}
@@ -81,7 +86,7 @@ describe("ImportedSkillCard", () => {
     expect(screen.getByText("Use when analyzing sales data")).toBeInTheDocument();
   });
 
-  it("renders description with 'no trigger set' when trigger_text is null", () => {
+  it("renders description with 'no trigger set' when argument_hint is null", () => {
     render(
       <ImportedSkillCard
         skill={baseSkill}
@@ -231,6 +236,7 @@ describe("ImportedSkillCard", () => {
       skill_id: "bundled-1",
       skill_name: "skill-builder-practices",
       is_bundled: true,
+      argument_hint: null,
     };
 
     it("shows Built-in badge for bundled skills", () => {

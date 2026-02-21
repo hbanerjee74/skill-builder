@@ -45,11 +45,6 @@ export function SkillsLibraryTab() {
     try {
       const skill = await uploadSkill(filePath)
       toast.success(`Imported "${skill.skill_name}"`, { id: toastId })
-      if (!skill.trigger_text) {
-        toast.warning(
-          `"${skill.skill_name}" has no trigger in SKILL.md -- it won't appear in agent instructions`
-        )
-      }
     } catch (err) {
       toast.error(
         `Import failed: ${err instanceof Error ? err.message : String(err)}`,

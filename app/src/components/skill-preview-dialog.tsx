@@ -69,10 +69,10 @@ export default function SkillPreviewDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {skill?.trigger_text && (
+        {skill?.argument_hint && (
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium text-muted-foreground">Trigger</span>
-            <p className="text-sm text-muted-foreground italic">{skill.trigger_text}</p>
+            <p className="text-sm text-muted-foreground italic">{skill.argument_hint}</p>
           </div>
         )}
 

@@ -40,9 +40,14 @@ const sampleSkills: ImportedSkill[] = [
     description: "Analytics skill for sales pipelines",
     is_active: true,
     disk_path: "/skills/sales-analytics",
-    trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    skill_type: null,
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
   {
     skill_id: "id-2",
@@ -51,9 +56,14 @@ const sampleSkills: ImportedSkill[] = [
     description: null,
     is_active: false,
     disk_path: "/skills/hr-metrics",
-    trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    skill_type: null,
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
 ];
 
@@ -111,12 +121,12 @@ describe("SkillsLibraryTab", () => {
     expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
-  it("shows trigger text on skill card when set", async () => {
-    const skillsWithTrigger = [
-      { ...sampleSkills[0], trigger_text: "Use for sales analytics" },
+  it("shows argument_hint on skill card when set", async () => {
+    const skillsWithHint = [
+      { ...sampleSkills[0], argument_hint: "Use for sales analytics" },
       sampleSkills[1],
     ];
-    mockInvokeCommands({ list_imported_skills: skillsWithTrigger });
+    mockInvokeCommands({ list_imported_skills: skillsWithHint });
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -155,9 +165,14 @@ describe("SkillsLibraryTab", () => {
       description: "A new skill",
       is_active: true,
       disk_path: "/skills/new-skill",
-      trigger_text: null,
       imported_at: new Date().toISOString(),
       is_bundled: false,
+      skill_type: null,
+      version: null,
+      model: null,
+      argument_hint: null,
+      user_invocable: null,
+      disable_model_invocation: null,
     };
 
     mockInvokeCommands({
