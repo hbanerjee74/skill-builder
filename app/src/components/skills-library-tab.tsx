@@ -48,6 +48,7 @@ export function SkillsLibraryTab() {
       const skill = await uploadSkill(filePath)
       toast.success(`Imported "${skill.skill_name}"`, { id: toastId })
     } catch (err) {
+      console.error("[skills-library] upload failed:", err)
       const message = err instanceof Error ? err.message : String(err)
       const missingPrefix = "missing_mandatory_fields:"
       if (message.startsWith(missingPrefix)) {
@@ -74,6 +75,7 @@ export function SkillsLibraryTab() {
           { duration: 1500 }
         )
       } catch (err) {
+        console.error("[skills-library] toggle active failed:", err)
         toast.error(
           `Failed to toggle: ${err instanceof Error ? err.message : String(err)}`,
           { duration: Infinity }
@@ -90,6 +92,7 @@ export function SkillsLibraryTab() {
         await deleteSkill(skill.skill_name)
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
+        console.error("[skills-library] delete failed:", err)
         toast.error(
           `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
           { id: toastId, duration: Infinity }

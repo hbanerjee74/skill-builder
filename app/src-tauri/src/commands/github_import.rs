@@ -162,7 +162,10 @@ pub async fn check_marketplace_url(
     log::info!("[check_marketplace_url] url={}", url);
     let repo_info = parse_github_url_inner(&url)?;
     let token = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[check_marketplace_url] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         settings.github_oauth_token.clone()
     };
@@ -361,7 +364,10 @@ pub async fn import_github_skills(
     log::info!("[import_github_skills] owner={} repo={} branch={} skill_paths={:?}", owner, repo, branch, skill_paths);
     // Read settings
     let (workspace_path, token) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_github_skills] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         let wp = settings
             .workspace_path
@@ -493,7 +499,10 @@ pub async fn import_marketplace_to_library(
 
     // Read settings
     let (marketplace_url, workspace_path, skills_path, token) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_marketplace_to_library] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         let url = settings
             .marketplace_url
@@ -559,7 +568,10 @@ pub async fn import_marketplace_to_library(
                 // Upsert into imported_skills first. Uses ON CONFLICT DO UPDATE so
                 // re-imports (e.g. after skills_path changed) succeed rather than
                 // hitting a UNIQUE constraint.
-                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                let conn = db.0.lock().map_err(|e| {
+                    log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
+                    e.to_string()
+                })?;
                 if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
                     log::error!(
                         "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
@@ -616,9 +628,12 @@ pub async fn import_marketplace_to_library(
         }
     }
 
-    // Regenerate CLAUDE.md with imported skills section
-    {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+    // Regenerate CLAUDE.md with imported skills section (only if at least one succeeded)
+    if results.iter().any(|r| r.success) {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_marketplace_to_library] failed to acquire DB lock for CLAUDE.md update: {}", e);
+            e.to_string()
+        })?;
         if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
             log::warn!(
                 "[import_marketplace_to_library] failed to update CLAUDE.md: {}",
@@ -810,20 +825,21 @@ pub(crate) async fn import_single_skill(
             .await
             .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?;
 
-        // Reject files larger than 10 MB
-        if let Some(len) = response.content_length() {
-            if len > 10_000_000 {
-                return Err(format!(
-                    "File '{}' too large: {} bytes (max 10 MB)",
-                    file_path, len
-                ));
-            }
-        }
-
         let content = response
             .bytes()
             .await
             .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
+
+        // Reject files larger than 10 MB. Check actual byte count after download
+        // rather than Content-Length header, which is absent for chunked responses
+        // (the norm for raw.githubusercontent.com).
+        if content.len() > 10_000_000 {
+            return Err(format!(
+                "File '{}' too large: {} bytes (max 10 MB)",
+                file_path,
+                content.len()
+            ));
+        }
 
         fs::write(&out_path, &content)
             .map_err(|e| format!("Failed to write '{}': {}", out_path.display(), e))?;
