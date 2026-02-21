@@ -1,16 +1,13 @@
 # Record Lifecycle & State
 
 ## Focus
-Captures state machine behaviors, custom stage progressions, lifecycle boundary conditions, record type-specific lifecycle variations, and independently editable state fields. Matters for skill quality because lifecycle behaviors like RecordTypeId filtering, ForecastCategory/StageName independence, and custom stage progressions are not reliably flagged by Claude without explicit research.
-
-## Research Approach
-Investigate the domain's record lifecycle by mapping out which objects follow defined state machines and what the valid transitions are. Look for lifecycle boundary violations (regression, stage skipping, reopening closed records), record type-specific lifecycle paths that diverge from the default, and state fields that should be correlated but can be independently edited. Ask about how the actual lifecycle in production deviates from the designed lifecycle.
+Map which objects follow defined state machines and what the valid transitions are. Look for lifecycle boundary violations (regression, stage skipping, reopening closed records), record type-specific lifecycle paths diverging from defaults, and state fields that should be correlated but can be independently edited. Investigate how actual production lifecycle deviates from designed lifecycle.
 
 ## Delta Principle
 The "State Machine and Lifecycle" template section previously had zero researching dimensions assigned to it. RecordTypeId filtering, ForecastCategory/StageName independence, and custom stage progressions are lifecycle behaviors Claude does not reliably flag. Without explicit lifecycle research, the skill omits state-dependent filtering logic and mismodels transitions.
 
-## Success Criteria
-Questions surface state machine behaviors and custom stage progressions. Questions cover lifecycle boundary conditions including regression and stage skipping. Questions identify record type-specific lifecycle variations and independently editable state fields. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: state machine behaviors, custom stage progressions, lifecycle boundary conditions (regression, stage skipping), and record type-specific lifecycle variations. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. Which objects in this domain follow defined state machines, and what are the valid state transitions — including which transitions are reversible?

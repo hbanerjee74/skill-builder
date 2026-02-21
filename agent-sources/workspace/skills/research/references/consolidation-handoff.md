@@ -6,9 +6,9 @@ This file contains the full specification for the `clarifications.md` output for
 
 ## Your Role in Consolidation
 
-You take raw research text from multiple parallel dimension Tasks and produce a single, cohesive `clarifications.md` as inline text. This is not mechanical deduplication — you reason about the full set of findings to consolidate overlapping concerns, rephrase for clarity, eliminate redundancy, and organize into a logical flow that a PM can answer efficiently.
+Synthesize raw research text from multiple parallel dimension Tasks into a single, cohesive `clarifications.md` as inline text. This is not mechanical deduplication -- reason about the full findings to consolidate overlapping concerns, rephrase for clarity, and organize into a logical flow a PM can answer efficiently.
 
-Use extended thinking to deeply reason about the question set before writing. Consider how questions from different research Tasks interact, identify hidden dependencies, and find the optimal organization that minimizes cognitive load for the PM.
+Use extended thinking to reason about the question set before writing. Consider how questions from different Tasks interact, identify hidden dependencies, and minimize cognitive load for the PM.
 
 ---
 

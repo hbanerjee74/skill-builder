@@ -1,16 +1,13 @@
 # Cross-System Reconciliation
 
 ## Focus
-Captures cross-table, cross-module, and cross-system reconciliation points where data should agree but often does not, including source-of-truth resolution, tolerance levels, and reconciliation procedures. Matters for skill quality because Claude knows reconciliation as a concept but cannot know which specific tables or objects in a customer's system should agree but do not, or which system is authoritative when they conflict.
-
-## Research Approach
-Investigate the domain's reconciliation landscape by identifying data that flows between multiple systems or modules and should match but diverges in practice. Look for known discrepancies between source systems, conflicting definitions of the same metric across teams, and accepted workarounds for data that never fully reconciles. Ask about which system wins when numbers disagree, what tolerance thresholds are acceptable, and whether reconciliation is automated or manual.
+Identify data that flows between multiple systems or modules and should match but diverges in practice. Look for known discrepancies between source systems, conflicting metric definitions across teams, and accepted workarounds for data that never fully reconciles. Determine which system wins when numbers disagree, acceptable tolerance thresholds, and whether reconciliation is automated or manual.
 
 ## Delta Principle
 Claude knows reconciliation as a concept but cannot know which specific tables/objects in a customer's system should agree but do not, or which system is the source of truth. For example: SFDC pipeline numbers disagree with Clari and finance — without knowing that this discrepancy exists and which system wins, the skill produces reports that will be challenged or rejected by different stakeholder groups.
 
-## Success Criteria
-Questions surface specific reconciliation points where data diverges across systems. Questions cover source-of-truth resolution when systems conflict. Questions identify tolerance levels and reconciliation procedures. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: specific reconciliation points where data diverges, source-of-truth resolution when systems conflict, and tolerance levels with reconciliation procedures. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. Which numbers should agree between systems (e.g., CRM, finance, revenue intelligence platform) but are known to diverge — and by how much, typically?

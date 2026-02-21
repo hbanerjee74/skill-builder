@@ -1,16 +1,13 @@
 # Modeling Patterns
 
 ## Focus
-Captures silver/gold layer modeling decisions for the business domain: fact table granularity, snapshot strategies, source field coverage decisions, and the interaction between grain choices and downstream query patterns. Matters for skill quality because domain-specific modeling decisions deviate from textbook Kimball in ways that affect query correctness and performance.
-
-## Research Approach
-Investigate the modeling patterns relevant to this business domain by focusing on grain choices and their downstream consequences. Determine whether the domain's primary analysis patterns favor event-level grain, periodic snapshots, or accumulating snapshots, and how that choice affects query performance and complexity. Probe for field coverage decisions — which source fields are important enough to surface at each layer — and identify where the standard Kimball approach needs domain-specific adaptation.
+Investigate grain choices and their downstream consequences for silver/gold modeling. Determine whether the domain favors event-level grain, periodic snapshots, or accumulating snapshots, and how that choice affects query performance. Probe for field coverage decisions (which source fields surface at each layer) and identify where standard Kimball needs domain-specific adaptation.
 
 ## Delta Principle
 Claude knows Kimball methodology and star schemas. The delta is domain-specific modeling decisions: stage-transition grain vs. daily-snapshot grain for pipeline, field coverage (which source fields to silver, which to gold), and the interaction between grain choices and downstream query patterns. Choosing the wrong grain produces models that are technically correct but unusable for the domain's primary queries.
 
-## Success Criteria
-Questions cover modeling approach, grain decisions, snapshot strategy, and field coverage. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: modeling approach trade-offs, grain decisions, snapshot strategy, and field coverage choices. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. What is the primary analysis pattern for this domain — event-level grain, periodic snapshot, or accumulating snapshot — and what downstream queries drive that choice?

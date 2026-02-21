@@ -1,16 +1,13 @@
 # Data Extraction
 
 ## Focus
-Captures platform-specific extraction traps that produce silently wrong data, including CDC mechanism selection, change detection gotchas, soft delete handling, and completeness guarantees. Matters for skill quality because the obvious extraction approach often silently misses data in ways that only become apparent at production volumes or during audit.
-
-## Research Approach
-Investigate the platform's extraction surface by probing each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms that require special API calls, multi-tenant filtering gaps, and parent-child relationships where changes to the parent do not propagate to child timestamps. Ask about scale-specific failures like governor limits and rate throttling that only appear in production volumes.
+Probe each extraction pattern (full, incremental, CDC) for silent data loss. Look for timestamp fields that miss system-initiated changes, soft delete mechanisms requiring special API calls, multi-tenant filtering gaps, and parent-child relationships where parent changes do not propagate to child timestamps. Include scale-specific failures like governor limits and rate throttling.
 
 ## Delta Principle
 The key failure modes include: ORG_ID filtering (missed in ~4/10 Claude responses), SystemModstamp vs. LastModifiedDate (Claude inconsistently recommends the correct one), queryAll() for soft deletes, and WHO column CDC limitations. These are platform-specific traps within each extraction pattern that cause silent data loss — the pipeline runs successfully but produces incomplete or stale data.
 
-## Success Criteria
-Questions surface platform-specific extraction traps that cause silent data loss. Questions cover CDC mechanism selection, soft delete handling, and completeness guarantees. Questions identify where the obvious extraction approach fails at scale. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: platform-specific extraction traps causing silent data loss, CDC mechanism selection, soft delete handling, and completeness guarantees. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. Which timestamp field should be used for incremental change detection, and which commonly used alternatives miss system-initiated changes?

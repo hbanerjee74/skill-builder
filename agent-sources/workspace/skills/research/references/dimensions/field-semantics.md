@@ -1,16 +1,13 @@
 # Field Semantics
 
 ## Focus
-Captures fields whose standard meaning is overridden or misleading, including managed package field overrides, independently editable field pairs, and ISV field interactions. Matters for skill quality because Claude knows standard field semantics but cannot know which fields have been overridden in the customer's org by packages or automation.
-
-## Research Approach
-Investigate the domain's field landscape by identifying installed managed packages and automation that override standard field values. Look for field pairs that appear correlated but can be independently edited, fields whose picklist values or meanings have been customized beyond the platform default, and ISV integrations that write to standard fields on a schedule. Ask about which fields are trusted as the canonical value versus which are stale or overwritten by external processes.
+Identify managed packages and automation that override standard field values. Look for field pairs that appear correlated but can be independently edited, picklist values customized beyond platform defaults, and ISV integrations that write to standard fields on a schedule. Determine which fields are trusted as canonical versus stale or overwritten by external processes.
 
 ## Delta Principle
 High-delta content (CPQ overriding Amount, ForecastCategory/StageName independence, Clari overwriting forecast fields nightly) requires explicit research. Claude knows standard field semantics but cannot know which fields have been overridden in the customer's org. Without this knowledge the skill treats overridden fields as having their standard meaning, producing incorrect calculations and joins.
 
-## Success Criteria
-Questions surface fields whose standard semantics have been overridden by packages or automation. Questions cover managed package modification schedules and ISV field interactions. Questions identify independently editable field pairs that appear correlated. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: fields with overridden standard semantics, managed package modification schedules, ISV field interactions, and independently editable field pairs. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. Which standard fields have their values overridden or populated by managed packages, ISV integrations, or automation — and on what schedule does each override run?

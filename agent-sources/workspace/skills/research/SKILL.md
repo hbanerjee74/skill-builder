@@ -47,23 +47,7 @@ Before scoring, determine whether the domain is a legitimate topic for the skill
 
 ### Scoring
 
-For each of the 5–6 candidate dimensions, apply the rubric from `references/scoring-rubric.md`:
-
-| Score | Meaning |
-|-------|---------|
-| 5 | Critical delta — engineer will produce wrong models without this |
-| 4 | High value — non-obvious knowledge that saves significant rework |
-| 3 | Moderate — useful but Claude's parametric knowledge covers 70%+ |
-| 2 | Low — mostly standard knowledge, small delta |
-| 1 | Redundant — Claude already knows this well |
-
-Score on: **What would a data engineer need to know to build correct dbt silver/gold models for this domain that Claude can't already tell them?**
-
-For each dimension:
-- Assign a score (1–5)
-- Write a one-sentence reason grounded in the domain
-- Write a tailored focus line (1–2 sentences making the dimension specific to this domain — include entity names, metric names, pattern types, or platform specifics as relevant)
-- For scores 2–3, note a companion skill candidate
+For each of the 5–6 candidate dimensions, apply the rubric and follow the step-by-step instructions in `references/scoring-rubric.md`. The rubric defines scores 1–5, the scoring frame, tailored focus line guidelines, and selection criteria.
 
 ### Selection
 
@@ -95,38 +79,9 @@ If a dimension Task fails, note the failure and continue with the available outp
 
 ## Step 4 — Consolidate
 
-Read `references/consolidation-handoff.md`. This file contains:
-- The full YAML frontmatter spec with required fields (`question_count`, `sections`, `duplicates_removed`, `refinement_count`) and optional fields (`priority_questions`, `scope_recommendation`, `status`)
-- The complete heading hierarchy: `# Research Clarifications` → `## Section` → `### Required` / `### Optional` → `### Q{n}: Title` → (Step 3 adds `#### Refinements` → `##### R{n}.{m}:`)
-- The question template with body, lettered choices (A–D + "Other"), `**Recommendation:**`, and `**Answer:**` fields
-- The ID scheme: `Q{n}` for top-level questions (created here), `R{n}.{m}` for refinements (added in Step 3)
-- All formatting rules including parser-compatibility requirements
-- Step-by-step consolidation instructions
+Read `references/consolidation-handoff.md`. This file contains the full `clarifications.md` format spec (frontmatter, heading hierarchy, question template, ID scheme, parser-compatibility regex patterns) and step-by-step consolidation instructions.
 
-Using the full spec in that file, deduplicate and synthesize all dimension Task outputs into canonical `clarifications.md` content.
-
-### Consolidation approach
-
-For each cluster of related questions or decision points across dimension findings:
-- Identify the underlying decision — two questions that look different may resolve the same design choice
-- Pick the strongest framing — the version with the most specific choices and clearest implications
-- Fold in unique value from weaker versions — additional choices, better rationale
-- Rephrase if needed — the consolidated question should read naturally
-
-Arrange into logical sections: broad scoping first, then detailed design decisions. Add a `## Cross-cutting` section for questions that span multiple dimensions.
-
-Within each section, group questions under `### Required` (critical, skill cannot be built without answers) and `### Optional` (refines quality, reasonable defaults exist) sub-headings. Include only the sub-headings that have questions.
-
-For consolidated questions that draw from multiple dimensions, add: `_Consolidated from: [Dimension Name Research, ...]_`
-
-### Frontmatter accuracy
-
-Count carefully before writing:
-- `question_count` — count every `### Q{n}:` heading
-- `sections` — count every `## ` section heading
-- `duplicates_removed` — each collapsed group of N questions counts as (N-1) removed
-- `refinement_count` — always 0 at this step
-- `priority_questions` — list every question ID that appears under a `### Required` sub-heading
+Follow the consolidation instructions in that file to deduplicate and synthesize all dimension Task outputs into canonical `clarifications.md` content.
 
 ---
 
@@ -190,14 +145,13 @@ Both sections must be present. Both must be well-formed per their respective can
 
 ---
 
-## Success Criteria
+## Output Checklist
 
-- Extended thinking used for scoring (Step 2)
-- All dimension Tasks launched in one turn (Step 3)
-- `=== RESEARCH PLAN ===` section present with accurate frontmatter counts
-- `=== CLARIFICATIONS ===` section present with accurate frontmatter counts
-- All questions have 2–4 choices + "Other (please specify)"
-- All questions have `**Recommendation:**` and `**Answer:**` fields
+Before returning, verify:
+
+- Both `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===` sections present
+- Frontmatter counts accurate in both sections
+- Every question has 2–4 choices + "Other (please specify)", a `**Recommendation:**`, and an `**Answer:**` field
 - `priority_questions` lists all Required question IDs
 - `refinement_count: 0` (refinements are added in Step 3 by `detailed-research`)
 - No inline tags (`[MUST ANSWER]`) in question headings

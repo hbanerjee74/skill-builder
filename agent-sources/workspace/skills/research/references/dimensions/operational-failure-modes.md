@@ -1,16 +1,13 @@
 # Operational Failure Modes
 
 ## Focus
-Captures production failure patterns, undocumented timeout behaviors, concurrency issues, environment-specific error behaviors, and debugging procedures that only come from operational experience. Matters for skill quality because Claude describes happy paths; this dimension surfaces the failure paths that engineers encounter after deploying to production.
-
-## Research Approach
-Investigate failure modes that engineers discover only after deploying to production, focusing on what breaks under load, during concurrent operations, and at scale boundaries. Look for undocumented timeout behaviors, metadata lock contention patterns, error message formats that differ across environments, and the debugging procedures that experienced operators use for rapid incident resolution but that are never written down in official documentation.
+Investigate failure modes discovered only after deploying to production: what breaks under load, during concurrent operations, and at scale boundaries. Look for undocumented timeout behaviors, metadata lock contention patterns, error formats that differ across environments, and debugging procedures experienced operators use but never document.
 
 ## Delta Principle
 Claude describes happy paths; this dimension surfaces failure paths. Production-incident knowledge (Fabric's unconfigurable 30-minute query timeout, metadata lock contention from concurrent dbt runs, environment-specific test error format differences) comes exclusively from operational experience. Without this knowledge the skill generates code that works in development but fails in production under realistic conditions.
 
-## Success Criteria
-Questions surface production failure patterns including timeout and concurrency issues. Questions identify undocumented debugging procedures essential for incident resolution. Questions cover environment-specific error behaviors and performance pitfalls at scale. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: production failure patterns (timeout, concurrency), undocumented debugging procedures, and environment-specific error behaviors at scale. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. What are the most common production failure patterns for this platform — which operations fail most frequently and under what conditions?

@@ -41,8 +41,6 @@ Before scoring any dimensions, decide whether the domain is a legitimate topic f
 
 ## Step-by-Step Scoring Instructions
 
-Use extended thinking for this step. The coordinator does this inline — no sub-agent is spawned for planning.
-
 ### 1. Evaluate each candidate dimension
 
 For each of the 5–6 candidate dimensions from the type-scoped set:
@@ -58,21 +56,7 @@ Pick the top scoring dimensions. Aim for 3–5 selections. Do not apply a hard c
 
 ### 3. Return the scored dimension table
 
-Return a scored dimension table as part of the `=== RESEARCH PLAN ===` section in your inline response. Format:
-
-```markdown
-## Dimension Scores
-
-| Dimension | Score | Reason | Companion Note |
-|-----------|-------|--------|----------------|
-| [slug] | [1-5] | [one-sentence reason] | [optional — for scores 2-3] |
-
-## Selected Dimensions
-
-| Dimension | Score | Focus | Companion Dimensions |
-|-----------|-------|-------|----------------------|
-| [slug] | [score] | [tailored focus line] | [slugs of companion candidates, if any] |
-```
+Return a scored dimension table as part of the `=== RESEARCH PLAN ===` section in your inline response. Use the canonical format shown in the Scoring Output Format section below.
 
 ---
 
@@ -95,7 +79,7 @@ The focus line is a 1–2 sentence instruction to the dimension research agent. 
 
 ## Scoring Output Format
 
-The scored dimension table returned in `=== RESEARCH PLAN ===` becomes `research-plan.md` in the context directory (written by the orchestrator). It must match the canonical `research-plan.md` format:
+The scored dimension table is returned as part of the `=== RESEARCH PLAN ===` section. Use this canonical format:
 
 ```markdown
 ---

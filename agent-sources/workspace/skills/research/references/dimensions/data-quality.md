@@ -1,16 +1,13 @@
 # Data Quality
 
 ## Focus
-Captures validation rules, quality gate thresholds, known quality issues, and pipeline failure response patterns specific to the domain. Matters for skill quality because generic data quality concepts miss pattern-specific checks and org-specific known issues that constrain what the skill can safely recommend.
-
-## Research Approach
-Investigate where generic quality patterns break down for this specific domain. Look for pattern-specific checks that go beyond textbook data quality — per-layer validation rules, cross-layer reconciliation that must account for row multiplication, quality gate thresholds that determine halt vs. quarantine vs. continue behavior. Also probe for org-specific known quality issues: fields that are commonly null or unreliable, validation rules that force incorrect data entry, and data cleanup jobs or compensating controls that downstream consumers depend on.
+Investigate where generic quality patterns break down for this domain. Look for pattern-specific checks beyond textbook data quality: per-layer validation rules, cross-layer reconciliation that accounts for row multiplication, and quality gate thresholds (halt vs. quarantine vs. continue). Probe for org-specific known issues: commonly null or unreliable fields, validation rules that force incorrect data entry, and cleanup jobs that downstream consumers depend on.
 
 ## Delta Principle
 Claude knows generic data quality concepts (null checks, uniqueness, referential integrity). The delta is pattern-specific checks (e.g., row multiplication accounting after MERGE into Type 2) and org-specific issues (e.g., fields commonly null due to validation rule workarounds). Without this knowledge the skill generates quality checks that pass but miss real problems.
 
-## Success Criteria
-Questions cover validation rules, quality gate thresholds, known quality issues, and pipeline failure response. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: validation rules, quality gate thresholds, known quality issues, and pipeline failure response patterns. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. Which validation rules are required at each pipeline layer (bronze, silver, gold), and what triggers a halt vs. quarantine vs. continue decision?

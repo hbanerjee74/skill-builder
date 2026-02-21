@@ -1,16 +1,13 @@
 # Integration and Orchestration
 
 ## Focus
-Captures how the platform connects to other tools, CI/CD pipeline patterns, authentication handoffs between tools, and orchestration workflows specific to the customer's deployment. Matters for skill quality because the integration layer lives in team-specific runbooks, not documentation, and Claude knows individual tool documentation but not how tools interact in real deployments.
-
-## Research Approach
-Investigate how the platform connects to version control, CI/CD systems, orchestrators, monitoring tools, and data catalogs in the customer's actual deployment. Look for authentication token handoffs between tools, artifact format compatibility requirements, and orchestration timing dependencies where the order and coordination of operations across tool boundaries matters.
+Investigate how the platform connects to version control, CI/CD systems, orchestrators, monitoring tools, and data catalogs in the customer's deployment. Look for authentication token handoffs between tools, artifact format compatibility requirements, and orchestration timing dependencies where the order and coordination of operations across tool boundaries matters.
 
 ## Delta Principle
 Claude knows individual tool documentation but not how tools interact in real deployments. The integration layer (CI/CD pipelines, auth flows across tool boundaries, artifact passing) lives in team-specific runbooks, not documentation. Without this knowledge the skill generates correct isolated tool usage but misses the coordination patterns that make multi-tool workflows function.
 
-## Success Criteria
-Questions cover CI/CD pipeline patterns and deployment automation specific to the platform. Questions identify cross-tool integration points where authentication and artifacts must be coordinated. Questions surface orchestration workflows and timing dependencies across tool boundaries. Each question has 2-4 specific, differentiated choices. Recommendations include clear reasoning tied to the domain context. Output contains 5-8 questions focused on decisions that change skill content.
+## Coverage Targets
+Research should surface: CI/CD pipeline patterns, cross-tool authentication and artifact coordination, and orchestration timing dependencies across tool boundaries. Focus on decisions that change skill content.
 
 ## Questions to Research
 1. How is the platform integrated with version control and CI/CD — what pipeline stages exist and what triggers deployments?
