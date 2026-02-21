@@ -1823,6 +1823,106 @@ type: platform
         assert!(inactive_dest.join("SKILL.md").exists(), "inactive skill should be in .inactive/ path");
     }
 
+    #[test]
+    fn test_seed_bundled_skills_seeds_multiple() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Create two bundled skill dirs (simulating research + skill-builder-practices)
+        let bundled_dir = tempdir().unwrap();
+
+        let skill_a = bundled_dir.path().join("skill-a");
+        fs::create_dir_all(&skill_a).unwrap();
+        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\n---\n# A").unwrap();
+
+        let skill_b = bundled_dir.path().join("skill-b");
+        fs::create_dir_all(&skill_b).unwrap();
+        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\n---\n# B").unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let a = crate::db::get_imported_skill(&conn, "skill-a").unwrap();
+        assert!(a.is_some(), "skill-a should be seeded");
+        assert!(a.unwrap().is_bundled, "skill-a should be bundled");
+
+        let b = crate::db::get_imported_skill(&conn, "skill-b").unwrap();
+        assert!(b.is_some(), "skill-b should be seeded");
+        assert!(b.unwrap().is_bundled, "skill-b should be bundled");
+
+        // Both files on disk
+        let skills_dir = workspace.path().join(".claude").join("skills");
+        assert!(skills_dir.join("skill-a").join("SKILL.md").exists());
+        assert!(skills_dir.join("skill-b").join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn test_seed_bundled_skills_copies_nested_dirs() {
+        // The research skill has references/dimensions/ nested structure.
+        // Verify seed_bundled_skills copies nested subdirectories recursively.
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("research");
+        fs::create_dir_all(skill_src.join("references").join("dimensions")).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: research\ndescription: Research skill\n---\n# Research",
+        ).unwrap();
+        fs::write(skill_src.join("references").join("dimension-sets.md"), "# Dimension Sets").unwrap();
+        fs::write(skill_src.join("references").join("dimensions").join("entities.md"), "# Entities").unwrap();
+        fs::write(skill_src.join("references").join("dimensions").join("metrics.md"), "# Metrics").unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let skill = crate::db::get_imported_skill(&conn, "research").unwrap().unwrap();
+        assert!(skill.is_bundled);
+        assert_eq!(skill.skill_id, "bundled-research");
+        assert_eq!(skill.description.as_deref(), Some("Research skill"));
+
+        let dest = workspace.path().join(".claude").join("skills").join("research");
+        assert!(dest.join("SKILL.md").exists());
+        assert!(dest.join("references").join("dimension-sets.md").exists());
+        assert!(dest.join("references").join("dimensions").join("entities.md").exists());
+        assert!(dest.join("references").join("dimensions").join("metrics.md").exists());
+    }
+
+    #[test]
+    fn test_delete_bundled_research_skill_blocked() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Seed the research skill as bundled
+        let skills_dir = workspace.path().join(".claude").join("skills").join("research");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "---\nname: research\n---\n# Research").unwrap();
+
+        let skill = ImportedSkill {
+            skill_id: "bundled-research".to_string(),
+            skill_name: "research".to_string(),
+            domain: None,
+            is_active: true,
+            disk_path: skills_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            trigger_text: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        // Attempt to delete — should fail with bundled guard
+        let result = delete_imported_skill_inner("research", workspace_path, &conn);
+        assert!(result.is_err(), "Deleting bundled research skill should fail");
+        let err = result.unwrap_err();
+        assert!(err.contains("Cannot delete bundled skill"), "Expected bundled guard error, got: {}", err);
+
+        // Skill still in DB
+        assert!(crate::db::get_imported_skill(&conn, "research").unwrap().is_some());
+    }
+
     // --- Export skill tests ---
 
     #[test]
