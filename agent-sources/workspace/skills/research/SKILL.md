@@ -77,7 +77,7 @@ Tailored focus: {tailored focus line from Step 2}
 Return detailed research text covering the dimension's questions and decision points for this domain. 500–800 words. Return raw research text only — no headings, no JSON, no structured format. Write as if briefing a colleague who needs to understand the key questions and tradeoffs for this dimension in the context of {domain}.
 ```
 
-**Launch ALL dimension Tasks in a single turn for parallelism.** Do not wait for one to finish before launching the next. Wait for all to return before proceeding to Step 4.
+Wait for all Tasks to return before proceeding to Step 4.
 
 If a dimension Task fails, note the failure and continue with the available outputs from other Tasks. Do not re-try automatically.
 

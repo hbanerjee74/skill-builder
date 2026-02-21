@@ -79,7 +79,7 @@ Read the full content of:
 - `references/test-skill-spec.md`
 - `references/companion-recommender-spec.md`
 
-Spawn 3 sub-agents in the **same turn** via the Task tool:
+Spawn 3 sub-agents via the Task tool:
 
 **Quality sub-agent** (`name: "validate-quality"`, `model: "sonnet"`). Construct the prompt from the full content of `references/validate-quality-spec.md`, then append:
 
@@ -92,7 +92,6 @@ You are given these paths:
 - Workspace directory: {workspace_dir}
 - Skill type: {skill_type}
 
-Return your complete output as text. Do not write files. List outcomes, not process.
 ```
 
 **Test evaluator sub-agent** (`name: "test-skill"`, `model: "haiku"`). Construct the prompt from the full content of `references/test-skill-spec.md`, then append:
@@ -105,7 +104,6 @@ You are given these paths:
 - Reference files: {all reference file paths from glob}
 - Workspace directory: {workspace_dir}
 
-Return your complete output as text. Do not write files. List outcomes, not process.
 ```
 
 **Companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`). Construct the prompt from the full content of `references/companion-recommender-spec.md`, then append:
@@ -119,7 +117,6 @@ You are given these paths:
 - Workspace directory: {workspace_dir}
 - Skill type: {skill_type}
 
-Return your complete output as text. Do not write files. List outcomes, not process.
 ```
 
 **If a sub-agent fails**, re-spawn once. If it fails again:
