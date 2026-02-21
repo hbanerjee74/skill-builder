@@ -293,4 +293,70 @@ describe("ImportedSkillCard", () => {
       expect(onToggleActive).toHaveBeenCalledWith("skill-builder-practices", false);
     });
   });
+
+  describe("research bundled skill", () => {
+    const researchSkill: ImportedSkill = {
+      ...baseSkill,
+      skill_id: "bundled-research",
+      skill_name: "research",
+      is_bundled: true,
+      is_active: true,
+      description: "Research skill for the Skill Builder workflow",
+    };
+
+    it("shows Built-in badge for research skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={researchSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.getByText("Built-in")).toBeInTheDocument();
+    });
+
+    it("does not show delete button for research skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={researchSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: /Delete skill/i })).not.toBeInTheDocument();
+    });
+
+    it("shows toggle active switch for research skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={researchSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      const toggle = screen.getByRole("switch");
+      expect(toggle).toBeInTheDocument();
+      expect(toggle).not.toBeDisabled();
+    });
+
+    it("calls onToggleActive when research skill toggle is clicked", async () => {
+      const user = userEvent.setup();
+      const onToggleActive = vi.fn();
+      render(
+        <ImportedSkillCard
+          skill={researchSkill}
+          onToggleActive={onToggleActive}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+
+      const toggle = screen.getByRole("switch");
+      await user.click(toggle);
+      expect(onToggleActive).toHaveBeenCalledWith("research", false);
+    });
+  });
 });
