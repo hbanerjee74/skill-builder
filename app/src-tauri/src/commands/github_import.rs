@@ -599,6 +599,50 @@ pub async fn import_marketplace_to_library(
                 }
             }
             Err(e) => {
+                // If the skill directory already exists on disk (e.g. user created it
+                // via the workflow builder), still update source='marketplace' so the
+                // UI shows the correct read-only state with 100% progress.
+                let dir_name = skill_path
+                    .trim_end_matches('/')
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(skill_path.as_str());
+                let skill_md_path = skills_dir.join(dir_name).join("SKILL.md");
+                if skill_md_path.exists() {
+                    if let Ok(content) = fs::read_to_string(&skill_md_path) {
+                        let fm = super::imported_skills::parse_frontmatter_full(&content);
+                        let skill_name = fm.name.unwrap_or_else(|| dir_name.to_string());
+                        let domain = fm.domain.unwrap_or_else(|| skill_name.clone());
+                        let skill_type_str = fm.skill_type.as_deref().unwrap_or("domain").to_string();
+                        if let Ok(conn) = db.0.lock() {
+                            match crate::db::save_marketplace_skill_run(
+                                &conn,
+                                &skill_name,
+                                &domain,
+                                &skill_type_str,
+                            ) {
+                                Ok(()) => {
+                                    log::info!(
+                                        "[import_marketplace_to_library] updated existing '{}' to source=marketplace",
+                                        skill_name
+                                    );
+                                    results.push(MarketplaceImportResult {
+                                        skill_name,
+                                        success: true,
+                                        error: None,
+                                    });
+                                    continue;
+                                }
+                                Err(ue) => {
+                                    log::warn!(
+                                        "[import_marketplace_to_library] failed to update source for '{}': {}",
+                                        skill_name, ue
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
                 log::warn!(
                     "[import_marketplace_to_library] failed to import '{}': {}",
                     skill_path, e
