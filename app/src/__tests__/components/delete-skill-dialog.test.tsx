@@ -182,4 +182,106 @@ describe("DeleteSkillDialog", () => {
     // Dialog still renders but skill name area is empty
     expect(screen.getByText("Delete Skill")).toBeInTheDocument();
   });
+
+  // --- isLocked prop ---
+
+  it("shows lock banner when isLocked is true", () => {
+    render(
+      <DeleteSkillDialog
+        skill={sampleSkill}
+        workspacePath="/workspace"
+        open={true}
+        onOpenChange={vi.fn()}
+        onDeleted={vi.fn()}
+        isLocked={true}
+      />
+    );
+    expect(
+      screen.getByText(
+        "This skill is being edited in another window and cannot be deleted"
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("shows locked description text instead of normal confirmation text when isLocked is true", () => {
+    render(
+      <DeleteSkillDialog
+        skill={sampleSkill}
+        workspacePath="/workspace"
+        open={true}
+        onOpenChange={vi.fn()}
+        onDeleted={vi.fn()}
+        isLocked={true}
+      />
+    );
+    // The description contains "is being edited in another window and cannot be deleted"
+    // (the banner below has the same text — use getAllByText to allow multiple matches)
+    const matches = screen.getAllByText(/is being edited in another window and cannot be deleted/);
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    // Normal "permanently remove" text should not appear
+    expect(
+      screen.queryByText(/permanently remove all files/)
+    ).not.toBeInTheDocument();
+  });
+
+  it("disables Delete button when isLocked is true", () => {
+    render(
+      <DeleteSkillDialog
+        skill={sampleSkill}
+        workspacePath="/workspace"
+        open={true}
+        onOpenChange={vi.fn()}
+        onDeleted={vi.fn()}
+        isLocked={true}
+      />
+    );
+    expect(
+      screen.getByRole("button", { name: /Delete/i })
+    ).toBeDisabled();
+  });
+
+  it("does not call invoke delete_skill when isLocked is true and Delete button is clicked", async () => {
+    const user = userEvent.setup();
+    mockInvoke.mockResolvedValue(undefined);
+
+    render(
+      <DeleteSkillDialog
+        skill={sampleSkill}
+        workspacePath="/workspace"
+        open={true}
+        onOpenChange={vi.fn()}
+        onDeleted={vi.fn()}
+        isLocked={true}
+      />
+    );
+
+    // Delete button is disabled; click should be a no-op
+    const deleteBtn = screen.getByRole("button", { name: /Delete/i });
+    expect(deleteBtn).toBeDisabled();
+    await user.click(deleteBtn);
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("does not show lock banner when isLocked is false", () => {
+    render(
+      <DeleteSkillDialog
+        skill={sampleSkill}
+        workspacePath="/workspace"
+        open={true}
+        onOpenChange={vi.fn()}
+        onDeleted={vi.fn()}
+        isLocked={false}
+      />
+    );
+    expect(
+      screen.queryByText(
+        "This skill is being edited in another window and cannot be deleted"
+      )
+    ).not.toBeInTheDocument();
+    // Normal confirm text should be present
+    expect(
+      screen.getByText(/permanently remove all files/)
+    ).toBeInTheDocument();
+  });
 });
