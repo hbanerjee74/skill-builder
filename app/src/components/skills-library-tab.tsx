@@ -46,10 +46,20 @@ export function SkillsLibraryTab() {
       const skill = await uploadSkill(filePath)
       toast.success(`Imported "${skill.skill_name}"`, { id: toastId })
     } catch (err) {
-      toast.error(
-        `Import failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId, duration: Infinity }
-      )
+      const message = err instanceof Error ? err.message : String(err)
+      const missingPrefix = "missing_mandatory_fields:"
+      if (message.startsWith(missingPrefix)) {
+        const fields = message.slice(missingPrefix.length).split(",").filter(Boolean)
+        toast.error(
+          `Import failed: SKILL.md is missing required fields: ${fields.join(", ")}. Add them to the frontmatter and try again.`,
+          { id: toastId, duration: Infinity }
+        )
+      } else {
+        toast.error(
+          `Import failed: ${message}`,
+          { id: toastId, duration: Infinity }
+        )
+      }
     }
   }, [uploadSkill])
 
@@ -173,6 +183,7 @@ export function SkillsLibraryTab() {
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
+        mode="settings-skills"
       />
     </div>
   )

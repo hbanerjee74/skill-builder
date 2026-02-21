@@ -20,6 +20,7 @@ pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
 }
 
 /// Parsed YAML frontmatter fields from a SKILL.md file.
+#[derive(Default)]
 pub(crate) struct Frontmatter {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -46,36 +47,14 @@ pub(crate) fn parse_frontmatter(
 pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
-        return Frontmatter {
-            name: None,
-            description: None,
-            domain: None,
-            skill_type: None,
-            version: None,
-            model: None,
-            argument_hint: None,
-            user_invocable: None,
-            disable_model_invocation: None,
-        };
+        return Frontmatter::default();
     }
 
     // Find the closing ---
     let after_first = &trimmed[3..];
     let end = match after_first.find("\n---") {
         Some(pos) => pos,
-        None => {
-            return Frontmatter {
-                name: None,
-                description: None,
-                domain: None,
-                skill_type: None,
-                version: None,
-                model: None,
-                argument_hint: None,
-                user_invocable: None,
-                disable_model_invocation: None,
-            }
-        }
+        None => return Frontmatter::default(),
     };
 
     let yaml_block = &after_first[..end];
@@ -107,13 +86,10 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         }
 
         // Flush any accumulated multi-line value
-        if let Some(field) = current_multiline.take() {
+        if current_multiline.take().is_some() {
             let val = multiline_buf.trim().to_string();
             if !val.is_empty() {
-                match field {
-                    "description" => description = Some(val),
-                    _ => {}
-                }
+                description = Some(val);
             }
             multiline_buf.clear();
         }
@@ -148,13 +124,10 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     }
 
     // Flush any trailing multi-line value
-    if let Some(field) = current_multiline {
+    if current_multiline.is_some() {
         let val = multiline_buf.trim().to_string();
         if !val.is_empty() {
-            match field {
-                "description" => description = Some(val),
-                _ => {}
-            }
+            description = Some(val);
         }
     }
 
@@ -292,6 +265,23 @@ fn upload_skill_inner(
     // Parse frontmatter for metadata
     let fm = parse_frontmatter_full(&skill_md_content);
 
+    // Validate mandatory fields: name, domain, description must all be present
+    let missing_fields: Vec<&str> = [
+        ("name", fm.name.is_none()),
+        ("domain", fm.domain.is_none()),
+        ("description", fm.description.is_none()),
+    ]
+    .iter()
+    .filter(|(_, missing)| *missing)
+    .map(|(f, _)| *f)
+    .collect();
+    if !missing_fields.is_empty() {
+        return Err(format!(
+            "missing_mandatory_fields:{}",
+            missing_fields.join(",")
+        ));
+    }
+
     // Determine skill name: frontmatter name > filename
     let skill_name = fm.name
         .unwrap_or_else(|| derive_name_from_filename(file_path));
@@ -332,7 +322,8 @@ fn upload_skill_inner(
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
-        skill_type: fm.skill_type,
+        // Always force skill_type to 'skill-builder' for uploaded zips
+        skill_type: Some("skill-builder".to_string()),
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
@@ -1071,6 +1062,8 @@ type: platform
         assert_eq!(skill.domain.as_deref(), Some("e-commerce"));
         assert_eq!(skill.description.as_deref(), Some("Analytics domain skill"));
         assert!(skill.is_active);
+        // skill_type is always forced to 'skill-builder' on zip upload
+        assert_eq!(skill.skill_type.as_deref(), Some("skill-builder"));
 
         // Verify files were extracted
         let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
@@ -1083,7 +1076,7 @@ type: platform
     }
 
     #[test]
-    fn test_upload_skill_no_frontmatter_uses_filename() {
+    fn test_upload_skill_no_frontmatter_fails_missing_fields() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
@@ -1097,10 +1090,36 @@ type: platform
             workspace_path,
             &conn,
         );
-        assert!(result.is_ok());
-        // Name derived from temp file name - just verify it's non-empty
-        let skill = result.unwrap();
-        assert!(!skill.skill_name.is_empty());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.starts_with("missing_mandatory_fields:"),
+            "Expected missing_mandatory_fields error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_upload_skill_partial_frontmatter_fails_missing_fields() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        // Has name but missing domain and description
+        let zip_file = create_test_zip(&[
+            ("SKILL.md", "---\nname: my-skill\n---\n# My Skill"),
+        ]);
+
+        let result = upload_skill_inner(
+            zip_file.path().to_str().unwrap(),
+            workspace_path,
+            &conn,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.starts_with("missing_mandatory_fields:"), "got: {}", err);
+        assert!(err.contains("domain"), "should report domain missing");
+        assert!(err.contains("description"), "should report description missing");
     }
 
     #[test]
@@ -1110,7 +1129,7 @@ type: platform
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("nested-skill/SKILL.md", "---\nname: nested-test\n---\n# Nested"),
+            ("nested-skill/SKILL.md", "---\nname: nested-test\ndomain: analytics\ndescription: A nested test skill\n---\n# Nested"),
             ("nested-skill/references/data.md", "# Data"),
         ]);
 
@@ -1136,7 +1155,7 @@ type: platform
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\n---\n# Dup"),
+            ("SKILL.md", "---\nname: dup-skill\ndomain: analytics\ndescription: A duplicate skill\n---\n# Dup"),
         ]);
 
         // First upload succeeds
@@ -1144,7 +1163,7 @@ type: platform
 
         // Second upload with same name should fail
         let zip_file2 = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\n---\n# Dup 2"),
+            ("SKILL.md", "---\nname: dup-skill\ndomain: analytics\ndescription: A duplicate skill\n---\n# Dup 2"),
         ]);
         let result = upload_skill_inner(zip_file2.path().to_str().unwrap(), workspace_path, &conn);
         assert!(result.is_err());

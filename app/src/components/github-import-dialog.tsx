@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
 
 type Step = "url" | "select" | "importing" | "done"
@@ -22,12 +22,25 @@ interface GitHubImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImported: () => Promise<void>
+  /**
+   * When set, only skills whose skill_type is in this list are shown.
+   * Defaults to showing all skills.
+   */
+  typeFilter?: string[]
+  /**
+   * 'skill-library': calls importMarketplaceToLibrary (creates workflow_runs rows with source='marketplace')
+   * 'settings-skills': calls importGitHubSkills (creates imported_skills rows)
+   * Defaults to 'settings-skills' for backward compatibility.
+   */
+  mode?: 'skill-library' | 'settings-skills'
 }
 
 export default function GitHubImportDialog({
   open,
   onOpenChange,
   onImported,
+  typeFilter,
+  mode = 'settings-skills',
 }: GitHubImportDialogProps) {
   const [step, setStep] = useState<Step>("url")
   const [url, setUrl] = useState("")
@@ -63,12 +76,18 @@ export default function GitHubImportDialog({
     try {
       const info = await parseGitHubUrl(url.trim())
       setRepoInfo(info)
-      const available = await listGitHubSkills(
+      let available = await listGitHubSkills(
         info.owner,
         info.repo,
         info.branch,
         info.subpath ?? undefined
       )
+      // Apply typeFilter if provided
+      if (typeFilter && typeFilter.length > 0) {
+        available = available.filter(
+          (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
+        )
+      }
       if (available.length === 0) {
         setError("No skills found in this repository.")
         setLoading(false)
@@ -109,31 +128,40 @@ export default function GitHubImportDialog({
     if (!repoInfo || selectedPaths.size === 0) return
     setStep("importing")
     try {
-      const imported = await importGitHubSkills(
-        repoInfo.owner,
-        repoInfo.repo,
-        repoInfo.branch,
-        Array.from(selectedPaths)
-      )
-      setImportedCount(imported.length)
+      const paths = Array.from(selectedPaths)
+      const requested = selectedPaths.size
 
+      let importedCount = 0
+      if (mode === 'skill-library') {
+        const results = await importMarketplaceToLibrary(paths)
+        importedCount = results.filter((r) => r.success).length
+      } else {
+        const imported = await importGitHubSkills(
+          repoInfo.owner,
+          repoInfo.repo,
+          repoInfo.branch,
+          paths
+        )
+        importedCount = imported.length
+      }
+
+      setImportedCount(importedCount)
       await onImported()
       setStep("done")
 
-      const requested = selectedPaths.size
-      if (imported.length < requested) {
+      if (importedCount < requested) {
         toast.warning(
-          `Imported ${imported.length} of ${requested} skills. ${requested - imported.length} skipped (may already exist).`
+          `Imported ${importedCount} of ${requested} skills. ${requested - importedCount} skipped (may already exist).`
         )
       } else {
-        toast.success(`Imported ${imported.length} skill${imported.length !== 1 ? "s" : ""}`)
+        toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
       }
 
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setStep("select")
     }
-  }, [repoInfo, selectedPaths, onImported])
+  }, [repoInfo, selectedPaths, onImported, mode])
 
   const allSelected = selectedPaths.size === skills.length && skills.length > 0
 

@@ -30,6 +30,7 @@ import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
 import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
+import GitHubImportDialog from "@/components/github-import-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useAuthStore } from "@/stores/auth-store"
@@ -44,6 +45,8 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [marketplaceOpen, setMarketplaceOpen] = useState(false)
+  const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
+  const [skillLibraryMarketplaceTypeFilter, setSkillLibraryMarketplaceTypeFilter] = useState<string[]>(['platform', 'domain', 'source', 'data-engineering'])
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -447,9 +450,10 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
-          onOpenMarketplace={(_typeFilter) => {
+          onOpenMarketplace={(typeFilter) => {
+            setSkillLibraryMarketplaceTypeFilter(typeFilter)
+            setSkillLibraryMarketplaceOpen(true)
             setCreateOpen(false)
-            setMarketplaceOpen(true)
           }}
         />
       )}
@@ -476,6 +480,14 @@ export default function DashboardPage() {
         }}
         onDeleted={() => { loadSkills(); loadTags(); }}
         isLocked={deleteTarget ? lockedSkills.has(deleteTarget.name) : false}
+      />
+
+      <GitHubImportDialog
+        open={skillLibraryMarketplaceOpen}
+        onOpenChange={setSkillLibraryMarketplaceOpen}
+        onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
+        typeFilter={skillLibraryMarketplaceTypeFilter}
+        mode="skill-library"
       />
 
     </div>
