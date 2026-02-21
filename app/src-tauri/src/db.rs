@@ -3274,6 +3274,91 @@ mod tests {
         run_drop_trigger_description_migration(&conn).unwrap();
     }
 
+
+    // --- Marketplace Migration tests (14-16) ---
+
+    #[test]
+    fn test_source_migration_is_idempotent() {
+        let conn = create_test_db();
+        // All migrations already ran via create_test_db(); run again to verify idempotency
+        run_source_migration(&conn).unwrap();
+        // Verify the column exists exactly once
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('workflow_runs') WHERE name = 'source'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "'source' column should exist exactly once in workflow_runs");
+    }
+
+    #[test]
+    fn test_imported_skills_extended_migration_is_idempotent() {
+        let conn = create_test_db();
+        // All migrations already ran via create_test_db(); run again to verify idempotency
+        run_imported_skills_extended_migration(&conn).unwrap();
+        // Verify the 6 new columns each exist exactly once
+        let expected_cols = [
+            "skill_type",
+            "version",
+            "model",
+            "argument_hint",
+            "user_invocable",
+            "disable_model_invocation",
+        ];
+        for col in &expected_cols {
+            let count: i64 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM pragma_table_info('imported_skills') WHERE name = '{}'",
+                        col
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                count, 1,
+                "'{}' column should exist exactly once in imported_skills",
+                col
+            );
+        }
+    }
+
+    #[test]
+    fn test_workflow_runs_extended_migration_is_idempotent() {
+        let conn = create_test_db();
+        // All migrations already ran via create_test_db(); run again to verify idempotency
+        run_workflow_runs_extended_migration(&conn).unwrap();
+        // Verify the 6 new columns each exist exactly once
+        let expected_cols = [
+            "description",
+            "version",
+            "model",
+            "argument_hint",
+            "user_invocable",
+            "disable_model_invocation",
+        ];
+        for col in &expected_cols {
+            let count: i64 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM pragma_table_info('workflow_runs') WHERE name = '{}'",
+                        col
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                count, 1,
+                "'{}' column should exist exactly once in workflow_runs",
+                col
+            );
+        }
+    }
+
     #[test]
     fn test_list_active_skills() {
         let conn = create_test_db();
