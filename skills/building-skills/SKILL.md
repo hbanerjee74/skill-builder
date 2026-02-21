@@ -109,6 +109,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | any + SKILL.md exists | `improve` | → Iterative |
 | any + SKILL.md exists | `validate_only` | → Validation |
 | any | `start_fresh` | Delete `.vibedata/<name>/` + `context/` → Scoping |
+| `clarification_interactive_pending` | `express` | Auto-fill empty answers → Clarification Gate → Decisions |
 | any | `express` | Tell user: "Switching to express mode — filling in recommended answers and skipping ahead to decisions." Auto-fill empty `**Answer:**` fields with their `**Recommendation:**` values → Decisions |
 | any | `process_question` | Answer inline. When asked about current phase or state, always state the phase name explicitly: "The current phase is [phase-name]." Use exact names: fresh, scoping, research, clarification, refinement_pending, refinement, decisions, generation, validation. |
 
@@ -170,7 +171,7 @@ Passes: skill_type, domain, context_dir, workspace_dir
 
       Answer above. I'll capture your responses and write the remaining questions to clarifications.md.
       ```
-    - Update `session.json`: set `interactive_questions_asked` to the Q-IDs shown (e.g. `["Q1", "Q4", "Q7"]`)
+    - Update `session.json`: set `interactive_questions_asked` to the Q-IDs shown (e.g. `["Q1", "Q4", "Q7"]`), `current_phase = "research"`, append `"research"` to `phases_completed`
     - End turn — wait for user response
   - If `priority_questions` is empty or absent:
     - Tell user: questions are in `<context_dir>/clarifications.md` — fill in `**Answer:**` fields and say "done" when ready
@@ -185,6 +186,8 @@ Triggered when state = `clarification_interactive_pending`.
    - Explicit: "Q1: A", "first one: B", "1. weighted pipeline"
    - Positional: if user gives comma-separated answers, map to Q-IDs in order
    - Accept letter (A/B/C/D) or prose verbatim
+   - If no answers can be matched: re-display the questions and ask the user to answer them, or say "use defaults" to proceed with recommendations.
+   - Do not update session.json or clarifications.md until at least one answer is captured.
 3. For each matched Q-ID: edit `context/clarifications.md`
    - Locate `### Q{n}:` heading
    - Find its `**Answer:**` line
