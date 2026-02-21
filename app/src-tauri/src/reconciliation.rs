@@ -26,6 +26,12 @@ pub fn reconcile_on_startup(
     let db_runs = crate::db::list_all_workflow_runs(conn)?;
     let mut db_names: HashSet<String> = db_runs.iter().map(|r| r.skill_name.clone()).collect();
 
+    log::info!(
+        "[reconcile_on_startup] starting: {} DB runs, workspace={}",
+        db_runs.len(),
+        workspace_path
+    );
+
     // Collect all skill directories on disk.
     // The skills_path (output directory) is the source of truth for which
     // skills exist. Folders in workspace_path that don't have a matching
@@ -50,6 +56,11 @@ pub fn reconcile_on_startup(
         }
     }
 
+    log::debug!(
+        "[reconcile_on_startup] disk dirs found: {:?}",
+        disk_dirs
+    );
+
     // Process DB runs against filesystem state
     for run in &db_runs {
         // Skip skills that have an active session with a live PID — another
@@ -70,10 +81,20 @@ pub fn reconcile_on_startup(
         let working_dir_exists = disk_dirs.contains(&run.skill_name);
         let skill_output_exists = has_skill_output(&run.skill_name, skills_path);
 
+        log::debug!(
+            "[reconcile] '{}': working_dir={}, skill_output={}, db_step={}, db_status={}",
+            run.skill_name, working_dir_exists, skill_output_exists, run.current_step, run.status
+        );
+
         match (working_dir_exists, skill_output_exists) {
             (true, _) => {
                 // Working dir exists — reconcile DB state with disk reality
                 let maybe_disk_step = detect_furthest_step(workspace_path, &run.skill_name, skills_path);
+
+                log::debug!(
+                    "[reconcile] '{}': disk furthest step = {:?}",
+                    run.skill_name, maybe_disk_step
+                );
 
                 if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
                     // current_step semantics: "the step you're on / about to run".
@@ -100,8 +121,17 @@ pub fn reconcile_on_startup(
                         // Each non-detectable step in the range accounts for one more.
                         let should_reset = gap > 1 + non_detectable_in_gap;
 
+                        log::debug!(
+                            "[reconcile] '{}': db_step={} > disk_step={}, gap={}, non_detectable_in_gap={}, should_reset={}",
+                            run.skill_name, run.current_step, disk_step, gap, non_detectable_in_gap, should_reset
+                        );
+
                         if should_reset {
                             // Scenario 2: DB genuinely ahead of disk -> reset
+                            log::info!(
+                                "[reconcile] '{}': resetting from step {} to {} (disk gap {} > 1+{} non-detectable)",
+                                run.skill_name, run.current_step, disk_step, gap, non_detectable_in_gap
+                            );
                             crate::db::save_workflow_run(
                                 conn,
                                 &run.skill_name,
@@ -122,6 +152,10 @@ pub fn reconcile_on_startup(
                         // The reset dialog always deletes both files and DB step
                         // records when navigating back, so disk ahead always means
                         // the DB is stale (never intentional navigation).
+                        log::info!(
+                            "[reconcile] '{}': advancing from step {} to {} (disk ahead of DB)",
+                            run.skill_name, run.current_step, disk_step
+                        );
                         crate::db::save_workflow_run(
                             conn,
                             &run.skill_name,
@@ -182,6 +216,10 @@ pub fn reconcile_on_startup(
                 } else if run.current_step > 0 {
                     // No output files on disk but DB thinks we're past step 0.
                     // Reset to step 0 pending — all work was lost.
+                    log::info!(
+                        "[reconcile] '{}': resetting from step {} to 0 (working dir exists but no output files found)",
+                        run.skill_name, run.current_step
+                    );
                     crate::db::save_workflow_run(
                         conn,
                         &run.skill_name,
@@ -202,6 +240,10 @@ pub fn reconcile_on_startup(
             }
             (false, true) => {
                 // Scenario 3: Orphan — skill output exists but working dir is gone
+                log::info!(
+                    "[reconcile] '{}': orphan — skill output found in skills_path but working dir is missing",
+                    run.skill_name
+                );
                 orphans.push(OrphanSkill {
                     skill_name: run.skill_name.clone(),
                     domain: run.domain.clone(),
@@ -209,7 +251,12 @@ pub fn reconcile_on_startup(
                 });
             }
             (false, false) => {
-                // Scenario 4: Stale DB record — auto-clean
+                // Scenario 4: Stale DB record — auto-clean (no working dir, no skill output)
+                log::warn!(
+                    "[reconcile] '{}': auto-cleaning stale DB record (no working dir at '{}', no skill output in skills_path)",
+                    run.skill_name,
+                    Path::new(workspace_path).join(&run.skill_name).display()
+                );
                 crate::db::delete_workflow_run(conn, &run.skill_name)?;
                 auto_cleaned += 1;
             }
@@ -221,6 +268,10 @@ pub fn reconcile_on_startup(
         if !db_names.contains(name) {
             let disk_step_opt = detect_furthest_step(workspace_path, name, skills_path);
             let disk_step = disk_step_opt.map(|s| s as i32).unwrap_or(0);
+            log::info!(
+                "[reconcile] '{}': discovered on disk with no DB record, furthest step={:?}",
+                name, disk_step_opt
+            );
             // Domain defaults to "unknown" for disk-only discoveries
             let domain = read_domain_from_disk(workspace_path, name);
             crate::db::save_workflow_run(
@@ -244,6 +295,11 @@ pub fn reconcile_on_startup(
             db_names.insert(name.clone());
         }
     }
+
+    log::info!(
+        "[reconcile_on_startup] done: {} orphans, {} auto-cleaned, {} notifications",
+        orphans.len(), auto_cleaned, notifications.len()
+    );
 
     Ok(ReconciliationResult {
         orphans,
