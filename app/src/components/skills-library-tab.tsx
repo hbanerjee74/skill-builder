@@ -114,14 +114,15 @@ export function SkillsLibraryTab() {
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
+          className="w-36"
           onClick={() => setShowGitHubImport(true)}
           disabled={!marketplaceUrl}
           title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
         >
           <Github className="size-4" />
-          Browse Marketplace
+          Marketplace
         </Button>
-        <Button onClick={handleUpload}>
+        <Button className="w-36" onClick={handleUpload}>
           <Upload className="size-4" />
           Upload Skill
         </Button>
@@ -153,23 +154,6 @@ export function SkillsLibraryTab() {
               Upload a .skill package or browse the marketplace to add skills to your library.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex justify-center">
-            <div className="flex flex-col items-center gap-2">
-              <Button onClick={handleUpload}>
-                <Upload className="size-4" />
-                Upload Skill
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setShowGitHubImport(true)}
-                disabled={!marketplaceUrl}
-                title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
-              >
-                <Github className="size-4" />
-                Browse Marketplace
-              </Button>
-            </div>
-          </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

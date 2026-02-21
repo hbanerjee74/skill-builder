@@ -91,24 +91,24 @@ describe("SkillsLibraryTab", () => {
     });
   });
 
-  it("Browse Marketplace button is disabled when marketplace URL is not configured", async () => {
+  it("Marketplace button is disabled when marketplace URL is not configured", async () => {
     // Store default: marketplaceUrl = null
     mockInvokeCommands({ list_imported_skills: sampleSkills });
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      const btn = screen.getByRole("button", { name: /Browse Marketplace/i });
+      const btn = screen.getByRole("button", { name: /Marketplace/i });
       expect(btn).toBeDisabled();
     });
   });
 
-  it("Browse Marketplace button is enabled when marketplace URL is configured", async () => {
+  it("Marketplace button is enabled when marketplace URL is configured", async () => {
     useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
     mockInvokeCommands({ list_imported_skills: sampleSkills });
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      const btn = screen.getByRole("button", { name: /Browse Marketplace/i });
+      const btn = screen.getByRole("button", { name: /Marketplace/i });
       expect(btn).not.toBeDisabled();
     });
   });
@@ -212,8 +212,8 @@ describe("SkillsLibraryTab", () => {
     });
 
     // Click the upload button in empty state
-    const uploadButtons = screen.getAllByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButtons[0]);
+    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
+    await user.click(uploadButton);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("upload_skill", {
@@ -250,8 +250,8 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
 
-    const uploadButtons = screen.getAllByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButtons[0]);
+    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
+    await user.click(uploadButton);
 
     // upload_skill should never be called
     await new Promise((r) => setTimeout(r, 50));

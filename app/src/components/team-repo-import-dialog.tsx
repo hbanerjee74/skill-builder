@@ -127,7 +127,7 @@ export default function TeamRepoImportDialog({
           title={buttonTitle}
         >
           <Download className="size-4" />
-          Import from Repo
+          Marketplace
         </Button>
       </DialogTrigger>
       <DialogContent>
