@@ -287,11 +287,11 @@ create_fixture_decisions() {
 EOF
 }
 
-# generation: session.json + skill-dir/SKILL.md exists
+# generation: session.json + skill-dir/SKILL.md exists (no decisions.md — keeps state signal unambiguous)
 create_fixture_generation() {
   local dir="$1" skill_name="$2"
-  create_fixture_decisions "$dir" "$skill_name"
   _write_session_json "$dir" "$skill_name" "generation"
+  _make_skill_dirs "$dir" "$skill_name"
   cat > "$dir/$skill_name/SKILL.md" << 'EOF'
 ---
 name: Pet Store Analytics
