@@ -44,6 +44,7 @@ pub async fn spawn_sidecar(
     pool: super::sidecar_pool::SidecarPool,
     app_handle: tauri::AppHandle,
     skill_name: String,
+    transcript_log_dir: Option<String>,
 ) -> Result<(), String> {
     // Resolve the SDK cli.js path so the bundled SDK can find it
     if config.path_to_claude_code_executable.is_none() {
@@ -52,7 +53,7 @@ pub async fn spawn_sidecar(
         }
     }
 
-    pool.send_request(&skill_name, &agent_id, config, &app_handle)
+    pool.send_request(&skill_name, &agent_id, config, &app_handle, transcript_log_dir.as_deref())
         .await?;
 
     Ok(())

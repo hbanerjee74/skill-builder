@@ -856,6 +856,7 @@ async fn run_workflow_step_inner(
         pool.clone(),
         app.clone(),
         skill_name.to_string(),
+        None,
     )
     .await?;
 
@@ -1333,6 +1334,7 @@ pub async fn run_answer_evaluator(
         pool.inner().clone(),
         app.clone(),
         skill_name,
+        None,
     )
     .await?;
 

@@ -18,6 +18,7 @@ pub async fn start_agent(
     skill_name: String,
     _step_label: String,
     agent_name: Option<String>,
+    transcript_log_dir: Option<String>,
 ) -> Result<String, String> {
     log::info!(
         "[start_agent] agent_id={} model={} skill_name={} agent_name={:?}",
@@ -64,6 +65,7 @@ pub async fn start_agent(
         pool.inner().clone(),
         app,
         skill_name,
+        transcript_log_dir,
     )
     .await?;
 

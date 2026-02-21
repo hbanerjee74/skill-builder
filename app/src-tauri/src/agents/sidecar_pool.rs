@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::io::Write as _;
 use std::panic::AssertUnwindSafe;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -1081,13 +1081,14 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
+        transcript_log_dir: Option<&str>,
     ) -> Result<(), String> {
         // Ensure we have a sidecar running
         self.get_or_spawn(skill_name, app_handle).await?;
 
         // Issue 4: If anything below fails, emit agent_exit so the frontend doesn't hang.
         let result = self
-            .do_send_request(skill_name, agent_id, config, app_handle)
+            .do_send_request(skill_name, agent_id, config, app_handle, transcript_log_dir)
             .await;
 
         if let Err(ref e) = result {
@@ -1111,6 +1112,7 @@ impl SidecarPool {
         agent_id: &str,
         config: SidecarConfig,
         app_handle: &tauri::AppHandle,
+        transcript_log_dir: Option<&str>,
     ) -> Result<(), String> {
         // Build the request message (before acquiring any lock)
         let request = serde_json::json!({
@@ -1159,6 +1161,11 @@ impl SidecarPool {
         // Create per-request JSONL transcript file alongside chat storage:
         //   {cwd}/{skill_name}/logs/{step_label}-{iso_timestamp}.jsonl
         //
+        // When transcript_log_dir is set, transcripts are written there instead.
+        // This allows agents whose cwd differs from the workspace (e.g. test
+        // baseline agents running in a temp dir) to still log under the skill's
+        // standard log directory.
+        //
         // The step_label is extracted from agent_id which has the format:
         //   {skill_name}-{label}-{timestamp_ms}
         // e.g. "dbt-step5-1707654321000" → label = "step5"
@@ -1166,7 +1173,10 @@ impl SidecarPool {
             let step_label = extract_step_label(agent_id, skill_name);
             let now = chrono::Local::now();
             let ts = now.format("%Y-%m-%dT%H-%M-%S").to_string();
-            let log_dir = Path::new(&config.cwd).join(skill_name).join("logs");
+            let log_dir = match transcript_log_dir {
+                Some(dir) => PathBuf::from(dir),
+                None => Path::new(&config.cwd).join(skill_name).join("logs"),
+            };
             let log_path = log_dir.join(format!("{}-{}.jsonl", step_label, ts));
 
             match std::fs::create_dir_all(&log_dir)
