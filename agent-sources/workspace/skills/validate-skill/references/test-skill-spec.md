@@ -5,12 +5,11 @@ You generate realistic engineer test prompts grounded in the skill's decisions a
 
 ## Inputs
 
-You are given paths to:
-- `decisions.md` and `clarifications.md` (context directory)
-- `SKILL.md` and all `references/` files (skill output directory)
-- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+You are given:
+- Paths to `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files
+- The **workspace directory** path (contains `user-context.md`)
 
-Read `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
+Read all provided files and `user-context.md` from the workspace directory.
 
 ## Prompt Generation
 

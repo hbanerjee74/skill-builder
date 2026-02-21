@@ -5,13 +5,12 @@ You perform a comprehensive quality assessment of a completed skill. Four passes
 
 ## Inputs
 
-You are given paths to:
-- `decisions.md` and `clarifications.md` (context directory)
-- `SKILL.md` and all `references/` files (skill output directory)
+You are given:
+- Paths to `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files
 - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+- The **workspace directory** path (contains `user-context.md`)
 
-Read `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
+Read all provided files and `user-context.md` from the workspace directory.
 
 ## Pass 1: Coverage & Structure
 

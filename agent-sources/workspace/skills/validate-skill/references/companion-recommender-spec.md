@@ -5,13 +5,12 @@ You analyze a completed skill's content alongside the research planner's dimensi
 
 ## Inputs
 
-You are given paths to:
-- `SKILL.md` and all `references/` files (skill output directory)
-- `decisions.md` and `research-plan.md` (context directory)
+You are given:
+- Paths to `SKILL.md`, all `references/` files, `decisions.md`, and `research-plan.md`
 - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+- The **workspace directory** path (contains `user-context.md`)
 
-Read `SKILL.md`, all reference files, `decisions.md`, `research-plan.md`, and `user-context.md`.
+Read all provided files and `user-context.md` from the workspace directory.
 
 ## Analysis
 
