@@ -77,26 +77,37 @@ The marketplace is the primary way Vibedata distributes skill templates to users
 
 ## SKILL.md Frontmatter
 
-Full set parsed by `parse_frontmatter_full`:
+Every skill imported into Skill Builder — whether from the marketplace, a zip file, or the public GitHub repo — must have a `SKILL.md` with YAML frontmatter. This is how the app identifies, categorises, and wires the skill. Without it the import is rejected.
 
 ```yaml
 ---
-name: sales-pipeline-analytics     # skill identity (falls back to directory name)
-description: >                      # shown in library, browse UI, CLAUDE.md entry
-  ...
-domain: sales                       # badge in skill list
-skill_type: domain                  # routes to Skill Library vs Settings→Skills
-version: 1.2.0                      # stored; future update detection
-model: sonnet                       # optional preferred model
-argument-hint: "pipeline stage"     # shown when invoking the skill
-user-invocable: true                # whether skill can be directly invoked
-disable-model-invocation: false     # disables model selection UI for this skill
+name: sales-pipeline-analytics
+description: >
+  Teaches Claude how sales pipeline metrics are defined and calculated.
+  Use when building silver/gold layer models for pipeline reporting.
+domain: sales
+skill_type: domain
+version: 1.2.0
+model: sonnet
+argument-hint: "pipeline stage or metric name"
+user-invocable: true
+disable-model-invocation: false
 ---
 ```
 
-**Mandatory on zip upload**: `name`, `domain`, `description`. Missing fields return `missing_mandatory_fields:<field1>,<field2>` error.
+| Field | Required | Description |
+|---|---|---|
+| `name` | Yes | Kebab-case identifier. Falls back to directory name if absent, but should always be set explicitly. Used as the primary key — two skills with the same name will conflict. |
+| `description` | Yes | Shown in the browse dialog, Skill Library, and wired into the workspace CLAUDE.md so Claude Code knows when to invoke the skill. Should follow the trigger-pattern format: what it does, when to use it. |
+| `domain` | Yes | The business or technical domain (e.g. `sales`, `dbt`, `fabric`). Shown as a badge in the skill list. |
+| `skill_type` | Yes | Routes the skill to the right layer. `domain`, `platform`, `source`, `data-engineering` → Skill Library. `skill-builder` → Settings→Skills (app infrastructure). |
+| `version` | No | Semantic version string. Stored for future update detection — not yet acted on by the app. |
+| `model` | No | Preferred Claude model for this skill (`opus`, `sonnet`, `haiku`). Overrides the app default when the skill is invoked. |
+| `argument-hint` | No | Short hint shown to the user when invoking the skill (e.g. `"dbt model name"`). Helps the user know what to pass. |
+| `user-invocable` | No | `true` if the skill can be directly invoked by the user as a slash command. Defaults to `false`. |
+| `disable-model-invocation` | No | `true` to hide the model selection UI for this skill. Use when the skill is tightly coupled to a specific model. |
 
-**Zip upload always forces** `skill_type='skill-builder'` regardless of frontmatter — zip uploads are always Settings→Skills.
+**Zip upload**: `name`, `domain`, and `description` are mandatory — missing any returns an error listing the missing fields. Zip uploads always import into Settings→Skills regardless of `skill_type`.
 
 ---
 
