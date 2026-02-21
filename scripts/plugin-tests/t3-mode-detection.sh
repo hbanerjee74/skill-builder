@@ -77,11 +77,11 @@ run_t3() {
     "start.fresh|reset|start.over|fresh.start|new.session|clear|scoping|confirm" \
     "reset"
 
-  # T3.10: fresh + express → skips research
-  # "express" triggers express intent → no clarification questions asked
+  # T3.10: research state + express → auto-fills answers and skips to decisions
+  # "express" triggers express intent → coordinator auto-fills empty answers → Decisions
   local dir_express
   dir_express=$(make_temp_dir "t3-express")
-  create_fixture_fresh "$dir_express"
+  create_fixture_research "$dir_express" "$skill_name"
   log_verbose "T3.10 express dispatch workspace: $dir_express"
   _t3_dispatch_test "dispatch_express_skips_research" "$dir_express" \
     "express mode: build a skill for pet store analytics" \

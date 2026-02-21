@@ -102,7 +102,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | any + SKILL.md exists | `validate_only` | → Validation |
 | any | `start_fresh` | Delete `.vibedata/<name>/` + `context/` → Scoping |
 | any | `express` | Auto-fill empty answers → Decisions |
-| any | `process_question` | Answer inline |
+| any | `process_question` | Answer inline. When answering "what phase am I in", say: "The current phase is [phase]." using the exact phase name from the State Detection table. |
 
 ---
 

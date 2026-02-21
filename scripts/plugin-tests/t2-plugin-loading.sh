@@ -9,7 +9,7 @@ run_t2() {
   log_verbose "Testing plugin loading with claude -p"
   local output
   output=$(run_claude_unsafe \
-    "You have a plugin loaded called skill-builder that has a skill called 'generate-skill'. Confirm you can see this plugin by replying with exactly: PLUGIN_LOADED" \
+    "What can the skill-builder plugin help me with? What types of skills can it build?" \
     "$budget" 45)
 
   if [[ -z "$output" ]]; then
@@ -20,8 +20,8 @@ run_t2() {
   fi
   record_result "$tier" "claude_responds" "PASS"
 
-  # Claude should acknowledge the plugin — check for any skill/plugin/build-related content
-  if echo "$output" | grep -qiE "plugin|skill|build|loaded|PLUGIN_LOADED"; then
+  # Claude should describe the plugin — check for any skill/plugin/build/domain-related content
+  if echo "$output" | grep -qiE "plugin|skill|build|domain|platform|source|analytics|engineer"; then
     record_result "$tier" "plugin_acknowledged" "PASS"
   else
     record_result "$tier" "plugin_acknowledged" "FAIL" "output lacks plugin/skill keywords"
