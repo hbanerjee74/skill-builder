@@ -53,6 +53,7 @@ On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` 
 | Artifact present | Phase |
 |---|---|
 | `context/agent-validation-log.md` + `context/test-skill.md` + `context/companion-skills.md` | `validation` |
+| `context/agent-validation-log.md` + `context/test-skill.md` (no companion-skills.md) | `validation` |
 | `<skill-dir>/SKILL.md` | `generation` |
 | `context/decisions.md` | `decisions` |
 | `context/clarifications.md` with answered `#### Refinements` | `refinement` |
@@ -201,7 +202,7 @@ Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
 
 - Agent writes: `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md`
 - Relay results summary to user
-- Read `context/companion-skills.md`; check `companions` list in YAML frontmatter. If non-empty and `scope_recommendation` is not set, present each companion conversationally — name, type, priority, and reason
+- Read `context/companion-skills.md` if present; check `companions` list in YAML frontmatter. If non-empty, present each companion conversationally — name, type, priority, and reason
 - Offer three options: finalize / improve a section (→ Iterative) / regenerate (→ Generation)
 - On finalize: tell user skill is ready at `<skill-dir>`
 

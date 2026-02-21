@@ -127,7 +127,7 @@ Glob `.vibedata/*/session.json` on startup. Scan artifacts bottom-up, first matc
 
 | Artifact present | Phase |
 |---|---|
-| `context/agent-validation-log.md` + `context/test-skill.md` | `validation` |
+| `context/agent-validation-log.md` + `context/test-skill.md` + `context/companion-skills.md` | `validation` |
 | `<skill-dir>/SKILL.md` | `generation` |
 | `context/decisions.md` | `decisions` |
 | `context/clarifications.md` with answered `#### Refinements` | `refinement` |

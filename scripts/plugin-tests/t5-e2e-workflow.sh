@@ -113,7 +113,29 @@ sys.exit(0 if not missing else 1)
   # ---- Validation: validation logs written ----
   _t5_assert_or_skip "validation_log" "$context_dir/agent-validation-log.md" "may not have reached validation"
   _t5_assert_or_skip "validation_test_report" "$context_dir/test-skill.md" "may not have reached validation"
-  _t5_assert_or_skip "validation_companion_skills" "$context_dir/companion-skills.md" "may not have reached validation"
+  if _t5_assert_or_skip "validation_companion_skills" "$context_dir/companion-skills.md" "may not have reached validation"; then
+    if python3 -c "
+import sys
+content = open('$context_dir/companion-skills.md').read()
+# Extract YAML frontmatter between --- delimiters
+import re
+m = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
+if not m:
+    sys.exit(1)
+import yaml
+fm = yaml.safe_load(m.group(1))
+required = ['skill_name', 'skill_type', 'companions']
+missing = [k for k in required if k not in fm]
+if missing or not isinstance(fm.get('companions'), list):
+    sys.exit(1)
+" 2>/dev/null; then
+      record_result "$tier" "validation_companion_skills_valid" "PASS"
+    else
+      record_result "$tier" "validation_companion_skills_valid" "FAIL" "missing required frontmatter fields"
+    fi
+  else
+    record_result "$tier" "validation_companion_skills_valid" "SKIP" "depends on companion-skills.md"
+  fi
 
   # ---- Report last completed phase ----
   if [[ -f "$workspace/test-status.txt" ]]; then
