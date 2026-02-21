@@ -10,6 +10,7 @@ import SettingsPage from "./pages/settings";
 import WorkflowPage from "./pages/workflow";
 import UsagePage from "./pages/usage";
 import RefinePage from "./pages/refine";
+import TestPage from "./pages/test";
 const rootRoute = createRootRoute({
   component: AppLayout,
 });
@@ -55,6 +56,12 @@ const refineRoute = createRoute({
   }),
 });
 
+const testRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/test",
+  component: TestPage,
+});
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   settingsRoute,
@@ -62,6 +69,7 @@ const routeTree = rootRoute.addChildren([
   usageRoute,
   workflowRoute,
   refineRoute,
+  testRoute,
 ]);
 
 export const router = createRouter({ routeTree });

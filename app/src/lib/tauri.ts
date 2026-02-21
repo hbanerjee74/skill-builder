@@ -86,7 +86,8 @@ export const startAgent = (
   skillName?: string,
   stepLabel?: string,
   agentName?: string,
-) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null });
+  transcriptLogDir?: string,
+) => invoke<string>("start_agent", { agentId, prompt, model, cwd, allowedTools, maxTurns, sessionId, skillName: skillName ?? "unknown", stepLabel: stepLabel ?? "unknown", agentName: agentName ?? null, transcriptLogDir: transcriptLogDir ?? null });
 
 // --- Workflow ---
 
@@ -420,4 +421,18 @@ export const logGateDecision = (
   verdict: string,
   decision: string,
 ) => invoke<void>("log_gate_decision", { skillName, verdict, decision });
+
+// --- Skill Test ---
+
+export interface PrepareTestResult {
+  test_id: string;
+  baseline_cwd: string;
+  transcript_log_dir: string;
+}
+
+export const prepareSkillTest = (workspacePath: string, skillName: string) =>
+  invoke<PrepareTestResult>("prepare_skill_test", { workspacePath, skillName })
+
+export const cleanupSkillTest = (testId: string) =>
+  invoke<void>("cleanup_skill_test", { testId })
 
