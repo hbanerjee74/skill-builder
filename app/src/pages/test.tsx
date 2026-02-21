@@ -1,0 +1,847 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Play, Square } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { SkillPicker } from "@/components/refine/skill-picker";
+import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import {
+  listRefinableSkills,
+  getWorkspacePath,
+  startAgent,
+  cleanupSkillSidecar,
+  prepareSkillTest,
+  cleanupSkillTest,
+} from "@/lib/tauri";
+import type { SkillSummary } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+// Ensure agent-stream listeners are registered
+import "@/hooks/use-agent-stream";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type Phase = "idle" | "running" | "evaluating" | "done" | "error";
+
+interface TestState {
+  phase: Phase;
+  selectedSkill: SkillSummary | null;
+  prompt: string;
+  testId: string | null;
+  baselineCwd: string | null;
+  transcriptLogDir: string | null;
+  withAgentId: string | null;
+  withoutAgentId: string | null;
+  evalAgentId: string | null;
+  withText: string;
+  withoutText: string;
+  evalText: string;
+  withDone: boolean;
+  withoutDone: boolean;
+  startTime: number | null;
+  errorMessage: string | null;
+}
+
+const INITIAL_STATE: TestState = {
+  phase: "idle",
+  selectedSkill: null,
+  prompt: "",
+  testId: null,
+  baselineCwd: null,
+  transcriptLogDir: null,
+  withAgentId: null,
+  withoutAgentId: null,
+  evalAgentId: null,
+  withText: "",
+  withoutText: "",
+  evalText: "",
+  withDone: false,
+  withoutDone: false,
+  startTime: null,
+  errorMessage: null,
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Extract accumulated assistant text content from agent store messages. */
+function extractAssistantText(agentId: string): string {
+  const run = useAgentStore.getState().runs[agentId];
+  if (!run) return "";
+  return run.messages
+    .filter((m) => m.type === "assistant" && m.content)
+    .map((m) => m.content!)
+    .join("");
+}
+
+/** Build the evaluator prompt from both plans. */
+function buildEvalPrompt(
+  userPrompt: string,
+  skillName: string,
+  withPlanText: string,
+  withoutPlanText: string,
+): string {
+  return `You are evaluating two plans produced by a coding agent for the same task.
+
+Task prompt:
+"""
+${userPrompt}
+"""
+
+Plan A (with skill "${skillName}" loaded):
+"""
+${withPlanText}
+"""
+
+Plan B (no skill loaded):
+"""
+${withoutPlanText}
+"""
+
+Compare the two plans. For each observation, write a single concise sentence.
+Prefix with \u2191 if the skill improved the plan, \u2193 if there is a gap or regression.
+
+Output ONLY the bullet list, one per line, no other text.`;
+}
+
+/** Parse an evaluator line into direction and text. */
+function parseEvalLine(line: string): { direction: "up" | "down" | null; text: string } {
+  const trimmed = line.trim();
+  if (!trimmed) return { direction: null, text: "" };
+  if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
+  if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
+  return { direction: null, text: trimmed };
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
+export default function TestPage() {
+  // --- Skills list ---
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(true);
+
+  // --- Test state ---
+  const [state, setState] = useState<TestState>(INITIAL_STATE);
+
+  // --- Elapsed timer ---
+  const [elapsed, setElapsed] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // --- Divider positions ---
+  const [vSplit, setVSplit] = useState(50); // vertical: left panel %
+  const [hSplit, setHSplit] = useState(60); // horizontal: top section %
+  const vDragging = useRef(false);
+  const hDragging = useRef(false);
+  const planContainerRef = useRef<HTMLDivElement>(null);
+  const outerContainerRef = useRef<HTMLDivElement>(null);
+
+  // --- Auto-scroll refs ---
+  const withScrollRef = useRef<HTMLDivElement>(null);
+  const withoutScrollRef = useRef<HTMLDivElement>(null);
+  const evalScrollRef = useRef<HTMLDivElement>(null);
+
+  // --- Polling interval for agent text ---
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stable ref to latest state for callbacks
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // ---------------------------------------------------------------------------
+  // Load skills on mount
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    let cancelled = false;
+    getWorkspacePath()
+      .then((wp) => listRefinableSkills(wp))
+      .then((list) => {
+        if (!cancelled) {
+          setSkills(list);
+          setIsLoadingSkills(false);
+        }
+      })
+      .catch((err) => {
+        console.error("[test] Failed to load skills:", err);
+        if (!cancelled) setIsLoadingSkills(false);
+        toast.error("Failed to load skills");
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Draggable dividers
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (vDragging.current && planContainerRef.current) {
+        const rect = planContainerRef.current.getBoundingClientRect();
+        const pct = ((e.clientX - rect.left) / rect.width) * 100;
+        setVSplit(Math.min(78, Math.max(22, pct)));
+      }
+      if (hDragging.current && outerContainerRef.current) {
+        const rect = outerContainerRef.current.getBoundingClientRect();
+        const pct = ((e.clientY - rect.top) / rect.height) * 100;
+        setHSplit(Math.min(82, Math.max(22, pct)));
+      }
+    };
+    const onUp = () => {
+      vDragging.current = false;
+      hDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Elapsed timer management
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (state.phase === "running" || state.phase === "evaluating") {
+      if (!timerRef.current && state.startTime) {
+        timerRef.current = setInterval(() => {
+          setElapsed(Date.now() - state.startTime!);
+        }, 100);
+      }
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [state.phase, state.startTime]);
+
+  // ---------------------------------------------------------------------------
+  // Poll agent store for streaming text
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (state.phase === "idle" || state.phase === "done" || state.phase === "error") {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      return;
+    }
+
+    pollRef.current = setInterval(() => {
+      const s = stateRef.current;
+
+      let updated = false;
+      let newWithText = s.withText;
+      let newWithoutText = s.withoutText;
+      let newEvalText = s.evalText;
+
+      if (s.withAgentId) {
+        const text = extractAssistantText(s.withAgentId);
+        if (text !== s.withText) {
+          newWithText = text;
+          updated = true;
+        }
+      }
+      if (s.withoutAgentId) {
+        const text = extractAssistantText(s.withoutAgentId);
+        if (text !== s.withoutText) {
+          newWithoutText = text;
+          updated = true;
+        }
+      }
+      if (s.evalAgentId) {
+        const text = extractAssistantText(s.evalAgentId);
+        if (text !== s.evalText) {
+          newEvalText = text;
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        setState((prev) => ({
+          ...prev,
+          withText: newWithText,
+          withoutText: newWithoutText,
+          evalText: newEvalText,
+        }));
+      }
+    }, 150);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [state.phase]);
+
+  // ---------------------------------------------------------------------------
+  // Auto-scroll panels
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (withScrollRef.current) {
+      withScrollRef.current.scrollTop = withScrollRef.current.scrollHeight;
+    }
+  }, [state.withText]);
+
+  useEffect(() => {
+    if (withoutScrollRef.current) {
+      withoutScrollRef.current.scrollTop = withoutScrollRef.current.scrollHeight;
+    }
+  }, [state.withoutText]);
+
+  useEffect(() => {
+    if (evalScrollRef.current) {
+      evalScrollRef.current.scrollTop = evalScrollRef.current.scrollHeight;
+    }
+  }, [state.evalText]);
+
+  // ---------------------------------------------------------------------------
+  // Watch agent exits to transition phases
+  // ---------------------------------------------------------------------------
+
+  const withStatus = useAgentStore((s) =>
+    state.withAgentId ? s.runs[state.withAgentId]?.status : undefined,
+  );
+  const withoutStatus = useAgentStore((s) =>
+    state.withoutAgentId ? s.runs[state.withoutAgentId]?.status : undefined,
+  );
+  const evalStatus = useAgentStore((s) =>
+    state.evalAgentId ? s.runs[state.evalAgentId]?.status : undefined,
+  );
+
+  // Track when plan agents complete
+  useEffect(() => {
+    if (state.phase !== "running") return;
+    if (!state.withAgentId || !state.withoutAgentId) return;
+
+    const withTerminal =
+      withStatus && ["completed", "error", "shutdown"].includes(withStatus);
+    const withoutTerminal =
+      withoutStatus && ["completed", "error", "shutdown"].includes(withoutStatus);
+
+    if (withTerminal && !state.withDone) {
+      setState((prev) => ({ ...prev, withDone: true }));
+    }
+    if (withoutTerminal && !state.withoutDone) {
+      setState((prev) => ({ ...prev, withoutDone: true }));
+    }
+  }, [state.phase, state.withAgentId, state.withoutAgentId, withStatus, withoutStatus, state.withDone, state.withoutDone]);
+
+  // Both plan agents done -> start evaluator
+  useEffect(() => {
+    if (state.phase !== "running") return;
+    if (!state.withDone || !state.withoutDone) return;
+    if (!state.selectedSkill) return;
+
+    // Flush message buffer so final text is available
+    flushMessageBuffer();
+
+    const withText = state.withAgentId
+      ? extractAssistantText(state.withAgentId)
+      : "";
+    const withoutText = state.withoutAgentId
+      ? extractAssistantText(state.withoutAgentId)
+      : "";
+
+    // Check for errors
+    const withErr = withStatus === "error" || withStatus === "shutdown";
+    const withoutErr = withoutStatus === "error" || withoutStatus === "shutdown";
+
+    if (withErr && withoutErr) {
+      setState((prev) => ({
+        ...prev,
+        phase: "error",
+        withText,
+        withoutText,
+        errorMessage: "Both agents failed",
+      }));
+      cleanup(state.testId);
+      return;
+    }
+
+    // Start evaluator
+    const ts = Date.now();
+    const evalId = `__test_baseline__-test-eval-${ts}`;
+    const evalPrompt = buildEvalPrompt(
+      state.prompt,
+      state.selectedSkill.name,
+      withText,
+      withoutText,
+    );
+
+    setState((prev) => ({
+      ...prev,
+      phase: "evaluating",
+      withText,
+      withoutText,
+      evalAgentId: evalId,
+    }));
+
+    // Reuse the baseline workspace created during handleRunTest
+    if (!state.baselineCwd || !state.transcriptLogDir) {
+      setState((prev) => ({
+        ...prev,
+        phase: "error",
+        errorMessage: "Missing baseline workspace for evaluator",
+      }));
+      return;
+    }
+
+    useAgentStore.getState().registerRun(evalId, "haiku", "__test_baseline__");
+    startAgent(
+      evalId,
+      evalPrompt,
+      "haiku",
+      state.baselineCwd,
+      [],
+      1,
+      undefined,
+      "__test_baseline__",
+      "test-eval",
+      "test-evaluator",
+      state.transcriptLogDir,
+    ).catch((err) => {
+      console.error("[test] Failed to start evaluator agent:", err);
+      setState((prev) => ({
+        ...prev,
+        phase: "error",
+        errorMessage: `Evaluator failed to start: ${String(err)}`,
+      }));
+    });
+  }, [state.phase, state.withDone, state.withoutDone, withStatus, withoutStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Evaluator done -> cleanup
+  useEffect(() => {
+    if (state.phase !== "evaluating") return;
+    if (!state.evalAgentId) return;
+
+    const isTerminal =
+      evalStatus && ["completed", "error", "shutdown"].includes(evalStatus);
+    if (!isTerminal) return;
+
+    flushMessageBuffer();
+
+    const evalText = extractAssistantText(state.evalAgentId);
+
+    setState((prev) => ({
+      ...prev,
+      phase: evalStatus === "completed" ? "done" : "error",
+      evalText,
+      errorMessage:
+        evalStatus !== "completed" ? "Evaluator agent failed" : null,
+    }));
+
+    cleanup(state.testId);
+  }, [state.phase, state.evalAgentId, evalStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------------------
+  // Cleanup helper
+  // ---------------------------------------------------------------------------
+
+  const cleanup = useCallback((testId: string | null) => {
+    if (testId) {
+      cleanupSkillTest(testId).catch((err) =>
+        console.warn("[test] cleanup_skill_test failed:", err),
+      );
+    }
+    cleanupSkillSidecar("__test_baseline__").catch((err) =>
+      console.warn("[test] cleanup sidecar failed:", err),
+    );
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      flushMessageBuffer();
+      const s = stateRef.current;
+      if (s.phase === "running" || s.phase === "evaluating") {
+        cleanup(s.testId);
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------------------
+  // Handlers
+  // ---------------------------------------------------------------------------
+
+  const handleSelectSkill = useCallback((skill: SkillSummary) => {
+    setState((prev) => ({ ...prev, selectedSkill: skill }));
+  }, []);
+
+  const handleRunTest = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.selectedSkill || !s.prompt.trim()) {
+      toast.error("Select a skill and enter a prompt");
+      return;
+    }
+    if (s.phase === "running" || s.phase === "evaluating") return;
+
+    console.log("[test] starting test: skill=%s", s.selectedSkill.name);
+
+    // Clear previous agent runs
+    useAgentStore.getState().clearRuns();
+
+    const ts = Date.now();
+    const skillName = s.selectedSkill.name;
+    const withId = `${skillName}-test-with-${ts}`;
+    const withoutId = `__test_baseline__-test-without-${ts}`;
+
+    setState((prev) => ({
+      ...INITIAL_STATE,
+      selectedSkill: prev.selectedSkill,
+      prompt: prev.prompt,
+      phase: "running",
+      withAgentId: withId,
+      withoutAgentId: withoutId,
+      startTime: ts,
+    }));
+    setElapsed(0);
+
+    try {
+      const workspacePath = await getWorkspacePath();
+      const prepared = await prepareSkillTest(workspacePath, skillName);
+
+      setState((prev) => ({
+        ...prev,
+        testId: prepared.test_id,
+        baselineCwd: prepared.baseline_cwd,
+        transcriptLogDir: prepared.transcript_log_dir,
+      }));
+
+      // Register runs in agent store
+      useAgentStore.getState().registerRun(withId, "haiku", skillName);
+      useAgentStore.getState().registerRun(withoutId, "haiku", "__test_baseline__");
+
+      // Start both agents in parallel
+      await Promise.all([
+        startAgent(
+          withId,
+          s.prompt,
+          "haiku",
+          workspacePath,
+          [],
+          1,
+          undefined,
+          skillName,
+          "test-with",
+          "test-plan-with",
+          undefined,
+        ),
+        startAgent(
+          withoutId,
+          s.prompt,
+          "haiku",
+          prepared.baseline_cwd,
+          [],
+          1,
+          undefined,
+          "__test_baseline__",
+          "test-without",
+          "test-plan-without",
+          prepared.transcript_log_dir,
+        ),
+      ]);
+    } catch (err) {
+      console.error("[test] Failed to start test:", err);
+      setState((prev) => ({
+        ...prev,
+        phase: "error",
+        errorMessage: `Failed to start test: ${String(err)}`,
+      }));
+      toast.error("Failed to start test");
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // Derived values
+  // ---------------------------------------------------------------------------
+
+  const isRunning = state.phase === "running" || state.phase === "evaluating";
+  const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
+
+  const evalLines = state.evalText
+    .split("\n")
+    .map(parseEvalLine)
+    .filter((l) => l.text.length > 0);
+
+  // ---------------------------------------------------------------------------
+  // Status bar config
+  // ---------------------------------------------------------------------------
+
+  const statusConfig: Record<Phase, { dotClass: string; label: string }> = {
+    idle: { dotClass: "bg-zinc-500", label: "ready" },
+    running: { dotClass: "bg-blue-500 animate-pulse", label: "running..." },
+    evaluating: { dotClass: "bg-yellow-500", label: "evaluating..." },
+    done: { dotClass: "bg-green-500", label: "completed" },
+    error: { dotClass: "bg-red-500", label: state.errorMessage ?? "error" },
+  };
+
+  const { dotClass, label: statusLabel } = statusConfig[state.phase];
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  return (
+    <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
+      {/* Top bar: skill picker + prompt + run button */}
+      <div className="flex flex-col gap-2 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-3">
+          <SkillPicker
+            skills={skills}
+            selected={state.selectedSkill}
+            isLoading={isLoadingSkills}
+            disabled={isRunning}
+            onSelect={handleSelectSkill}
+          />
+          <Badge
+            variant="outline"
+            className="border-green-800/50 bg-green-950/30 text-green-400 text-[10px] uppercase tracking-wider"
+          >
+            Plan Mode
+          </Badge>
+        </div>
+        <div className="flex gap-2">
+          <Textarea
+            rows={3}
+            placeholder="Describe a task to test the skill against..."
+            value={state.prompt}
+            onChange={(e) =>
+              setState((prev) => ({ ...prev, prompt: e.target.value }))
+            }
+            disabled={isRunning}
+            className="min-h-[unset] resize-none font-sans text-sm"
+          />
+          <Button
+            onClick={handleRunTest}
+            disabled={isRunning || !state.selectedSkill || !state.prompt.trim()}
+            className="h-auto shrink-0 self-start px-4"
+          >
+            {isRunning ? (
+              <>
+                <Square className="size-3.5" />
+                Running
+              </>
+            ) : (
+              <>
+                <Play className="size-3.5" />
+                Run Test
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Main content area: plan panels + evaluator */}
+      <div ref={outerContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Plan panels (top zone) */}
+        <div
+          ref={planContainerRef}
+          className="flex overflow-hidden"
+          style={{ height: `${hSplit}%` }}
+        >
+          {/* With-skill panel */}
+          <div
+            className="flex flex-col overflow-hidden border-r border-border"
+            style={{ width: `${vSplit}%` }}
+          >
+            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Agent Plan
+              </span>
+              <Badge className="bg-green-950 text-green-400 text-[10px] px-1.5 py-0">
+                with skill
+              </Badge>
+            </div>
+            <div
+              ref={withScrollRef}
+              className="flex-1 overflow-auto p-4"
+            >
+              {state.withText ? (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
+                  {state.withText}
+                </pre>
+              ) : (
+                <p className="text-xs text-muted-foreground/40 italic">
+                  {state.phase === "idle"
+                    ? "Run a test to see the with-skill plan"
+                    : "Waiting for agent response..."}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Vertical divider */}
+          <div
+            className="w-1 shrink-0 cursor-col-resize border-x border-border bg-background transition-colors hover:bg-blue-600"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              vDragging.current = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+          />
+
+          {/* Without-skill panel */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
+              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Agent Plan
+              </span>
+              <Badge className="bg-orange-950 text-orange-400 text-[10px] px-1.5 py-0">
+                no skill
+              </Badge>
+            </div>
+            <div
+              ref={withoutScrollRef}
+              className="flex-1 overflow-auto p-4"
+            >
+              {state.withoutText ? (
+                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
+                  {state.withoutText}
+                </pre>
+              ) : (
+                <p className="text-xs text-muted-foreground/40 italic">
+                  {state.phase === "idle"
+                    ? "Run a test to see the no-skill plan"
+                    : "Waiting for agent response..."}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Horizontal divider */}
+        <div
+          className="h-1 shrink-0 cursor-row-resize border-y border-border bg-background transition-colors hover:bg-blue-600"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            hDragging.current = true;
+            document.body.style.cursor = "row-resize";
+            document.body.style.userSelect = "none";
+          }}
+        />
+
+        {/* Evaluator panel (bottom zone) */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
+            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Evaluator
+            </span>
+          </div>
+          <div
+            ref={evalScrollRef}
+            className="flex-1 overflow-auto p-4"
+          >
+            {evalLines.length > 0 ? (
+              <div className="space-y-1">
+                {evalLines.map((line, i) => (
+                  <div
+                    key={i}
+                    className={cn(
+                      "flex items-start gap-2.5 border-b border-border/40 py-1.5 last:border-0",
+                      "animate-in fade-in-0 slide-in-from-bottom-1",
+                    )}
+                    style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 shrink-0 text-xs font-semibold",
+                        line.direction === "up"
+                          ? "text-green-400"
+                          : line.direction === "down"
+                            ? "text-red-400"
+                            : "text-muted-foreground",
+                      )}
+                    >
+                      {line.direction === "up"
+                        ? "\u2191"
+                        : line.direction === "down"
+                          ? "\u2193"
+                          : "\u2022"}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-xs leading-relaxed",
+                        line.direction === "up"
+                          ? "text-muted-foreground"
+                          : line.direction === "down"
+                            ? "text-muted-foreground/70"
+                            : "text-muted-foreground/60",
+                      )}
+                    >
+                      {line.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground/40 italic">
+                {state.phase === "idle"
+                  ? "Evaluation will appear after both plans complete"
+                  : state.phase === "running"
+                    ? "Waiting for both plans to finish..."
+                    : state.phase === "evaluating"
+                      ? "Evaluating differences..."
+                      : state.phase === "error"
+                        ? state.errorMessage ?? "An error occurred"
+                        : "No evaluation results"}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Status bar */}
+      <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
+        <div className="flex items-center gap-1.5">
+          <div className={cn("size-[5px] rounded-full", dotClass)} />
+          <span className="text-[10.5px] text-muted-foreground/60">
+            {statusLabel}
+          </span>
+        </div>
+        {state.selectedSkill && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-[10.5px] text-muted-foreground/60">
+              {state.selectedSkill.name}
+            </span>
+          </>
+        )}
+        <span className="text-muted-foreground/20">&middot;</span>
+        <span className="text-[10.5px] text-muted-foreground/60">plan mode</span>
+        {state.startTime && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-[10.5px] text-muted-foreground/60">
+              {elapsedStr}
+            </span>
+          </>
+        )}
+        <div className="flex-1" />
+        <span className="text-[10.5px] text-muted-foreground/20">
+          no context &middot; fresh run
+        </span>
+      </div>
+    </div>
+  );
+}
