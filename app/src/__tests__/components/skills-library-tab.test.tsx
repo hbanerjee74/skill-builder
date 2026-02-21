@@ -43,7 +43,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/sales-analytics",
     imported_at: new Date().toISOString(),
     is_bundled: false,
-    skill_type: null,
+    skill_type: "skill-builder",
     version: null,
     model: null,
     argument_hint: null,
@@ -59,7 +59,7 @@ const sampleSkills: ImportedSkill[] = [
     disk_path: "/skills/hr-metrics",
     imported_at: new Date().toISOString(),
     is_bundled: false,
-    skill_type: null,
+    skill_type: "skill-builder",
     version: null,
     model: null,
     argument_hint: null,
@@ -191,7 +191,7 @@ describe("SkillsLibraryTab", () => {
       disk_path: "/skills/new-skill",
       imported_at: new Date().toISOString(),
       is_bundled: false,
-      skill_type: null,
+      skill_type: "skill-builder",
       version: null,
       model: null,
       argument_hint: null,
@@ -220,6 +220,22 @@ describe("SkillsLibraryTab", () => {
         filePath: "/path/to/file.skill",
       });
     });
+  });
+
+  it("only shows skills with skill_type 'skill-builder', hides other types", async () => {
+    const mixed: ImportedSkill[] = [
+      { ...sampleSkills[0], skill_id: "id-sb", skill_name: "my-sb-skill", skill_type: "skill-builder" },
+      { ...sampleSkills[0], skill_id: "id-domain", skill_name: "domain-skill", skill_type: "domain" },
+      { ...sampleSkills[0], skill_id: "id-null", skill_name: "null-type-skill", skill_type: null },
+    ];
+    mockInvokeCommands({ list_imported_skills: mixed });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("my-sb-skill")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("domain-skill")).not.toBeInTheDocument();
+    expect(screen.queryByText("null-type-skill")).not.toBeInTheDocument();
   });
 
   it("does not call upload_skill when dialog is cancelled", async () => {

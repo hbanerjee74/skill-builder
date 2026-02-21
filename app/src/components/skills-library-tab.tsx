@@ -99,8 +99,10 @@ export function SkillsLibraryTab() {
     [deleteSkill]
   )
 
+  const displayedSkills = skills.filter((s) => s.skill_type === "skill-builder")
+
   const previewSkill = previewSkillName
-    ? skills.find((s) => s.skill_name === previewSkillName) ?? null
+    ? displayedSkills.find((s) => s.skill_name === previewSkillName) ?? null
     : null
 
   const handlePreview = useCallback((skill: ImportedSkill) => {
@@ -140,7 +142,7 @@ export function SkillsLibraryTab() {
             </Card>
           ))}
         </div>
-      ) : skills.length === 0 ? (
+      ) : displayedSkills.length === 0 ? (
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
@@ -171,7 +173,7 @@ export function SkillsLibraryTab() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {skills.map((skill) => (
+          {displayedSkills.map((skill) => (
             <ImportedSkillCard
               key={skill.skill_id}
               skill={skill}
@@ -197,6 +199,7 @@ export function SkillsLibraryTab() {
         onImported={fetchSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
+        typeFilter={["skill-builder"]}
       />
     </div>
   )
