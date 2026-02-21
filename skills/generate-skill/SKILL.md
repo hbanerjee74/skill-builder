@@ -48,7 +48,7 @@ Directory layout:
 
 ## State Detection
 
-On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` from `session.json.skill_dir` and scan artifacts. Artifact table — scan bottom-up, first match wins:
+On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` from `session.json.skill_dir` and scan artifacts. Artifact table — scan top-to-bottom, first match wins (validation has highest priority, fresh is lowest):
 
 | Artifact present | Phase |
 |---|---|
@@ -62,6 +62,11 @@ On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` 
 | `context/clarifications.md` with all answers empty | `research` |
 | `session.json` only | `scoping` |
 | nothing | `fresh` |
+
+Check each row strictly, top-to-bottom. Use the first row where ALL artifact conditions are met. Stop immediately — do not continue checking lower rows. Examples:
+- `SKILL.md` exists but no `agent-validation-log.md` → **generation** (not validation)
+- `decisions.md` AND `SKILL.md` both exist → **generation** (SKILL.md row comes first)
+- `decisions.md` exists but no `SKILL.md` → **decisions**
 
 Artifact table overrides `session.json.current_phase` when they disagree. If multiple `.vibedata/*/session.json` files exist, ask the user which skill to continue.
 
