@@ -70,52 +70,8 @@ The marketplace is a GitHub repository — any repo where each subdirectory cont
 
 ## Import Flow
 
-```
-User clicks Install on a skill card
-  ↓
-import_marketplace_to_library called with skill_paths[]
-  1. Read settings: marketplace_url, workspace_path, skills_path, OAuth token
-  2. Parse marketplace URL → owner/repo
-  3. Resolve actual default branch via repos API
-  4. Fetch full recursive tree (one call for all selected skills)
-  5. For each skill_path:
-     a. Find all blob files under the skill directory in the tree
-     b. Verify SKILL.md exists
-     c. Download SKILL.md → parse full frontmatter
-     d. Validate skill name (no path traversal characters)
-     e. Remove existing directory if present (idempotent re-import)
-     f. Create destination directory, canonicalize for traversal protection
-     g. Download all files (10 MB per-file limit; path traversal check per file)
-     h. Upsert into imported_skills
-     i. Upsert into workflow_runs (source='marketplace', status='completed')
-  6. Rebuild workspace CLAUDE.md if any succeeded
-  ↓
-Returns MarketplaceImportResult[] (success/error per skill)
-```
+The marketplace is the primary way Vibedata distributes skill templates to users. A user browses the configured repo, picks a domain skill, and imports it — it lands in their Skill Library as a completed skill, ready to refine against their specific context. No workflow needed; refinement is the starting point.
 
-**Idempotency**: Re-importing always removes the existing directory before downloading, ensuring stale files are cleaned up. Both DB writes use upsert semantics.
-
-**Security**: Lexical path prefix check before canonicalization; canonicalized parent check after directory creation catches symlink-based traversal attempts.
-
----
-
-## Data Model
-
-### `imported_skills` table
-
-Tracks every non-built skill: bundled, zip-uploaded, and marketplace-imported. Drives the Settings→Skills tab (toggle active/inactive, delete, view all imports).
-
-Key columns: `skill_id` (PK), `skill_name` (UNIQUE), `domain`, `is_active`, `disk_path`, `imported_at`, `is_bundled`, `skill_type`, `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation`.
-
-### `workflow_runs` table
-
-Drives the dashboard and refine page. Marketplace imports are added here with `source='marketplace'`, `status='completed'` — equivalent to a built skill that completed its generation workflow.
-
-Built skills have `source='created'`. The `source` column is the only structural difference between a built and marketplace-imported skill in this table.
-
-### Bundled skills
-
-`is_bundled=true` in `imported_skills`. Seeded by `seed_bundled_skills` on startup (always overwrites files; preserves `is_active` from existing DB row). Delete is blocked — returns error with instructions to deactivate instead. Skills currently deactivated are written to `skills/.inactive/` on re-seed.
 
 ---
 
