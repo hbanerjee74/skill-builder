@@ -42,7 +42,7 @@ fi
 echo "=== Agents ==="
 
 # All 9 agents — flat in agents/ (name:expected_model)
-ALL_AGENTS="answer-evaluator:haiku companion-recommender:sonnet confirm-decisions:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-orchestrator:sonnet test-skill:haiku validate-skill:sonnet"
+ALL_AGENTS="answer-evaluator:haiku companion-recommender:sonnet confirm-decisions:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-orchestrator:sonnet test-skill:haiku validate-quality:sonnet validate-skill:sonnet"
 
 for entry in $ALL_AGENTS; do
   name="${entry%%:*}"

@@ -29,13 +29,13 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (9 flat agents) ----
+  # ---- T1.3: Agent file count (10 flat agents) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_9" "9" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_10" "10" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="answer-evaluator companion-recommender confirm-decisions detailed-research generate-skill refine-skill research-orchestrator test-skill validate-skill"
+  local all_agents="answer-evaluator companion-recommender confirm-decisions detailed-research generate-skill refine-skill research-orchestrator test-skill validate-quality validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
