@@ -38,7 +38,7 @@ pub async fn list_team_repo_skills(
 
     // Fetch the default branch (may be "main", "master", etc.)
     let default_branch =
-        super::github_import::get_default_branch(&client, &token, &owner, &repo).await?;
+        super::github_import::get_default_branch(&client, &owner, &repo).await?;
     info!(
         "[list_team_repo_skills] using default branch '{}' for {}/{}",
         default_branch, owner, repo
@@ -102,6 +102,7 @@ pub async fn import_team_repo_skill(
         "[import_team_repo_skill] skill_path={} skill_name={} force={}",
         skill_path, skill_name, force
     );
+    super::imported_skills::validate_skill_name(&skill_name)?;
 
     let (owner, repo, token, workspace_path, skills_path, github_user_login, github_user_avatar) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -215,7 +216,7 @@ pub async fn import_team_repo_skill(
 
     // Fetch the default branch (may be "main", "master", etc.)
     let default_branch =
-        super::github_import::get_default_branch(&client, &token, &owner, &repo).await?;
+        super::github_import::get_default_branch(&client, &owner, &repo).await?;
 
     // Fetch the full recursive tree
     let tree_url = format!(
@@ -325,20 +326,24 @@ pub async fn import_team_repo_skill(
             .await
             .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?;
 
-        // Reject files larger than 10 MB
-        if let Some(len) = response.content_length() {
-            if len > 10_000_000 {
-                return Err(format!(
-                    "File '{}' too large: {} bytes (max 10 MB)",
-                    file_path, len
-                ));
+        // Reject files larger than 10 MB, enforced via streaming regardless of Content-Length
+        const MAX_FILE_BYTES: usize = 10_000_000;
+        let mut bytes = Vec::new();
+        {
+            use futures::StreamExt;
+            let mut stream = response.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| format!("download error: {}", e))?;
+                bytes.extend_from_slice(&chunk);
+                if bytes.len() > MAX_FILE_BYTES {
+                    return Err(format!(
+                        "File '{}' exceeds 10 MB limit",
+                        file_path
+                    ));
+                }
             }
         }
-
-        let content = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
+        let content = bytes;
 
         // Capture SKILL.md content for frontmatter parsing
         if relative == "SKILL.md" {
