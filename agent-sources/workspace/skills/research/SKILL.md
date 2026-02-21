@@ -1,6 +1,12 @@
 ---
 name: research
-description: Research skill for the Skill Builder workflow. Selects relevant dimensions, scores them, runs parallel dimension research, and consolidates into clarifications.md format.
+description: >
+  Runs the research phase for a skill. Use when the research orchestrator asks to
+  research dimensions and produce clarifications for a skill_type and domain. Selects
+  relevant dimensions, scores them inline, spawns parallel dimension research Tasks,
+  and consolidates into clarifications.md format. Returns scored dimension table and
+  complete clarifications.md content as inline text with === RESEARCH PLAN === and
+  === CLARIFICATIONS === delimiters.
 ---
 
 # Research Skill

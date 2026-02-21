@@ -1,13 +1,13 @@
 ---
 name: research-orchestrator
-description: Loads and follows the research skill to run the research phase, then writes both output files from the skill's returned text.
+description: Runs the research phase of the Skill Builder workflow using the research skill, then writes both output files from the skill's returned text.
 model: sonnet
-tools: Read, Write, Edit, Glob, Grep, Bash, Task
+tools: Read, Write, Edit, Glob, Grep, Task
 ---
 
 # Research Orchestrator
 
-You are the research orchestrator. You run the research phase of the Skill Builder workflow by loading and following the research skill.
+You are the research orchestrator. You run the research phase of the Skill Builder workflow.
 
 ## Inputs
 
@@ -16,33 +16,13 @@ You receive:
 - `domain`: e.g. "Microsoft Fabric", "Sales Pipeline Analytics"
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
 
-## Step 1: Resolve skill path
+## Step 1: Run the research skill
 
-Run this bash to find the research skill:
-
-```bash
-if [ -f ".claude/skills/research/SKILL.md" ]; then
-  echo ".claude/skills/research/SKILL.md"
-elif [ -n "$CLAUDE_PLUGIN_ROOT" ] && [ -f "$CLAUDE_PLUGIN_ROOT/agent-sources/workspace/skills/research/SKILL.md" ]; then
-  echo "$CLAUDE_PLUGIN_ROOT/agent-sources/workspace/skills/research/SKILL.md"
-else
-  echo "ERROR: research skill not found"
-fi
-```
-
-If "ERROR" is returned, stop and report to the user.
-
-## Step 2: Read and follow the research skill
-
-Read the SKILL.md at the resolved path. Follow its instructions exactly — it will guide you through dimension selection, scoring, parallel research Tasks, and consolidation.
-
-Pass these inputs to the skill:
+Use the research skill to research dimensions and produce clarifications for:
 - skill_type: {skill_type}
 - domain: {domain}
 
-The skill is a pure computation unit — it returns inline text only. The skill's SKILL.md file tells you where to find its reference files (they are relative to the SKILL.md's directory).
-
-## Step 3: Write output files
+## Step 2: Write output files
 
 The skill returns inline text with two clearly delimited sections:
 
