@@ -1459,6 +1459,48 @@ pub fn insert_imported_skill(
     Ok(())
 }
 
+/// Upsert a marketplace-imported skill. Uses `INSERT OR REPLACE` so that re-importing
+/// (e.g. after the skills_path setting changed or files were manually deleted) always
+/// updates the existing record rather than failing with a UNIQUE constraint.
+pub fn upsert_imported_skill(
+    conn: &Connection,
+    skill: &ImportedSkill,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+         ON CONFLICT(skill_name) DO UPDATE SET
+             skill_id = excluded.skill_id,
+             domain = excluded.domain,
+             disk_path = excluded.disk_path,
+             imported_at = excluded.imported_at,
+             skill_type = excluded.skill_type,
+             version = excluded.version,
+             model = excluded.model,
+             argument_hint = excluded.argument_hint,
+             user_invocable = excluded.user_invocable,
+             disable_model_invocation = excluded.disable_model_invocation",
+        rusqlite::params![
+            skill.skill_id,
+            skill.skill_name,
+            skill.domain,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.imported_at,
+            skill.is_bundled as i32,
+            skill.skill_type,
+            skill.version,
+            skill.model,
+            skill.argument_hint,
+            skill.user_invocable.map(|v| v as i32),
+            skill.disable_model_invocation.map(|v| v as i32),
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Upsert a bundled skill into the database. Uses `INSERT OR REPLACE` keyed on
 /// `skill_name` (via UNIQUE constraint) for idempotent re-seeding on startup.
 /// Preserves `is_active` if the skill already exists.

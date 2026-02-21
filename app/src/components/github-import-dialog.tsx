@@ -108,7 +108,16 @@ export default function GitHubImportDialog({
         const results = await importMarketplaceToLibrary([skill.path])
         const result = results[0]
         if (!result?.success) {
-          setSkillStates((prev) => new Map(prev).set(skill.path, "exists"))
+          const errMsg = result?.error ?? "Import failed"
+          // "already exists on disk" is an expected duplicate — show "In library".
+          // Any other error (DB failure, network, etc.) is surfaced as a toast.
+          if (errMsg.toLowerCase().includes("already exists")) {
+            setSkillStates((prev) => new Map(prev).set(skill.path, "exists"))
+          } else {
+            console.error("[github-import] Import failed:", errMsg)
+            setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
+            toast.error(errMsg)
+          }
           return
         }
       } else {

@@ -420,6 +420,7 @@ pub async fn import_github_skills(
             skill_path,
             tree,
             &skills_dir,
+            false,
         )
         .await
         {
@@ -550,59 +551,59 @@ pub async fn import_marketplace_to_library(
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
-        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, &skills_dir).await {
+        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, &skills_dir, true).await {
             Ok(skill) => {
-                // Insert into imported_skills table
-                let conn = db.0.lock().map_err(|e| e.to_string())?;
-                let insert_result = crate::db::insert_imported_skill(&conn, &skill);
-
-                // Also record in workflow_runs with source='marketplace'
                 let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
                 let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
-                let run_result = crate::db::save_marketplace_skill_run(
+
+                // Upsert into imported_skills first. Uses ON CONFLICT DO UPDATE so
+                // re-imports (e.g. after skills_path changed) succeed rather than
+                // hitting a UNIQUE constraint.
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
+                    log::error!(
+                        "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
+                        skill.skill_name, e
+                    );
+                    if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
+                        log::warn!(
+                            "[import_marketplace_to_library] cleanup failed for '{}': {}",
+                            skill.disk_path, ce
+                        );
+                    }
+                    results.push(MarketplaceImportResult {
+                        skill_name: skill.skill_name,
+                        success: false,
+                        error: Some(e),
+                    });
+                    continue;
+                }
+
+                // Then record in workflow_runs with source='marketplace'.
+                if let Err(e) = crate::db::save_marketplace_skill_run(
                     &conn,
                     &skill.skill_name,
                     &domain,
                     skill_type_str,
-                );
-
-                if let Err(e) = run_result {
+                ) {
                     log::warn!(
                         "[import_marketplace_to_library] failed to save workflow run for '{}': {}",
                         skill.skill_name, e
                     );
                 }
 
-                match insert_result {
-                    Ok(()) => {
-                        log::info!(
-                            "[import_marketplace_to_library] imported '{}'",
-                            skill.skill_name
-                        );
-                        results.push(MarketplaceImportResult {
-                            skill_name: skill.skill_name,
-                            success: true,
-                            error: None,
-                        });
-                    }
-                    Err(e) => {
-                        // Clean up files on DB failure
-                        if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
-                            log::warn!(
-                                "[import_marketplace_to_library] cleanup failed for '{}': {}",
-                                skill.disk_path, ce
-                            );
-                        }
-                        results.push(MarketplaceImportResult {
-                            skill_name: skill.skill_name,
-                            success: false,
-                            error: Some(e),
-                        });
-                    }
-                }
+                log::info!(
+                    "[import_marketplace_to_library] imported '{}' to '{}'",
+                    skill.skill_name, skill.disk_path
+                );
+                results.push(MarketplaceImportResult {
+                    skill_name: skill.skill_name,
+                    success: true,
+                    error: None,
+                });
             }
             Err(e) => {
-                log::warn!(
+                log::error!(
                     "[import_marketplace_to_library] failed to import '{}': {}",
                     skill_path, e
                 );
@@ -636,6 +637,10 @@ pub async fn import_marketplace_to_library(
 }
 
 /// Import a single skill directory from the repo tree.
+///
+/// When `overwrite` is `true`, an existing destination directory is removed before
+/// downloading. This is used by marketplace imports so that re-imports (e.g. after
+/// `skills_path` changed or files were manually deleted) always succeed.
 pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
     owner: &str,
@@ -644,6 +649,7 @@ pub(crate) async fn import_single_skill(
     skill_path: &str,
     tree: &[serde_json::Value],
     skills_dir: &Path,
+    overwrite: bool,
 ) -> Result<ImportedSkill, String> {
     let prefix = if skill_path.is_empty() {
         String::new()
@@ -733,11 +739,20 @@ pub(crate) async fn import_single_skill(
     // Check if skill directory already exists on disk
     let dest_dir = skills_dir.join(&skill_name);
     if dest_dir.exists() {
-        return Err(format!(
-            "Skill '{}' already exists at '{}'",
-            skill_name,
-            dest_dir.display()
-        ));
+        if overwrite {
+            log::debug!(
+                "[import_single_skill] removing existing dir for re-import: {}",
+                dest_dir.display()
+            );
+            fs::remove_dir_all(&dest_dir)
+                .map_err(|e| format!("Failed to remove existing skill directory: {}", e))?;
+        } else {
+            return Err(format!(
+                "Skill '{}' already exists at '{}'",
+                skill_name,
+                dest_dir.display()
+            ));
+        }
     }
 
     // Create destination directory and canonicalize for secure containment checks
