@@ -134,6 +134,18 @@ pub struct SkillSummary {
     pub intake_json: Option<String>,
     #[serde(default)]
     pub source: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default, rename = "argumentHint")]
+    pub argument_hint: Option<String>,
+    #[serde(default, rename = "userInvocable")]
+    pub user_invocable: Option<bool>,
+    #[serde(default, rename = "disableModelInvocation")]
+    pub disable_model_invocation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,6 +206,18 @@ pub struct WorkflowRunRow {
     pub intake_json: Option<String>,
     #[serde(default = "default_source")]
     pub source: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub argument_hint: Option<String>,
+    #[serde(default)]
+    pub user_invocable: Option<bool>,
+    #[serde(default)]
+    pub disable_model_invocation: Option<bool>,
 }
 
 fn default_source() -> String {

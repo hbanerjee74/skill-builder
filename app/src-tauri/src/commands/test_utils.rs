@@ -19,7 +19,13 @@ pub fn create_test_db() -> rusqlite::Connection {
             author_avatar TEXT,
             display_name TEXT,
             intake_json TEXT,
-            source TEXT NOT NULL DEFAULT 'created'
+            source TEXT NOT NULL DEFAULT 'created',
+            description TEXT,
+            version TEXT DEFAULT '1.0.0',
+            model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER DEFAULT 1,
+            disable_model_invocation INTEGER DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS workflow_steps (
             skill_name TEXT NOT NULL,

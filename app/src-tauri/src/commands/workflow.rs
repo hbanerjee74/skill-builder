@@ -603,6 +603,12 @@ fn build_prompt(
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
+    description: Option<&str>,
+    version: Option<&str>,
+    skill_model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
@@ -637,6 +643,33 @@ fn build_prompt(
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
 
     prompt.push_str(" The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+
+    if let Some(desc) = description {
+        if !desc.is_empty() {
+            prompt.push_str(&format!(" The skill description is: {}.", desc));
+        }
+    }
+    if let Some(ver) = version {
+        if !ver.is_empty() {
+            prompt.push_str(&format!(" The version is: {}.", ver));
+        }
+    }
+    if let Some(m) = skill_model {
+        if !m.is_empty() && m != "inherit" {
+            prompt.push_str(&format!(" The preferred model is: {}.", m));
+        }
+    }
+    if let Some(hint) = argument_hint {
+        if !hint.is_empty() {
+            prompt.push_str(&format!(" The argument hint is: {}.", hint));
+        }
+    }
+    if let Some(inv) = user_invocable {
+        prompt.push_str(&format!(" User invocable: {}.", inv));
+    }
+    if let Some(dmi) = disable_model_invocation {
+        prompt.push_str(&format!(" Disable model invocation: {}.", dmi));
+    }
 
     if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
         prompt.push_str("\n\n");
@@ -723,6 +756,12 @@ struct WorkflowSettings {
     industry: Option<String>,
     function_role: Option<String>,
     intake_json: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+    skill_model: Option<String>,
+    argument_hint: Option<String>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -760,6 +799,12 @@ fn read_workflow_settings(
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+    let description = run_row.as_ref().and_then(|r| r.description.clone());
+    let version = run_row.as_ref().and_then(|r| r.version.clone());
+    let skill_model = run_row.as_ref().and_then(|r| r.model.clone());
+    let argument_hint = run_row.as_ref().and_then(|r| r.argument_hint.clone());
+    let user_invocable = run_row.as_ref().and_then(|r| r.user_invocable);
+    let disable_model_invocation = run_row.as_ref().and_then(|r| r.disable_model_invocation);
 
     Ok(WorkflowSettings {
         skills_path,
@@ -772,6 +817,12 @@ fn read_workflow_settings(
         industry,
         function_role,
         intake_json,
+        description,
+        version,
+        skill_model,
+        argument_hint,
+        user_invocable,
+        disable_model_invocation,
     })
 }
 
@@ -817,6 +868,12 @@ async fn run_workflow_step_inner(
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
     );
     log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
@@ -1727,6 +1784,12 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -1750,6 +1813,12 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("The skill type is: platform."));
     }
@@ -1765,6 +1834,12 @@ mod tests {
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
             5,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1785,6 +1860,12 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -2639,6 +2720,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Industry**: Healthcare"));
@@ -2653,6 +2735,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, None,
+            None, None, None, None, None, None,
         );
         assert!(!prompt.contains("## User Context"));
         assert!(prompt.contains("test-skill"));
@@ -2664,6 +2747,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Fintech"), None, None,
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Industry**: Fintech"));
@@ -2676,11 +2760,37 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, Some(intake),
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Target Audience**: Analysts"));
         assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
         assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_behaviour_fields() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+            Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
+        );
+        assert!(prompt.contains("The skill description is: A skill for sales analysis."));
+        assert!(prompt.contains("The version is: 2.0.0."));
+        assert!(prompt.contains("The preferred model is: sonnet."));
+        assert!(prompt.contains("The argument hint is: [org-url]."));
+        assert!(prompt.contains("User invocable: true."));
+        assert!(prompt.contains("Disable model invocation: false."));
+    }
+
+    #[test]
+    fn test_build_prompt_inherit_model_not_in_prompt() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+            None, None, Some("inherit"), None, None, None,
+        );
+        assert!(!prompt.contains("The preferred model is:"));
     }
 
     // --- VD-801: parse_decisions_guard tests ---

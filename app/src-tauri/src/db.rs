@@ -43,6 +43,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (13, run_remove_validate_step_migration),
         (14, run_source_migration),
         (15, run_imported_skills_extended_migration),
+        (16, run_workflow_runs_extended_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -422,6 +423,31 @@ fn run_imported_skills_extended_migration(conn: &Connection) -> Result<(), rusql
         conn.execute_batch(
             "ALTER TABLE imported_skills ADD COLUMN disable_model_invocation INTEGER;",
         )?;
+    }
+    Ok(())
+}
+
+/// Migration 16: Add extended metadata columns to workflow_runs.
+fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Add description, version, model, argument_hint, user_invocable, disable_model_invocation
+    // to workflow_runs. Check each column before adding (idempotent).
+    let existing: Vec<String> = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let columns = [
+        ("description", "TEXT"),
+        ("version", "TEXT DEFAULT '1.0.0'"),
+        ("model", "TEXT"),
+        ("argument_hint", "TEXT"),
+        ("user_invocable", "INTEGER DEFAULT 1"),
+        ("disable_model_invocation", "INTEGER DEFAULT 0"),
+    ];
+    for (col, def) in &columns {
+        if !existing.contains(&col.to_string()) {
+            conn.execute_batch(&format!("ALTER TABLE workflow_runs ADD COLUMN {} {};", col, def))?;
+        }
     }
     Ok(())
 }
@@ -1061,13 +1087,50 @@ pub fn set_skill_intake(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn set_skill_behaviour(
+    conn: &Connection,
+    skill_name: &str,
+    description: Option<&str>,
+    version: Option<&str>,
+    model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
+) -> Result<(), String> {
+    let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
+    let disable_model_invocation_i: Option<i32> = disable_model_invocation.map(|v| if v { 1 } else { 0 });
+    conn.execute(
+        "UPDATE workflow_runs SET
+            description = COALESCE(?2, description),
+            version = COALESCE(?3, version),
+            model = COALESCE(?4, model),
+            argument_hint = COALESCE(?5, argument_hint),
+            user_invocable = COALESCE(?6, user_invocable),
+            disable_model_invocation = COALESCE(?7, disable_model_invocation),
+            updated_at = datetime('now') || 'Z'
+         WHERE skill_name = ?1",
+        rusqlite::params![
+            skill_name,
+            description,
+            version,
+            model,
+            argument_hint,
+            user_invocable_i,
+            disable_model_invocation_i,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn get_workflow_run(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1086,6 +1149,12 @@ pub fn get_workflow_run(
             display_name: row.get(9)?,
             intake_json: row.get(10)?,
             source: row.get(11)?,
+            description: row.get(12)?,
+            version: row.get(13)?,
+            model: row.get(14)?,
+            argument_hint: row.get(15)?,
+            user_invocable: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(17)?.map(|v| v != 0),
         })
     });
 
@@ -1106,7 +1175,7 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created'), description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -1126,6 +1195,12 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
                 display_name: row.get(9)?,
                 intake_json: row.get(10)?,
                 source: row.get(11)?,
+                description: row.get(12)?,
+                version: row.get(13)?,
+                model: row.get(14)?,
+                argument_hint: row.get(15)?,
+                user_invocable: row.get::<_, Option<i32>>(16)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(17)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1870,6 +1945,7 @@ mod tests {
         run_remove_validate_step_migration(&conn).unwrap();
         run_source_migration(&conn).unwrap();
         run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
         conn
     }
 
@@ -2201,6 +2277,7 @@ mod tests {
         run_author_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
         run_source_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();

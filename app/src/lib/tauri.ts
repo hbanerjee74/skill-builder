@@ -32,7 +32,25 @@ export const updateSkillMetadata = (
   skillType: string | null,
   tags: string[] | null,
   intakeJson: string | null,
-) => invoke("update_skill_metadata", { skillName, domain, skillType, tags, intakeJson });
+  description?: string | null,
+  version?: string | null,
+  model?: string | null,
+  argumentHint?: string | null,
+  userInvocable?: boolean | null,
+  disableModelInvocation?: boolean | null,
+) => invoke("update_skill_metadata", {
+  skillName,
+  domain,
+  skillType,
+  tags,
+  intakeJson,
+  description: description ?? null,
+  version: version ?? null,
+  model: model ?? null,
+  argumentHint: argumentHint ?? null,
+  userInvocable: userInvocable ?? null,
+  disableModelInvocation: disableModelInvocation ?? null,
+});
 
 export const renameSkill = (
   oldName: string,

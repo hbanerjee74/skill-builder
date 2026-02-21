@@ -73,6 +73,12 @@ export interface SkillSummary {
   author_avatar: string | null
   intake_json: string | null
   source?: string | null
+  description?: string | null
+  version?: string | null
+  model?: string | null
+  argumentHint?: string | null
+  userInvocable?: boolean | null
+  disableModelInvocation?: boolean | null
 }
 
 export interface SkillFileContent {
