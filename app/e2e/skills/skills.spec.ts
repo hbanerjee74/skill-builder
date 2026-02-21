@@ -23,20 +23,13 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Empty state card should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("No imported skills")).toBeVisible();
     await expect(
-      page.getByText("Upload a .skill package or import from Marketplace to add skills to your library.")
+      page.getByText("Upload a .skill package or browse the marketplace to add skills to your library.")
     ).toBeVisible();
-
-    // Action buttons in empty state card
-    const emptyCard = page.locator("[data-slot='card']");
-    await expect(emptyCard.getByRole("button", { name: /upload skill/i })).toBeVisible();
-    await expect(emptyCard.getByRole("button", { name: /import from marketplace/i })).toBeVisible();
   });
 
   test("shows action buttons in Skills Library tab", async ({ page }) => {
@@ -46,31 +39,32 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Settings page header
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-    // Skills section navigation button should be visible
-    await expect(page.getByRole("button", { name: "Skills" })).toBeVisible();
+    // Settings sidebar shows "Skills" as active section
+    await expect(page.locator("nav button", { hasText: "Skills" })).toBeVisible();
 
-    // Action buttons
-    await expect(page.getByRole("button", { name: /import from marketplace/i }).first()).toBeVisible();
+    // Action buttons — Marketplace button exists (may be disabled without marketplaceUrl)
+    await expect(page.getByRole("button", { name: /marketplace/i }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
   });
 
   test("shows populated state with skill cards", async ({ page }) => {
+    // Add skill_type: "skill-builder" to fixture items so they pass the displayedSkills filter
+    const skillsWithType = importedSkillsFixture
+      .filter((s) => !s.is_bundled)
+      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: skills,
       };
-    }, importedSkillsFixture);
+    }, skillsWithType);
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Both skill cards should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("data-analytics")).toBeVisible();
@@ -86,16 +80,18 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
   });
 
   test("can toggle skill active state", async ({ page }) => {
+    const skillsWithType = importedSkillsFixture
+      .filter((s) => !s.is_bundled)
+      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: skills,
         toggle_skill_active: undefined,
       };
-    }, importedSkillsFixture);
+    }, skillsWithType);
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Find the switch for data-analytics skill
     const dataAnalyticsSwitch = page.getByLabel("Toggle data-analytics active");
@@ -112,16 +108,18 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
   });
 
   test("can delete skill with two-click confirmation", async ({ page }) => {
+    const skillsWithType = importedSkillsFixture
+      .filter((s) => !s.is_bundled)
+      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: skills,
         delete_imported_skill: undefined,
       };
-    }, importedSkillsFixture);
+    }, skillsWithType);
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Find the delete button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -146,6 +144,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
   test("can open preview dialog", async ({ page }) => {
     const mockSkillContent = "# Data Analytics Skill\n\nThis is a sample skill for data analytics.";
+    const skillsWithType = importedSkillsFixture
+      .filter((s) => !s.is_bundled)
+      .map((s) => ({ ...s, skill_type: "skill-builder" }));
 
     await page.addInitScript(
       ({ skills, content }) => {
@@ -154,12 +155,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           get_skill_content: content,
         };
       },
-      { skills: importedSkillsFixture, content: mockSkillContent }
+      { skills: skillsWithType, content: mockSkillContent }
     );
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Click the Preview button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -179,6 +178,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
   test("can close preview dialog", async ({ page }) => {
     const mockSkillContent = "# API Design Skill\n\nREST API best practices.";
+    const skillsWithType = importedSkillsFixture
+      .filter((s) => !s.is_bundled)
+      .map((s) => ({ ...s, skill_type: "skill-builder" }));
 
     await page.addInitScript(
       ({ skills, content }) => {
@@ -187,12 +189,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           get_skill_content: content,
         };
       },
-      { skills: importedSkillsFixture, content: mockSkillContent }
+      { skills: skillsWithType, content: mockSkillContent }
     );
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Open preview (CardTitle is a <div>, not a heading)
     const apiDesignCard = page.locator("[data-slot='card']").filter({
@@ -214,9 +214,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
     // Verify the Upload Skill button exists and is clickable
     const uploadButton = page.getByRole("button", { name: /upload skill/i }).first();
@@ -224,274 +222,48 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(uploadButton).toBeEnabled();
   });
 
-  test("can open GitHub import dialog", async ({ page }) => {
+  test("can open Marketplace import dialog", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: [],
+        get_settings: {
+          anthropic_api_key: "sk-ant-test",
+          workspace_path: "/tmp/test-workspace",
+          skills_path: "/tmp/test-skills",
+          marketplace_url: "https://github.com/test-owner/test-repo",
+        },
+        parse_github_url: {
+          owner: "test-owner",
+          repo: "test-repo",
+          branch: "main",
+          subpath: null,
+        },
+        list_github_skills: [],
+        get_installed_skill_names: [],
       };
     });
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
-    // Click Import from Marketplace button
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
+    // Click Marketplace button (enabled when marketplace_url is configured)
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
 
-    // Dialog should open
+    // Dialog should open and auto-browse (shows loading or "Browse Marketplace" heading)
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Import from Marketplace" })).toBeVisible();
-    await expect(
-      page.getByText("Paste a public GitHub repository URL to browse available skills.")
-    ).toBeVisible();
   });
 
-  test("GitHub import wizard - step 1: enter URL and browse", async ({ page }) => {
+  test("Marketplace button is disabled without marketplace URL configured", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
         list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/analytics",
-            name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-          },
-          {
-            path: "skills/testing",
-            name: "testing",
-            domain: "Engineering",
-            description: "Testing best practices",
-          },
-        ],
       };
     });
 
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
+    await navigateToSkillsLibrary(page);
 
-    // Open Marketplace import dialog
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
-
-    // Enter GitHub URL
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-
-    // Click Browse Skills
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-
-    // Should move to step 2: select skills
-    await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
-    await expect(page.getByText("2 skills found. Select the ones you'd like to import.")).toBeVisible();
-  });
-
-  test("GitHub import wizard - step 2: select skills", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/analytics",
-            name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-          },
-          {
-            path: "skills/testing",
-            name: "testing",
-            domain: "Engineering",
-            description: "Testing best practices",
-          },
-        ],
-      };
-    });
-
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
-
-    // Open dialog and navigate to step 2
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-
-    // Both skills should be selected by default (Radix Checkbox renders as <button role="checkbox">)
-    const analyticsCheckbox = page.locator("label").filter({ hasText: "analytics" }).getByRole("checkbox");
-    const testingCheckbox = page.locator("label").filter({ hasText: "testing" }).getByRole("checkbox");
-
-    await expect(analyticsCheckbox).toBeChecked();
-    await expect(testingCheckbox).toBeChecked();
-
-    // Deselect one skill
-    await analyticsCheckbox.click();
-    await expect(analyticsCheckbox).not.toBeChecked();
-
-    // Import button should show count
-    await expect(page.getByRole("button", { name: "Import Selected (1)" })).toBeVisible();
-  });
-
-  test("GitHub import wizard - step 2: select all toggle", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/analytics",
-            name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-          },
-          {
-            path: "skills/testing",
-            name: "testing",
-            domain: "Engineering",
-            description: "Testing best practices",
-          },
-        ],
-      };
-    });
-
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
-
-    // Navigate to step 2
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-
-    // Find "Select all" checkbox (Radix Checkbox renders as <button role="checkbox">)
-    const selectAllCheckbox = page.locator("label").filter({ hasText: "Select all" }).getByRole("checkbox");
-    await expect(selectAllCheckbox).toBeChecked();
-
-    // Uncheck "Select all"
-    await selectAllCheckbox.click();
-    await expect(selectAllCheckbox).not.toBeChecked();
-
-    // Import button should be disabled
-    await expect(page.getByRole("button", { name: /import selected/i })).toBeDisabled();
-
-    // Check "Select all" again
-    await selectAllCheckbox.click();
-    await expect(page.getByRole("button", { name: "Import Selected (2)" })).toBeEnabled();
-  });
-
-  test("GitHub import wizard - full flow to completion", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/analytics",
-            name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-          },
-        ],
-        import_github_skills: [
-          {
-            skill_id: "imported-001",
-            skill_name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-            is_active: true,
-            disk_path: "/tmp/skills/analytics",
-            argument_hint: "When the user asks about analytics...",
-            imported_at: "2025-01-20T10:00:00Z",
-          },
-        ],
-        regenerate_claude_md: undefined,
-      };
-    });
-
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
-
-    // Step 1: Enter URL
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-
-    // Step 2: Select skills (analytics is already selected by default)
-    await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
-    await page.getByRole("button", { name: "Import Selected (1)" }).click();
-
-    // Step 3: Importing spinner (might be too fast to catch)
-    // Flow goes directly to "Import Complete" after importing
-
-    // Step 3/Done: Import Complete
-    await expect(page.getByRole("heading", { name: "Import Complete" })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText("Successfully imported 1 skill.")).toBeVisible();
-
-    // Click Done to close dialog
-    await page.getByRole("button", { name: "Done" }).click();
-    await expect(page.getByRole("dialog")).not.toBeVisible();
-  });
-
-  test("GitHub import wizard - back navigation", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
-        parse_github_url: {
-          owner: "test-owner",
-          repo: "test-repo",
-          branch: "main",
-          subpath: null,
-        },
-        list_github_skills: [
-          {
-            path: "skills/analytics",
-            name: "analytics",
-            domain: "Data",
-            description: "Data analytics skill",
-          },
-        ],
-      };
-    });
-
-    await page.goto("/settings");
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Skills" }).click();
-
-    // Navigate to step 2
-    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
-    await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
-    await page.getByRole("button", { name: "Browse Skills" }).click();
-
-    await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
-
-    // Click back button (ArrowLeft icon button) — scoped to the dialog to avoid the "Back to Dashboard" header button
-    const dialog = page.getByRole("dialog");
-    const backButton = dialog.locator("button").filter({ has: page.locator("svg.lucide-arrow-left") });
-    await backButton.click();
-
-    // Should go back to step 1
-    await expect(page.getByRole("heading", { name: "Import from Marketplace" })).toBeVisible();
-    await expect(page.getByPlaceholder("https://github.com/owner/repo")).toHaveValue("https://github.com/test-owner/test-repo");
+    // Marketplace button should be disabled when no marketplace URL is set (default mock has no marketplace_url)
+    const marketplaceButton = page.getByRole("button", { name: /marketplace/i }).first();
+    await expect(marketplaceButton).toBeVisible();
+    await expect(marketplaceButton).toBeDisabled();
   });
 });

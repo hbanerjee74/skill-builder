@@ -30,17 +30,25 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
 
-    // Step 1: Fill skill name + select type
+    // Step 1: Fill skill name + select type + description (all required to advance)
     await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
     // The skill type radio uses Radix RadioGroupItem (<button role="radio" data-slot="radio-group-item">).
     // Use the data-slot attribute to target the actual Radix button (not the hidden native input).
     await page.locator('[data-slot="radio-group-item"]').first().click();
+    await page.getByRole("textbox", { name: "Description" }).fill("HR analytics skill for workforce data.");
 
     // Next button should now be enabled — wait for it, then advance to Step 2
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled({ timeout: 3_000 });
     await page.getByRole("button", { name: "Next" }).click();
 
-    // Step 2: Create button is available
+    // Step 2: Fill domain (required) then advance to Step 3
+    await page.getByRole("textbox", { name: "Domain" }).fill("Human Resources");
+    await page.getByRole("button", { name: "Next" }).click();
+
+    // Step 3: Optional fields — advance to Step 4
+    await page.getByRole("button", { name: "Next" }).click();
+
+    // Step 4: Create button is available
     const createButton = page.getByRole("button", { name: "Create" });
     await expect(createButton).toBeEnabled();
     await createButton.click();
