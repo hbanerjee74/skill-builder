@@ -23,7 +23,7 @@ use std::path::Path;
 pub fn reconcile_on_startup(
     conn: &rusqlite::Connection,
     workspace_path: &str,
-    skills_path: Option<&str>,
+    skills_path: &str,
 ) -> Result<ReconciliationResult, String> {
     let mut notifications = Vec::new();
     let auto_cleaned: u32 = 0;
@@ -33,9 +33,10 @@ pub fn reconcile_on_startup(
     let mut db_names: HashSet<String> = db_runs.iter().map(|r| r.skill_name.clone()).collect();
 
     log::info!(
-        "[reconcile_on_startup] starting: {} DB runs, workspace={}",
+        "[reconcile_on_startup] starting: {} DB runs, workspace={} skills_path={}",
         db_runs.len(),
-        workspace_path
+        workspace_path,
+        skills_path
     );
 
     // Collect skill directories on disk (for scenario 1 — disk-only discovery)
@@ -264,12 +265,10 @@ pub fn reconcile_on_startup(
         // Warn if a completed skill is missing its skills_path output
         if run.status == "completed" {
             if !has_skill_output(&run.skill_name, skills_path) {
-                if skills_path.is_some() {
-                    log::warn!(
-                        "[reconcile] '{}': completed skill has no output in skills_path — may have been moved or deleted",
-                        run.skill_name
-                    );
-                }
+                log::warn!(
+                    "[reconcile] '{}': completed skill has no output in skills_path — may have been moved or deleted",
+                    run.skill_name
+                );
             }
         }
     }
@@ -333,20 +332,22 @@ pub fn resolve_orphan(
     conn: &rusqlite::Connection,
     skill_name: &str,
     action: &str,
-    skills_path: Option<&str>,
+    skills_path: &str,
 ) -> Result<(), String> {
+    log::debug!(
+        "[resolve_orphan] skill='{}': action={} skills_path={}",
+        skill_name, action, skills_path
+    );
     match action {
         "delete" => {
             // Delete DB record (handles missing records gracefully)
             crate::db::delete_workflow_run(conn, skill_name)?;
 
             // Delete skill output directory on disk if it exists
-            if let Some(sp) = skills_path {
-                let output_dir = Path::new(sp).join(skill_name);
-                if output_dir.exists() {
-                    std::fs::remove_dir_all(&output_dir)
-                        .map_err(|e| format!("Failed to delete skill output for '{}': {}", skill_name, e))?;
-                }
+            let output_dir = Path::new(skills_path).join(skill_name);
+            if output_dir.exists() {
+                std::fs::remove_dir_all(&output_dir)
+                    .map_err(|e| format!("Failed to delete skill output for '{}': {}", skill_name, e))?;
             }
             Ok(())
         }
@@ -400,15 +401,17 @@ mod tests {
     #[test]
     fn test_scenario_1_disk_only_no_db_record() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // Create a skill on disk with step 0 output
+        // Create a skill on disk with step 0 output in skills_path
         // (Step 2 is non-detectable — it edits clarifications.md in-place)
         create_skill_dir(tmp.path(), "orphan-skill", "e-commerce");
-        create_step_output(tmp.path(), "orphan-skill", 0);
+        create_step_output(skills_tmp.path(), "orphan-skill", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -430,7 +433,9 @@ mod tests {
     #[test]
     fn test_scenario_2_db_ahead_of_disk() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // DB says step 5, but disk only has step 0 output
@@ -438,9 +443,9 @@ mod tests {
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
-        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(skills_tmp.path(), "my-skill", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -460,7 +465,9 @@ mod tests {
     #[test]
     fn test_reconcile_sets_completed_when_all_steps_done() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // DB says step 5 (last step), status "pending" — simulates the race where
@@ -468,12 +475,12 @@ mod tests {
         crate::db::save_workflow_run(&conn, "done-skill", "sales", 5, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "sales");
-        // Create output for all detectable steps (0, 4, 5)
+        // Create output for all detectable steps (0, 4, 5) in skills_path
         for step in [0, 4, 5] {
-            create_step_output(tmp.path(), "done-skill", step);
+            create_step_output(skills_tmp.path(), "done-skill", step);
         }
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -489,17 +496,19 @@ mod tests {
     #[test]
     fn test_reconcile_leaves_pending_when_not_all_steps_done() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // DB at step 4, status "pending" — not yet at the last step
         crate::db::save_workflow_run(&conn, "mid-skill", "sales", 4, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "mid-skill", "sales");
-        create_step_output(tmp.path(), "mid-skill", 0);
-        create_step_output(tmp.path(), "mid-skill", 4);
+        create_step_output(skills_tmp.path(), "mid-skill", 0);
+        create_step_output(skills_tmp.path(), "mid-skill", 4);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         let run = crate::db::get_workflow_run(&conn, "mid-skill")
             .unwrap()
@@ -514,14 +523,16 @@ mod tests {
         // Marketplace skills have no workspace dir — previously this triggered
         // auto-clean (scenario 4). Now they must be left untouched.
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_marketplace_skill_run(&conn, "my-skill", "sales", "platform").unwrap();
 
         // No workspace dir, no skills_path output — simulates the normal state
         // for a marketplace-imported skill.
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -539,14 +550,16 @@ mod tests {
     #[test]
     fn test_missing_workspace_dir_is_recreated() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // DB record exists at step 0 but workspace dir was deleted
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
         // No workspace dir on disk
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -565,7 +578,9 @@ mod tests {
     #[test]
     fn test_scenario_5_normal_db_and_disk_agree() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // DB at step 2, disk has step 0 and 2 output
@@ -579,10 +594,10 @@ mod tests {
         )
         .unwrap();
         create_skill_dir(tmp.path(), "healthy-skill", "analytics");
-        create_step_output(tmp.path(), "healthy-skill", 0);
-        create_step_output(tmp.path(), "healthy-skill", 2);
+        create_step_output(skills_tmp.path(), "healthy-skill", 0);
+        create_step_output(skills_tmp.path(), "healthy-skill", 2);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert_eq!(result.auto_cleaned, 0);
@@ -600,7 +615,9 @@ mod tests {
         // Fresh skill: working dir exists but no output files.
         // Step 0 must NOT be marked as completed.
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "fresh-skill", "sales", 0, "pending", "domain")
@@ -608,7 +625,7 @@ mod tests {
         // Only create the working directory — no output files
         std::fs::create_dir_all(tmp.path().join("fresh-skill")).unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // No notifications — fresh skill, no action needed
         assert!(result.notifications.is_empty());
@@ -625,14 +642,16 @@ mod tests {
     fn test_db_ahead_no_output_resets_to_zero() {
         // DB says step 4 but no output files exist at all.
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "lost-skill", "sales", 4, "pending", "domain")
             .unwrap();
         std::fs::create_dir_all(tmp.path().join("lost-skill")).unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 4 to step 0"));
@@ -654,7 +673,9 @@ mod tests {
         // non-detectable step loop was still marking steps 1,2,3 as completed
         // using the original current_step (5) instead of the reset target (0).
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 5, "pending", "domain").unwrap();
@@ -663,10 +684,10 @@ mod tests {
             crate::db::save_workflow_step(&conn, "my-skill", s, "completed").unwrap();
         }
         create_skill_dir(tmp.path(), "my-skill", "sales");
-        // Only step 0 has output on disk
-        create_step_output(tmp.path(), "my-skill", 0);
+        // Only step 0 has output on disk (in skills_path)
+        create_step_output(skills_tmp.path(), "my-skill", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications[0].contains("reset from step 5 to step 0"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
@@ -692,17 +713,19 @@ mod tests {
     #[test]
     fn test_step_6_not_reset_when_step_5_output_exists() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "done-skill", "analytics", 6, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "done-skill", "analytics");
         for step in [0, 2, 4, 5] {
-            create_step_output(tmp.path(), "done-skill", step);
+            create_step_output(skills_tmp.path(), "done-skill", step);
         }
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // Should NOT reset — step 6 is non-detectable but step 5 output exists
         assert!(result.notifications.is_empty());
@@ -713,7 +736,9 @@ mod tests {
     #[test]
     fn test_step_6_reset_when_step_5_output_missing() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "bad-skill", "analytics", 6, "pending", "domain")
@@ -721,10 +746,10 @@ mod tests {
         create_skill_dir(tmp.path(), "bad-skill", "analytics");
         // Only steps 0-4 have output, step 5 is missing
         for step in [0, 2, 4] {
-            create_step_output(tmp.path(), "bad-skill", step);
+            create_step_output(skills_tmp.path(), "bad-skill", step);
         }
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // Should reset — disk is genuinely behind
         assert_eq!(result.notifications.len(), 1);
@@ -736,15 +761,17 @@ mod tests {
     #[test]
     fn test_step_1_not_reset_when_step_0_output_exists() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "review-skill", "sales", 1, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
-        create_step_output(tmp.path(), "review-skill", 0);
+        create_step_output(skills_tmp.path(), "review-skill", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
@@ -754,16 +781,18 @@ mod tests {
     #[test]
     fn test_step_3_not_reset_when_step_2_output_exists() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "review-skill", "sales", 3, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "review-skill", "sales");
-        create_step_output(tmp.path(), "review-skill", 0);
-        create_step_output(tmp.path(), "review-skill", 2);
+        create_step_output(skills_tmp.path(), "review-skill", 0);
+        create_step_output(skills_tmp.path(), "review-skill", 2);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "review-skill").unwrap().unwrap();
@@ -775,23 +804,25 @@ mod tests {
     #[test]
     fn test_step_completed_advances_to_next_not_reset() {
         for (db_step, disk_steps) in [
-            (1, vec![0]),             // step 0 completed -> on step 1
+            (1, vec![0u32]),          // step 0 completed -> on step 1
             (3, vec![0, 2]),          // step 2 completed -> on step 3
             (5, vec![0, 2, 4]),       // step 4 completed -> on step 5
             (6, vec![0, 2, 4, 5]),    // step 5 completed -> on step 6 (beyond last step)
         ] {
             let tmp = tempfile::tempdir().unwrap();
+            let skills_tmp = tempfile::tempdir().unwrap();
             let workspace = tmp.path().to_str().unwrap();
+            let skills_path = skills_tmp.path().to_str().unwrap();
             let conn = create_test_db();
 
             crate::db::save_workflow_run(&conn, "my-skill", "sales", db_step, "pending", "domain")
                 .unwrap();
             create_skill_dir(tmp.path(), "my-skill", "sales");
             for step in &disk_steps {
-                create_step_output(tmp.path(), "my-skill", *step);
+                create_step_output(skills_tmp.path(), "my-skill", *step);
             }
 
-            let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+            let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
             assert!(
                 result.notifications.is_empty(),
@@ -806,15 +837,17 @@ mod tests {
     #[test]
     fn test_step_2_on_db_but_step_0_on_disk_with_human_review() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 2, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
-        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(skills_tmp.path(), "my-skill", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
@@ -824,16 +857,18 @@ mod tests {
     #[test]
     fn test_step_4_on_db_but_step_2_on_disk_with_human_review() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 4, "pending", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
-        create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 2);
+        create_step_output(skills_tmp.path(), "my-skill", 0);
+        create_step_output(skills_tmp.path(), "my-skill", 2);
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.notifications.is_empty());
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
@@ -845,16 +880,18 @@ mod tests {
     #[test]
     fn test_disk_ahead_stale_db_advances_current_step() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         crate::db::save_workflow_run(&conn, "my-skill", "sales", 0, "pending", "domain").unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
         for step in [0, 2, 4, 5] {
-            create_step_output(tmp.path(), "my-skill", step);
+            create_step_output(skills_tmp.path(), "my-skill", step);
         }
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("advanced from step 0 to step 5"));
@@ -867,10 +904,12 @@ mod tests {
     #[test]
     fn test_reconcile_empty_workspace() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert!(result.notifications.is_empty());
@@ -885,8 +924,8 @@ mod tests {
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        // Scenario 1: Skill exists in skills_path but no DB record
-        create_skill_dir(skills_tmp.path(), "disk-only", "domain-a");
+        // Scenario 1: Disk-only skill
+        create_skill_dir(tmp.path(), "disk-only", "domain-a");
         create_step_output(skills_tmp.path(), "disk-only", 0);
 
         // Previously scenario 4 (stale): now the workspace dir is simply
@@ -896,10 +935,10 @@ mod tests {
 
         // Scenario 5: Normal — skill in skills_path with matching DB record
         crate::db::save_workflow_run(&conn, "normal", "domain-c", 0, "pending", "domain").unwrap();
-        create_skill_dir(skills_tmp.path(), "normal", "domain-c");
+        create_skill_dir(tmp.path(), "normal", "domain-c");
         create_step_output(skills_tmp.path(), "normal", 0);
 
-        let result = reconcile_on_startup(&conn, workspace, Some(skills_path)).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         // db-only skill is NOT auto-cleaned; auto_cleaned stays 0
         assert_eq!(result.auto_cleaned, 0);
@@ -917,14 +956,16 @@ mod tests {
     #[test]
     fn test_reconcile_skips_infrastructure_dirs() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         // Create dotfile/infrastructure directories that should be skipped
         std::fs::create_dir_all(tmp.path().join(".claude")).unwrap();
         std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert!(result.orphans.is_empty());
         assert!(result.notifications.is_empty());
@@ -936,19 +977,21 @@ mod tests {
     #[test]
     fn test_reconcile_skips_skill_with_active_session_from_current_pid() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "active-skill", "test");
         crate::db::save_workflow_run(&conn, "active-skill", "test", 5, "pending", "domain")
             .unwrap();
-        create_step_output(tmp.path(), "active-skill", 0);
+        create_step_output(skills_tmp.path(), "active-skill", 0);
 
         let current_pid = std::process::id();
         crate::db::create_workflow_session(&conn, "sess-active", "active-skill", current_pid)
             .unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("skipped"));
@@ -962,18 +1005,20 @@ mod tests {
     #[test]
     fn test_reconcile_processes_skill_with_dead_session() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "crashed-skill", "test");
         crate::db::save_workflow_run(&conn, "crashed-skill", "test", 5, "pending", "domain")
             .unwrap();
-        create_step_output(tmp.path(), "crashed-skill", 0);
+        create_step_output(skills_tmp.path(), "crashed-skill", 0);
 
         crate::db::create_workflow_session(&conn, "sess-dead", "crashed-skill", 999999).unwrap();
         crate::db::reconcile_orphaned_sessions(&conn).unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         assert_eq!(result.notifications.len(), 1);
         assert!(result.notifications[0].contains("reset from step 5 to step 0"));
@@ -986,14 +1031,16 @@ mod tests {
     #[test]
     fn test_reconcile_cleans_future_step_files() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
         create_skill_dir(tmp.path(), "my-skill", "test");
-        create_step_output(tmp.path(), "my-skill", 0);
+        create_step_output(skills_tmp.path(), "my-skill", 0);
         crate::db::save_workflow_run(&conn, "my-skill", "test", 5, "pending", "domain").unwrap();
 
-        let result = reconcile_on_startup(&conn, workspace, None).unwrap();
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
         assert_eq!(run.current_step, 0, "should reconcile to step 0");
@@ -1030,7 +1077,7 @@ mod tests {
         std::fs::create_dir_all(output_dir.join("references")).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        resolve_orphan(&conn, "orphan", "delete", Some(skills_path)).unwrap();
+        resolve_orphan(&conn, "orphan", "delete", skills_path).unwrap();
 
         assert!(crate::db::get_workflow_run(&conn, "orphan")
             .unwrap()
@@ -1049,7 +1096,7 @@ mod tests {
         std::fs::create_dir_all(&output_dir).unwrap();
         std::fs::write(output_dir.join("SKILL.md"), "# Skill").unwrap();
 
-        resolve_orphan(&conn, "orphan", "keep", Some(skills_path)).unwrap();
+        resolve_orphan(&conn, "orphan", "keep", skills_path).unwrap();
 
         let run = crate::db::get_workflow_run(&conn, "orphan")
             .unwrap()
@@ -1065,7 +1112,7 @@ mod tests {
 
         crate::db::save_workflow_run(&conn, "orphan", "test", 5, "completed", "domain").unwrap();
 
-        resolve_orphan(&conn, "orphan", "delete", Some("/nonexistent/path")).unwrap();
+        resolve_orphan(&conn, "orphan", "delete", "/nonexistent/path").unwrap();
         assert!(crate::db::get_workflow_run(&conn, "orphan")
             .unwrap()
             .is_none());
@@ -1073,25 +1120,16 @@ mod tests {
 
     #[test]
     fn test_resolve_orphan_invalid_action() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
         let conn = create_test_db();
         crate::db::save_workflow_run(&conn, "orphan", "test", 5, "completed", "domain").unwrap();
 
-        let result = resolve_orphan(&conn, "orphan", "invalid", None);
+        let result = resolve_orphan(&conn, "orphan", "invalid", skills_path);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
             .contains("Invalid orphan resolution action"));
-    }
-
-    #[test]
-    fn test_resolve_orphan_delete_no_skills_path() {
-        let conn = create_test_db();
-        crate::db::save_workflow_run(&conn, "orphan", "test", 5, "completed", "domain").unwrap();
-
-        resolve_orphan(&conn, "orphan", "delete", None).unwrap();
-        assert!(crate::db::get_workflow_run(&conn, "orphan")
-            .unwrap()
-            .is_none());
     }
 
     // --- skills_path drives discovery ---

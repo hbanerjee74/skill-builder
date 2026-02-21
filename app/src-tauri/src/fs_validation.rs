@@ -10,35 +10,47 @@ use std::path::Path;
 pub fn detect_furthest_step(
     workspace_path: &str,
     skill_name: &str,
-    skills_path: Option<&str>,
+    skills_path: &str,
 ) -> Option<u32> {
+    log::debug!(
+        "[detect_furthest_step] skill='{}': workspace={} skills_path={}",
+        skill_name, workspace_path, skills_path
+    );
     let skill_dir = Path::new(workspace_path).join(skill_name);
     if !skill_dir.exists() {
+        log::debug!("[detect_furthest_step] skill='{}': workspace dir does not exist, returning None", skill_name);
         return None;
     }
 
     let mut furthest: Option<u32> = None;
 
-    // Step 2 (detailed research) edits clarifications.md in-place — no unique
-    // artifact to detect, so it's treated as non-detectable (like steps 1/3).
+    // Detectable steps: those that write unique output files to skills_path.
+    // Steps 0, 4 write context files to skills_path/skill_name/context/.
+    // Step 5 writes SKILL.md to skills_path/skill_name/.
+    // Step 2 edits clarifications.md in-place (no unique artifact) — non-detectable.
     for step_id in [0u32, 4, 5] {
         let files = get_step_output_files(step_id);
         let (has_all, has_any) = if step_id == 5 {
-            let output_dir = if let Some(sp) = skills_path {
-                Path::new(sp).join(skill_name)
-            } else {
-                skill_dir.clone()
-            };
+            let output_dir = Path::new(skills_path).join(skill_name);
             let exists = output_dir.join("SKILL.md").exists();
+            log::debug!(
+                "[detect_furthest_step] skill='{}': step={} checking SKILL.md at {} exists={}",
+                skill_name, step_id, output_dir.join("SKILL.md").display(), exists
+            );
             (exists, exists)
-        } else if skills_path.is_some() && matches!(step_id, 0 | 2 | 4) {
-            let target_dir = Path::new(skills_path.unwrap()).join(skill_name);
-            let all = files.iter().all(|f| target_dir.join(f).exists());
-            let any = files.iter().any(|f| target_dir.join(f).exists());
-            (all, any)
         } else {
-            let all = files.iter().all(|f| skill_dir.join(f).exists());
-            let any = files.iter().any(|f| skill_dir.join(f).exists());
+            // Steps 0, 4: context files live in skills_path/skill_name/
+            let target_dir = Path::new(skills_path).join(skill_name);
+            let all = files.iter().all(|f| {
+                let p = target_dir.join(f);
+                let e = p.exists();
+                log::debug!(
+                    "[detect_furthest_step] skill='{}': step={} checking {} exists={}",
+                    skill_name, step_id, p.display(), e
+                );
+                e
+            });
+            let any = files.iter().any(|f| target_dir.join(f).exists());
             (all, any)
         };
 
@@ -48,8 +60,8 @@ pub fn detect_furthest_step(
             if has_any {
                 // Partial output — clean up orphaned files from this incomplete step
                 log::debug!(
-                    "[detect_furthest_step] step {} has partial output for '{}', cleaning up",
-                    step_id, skill_name
+                    "[detect_furthest_step] skill='{}': step {} has partial output, cleaning up",
+                    skill_name, step_id
                 );
                 cleanup_step_files(workspace_path, skill_name, step_id, skills_path);
             }
@@ -60,21 +72,24 @@ pub fn detect_furthest_step(
         }
     }
 
+    log::debug!("[detect_furthest_step] skill='{}': furthest={:?}", skill_name, furthest);
     furthest
 }
 
 /// Check if a skill has ANY output files in the skills_path directory.
 /// This includes build output (SKILL.md, references/) and context files
 /// (clarifications, decisions) that are written directly to skills_path.
-pub fn has_skill_output(skill_name: &str, skills_path: Option<&str>) -> bool {
-    if let Some(sp) = skills_path {
-        let output_dir = Path::new(sp).join(skill_name);
-        output_dir.join("SKILL.md").exists()
-            || output_dir.join("references").is_dir()
-            || output_dir.join("context").is_dir()
-    } else {
-        false
-    }
+pub fn has_skill_output(skill_name: &str, skills_path: &str) -> bool {
+    log::debug!(
+        "[has_skill_output] skill='{}': skills_path={}",
+        skill_name, skills_path
+    );
+    let output_dir = Path::new(skills_path).join(skill_name);
+    let result = output_dir.join("SKILL.md").exists()
+        || output_dir.join("references").is_dir()
+        || output_dir.join("context").is_dir();
+    log::debug!("[has_skill_output] skill='{}': result={}", skill_name, result);
+    result
 }
 
 #[cfg(test)]
@@ -105,29 +120,34 @@ mod tests {
     #[test]
     fn test_detect_furthest_step_empty_dir() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "empty-skill", "test");
 
-        let step = detect_furthest_step(workspace, "empty-skill", None);
+        let step = detect_furthest_step(workspace, "empty-skill", skills_path);
         assert_eq!(step, None);
     }
 
     #[test]
     fn test_detect_furthest_step_through_steps() {
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Step 0 output
-        create_step_output(tmp.path(), "my-skill", 0);
-        assert_eq!(detect_furthest_step(workspace, "my-skill", None), Some(0));
+        // Step 0 output in skills_path
+        create_step_output(skills_tmp.path(), "my-skill", 0);
+        assert_eq!(detect_furthest_step(workspace, "my-skill", skills_path), Some(0));
 
-        // Step 2 is non-detectable (edits clarifications.md in-place, no unique artifact).
-        // Detection skips from step 0 to step 4.
+        // Step 2 output in skills_path (step 2 edits clarifications.md in-place — no unique artifact)
+        // Actually step 2 has no output files per get_step_output_files, so it's not detectable alone.
+        // Detection goes from 0 to 4.
 
-        // Step 4 output
-        create_step_output(tmp.path(), "my-skill", 4);
-        assert_eq!(detect_furthest_step(workspace, "my-skill", None), Some(4));
+        // Step 4 output in skills_path
+        create_step_output(skills_tmp.path(), "my-skill", 4);
+        assert_eq!(detect_furthest_step(workspace, "my-skill", skills_path), Some(4));
     }
 
     #[test]
@@ -151,13 +171,13 @@ mod tests {
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
             "my-skill",
-            Some(skills.to_str().unwrap()),
+            skills.to_str().unwrap(),
         );
         assert_eq!(step, Some(5));
 
         // Verify context steps are individually detectable
         assert_eq!(
-            detect_furthest_step(workspace.to_str().unwrap(), "my-skill", Some(skills.to_str().unwrap())),
+            detect_furthest_step(workspace.to_str().unwrap(), "my-skill", skills.to_str().unwrap()),
             Some(5)
         );
     }
@@ -177,14 +197,16 @@ mod tests {
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
             "my-skill",
-            Some(skills.to_str().unwrap()),
+            skills.to_str().unwrap(),
         );
         assert_eq!(step, None, "step 5 without earlier steps should not be detected");
     }
 
     #[test]
     fn test_detect_furthest_step_nonexistent_dir() {
-        let step = detect_furthest_step("/nonexistent/path", "no-skill", None);
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        let step = detect_furthest_step("/nonexistent/path", "no-skill", skills_path);
         assert_eq!(step, None);
     }
 
@@ -208,7 +230,7 @@ mod tests {
         let step = detect_furthest_step(
             workspace.to_str().unwrap(),
             "my-skill",
-            Some(skills.to_str().unwrap()),
+            skills.to_str().unwrap(),
         );
         // Should detect step 0 only — NOT step 5
         assert_eq!(step, Some(0));
@@ -223,7 +245,7 @@ mod tests {
 
         assert!(has_skill_output(
             "my-skill",
-            Some(tmp.path().to_str().unwrap())
+            tmp.path().to_str().unwrap()
         ));
     }
 
@@ -235,24 +257,7 @@ mod tests {
 
         assert!(has_skill_output(
             "my-skill",
-            Some(tmp.path().to_str().unwrap())
-        ));
-    }
-
-    #[test]
-    fn test_has_skill_output_none() {
-        assert!(!has_skill_output("my-skill", None));
-    }
-
-    #[test]
-    fn test_has_skill_output_with_context() {
-        let tmp = tempfile::tempdir().unwrap();
-        let output_dir = tmp.path().join("my-skill");
-        std::fs::create_dir_all(output_dir.join("context")).unwrap();
-
-        assert!(has_skill_output(
-            "my-skill",
-            Some(tmp.path().to_str().unwrap())
+            tmp.path().to_str().unwrap()
         ));
     }
 
@@ -263,7 +268,48 @@ mod tests {
 
         assert!(!has_skill_output(
             "my-skill",
-            Some(tmp.path().to_str().unwrap())
+            tmp.path().to_str().unwrap()
         ));
+    }
+
+    #[test]
+    fn test_has_skill_output_with_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let output_dir = tmp.path().join("my-skill");
+        std::fs::create_dir_all(output_dir.join("context")).unwrap();
+
+        assert!(has_skill_output(
+            "my-skill",
+            tmp.path().to_str().unwrap()
+        ));
+    }
+
+    #[test]
+    fn test_detect_step2_is_not_independently_detectable() {
+        // Step 2 edits clarifications.md in-place (no unique artifact).
+        // Detection skips step 2 entirely and goes 0 -> 4 -> 5.
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let skills = tmp.path().join("skills");
+
+        std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
+        // Create step 0 context output (clarifications.md) in skills_path
+        create_step_output(&skills, "my-skill", 0);
+        // No step 4 output — should detect step 0 only
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            skills.to_str().unwrap(),
+        );
+        assert_eq!(step, Some(0), "Step 2 is non-detectable; step 0 should be furthest");
+
+        // Now add step 4 output
+        create_step_output(&skills, "my-skill", 4);
+        let step = detect_furthest_step(
+            workspace.to_str().unwrap(),
+            "my-skill",
+            skills.to_str().unwrap(),
+        );
+        assert_eq!(step, Some(4), "Should detect step 4 with step 0 and 4 output");
     }
 }

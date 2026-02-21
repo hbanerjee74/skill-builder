@@ -7,17 +7,17 @@ pub fn cleanup_step_files(
     workspace_path: &str,
     skill_name: &str,
     step_id: u32,
-    skills_path: Option<&str>,
+    skills_path: &str,
 ) {
+    log::debug!(
+        "[cleanup_step_files] skill='{}': step={} workspace={} skills_path={}",
+        skill_name, step_id, workspace_path, skills_path
+    );
     let skill_dir = Path::new(workspace_path).join(skill_name);
     let files = get_step_output_files(step_id);
 
     if step_id == 5 {
-        let output_dir = if let Some(sp) = skills_path {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        };
+        let output_dir = Path::new(skills_path).join(skill_name);
         let skill_md = output_dir.join("SKILL.md");
         if skill_md.exists() {
             let _ = std::fs::remove_file(&skill_md);
@@ -36,13 +36,9 @@ pub fn cleanup_step_files(
         return;
     }
 
-    // Context files — check both workspace and skills_path locations
-    let context_dir = if let Some(sp) = skills_path {
-        if matches!(step_id, 0 | 2 | 4) {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        }
+    // Context files for steps 0, 2, 4 live in skills_path/skill_name/
+    let context_dir = if matches!(step_id, 0 | 2 | 4) {
+        Path::new(skills_path).join(skill_name)
     } else {
         skill_dir.clone()
     };
@@ -65,8 +61,12 @@ pub fn cleanup_future_steps(
     workspace_path: &str,
     skill_name: &str,
     after_step: i32,
-    skills_path: Option<&str>,
+    skills_path: &str,
 ) {
+    log::debug!(
+        "[cleanup_future_steps] skill='{}': after_step={} workspace={} skills_path={}",
+        skill_name, after_step, workspace_path, skills_path
+    );
     for step_id in [0u32, 2, 4, 5] {
         if (step_id as i32) <= after_step {
             continue;
@@ -76,23 +76,19 @@ pub fn cleanup_future_steps(
 }
 
 /// Delete output files for a single step (thorough version).
-/// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name or
-/// workspace_path/skill_name). For other steps, files are in workspace_path/skill_name.
+/// For step 5 (build), files are in `skill_output_dir` (skills_path/skill_name).
+/// For other steps, files are in skills_path/skill_name/ (context files).
 /// More thorough than `cleanup_step_files` — used by the reset flow.
-pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: Option<&str>) {
+pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_id: u32, skills_path: &str) {
     let skill_dir = Path::new(workspace_path).join(skill_name);
     log::debug!(
-        "[clean_step_output_thorough] step={} skill={} workspace={} skills_path={:?}",
-        step_id, skill_name, workspace_path, skills_path
+        "[clean_step_output_thorough] skill='{}': step={} workspace={} skills_path={}",
+        skill_name, step_id, workspace_path, skills_path
     );
 
     if step_id == 5 {
-        // Step 5 output lives in skill_output_dir
-        let skill_output_dir = if let Some(sp) = skills_path {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        };
+        // Step 5 output lives in skills_path/skill_name/
+        let skill_output_dir = Path::new(skills_path).join(skill_name);
         log::debug!("[clean_step_output_thorough] step=5 output_dir={} exists={}", skill_output_dir.display(), skill_output_dir.exists());
         if skill_output_dir.exists() {
             for file in get_step_output_files(5) {
@@ -123,13 +119,9 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
         return;
     }
 
-    // Context files (steps 0, 2, 4) may live in skills_path when configured
-    let context_dir = if let Some(sp) = skills_path {
-        if matches!(step_id, 0 | 2 | 4) {
-            Path::new(sp).join(skill_name)
-        } else {
-            skill_dir.clone()
-        }
+    // Context files (steps 0, 2, 4) live in skills_path/skill_name/
+    let context_dir = if matches!(step_id, 0 | 2 | 4) {
+        Path::new(skills_path).join(skill_name)
     } else {
         skill_dir.clone()
     };
@@ -156,9 +148,9 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
 }
 
 /// Delete output files for the given step and all subsequent steps.
-pub fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: Option<&str>) {
+pub fn delete_step_output_files(workspace_path: &str, skill_name: &str, from_step_id: u32, skills_path: &str) {
     log::debug!(
-        "[delete_step_output_files] skill={} from_step={} workspace={} skills_path={:?}",
+        "[delete_step_output_files] skill='{}': from_step={} workspace={} skills_path={}",
         skill_name, from_step_id, workspace_path, skills_path
     );
     for step_id in from_step_id..=5 {
@@ -195,19 +187,21 @@ mod tests {
     fn test_cleanup_future_steps() {
         // If reconciled to step 2, files from steps 4/5 should be cleaned up
         let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
         create_skill_dir(tmp.path(), "my-skill", "test");
 
-        // Create complete output for steps 0, 2, 4
-        create_step_output(tmp.path(), "my-skill", 0);
-        create_step_output(tmp.path(), "my-skill", 2);
-        create_step_output(tmp.path(), "my-skill", 4);
+        // Create complete output for steps 0, 2, 4 in skills_path
+        create_step_output(skills_tmp.path(), "my-skill", 0);
+        create_step_output(skills_tmp.path(), "my-skill", 2);
+        create_step_output(skills_tmp.path(), "my-skill", 4);
 
         // Clean up everything after step 2
-        cleanup_future_steps(workspace, "my-skill", 2, None);
+        cleanup_future_steps(workspace, "my-skill", 2, skills_path);
 
-        // Step 0 and 2 files should remain
-        let skill_dir = tmp.path().join("my-skill");
+        // Step 0 and 2 files should remain (clarifications.md from step 0)
+        let skill_dir = skills_tmp.path().join("my-skill");
         assert!(skill_dir.join("context/clarifications.md").exists());
 
         // Step 4 files should be gone

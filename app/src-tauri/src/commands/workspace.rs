@@ -180,7 +180,9 @@ pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Re
     let workspace_path = settings
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
-    let skills_path = settings.skills_path;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[reconcile_startup] workspace={} skills_path={}", workspace_path, skills_path);
 
     // Reconcile orphaned workflow sessions from crashed instances
     match crate::db::reconcile_orphaned_sessions(&conn) {
@@ -193,12 +195,11 @@ pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Re
         _ => {}
     }
 
-    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, skills_path.as_deref())?;
+    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
     // Auto-commit new skill folders added while offline.
     // This is non-fatal: log warnings but don't block startup.
-    let output_root = skills_path.as_deref().unwrap_or(&workspace_path);
-    let output_path = Path::new(output_root);
+    let output_path = Path::new(&skills_path);
 
     if output_path.exists() {
         // Commit untracked skill folders to git
@@ -231,9 +232,10 @@ pub fn resolve_orphan(
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings.skills_path;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, skills_path.as_deref())
+    crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
 // --- Workflow Sessions ---

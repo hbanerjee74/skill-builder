@@ -1185,8 +1185,10 @@ pub fn save_workflow_state(
     let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
     if has_completed_step {
         log::info!("[save_workflow_state] Step completed for '{}', checking git auto-commit", skill_name);
-        if let Ok(settings) = crate::db::read_settings(&conn) {
-            if let Some(ref sp) = settings.skills_path {
+        match crate::db::read_settings(&conn) {
+            Ok(settings) => {
+                let skills_path = settings.skills_path
+                    .ok_or_else(|| "Skills path not configured".to_string())?;
                 let completed_steps: Vec<i32> = step_statuses
                     .iter()
                     .filter(|s| s.status == "completed")
@@ -1201,14 +1203,13 @@ pub fn save_workflow_state(
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+                if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
                     log::warn!("Git auto-commit failed ({}): {}", msg, e);
                 }
-            } else {
-                log::debug!("[save_workflow_state] skills_path not configured — skipping git auto-commit");
             }
-        } else {
-            log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit");
+            Err(e) => {
+                log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit: {}", e);
+            }
         }
     }
 
@@ -1622,18 +1623,17 @@ pub fn reset_workflow_step(
         "[reset_workflow_step] CALLED skill={} from_step={} workspace={}",
         skill_name, from_step_id, workspace_path
     );
-    let skills_path = read_skills_path(&db);
-    log::debug!("[reset_workflow_step] skills_path={:?}", skills_path);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[reset_workflow_step] skills_path={}", skills_path);
 
     // Auto-commit: checkpoint before artifacts are deleted
-    if let Some(ref sp) = skills_path {
-        let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
-        if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
+    let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
+    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
+        log::warn!("Git auto-commit failed ({}): {}", msg, e);
     }
 
-    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
+    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, &skills_path);
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -2020,14 +2020,16 @@ mod tests {
 
     #[test]
     fn test_delete_step_output_files_from_step_onwards() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        // Context files live in skills_path/skill_name/
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        // Step 5 output is now directly in skill_dir (no skill/ subdir)
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 4, 5
+        // Create output files for steps 0, 2, 4, 5 in skills_path/my-skill/
         // Steps 0 and 2 both use clarifications.md (unified artifact)
         std::fs::write(
             skill_dir.join("context/clarifications.md"),
@@ -2039,8 +2041,7 @@ mod tests {
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
         // Reset from step 4 onwards — steps 0, 2 should be preserved
-        // No skills_path set, so step 5 files are in workspace_path/skill_name/
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
 
         // Steps 0, 2 output (unified clarifications.md) should still exist
         assert!(skill_dir.join("context/clarifications.md").exists());
@@ -2055,16 +2056,18 @@ mod tests {
     fn test_clean_step_output_step2_is_noop() {
         // Step 2 edits clarifications.md in-place (no unique artifact),
         // so cleaning step 2 has no files to delete.
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(skill_dir.join("context/clarifications.md"), "refined").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — both files should be untouched (step 2 has no unique output)
-        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, None);
+        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, skills_path);
 
         assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
@@ -2073,21 +2076,25 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_nonexistent_dir_is_ok() {
         // Should not panic on nonexistent directory
-        crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, None);
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, skills_path);
     }
 
     #[test]
     fn test_delete_step_output_files_cleans_last_steps() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 4 (decisions)
+        // Create files for step 4 (decisions) in skills_path
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Reset from step 4 onwards should clean up step 4+5
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
 
         // Step 4 outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -2096,10 +2103,12 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_last_step() {
         // Verify delete_step_output_files(from=5) doesn't panic
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, None);
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, skills_path);
     }
 
     #[test]
@@ -2602,7 +2611,7 @@ mod tests {
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
         // 5. Call delete_step_output_files from step 0 with skills_path
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, Some(skills_path));
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
         // 6. Assert ALL files in skills_path/my-skill/context/ are gone
         let mut remaining: Vec<String> = Vec::new();
