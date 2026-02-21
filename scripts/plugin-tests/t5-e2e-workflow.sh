@@ -9,25 +9,28 @@ run_t5() {
   workspace=$(make_temp_dir "t5-e2e")
   log_verbose "T5 workspace: $workspace"
 
-  local e2e_prompt="Run the /skill-builder:generate-skill workflow.
+  local e2e_prompt="Run the generate-skill workflow (the skill-builder plugin's main skill).
 
 Domain: pet store analytics
 Skill name: pet-store-analytics
 
 IMPORTANT — AUTOMATED TEST RUN:
-This is an automated test. For ALL human review gates (Steps 2, 4, 5, 6, 7):
-- Do NOT wait for human input.
-- Accept the agent's recommendations as-is and proceed to the next step immediately.
-- When a step says 'wait for the user to confirm', treat it as 'the user confirmed, proceed.'
-- For questions in clarification files, if Answer is empty, use the Recommendation as the answer.
+This is an automated test. At every confirmation gate or human review point,
+treat the user as having confirmed and proceed immediately. Do not wait for input.
+For any unanswered clarification questions, use the **Recommendation:** value as
+the answer. Auto-advance through all phases.
 
 Work in this directory: $workspace
 The plugin root is: $PLUGIN_DIR
 
-Complete all steps (Steps 0-7). If you hit a budget limit, that's OK — go as far as you can.
+Complete all phases in order:
+  Scoping → Research → Clarification → Decisions → Generation → Validation
 
-When you finish (or are forced to stop), write the number of the last completed step to: \
-$workspace/test-status.txt (just the number, e.g., '7')"
+If you hit a budget limit that's OK — go as far as you can.
+
+When you finish (or are forced to stop), write the name of the last completed
+phase to: $workspace/test-status.txt
+(e.g., 'scoping', 'research', 'clarification', 'decisions', 'generation', or 'validation')"
 
   log_verbose "Running full E2E workflow (budget: \$$MAX_BUDGET_T5)..."
   echo "  (this may take several minutes)"
@@ -35,44 +38,65 @@ $workspace/test-status.txt (just the number, e.g., '7')"
   local e2e_output
   e2e_output=$(run_claude_unsafe "$e2e_prompt" "$MAX_BUDGET_T5" 2700 "$workspace")
 
-  # ---- Check workflow artifacts at each step ----
-  # All artifacts live under $workspace/$skill_name/ (plugin uses CWD as both workspace and skills path)
-
   local skill_dir="$workspace/$skill_name"
   local context_dir="$skill_dir/context"
+  local workspace_dir="$workspace/.vibedata/$skill_name"
 
-  # Step 0: Init — context dir created
-  if [[ -d "$context_dir" ]]; then
-    record_result "$tier" "init_context_dir" "PASS"
+  # ---- Scoping: session.json created ----
+  if [[ -f "$workspace_dir/session.json" ]]; then
+    record_result "$tier" "scoping_session_json" "PASS"
+    # Verify session.json has expected fields
+    if python3 -c "
+import json, sys
+d = json.load(open('$workspace_dir/session.json'))
+required = ['skill_name', 'skill_type', 'domain', 'skill_dir', 'current_phase', 'mode']
+missing = [k for k in required if k not in d]
+sys.exit(0 if not missing else 1)
+" 2>/dev/null; then
+      record_result "$tier" "scoping_session_json_valid" "PASS"
+    else
+      record_result "$tier" "scoping_session_json_valid" "FAIL" "missing required fields"
+    fi
   else
-    record_result "$tier" "init_context_dir" "FAIL"
+    record_result "$tier" "scoping_session_json" "SKIP" "may not have reached scoping"
+    record_result "$tier" "scoping_session_json_valid" "SKIP" "depends on scoping"
   fi
 
-  # Step 1: Research — planner writes research-plan.md, consolidation writes clarifications.md
-  if [[ -f "$context_dir/research-plan.md" ]]; then
-    record_result "$tier" "step1_research_plan" "PASS"
-  else
-    record_result "$tier" "step1_research_plan" "SKIP" "may not have reached step 1"
-  fi
-
+  # ---- Research: clarifications.md written ----
   if [[ -f "$context_dir/clarifications.md" ]]; then
-    record_result "$tier" "step1_clarifications" "PASS"
+    record_result "$tier" "research_clarifications_md" "PASS"
+    local q_count
+    q_count=$(grep -c "^### Q[0-9]" "$context_dir/clarifications.md" 2>/dev/null || true)
+    if [[ "$q_count" -ge 5 ]]; then
+      record_result "$tier" "research_min_5_questions" "PASS" "$q_count questions"
+    else
+      record_result "$tier" "research_min_5_questions" "FAIL" "only $q_count questions"
+    fi
   else
-    record_result "$tier" "step1_clarifications" "SKIP" "may not have reached step 1"
+    record_result "$tier" "research_clarifications_md" "SKIP" "may not have reached research"
+    record_result "$tier" "research_min_5_questions" "SKIP" "depends on research"
   fi
 
-  # Step 5: Confirm Decisions (produces decisions.md)
+  # ---- Decisions: decisions.md written ----
   if [[ -f "$context_dir/decisions.md" ]]; then
-    record_result "$tier" "step5_decisions" "PASS"
+    record_result "$tier" "decisions_md" "PASS"
+    local d_count
+    d_count=$(grep -c "^### D[0-9]" "$context_dir/decisions.md" 2>/dev/null || true)
+    if [[ "$d_count" -ge 3 ]]; then
+      record_result "$tier" "decisions_min_3" "PASS" "$d_count decisions"
+    else
+      record_result "$tier" "decisions_min_3" "FAIL" "only $d_count decisions"
+    fi
   else
-    record_result "$tier" "step5_decisions" "SKIP" "may not have reached step 5"
+    record_result "$tier" "decisions_md" "SKIP" "may not have reached decisions"
+    record_result "$tier" "decisions_min_3" "SKIP" "depends on decisions"
   fi
 
-  # Step 6: Generate Skill (produces SKILL.md + references/)
+  # ---- Generation: SKILL.md + references/ written ----
   if [[ -f "$skill_dir/SKILL.md" ]]; then
-    record_result "$tier" "step6_skill_built" "PASS"
+    record_result "$tier" "generation_skill_md" "PASS"
   else
-    record_result "$tier" "step6_skill_built" "SKIP" "may not have reached step 6"
+    record_result "$tier" "generation_skill_md" "SKIP" "may not have reached generation"
   fi
 
   local ref_count=0
@@ -80,36 +104,36 @@ $workspace/test-status.txt (just the number, e.g., '7')"
     ref_count=$(ls "$skill_dir/references/"*.md 2>/dev/null | wc -l | tr -d ' ')
   fi
   if [[ "$ref_count" -gt 0 ]]; then
-    record_result "$tier" "step6_references_created" "PASS" "$ref_count files"
+    record_result "$tier" "generation_references" "PASS" "$ref_count files"
   else
-    record_result "$tier" "step6_references_created" "SKIP" "may not have reached step 6"
+    record_result "$tier" "generation_references" "SKIP" "may not have reached generation"
   fi
 
-  # Step 7: Validate Skill (produces validation logs)
+  # ---- Validation: validation logs written ----
   if [[ -f "$context_dir/agent-validation-log.md" ]]; then
-    record_result "$tier" "step7_validation_log" "PASS"
+    record_result "$tier" "validation_log" "PASS"
   else
-    record_result "$tier" "step7_validation_log" "SKIP" "may not have reached step 7"
+    record_result "$tier" "validation_log" "SKIP" "may not have reached validation"
   fi
 
   if [[ -f "$context_dir/test-skill.md" ]]; then
-    record_result "$tier" "step7_test_report" "PASS"
+    record_result "$tier" "validation_test_report" "PASS"
   else
-    record_result "$tier" "step7_test_report" "SKIP" "may not have reached step 7"
+    record_result "$tier" "validation_test_report" "SKIP" "may not have reached validation"
   fi
 
-  # Report how far we got
+  # ---- Report last completed phase ----
   if [[ -f "$workspace/test-status.txt" ]]; then
-    local last_step
-    last_step=$(cat "$workspace/test-status.txt" | tr -d '[:space:]')
-    record_result "$tier" "last_completed_step" "PASS" "reached step $last_step"
+    local last_phase
+    last_phase=$(cat "$workspace/test-status.txt" | tr -d '[:space:]')
+    record_result "$tier" "last_completed_phase" "PASS" "reached: $last_phase"
   else
-    record_result "$tier" "last_completed_step" "SKIP" "no status file written"
+    record_result "$tier" "last_completed_phase" "SKIP" "no status file written"
   fi
 
   # Log workspace for debugging
-  log_verbose "E2E workspace contents:"
   if [[ "$VERBOSE" == "1" ]]; then
+    log_verbose "E2E workspace contents:"
     find "$workspace" -type f 2>/dev/null | sort | while read -r f; do
       echo "    $f"
     done
