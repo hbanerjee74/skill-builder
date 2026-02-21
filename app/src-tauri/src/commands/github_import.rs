@@ -560,7 +560,7 @@ pub async fn import_marketplace_to_library(
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
-        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, &skills_dir, true).await {
+        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, skills_dir, true).await {
             Ok(skill) => {
                 let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
                 let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
@@ -656,6 +656,7 @@ pub async fn import_marketplace_to_library(
 /// When `overwrite` is `true`, an existing destination directory is removed before
 /// downloading. This is used by marketplace imports so that re-imports (e.g. after
 /// `skills_path` changed or files were manually deleted) always succeed.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
     owner: &str,

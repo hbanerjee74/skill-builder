@@ -248,13 +248,13 @@ pub fn reconcile_on_startup(
         // else: no output files, DB at step 0 → fresh skill, no action needed
 
         // Warn if a completed skill is missing its skills_path output
-        if run.status == "completed" {
-            if !has_skill_output(&run.skill_name, skills_path) {
-                log::warn!(
-                    "[reconcile] '{}': completed skill has no output in skills_path — may have been moved or deleted",
-                    run.skill_name
-                );
-            }
+        if run.status == "completed"
+            && !has_skill_output(&run.skill_name, skills_path)
+        {
+            log::warn!(
+                "[reconcile] '{}': completed skill has no output in skills_path — may have been moved or deleted",
+                run.skill_name
+            );
         }
     }
 
