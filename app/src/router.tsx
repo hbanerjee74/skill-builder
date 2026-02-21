@@ -36,7 +36,7 @@ const skillsRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/skills",
   beforeLoad: () => {
-    throw redirect({ to: "/settings", search: { tab: "skills-library" } });
+    throw redirect({ to: "/settings", search: { tab: "skills" } });
   },
 });
 

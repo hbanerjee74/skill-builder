@@ -150,7 +150,7 @@ describe("SettingsPage", () => {
 
     expect(screen.getByRole("button", { name: /General/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Skill Building/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Skills Library/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Skills$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Advanced/i })).toBeInTheDocument();
   });

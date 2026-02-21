@@ -5,7 +5,7 @@ import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
 
 function getPageTitle(path: string): string {
-  if (path === "/") return "Skills";
+  if (path === "/") return "Skill Library";
   if (path === "/settings") return "Settings";
   if (path === "/usage") return "Usage";
   if (path === "/refine") return "Refine";
