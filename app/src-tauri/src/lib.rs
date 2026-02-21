@@ -210,8 +210,6 @@ pub fn run() {
             commands::github_auth::github_get_user,
             commands::github_auth::github_logout,
             commands::github_import::import_marketplace_to_library,
-            commands::team_import::list_team_repo_skills,
-            commands::team_import::import_team_repo_skill,
             commands::usage::persist_agent_run,
             commands::usage::get_usage_summary,
             commands::usage::get_recent_runs,

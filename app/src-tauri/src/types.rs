@@ -83,14 +83,6 @@ pub struct GitHubRepo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillBuilderManifest {
-    pub version: String,
-    pub creator: Option<String>,
-    pub created_at: String,
-    pub app_version: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeStatus {
     pub available: bool,
     pub version: Option<String>,
@@ -408,16 +400,6 @@ pub struct AvailableSkill {
     pub description: Option<String>,
     #[serde(default)]
     pub skill_type: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TeamRepoSkill {
-    pub path: String,
-    pub name: String,
-    pub domain: Option<String>,
-    pub description: Option<String>,
-    pub creator: Option<String>,
-    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

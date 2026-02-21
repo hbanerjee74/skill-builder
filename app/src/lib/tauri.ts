@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // --- Settings ---
 
@@ -364,14 +364,6 @@ export const importGitHubSkills = (owner: string, repo: string, branch: string, 
 
 export const importMarketplaceToLibrary = (skillPaths: string[]) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths })
-
-// --- Team Repo Import ---
-
-export const listTeamRepoSkills = () =>
-  invoke<TeamRepoSkill[]>("list_team_repo_skills")
-
-export const importTeamRepoSkill = (skillPath: string, skillName: string, force: boolean = false) =>
-  invoke<string>("import_team_repo_skill", { skillPath, skillName, force })
 
 // --- Refine ---
 

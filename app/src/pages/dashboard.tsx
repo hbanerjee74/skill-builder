@@ -29,11 +29,9 @@ import { DashboardViewToggle, type ViewMode } from "@/components/dashboard-view-
 import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import TagFilter from "@/components/tag-filter"
-import TeamRepoImportDialog from "@/components/team-repo-import-dialog"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
-import { useAuthStore } from "@/stores/auth-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
 import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
@@ -44,7 +42,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
-  const [marketplaceOpen, setMarketplaceOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
   const [skillLibraryMarketplaceTypeFilter, setSkillLibraryMarketplaceTypeFilter] = useState<string[]>(['platform', 'domain', 'source', 'data-engineering'])
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
@@ -55,7 +52,6 @@ export default function DashboardPage() {
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
-  const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
   const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
@@ -345,13 +341,6 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6 p-6">
       {workspacePath && skillsPath && (
         <div className="flex items-center justify-end gap-2">
-          <TeamRepoImportDialog
-            onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-            marketplaceConfigured={!!marketplaceUrl}
-            isLoggedIn={isLoggedIn}
-            open={marketplaceOpen}
-            onOpenChange={setMarketplaceOpen}
-          />
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             New Skill
