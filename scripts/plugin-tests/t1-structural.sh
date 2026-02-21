@@ -167,4 +167,12 @@ run_t1() {
       record_result "$tier" "coordinator_refs_${safe_name}" "FAIL" "missing: $keyword"
     fi
   done
+
+  # ---- T1.12: Bundled skills source files present ----
+  assert_file_exists "$tier" "bundled_research_skill_source" "$PLUGIN_DIR/agent-sources/workspace/skills/research/SKILL.md"
+  assert_file_exists "$tier" "bundled_research_dimension_sets" "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/dimension-sets.md"
+  assert_file_exists "$tier" "bundled_research_consolidation_handoff" "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/consolidation-handoff.md"
+  local dim_count
+  dim_count=$(find "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/dimensions" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+  assert_count_eq "$tier" "bundled_research_dimension_count_is_18" "18" "$dim_count"
 }

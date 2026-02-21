@@ -245,6 +245,35 @@ else
   fail "agents/generate-skill.md not found"
 fi
 
+# ---------- Bundled Skills source ----------
+echo "=== Bundled Skills ==="
+BUNDLED_SKILLS_DIR="agent-sources/workspace/skills"
+# skill-builder-practices is already checked above — this checks research skill
+if [ -f "$BUNDLED_SKILLS_DIR/research/SKILL.md" ]; then
+  fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$BUNDLED_SKILLS_DIR/research/SKILL.md")
+  skill_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
+  if [ "$skill_name" = "research" ]; then
+    pass "bundled research skill has correct name"
+  else
+    fail "bundled research skill name='$skill_name', expected 'research'"
+  fi
+  for ref in references/dimension-sets.md references/scoring-rubric.md references/consolidation-handoff.md; do
+    if [ -f "$BUNDLED_SKILLS_DIR/research/$ref" ]; then
+      pass "research/$ref exists"
+    else
+      fail "research/$ref missing"
+    fi
+  done
+  dim_count=$(find "$BUNDLED_SKILLS_DIR/research/references/dimensions" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$dim_count" -eq 18 ]; then
+    pass "research/references/dimensions has 18 dimension specs"
+  else
+    fail "research/references/dimensions has $dim_count dimension specs (expected 18)"
+  fi
+else
+  fail "agent-sources/workspace/skills/research/SKILL.md not found"
+fi
+
 # ---------- Summary ----------
 echo ""
 echo "=============================="
