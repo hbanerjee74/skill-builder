@@ -129,18 +129,16 @@ export default function GitHubImportDialog({
       <DialogContent className="sm:max-w-lg">
         {loading && (
           <div className="flex flex-col items-center gap-3 py-8">
-            {error ? (
-              <>
-                <AlertCircle className="size-8 text-destructive" />
-                <p className="text-sm text-destructive text-center">{error}</p>
-                <Button variant="outline" onClick={browse}>Retry</Button>
-              </>
-            ) : (
-              <>
-                <Loader2 className="size-8 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Loading skills...</p>
-              </>
-            )}
+            <Loader2 className="size-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Loading skills...</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <AlertCircle className="size-8 text-destructive" />
+            <p className="text-sm text-destructive text-center">{error}</p>
+            <Button variant="outline" onClick={browse}>Retry</Button>
           </div>
         )}
 

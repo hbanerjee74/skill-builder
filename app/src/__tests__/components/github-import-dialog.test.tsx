@@ -72,39 +72,22 @@ describe("GitHubImportDialog", () => {
   });
 
   describe("Error state", () => {
-    it("shows error message and Retry button while parse_github_url is still loading", async () => {
-      // The error UI is rendered inside {loading && ...}, so it's only visible
-      // while loading=true — i.e. when we set loading=true and simultaneously
-      // set an error before the finally block sets loading=false.
-      // We test the intermediate loading+error state by holding the browse promise open.
-      let rejectBrowse!: (e: Error) => void;
-
+    it("shows error message and Retry button after browse fails", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === "parse_github_url")
-          return new Promise<never>((_, rej) => { rejectBrowse = rej; });
+        if (cmd === "parse_github_url") return Promise.reject(new Error("Invalid GitHub URL"));
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
       });
 
       renderDialog();
 
-      // Confirm spinner is visible first
-      expect(screen.getByText("Loading skills...")).toBeInTheDocument();
-
-      // Now reject — error appears while loading=true before finally fires
-      // Note: in React 18 concurrent mode, catch+finally batching means the
-      // Retry button inside {loading && ...} may not be visible after finally runs.
-      // We verify the component settles without showing stale content.
-      rejectBrowse(new Error("Invalid GitHub URL"));
-
-      // After the async sequence settles, the dialog is empty (no skills, no spinner)
-      // because loading=false && error is set && skills.length=0 &&
-      // the empty-state guard is {!loading && !error && skills.length === 0}.
       await waitFor(() => {
-        expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
+        expect(screen.getByText("Invalid GitHub URL")).toBeInTheDocument();
       });
+      expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+      expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
     });
 
-    it("hides skill list after parse_github_url throws (dialog shows no skills)", async () => {
+    it("hides skill list after browse fails", async () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "parse_github_url") return Promise.reject(new Error("Network error"));
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -116,7 +99,6 @@ describe("GitHubImportDialog", () => {
         expect(screen.queryByText("Loading skills...")).not.toBeInTheDocument();
       });
 
-      // No skill rows should be present
       expect(screen.queryByRole("button", { name: /Import/i })).not.toBeInTheDocument();
     });
   });
