@@ -132,12 +132,24 @@ export default function GitHubImportDialog({
     setStep("importing")
     try {
       const paths = Array.from(selectedPaths)
-      const requested = selectedPaths.size
 
       let importedCount = 0
       if (mode === 'skill-library') {
         const results = await importMarketplaceToLibrary(paths)
         importedCount = results.filter((r) => r.success).length
+        const skipped = results.filter((r) => !r.success).length
+        if (importedCount === 0 && skipped > 0) {
+          setError(
+            skipped === 1
+              ? "This skill already exists in your library."
+              : `${skipped} skills already exist in your library.`
+          )
+          setStep("select")
+          return
+        }
+        if (skipped > 0) {
+          toast.warning(`${skipped} skill${skipped !== 1 ? "s" : ""} already in library — skipped.`)
+        }
       } else {
         const imported = await importGitHubSkills(
           repoInfo.owner,
@@ -151,14 +163,7 @@ export default function GitHubImportDialog({
       setImportedCount(importedCount)
       await onImported()
       setStep("done")
-
-      if (importedCount < requested) {
-        toast.warning(
-          `Imported ${importedCount} of ${requested} skills. ${requested - importedCount} skipped (may already exist).`
-        )
-      } else {
-        toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
-      }
+      toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
     } catch (err) {
       console.error("[github-import] Import failed:", err)
       setError(err instanceof Error ? err.message : String(err))
