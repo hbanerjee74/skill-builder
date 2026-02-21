@@ -28,13 +28,7 @@ skills/
   generate-skill/
     SKILL.md              ← coordinator (state router + workflow)
 agents/
-  research-orchestrator.md
-  answer-evaluator.md
-  detailed-research.md
-  confirm-decisions.md
-  generate-skill.md
-  validate-skill.md
-  refine-skill.md
+  *.md                    ← 7 agents (see ../agent-specs/)
 references/
   workspace-context.md   ← injected inline into every agent Task call
 ```
@@ -86,7 +80,7 @@ skills/
 
 ## Coordinator
 
-The coordinator (`skills/generate-skill/SKILL.md`) is a state-aware router. On every invocation: detect state → classify intent → dispatch.
+The coordinator (`skills/generate-skill/SKILL.md`) is a state-aware router. On every invocation: detect state → classify intent → dispatch. For the full agent workflow (reads/writes per step), see [agent-specs](../agent-specs/).
 
 ### Working Directory Layout
 
