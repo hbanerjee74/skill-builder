@@ -60,14 +60,11 @@ Use the lightest option that fits:
 
 #### Sub-agent Rules
 
-- Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel.
-- Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"researcher-N"`).
+- Launch ALL Task calls in the **same turn** so they run in parallel.
 - Sub-agents return text, not files — the orchestrator writes all output to disk.
 - Include this directive in every sub-agent prompt:
-  > Do not provide progress updates. Return your complete output as text. Do not write files. List outcomes, not process — omit reasoning steps, search narratives, and intermediate analysis.
-- Scoped prompts with clear deliverables — prevent rabbit holes.
-- Final response under 2000 characters — list outcomes, not process.
-- Never call `TaskOutput` twice for the same sub-agent — increase timeout instead.
+  > Return your complete output as text. Do not write files. List outcomes, not process.
+- Scoped prompts with clear deliverables — tell the sub-agent exactly what to produce.
 
 ---
 
