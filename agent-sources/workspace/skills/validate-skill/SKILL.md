@@ -3,9 +3,8 @@ name: validate-skill
 description: >
   Validates a completed skill against its decisions and clarifications. Use when the
   validate-skill orchestrator asks to validate a skill for a domain and skill type.
-  Spawns parallel quality, test, and companion sub-agents, consolidates results, fixes
-  issues in skill files directly, and returns all findings as inline text with
-  === VALIDATION LOG ===, === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
+  Returns a validation log, test results, and companion recommendations as inline text
+  with === VALIDATION LOG ===, === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
 ---
 
 # Validate Skill
