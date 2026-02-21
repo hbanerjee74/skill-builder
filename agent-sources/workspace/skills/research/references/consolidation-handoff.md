@@ -84,7 +84,7 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 | Field | Type | Description |
 |---|---|---|
 | `status` | string | Workflow status (e.g. `pending`, `answered`) |
-| `priority_questions` | list | IDs of all questions that appear under `### Required` sub-headings |
+| `priority_questions` | list | IDs of all questions that appear under `### Required` sub-headings. Omit only when there are no Required questions — otherwise it must be populated so downstream agents can enforce required-answer gating. |
 | `scope_recommendation` | boolean | Set by scope advisor when scope is too broad; checked by downstream agents |
 
 ---

@@ -58,3 +58,5 @@ Extract each section and write to disk:
 2. Write the CLARIFICATIONS section (the full clarifications.md content) to `{context_dir}/clarifications.md`
 
 Write exactly what the skill returned — do not modify the content.
+
+After writing, check whether `clarifications.md` contains `scope_recommendation: true` in its YAML frontmatter. If so, stop and report to the user: the domain scope is too broad or not applicable for skill generation. Do not return normally — surface this condition explicitly.
