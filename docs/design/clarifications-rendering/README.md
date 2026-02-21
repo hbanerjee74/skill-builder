@@ -10,7 +10,7 @@ All mockups use the real `clarifications.md` from the sales-pipeline sample skil
 
 | Item | Issue | Status |
 |---|---|---|
-| Format canonicalization | VD-819 | **Done** (PR #140). Canonical spec at `canonical-format.md` |
+| Format canonicalization | VD-819 | **Done** (PR #140). Canonical spec at `docs/design/agent-specs/canonical-format.md` |
 | Accordion navigator (UI) | VD-817 | Todo — implements Option 2a below |
 | Agent redesign (detailed research) | VD-807 | Todo — design at `vd-807-agent-outputs.md` |
 

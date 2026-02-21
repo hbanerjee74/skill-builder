@@ -82,7 +82,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 
-Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/clarifications-rendering/canonical-format.md`.
+Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/agent-specs/canonical-format.md`.
 
 ### How to use this table
 
@@ -92,7 +92,7 @@ Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.
 
 **Example:** You change `agents/consolidate-research.md` to use a different choices format. Look it up → run `./scripts/test-plugin.sh t1`. But the mock templates also contain choices in the same format → also run `npm run test:unit` to catch the drift.
 
-**Canonical heading changes:** If you change the heading hierarchy in `canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the `autofill_answers` and `autofill_refinement_answers` functions use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
+**Canonical heading changes:** If you change the heading hierarchy in `docs/design/agent-specs/canonical-format.md` (e.g., adding new H3 sub-headings), also update Rust parser tests (`cargo test commands::workflow`) — the `autofill_answers` and `autofill_refinement_answers` functions use `starts_with("### ")` / `starts_with("## ")` for state resets and must be tested against the new heading structure.
 
 | Source | What it validates | Compliance Test |
 |---|---|---|

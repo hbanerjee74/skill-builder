@@ -280,7 +280,7 @@ Every ID traces back to the original question. The `Source` field in decisions t
 
 Completed in **VD-819** (PR #140). Was blocking VD-807 and VD-817.
 
-Resolved 8+1 format inconsistencies between agent prompts, mock templates, E2E fixtures, and the Rust parser. Canonical spec at `canonical-format.md`. Compliance tests: plugin T1.11 (50 checks), vitest canonical-format.test.ts (124 tests), cargo test workflow (96 tests), vitest reasoning-parser.test.ts (23 tests).
+Resolved 8+1 format inconsistencies between agent prompts, mock templates, E2E fixtures, and the Rust parser. Canonical spec at `docs/design/agent-specs/canonical-format.md`. Compliance tests: plugin T1.11 (50 checks), vitest canonical-format.test.ts (124 tests), cargo test workflow (96 tests), vitest reasoning-parser.test.ts (23 tests).
 
 ### Decisions
 
@@ -360,7 +360,7 @@ scope_recommendation: true        # optional — set by scope advisor, checked b
 
 ### Canonical format reference
 
-Authoritative spec: `docs/design/clarifications-rendering/canonical-format.md`. All agent prompts, mock templates, E2E fixtures, and parsers are aligned and validated by compliance tests.
+Authoritative spec: `docs/design/clarifications-rendering/docs/design/agent-specs/canonical-format.md`. All agent prompts, mock templates, E2E fixtures, and parsers are aligned and validated by compliance tests.
 
 ---
 
