@@ -34,6 +34,11 @@ export function resolveStepTemplate(agentName: string | undefined): string | nul
     return "step0-research";
   }
 
+  // Skill test agents
+  if (agentName === "test-plan-with") return "test-plan-with";
+  if (agentName === "test-plan-without") return "test-plan-without";
+  if (agentName === "test-evaluator") return "test-evaluator";
+
   return null;
 }
 
