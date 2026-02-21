@@ -21,7 +21,10 @@ import {
   sendRefineMessage,
   closeRefineSession,
   cleanupSkillSidecar,
+  acquireLock,
+  releaseLock,
 } from "@/lib/tauri";
+import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
@@ -53,6 +56,7 @@ export default function RefinePage() {
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const lockedSkills = useSkillStore((s) => s.lockedSkills);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
   const refinableSkills = useRefineStore((s) => s.refinableSkills);
@@ -93,8 +97,9 @@ export default function RefinePage() {
       closeRefineSession(store.sessionId).catch(() => {});
     }
 
-    // Fire-and-forget: shut down persistent sidecar for this skill
+    // Fire-and-forget: release skill lock and shut down persistent sidecar for this skill
     if (store.selectedSkill) {
+      releaseLock(store.selectedSkill.name).catch(() => {});
       cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
     }
 
@@ -131,6 +136,20 @@ export default function RefinePage() {
     async (skill: SkillSummary) => {
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
+
+      // Release lock on previous skill (if any) before acquiring new lock
+      const prevSkill = store.selectedSkill;
+      if (prevSkill && prevSkill.name !== skill.name) {
+        releaseLock(prevSkill.name).catch(() => {});
+      }
+
+      // Acquire lock on the new skill before proceeding
+      try {
+        await acquireLock(skill.name);
+      } catch (err) {
+        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
 
       // Close previous backend session if any
       const prevSessionId = store.sessionId;
@@ -239,8 +258,9 @@ export default function RefinePage() {
         closeRefineSession(store.sessionId).catch(() => {});
       }
 
-      // Fire-and-forget: shut down persistent sidecar
+      // Fire-and-forget: release skill lock and shut down persistent sidecar
       if (store.selectedSkill) {
+        releaseLock(store.selectedSkill.name).catch(() => {});
         cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
       }
     };
@@ -305,6 +325,7 @@ export default function RefinePage() {
           selected={selectedSkill}
           isLoading={isLoadingSkills}
           disabled={isRunning}
+          lockedSkills={lockedSkills}
           onSelect={handleSelectSkill}
         />
       </div>

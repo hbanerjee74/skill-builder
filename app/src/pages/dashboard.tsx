@@ -483,6 +483,7 @@ export default function DashboardPage() {
         onSaved={() => { loadSkills(); loadTags(); }}
         tagSuggestions={availableTags}
         existingNames={existingSkillNames}
+        isLocked={editTarget ? lockedSkills.has(editTarget.name) : false}
       />
 
       <DeleteSkillDialog
@@ -493,6 +494,7 @@ export default function DashboardPage() {
           if (!open) setDeleteTarget(null)
         }}
         onDeleted={() => { loadSkills(); loadTags(); }}
+        isLocked={deleteTarget ? lockedSkills.has(deleteTarget.name) : false}
       />
 
     </div>
