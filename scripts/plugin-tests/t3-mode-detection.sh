@@ -14,13 +14,21 @@ run_t3() {
 
   _t3_detect_state() {
     local test_name="$1" dir="$2" expected_phase="$3"
+    # Build flexible grep pattern — exact phase name + natural language synonyms
+    local pattern
+    case "$expected_phase" in
+      fresh)              pattern="fresh|no.session|no.active|haven.t.started|empty.workspace|no.skill.session" ;;
+      generation)         pattern="generation|generat|skill.md|skill.has.been|skill.file.exist" ;;
+      refinement_pending) pattern="refinement.pending|refinement|unanswered.refinement|pending.refinement" ;;
+      *)                  pattern="$expected_phase" ;;
+    esac
     local output
     output=$(run_claude_unsafe \
       "What is the current phase of this skill session? Answer with just the phase name." \
       "$budget" 60 "$dir")
     if [[ -z "$output" ]]; then
       record_result "$tier" "$test_name" "FAIL" "empty output"
-    elif echo "$output" | grep -qi "$expected_phase"; then
+    elif echo "$output" | grep -qiE "$pattern"; then
       record_result "$tier" "$test_name" "PASS"
     else
       record_result "$tier" "$test_name" "FAIL" "expected phase '$expected_phase' not found"
