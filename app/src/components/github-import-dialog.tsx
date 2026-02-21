@@ -173,7 +173,7 @@ export default function GitHubImportDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Github className="size-5" />
-                Import from GitHub
+                Import from Marketplace
               </DialogTitle>
               <DialogDescription>
                 Paste a public GitHub repository URL to browse available skills.

@@ -110,7 +110,7 @@ export function SkillsLibraryTab() {
       <div className="flex items-center gap-2">
         <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
           <Github className="size-4" />
-          Import from GitHub
+          Import from Marketplace
         </Button>
         <Button onClick={handleUpload}>
           <Upload className="size-4" />
@@ -141,7 +141,7 @@ export function SkillsLibraryTab() {
             </div>
             <CardTitle>No imported skills</CardTitle>
             <CardDescription>
-              Upload a .skill package or import from GitHub to add skills to your library.
+              Upload a .skill package or import from Marketplace to add skills to your library.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
@@ -152,7 +152,7 @@ export function SkillsLibraryTab() {
               </Button>
               <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
                 <Github className="size-4" />
-                Import from GitHub
+                Import from Marketplace
               </Button>
             </div>
           </CardContent>

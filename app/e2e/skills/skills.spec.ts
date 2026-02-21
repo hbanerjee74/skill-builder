@@ -23,18 +23,20 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Empty state card should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("No imported skills")).toBeVisible();
     await expect(
-      page.getByText("Upload a .skill package or import from GitHub to add skills to your library.")
+      page.getByText("Upload a .skill package or import from Marketplace to add skills to your library.")
     ).toBeVisible();
 
     // Action buttons in empty state card
     const emptyCard = page.locator("[data-slot='card']");
     await expect(emptyCard.getByRole("button", { name: /upload skill/i })).toBeVisible();
-    await expect(emptyCard.getByRole("button", { name: /import from github/i })).toBeVisible();
+    await expect(emptyCard.getByRole("button", { name: /import from marketplace/i })).toBeVisible();
   });
 
   test("shows action buttons in Skills Library tab", async ({ page }) => {
@@ -44,16 +46,18 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Settings page header
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
 
-    // Settings sidebar shows "Skills" as active section
-    await expect(page.locator("nav button", { hasText: "Skills" })).toBeVisible();
+    // Skills section navigation button should be visible
+    await expect(page.getByRole("button", { name: "Skills" })).toBeVisible();
 
     // Action buttons
-    await expect(page.getByRole("button", { name: /import from github/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /import from marketplace/i }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
   });
 
@@ -64,7 +68,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Both skill cards should be visible (CardTitle renders as <div>, not a heading)
     await expect(page.getByText("data-analytics")).toBeVisible();
@@ -74,7 +80,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("Data", { exact: true })).toBeVisible();
     await expect(page.getByText("Engineering", { exact: true })).toBeVisible();
 
-    // Trigger text
+    // argument_hint is displayed on the card
     await expect(page.getByText("When the user asks about data analysis...")).toBeVisible();
     await expect(page.getByText("When designing REST APIs...")).toBeVisible();
   });
@@ -87,7 +93,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Find the switch for data-analytics skill
     const dataAnalyticsSwitch = page.getByLabel("Toggle data-analytics active");
@@ -111,7 +119,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     }, importedSkillsFixture);
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Find the delete button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -147,7 +157,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Click the Preview button for data-analytics (CardTitle is a <div>, not a heading)
     const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
@@ -178,7 +190,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       { skills: importedSkillsFixture, content: mockSkillContent }
     );
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Open preview (CardTitle is a <div>, not a heading)
     const apiDesignCard = page.locator("[data-slot='card']").filter({
@@ -200,7 +214,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Verify the Upload Skill button exists and is clickable
     const uploadButton = page.getByRole("button", { name: /upload skill/i }).first();
@@ -215,14 +231,16 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
-    // Click Import from GitHub button
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    // Click Import from Marketplace button
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
 
     // Dialog should open
     await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Import from GitHub" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import from Marketplace" })).toBeVisible();
     await expect(
       page.getByText("Paste a public GitHub repository URL to browse available skills.")
     ).toBeVisible();
@@ -255,10 +273,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
-    // Open GitHub import dialog
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    // Open Marketplace import dialog
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
 
     // Enter GitHub URL
     await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
@@ -298,10 +318,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Open dialog and navigate to step 2
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
     await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
     await page.getByRole("button", { name: "Browse Skills" }).click();
 
@@ -347,10 +369,12 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Navigate to step 2
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
     await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
     await page.getByRole("button", { name: "Browse Skills" }).click();
 
@@ -396,17 +420,20 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
             description: "Data analytics skill",
             is_active: true,
             disk_path: "/tmp/skills/analytics",
-            trigger_text: null,
+            argument_hint: "When the user asks about analytics...",
             imported_at: "2025-01-20T10:00:00Z",
           },
         ],
+        regenerate_claude_md: undefined,
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Step 1: Enter URL
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
     await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
     await page.getByRole("button", { name: "Browse Skills" }).click();
 
@@ -414,7 +441,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
     await page.getByRole("button", { name: "Import Selected (1)" }).click();
 
-    // Step 3: Importing spinner completes → Step 4: Done
+    // Step 3: Importing spinner (might be too fast to catch)
+    // Flow goes directly to "Import Complete" after importing
+
+    // Step 3/Done: Import Complete
     await expect(page.getByRole("heading", { name: "Import Complete" })).toBeVisible({ timeout: 5000 });
     await expect(page.getByText("Successfully imported 1 skill.")).toBeVisible();
 
@@ -444,21 +474,24 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       };
     });
 
-    await navigateToSkillsLibrary(page);
+    await page.goto("/settings");
+    await waitForAppReady(page);
+    await page.getByRole("button", { name: "Skills" }).click();
 
     // Navigate to step 2
-    await page.getByRole("button", { name: /import from github/i }).first().click();
+    await page.getByRole("button", { name: /import from marketplace/i }).first().click();
     await page.getByPlaceholder("https://github.com/owner/repo").fill("https://github.com/test-owner/test-repo");
     await page.getByRole("button", { name: "Browse Skills" }).click();
 
     await expect(page.getByRole("heading", { name: "Select Skills from test-owner/test-repo" })).toBeVisible();
 
-    // Click back button (ArrowLeft icon button) — scoped to dialog to avoid matching header's back button
-    const backButton = page.getByRole("dialog").locator("button").filter({ has: page.locator("svg.lucide-arrow-left") });
+    // Click back button (ArrowLeft icon button) — scoped to the dialog to avoid the "Back to Dashboard" header button
+    const dialog = page.getByRole("dialog");
+    const backButton = dialog.locator("button").filter({ has: page.locator("svg.lucide-arrow-left") });
     await backButton.click();
 
     // Should go back to step 1
-    await expect(page.getByRole("heading", { name: "Import from GitHub" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import from Marketplace" })).toBeVisible();
     await expect(page.getByPlaceholder("https://github.com/owner/repo")).toHaveValue("https://github.com/test-owner/test-repo");
   });
 });
