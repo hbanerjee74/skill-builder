@@ -1909,7 +1909,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1974,7 +1979,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
