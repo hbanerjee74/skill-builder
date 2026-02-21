@@ -315,7 +315,7 @@ This skill guides data engineers in building dbt models for pet store analytics 
 EOF
 }
 
-# validation: session.json + agent-validation-log.md + test-skill.md
+# validation: session.json + agent-validation-log.md + test-skill.md + companion-skills.md
 create_fixture_validation() {
   local dir="$1" skill_name="$2"
   create_fixture_generation "$dir" "$skill_name"
@@ -347,6 +347,33 @@ EOF
 
 ### Failed Test
 - T3: grain documentation — skill mentions fct_transactions but does not specify grain
+EOF
+  cat > "$dir/$skill_name/context/companion-skills.md" << 'EOF'
+---
+skill_name: pet-store-analytics
+skill_type: domain
+companions:
+  - name: Shopify Extraction
+    slug: shopify-extraction
+    type: source
+    dimension: field-semantics
+    dimension_score: 3
+    priority: high
+    reason: "Pet store analytics assumes clean transactional data but field semantics in Shopify exports vary significantly across plan tiers"
+    trigger_description: "Extracting and normalizing Shopify order and product data for analytics use"
+    template_match: null
+---
+# Companion Skill Recommendations
+
+## 1. Shopify Extraction (source skill)
+
+**Priority**: High | **Dimension**: field-semantics (score: 3)
+
+**Why**: Pet store analytics assumes clean transactional data but field semantics in Shopify exports vary significantly across plan tiers.
+
+**Suggested trigger**: Extracting and normalizing Shopify order and product data for analytics use.
+
+**Template match**: No matching template found
 EOF
 }
 
