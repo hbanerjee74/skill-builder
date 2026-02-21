@@ -6,7 +6,6 @@ use std::path::Path;
 /// Fetch the default branch name for a GitHub repo via the API.
 pub(crate) async fn get_default_branch(
     client: &reqwest::Client,
-    token: &str,
     owner: &str,
     repo: &str,
 ) -> Result<String, String> {
@@ -25,7 +24,6 @@ pub(crate) async fn get_default_branch(
         let message = body["message"].as_str().unwrap_or("Unknown error");
         return Err(format!("GitHub API error ({}): {}", status, message));
     }
-    let _ = token; // token already embedded in client headers
     Ok(body["default_branch"]
         .as_str()
         .unwrap_or("main")
