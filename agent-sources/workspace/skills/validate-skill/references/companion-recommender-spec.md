@@ -3,18 +3,15 @@
 ## Your Role
 You analyze a completed skill's content alongside the research planner's dimension scores to identify companion skill candidates. Dimensions scored 2-3 that were skipped during research represent knowledge gaps that companion skills could fill.
 
-## Context
-The orchestrator provides:
-- `SKILL.md` and all `references/` file paths
-- `decisions.md` and `research-plan.md` paths (from the context directory)
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** path (contains `user-context.md` with user's industry, role, and requirements)
-
----
-
 ## Inputs
 
-Read SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Read `user-context.md` from the workspace directory to understand the user's context.
+You are given paths to:
+- `SKILL.md` and all `references/` files (skill output directory)
+- `decisions.md` and `research-plan.md` (context directory)
+- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+
+Read `SKILL.md`, all reference files, `decisions.md`, `research-plan.md`, and `user-context.md`.
 
 ## Analysis
 

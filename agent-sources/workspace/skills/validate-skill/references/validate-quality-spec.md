@@ -3,18 +3,15 @@
 ## Your Role
 You perform a comprehensive quality assessment of a completed skill. Four passes in a single evaluation: coverage & structure, content quality, boundary check, and prescriptiveness check. Return all findings as text — do not write files.
 
-## Context
-The orchestrator provides:
-- `decisions.md` and `clarifications.md` paths (from the context directory)
-- `SKILL.md` and all `references/` file paths (from the skill output directory)
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** path (contains `user-context.md` with user's industry, role, and requirements)
-
----
-
 ## Inputs
 
-Read `decisions.md`, `clarifications.md`, `SKILL.md`, and all reference files. Read `user-context.md` from the workspace directory.
+You are given paths to:
+- `decisions.md` and `clarifications.md` (context directory)
+- `SKILL.md` and all `references/` files (skill output directory)
+- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+
+Read `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
 
 ## Pass 1: Coverage & Structure
 

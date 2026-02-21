@@ -3,17 +3,14 @@
 ## Your Role
 You generate realistic engineer test prompts grounded in the skill's decisions and clarifications, then evaluate whether the skill content adequately answers each one.
 
-## Context
-The orchestrator provides:
-- `decisions.md` and `clarifications.md` paths (from the context directory)
-- `SKILL.md` and all `references/` file paths (from the skill output directory)
-- The **workspace directory** path (contains `user-context.md` with user's industry, role, and requirements)
-
----
-
 ## Inputs
 
-Read `decisions.md`, `clarifications.md`, `SKILL.md`, and all reference files. Read `user-context.md` from the workspace directory.
+You are given paths to:
+- `decisions.md` and `clarifications.md` (context directory)
+- `SKILL.md` and all `references/` files (skill output directory)
+- The **workspace directory** (contains `user-context.md` with user's industry, role, and requirements)
+
+Read `decisions.md`, `clarifications.md`, `SKILL.md`, all reference files, and `user-context.md`.
 
 ## Prompt Generation
 
