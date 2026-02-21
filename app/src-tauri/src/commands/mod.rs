@@ -5,8 +5,6 @@ pub mod files;
 pub mod git;
 pub mod github_auth;
 pub mod github_import;
-pub mod github_push;
-pub mod team_import;
 pub mod imported_skills;
 pub mod lifecycle;
 pub mod node;

@@ -290,14 +290,6 @@ fn generate_skills_section(conn: &rusqlite::Connection) -> Result<String, String
             section.push_str(desc);
             section.push('\n');
         }
-        if let Some(trigger) = skill.trigger_text.as_deref().filter(|t| !t.is_empty()) {
-            section.push_str(trigger);
-            section.push('\n');
-        }
-        section.push_str(&format!(
-            "Read and follow the skill at `.claude/skills/{}/SKILL.md`.\n",
-            skill.skill_name
-        ));
     }
 
     Ok(section)
@@ -611,6 +603,12 @@ fn build_prompt(
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
+    description: Option<&str>,
+    version: Option<&str>,
+    skill_model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
@@ -645,6 +643,33 @@ fn build_prompt(
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
 
     prompt.push_str(" The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+
+    if let Some(desc) = description {
+        if !desc.is_empty() {
+            prompt.push_str(&format!(" The skill description is: {}.", desc));
+        }
+    }
+    if let Some(ver) = version {
+        if !ver.is_empty() {
+            prompt.push_str(&format!(" The version is: {}.", ver));
+        }
+    }
+    if let Some(m) = skill_model {
+        if !m.is_empty() && m != "inherit" {
+            prompt.push_str(&format!(" The preferred model is: {}.", m));
+        }
+    }
+    if let Some(hint) = argument_hint {
+        if !hint.is_empty() {
+            prompt.push_str(&format!(" The argument hint is: {}.", hint));
+        }
+    }
+    if let Some(inv) = user_invocable {
+        prompt.push_str(&format!(" User invocable: {}.", inv));
+    }
+    if let Some(dmi) = disable_model_invocation {
+        prompt.push_str(&format!(" Disable model invocation: {}.", dmi));
+    }
 
     if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
         prompt.push_str("\n\n");
@@ -731,6 +756,12 @@ struct WorkflowSettings {
     industry: Option<String>,
     function_role: Option<String>,
     intake_json: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+    skill_model: Option<String>,
+    argument_hint: Option<String>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 }
 
 /// Read all workflow settings from the DB in a single lock acquisition.
@@ -768,6 +799,12 @@ fn read_workflow_settings(
     let author_login = run_row.as_ref().and_then(|r| r.author_login.clone());
     let created_at = run_row.as_ref().map(|r| r.created_at.clone());
     let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
+    let description = run_row.as_ref().and_then(|r| r.description.clone());
+    let version = run_row.as_ref().and_then(|r| r.version.clone());
+    let skill_model = run_row.as_ref().and_then(|r| r.model.clone());
+    let argument_hint = run_row.as_ref().and_then(|r| r.argument_hint.clone());
+    let user_invocable = run_row.as_ref().and_then(|r| r.user_invocable);
+    let disable_model_invocation = run_row.as_ref().and_then(|r| r.disable_model_invocation);
 
     Ok(WorkflowSettings {
         skills_path,
@@ -780,6 +817,12 @@ fn read_workflow_settings(
         industry,
         function_role,
         intake_json,
+        description,
+        version,
+        skill_model,
+        argument_hint,
+        user_invocable,
+        disable_model_invocation,
     })
 }
 
@@ -825,6 +868,12 @@ async fn run_workflow_step_inner(
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
     );
     log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
@@ -1136,8 +1185,10 @@ pub fn save_workflow_state(
     let has_completed_step = step_statuses.iter().any(|s| s.status == "completed");
     if has_completed_step {
         log::info!("[save_workflow_state] Step completed for '{}', checking git auto-commit", skill_name);
-        if let Ok(settings) = crate::db::read_settings(&conn) {
-            if let Some(ref sp) = settings.skills_path {
+        match crate::db::read_settings(&conn) {
+            Ok(settings) => {
+                let skills_path = settings.skills_path
+                    .ok_or_else(|| "Skills path not configured".to_string())?;
                 let completed_steps: Vec<i32> = step_statuses
                     .iter()
                     .filter(|s| s.status == "completed")
@@ -1152,14 +1203,13 @@ pub fn save_workflow_state(
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
+                if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
                     log::warn!("Git auto-commit failed ({}): {}", msg, e);
                 }
-            } else {
-                log::debug!("[save_workflow_state] skills_path not configured — skipping git auto-commit");
             }
-        } else {
-            log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit");
+            Err(e) => {
+                log::warn!("[save_workflow_state] Failed to read settings — skipping git auto-commit: {}", e);
+            }
         }
     }
 
@@ -1573,18 +1623,17 @@ pub fn reset_workflow_step(
         "[reset_workflow_step] CALLED skill={} from_step={} workspace={}",
         skill_name, from_step_id, workspace_path
     );
-    let skills_path = read_skills_path(&db);
-    log::debug!("[reset_workflow_step] skills_path={:?}", skills_path);
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[reset_workflow_step] skills_path={}", skills_path);
 
     // Auto-commit: checkpoint before artifacts are deleted
-    if let Some(ref sp) = skills_path {
-        let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
-        if let Err(e) = crate::git::commit_all(std::path::Path::new(sp), &msg) {
-            log::warn!("Git auto-commit failed ({}): {}", msg, e);
-        }
+    let msg = format!("{}: checkpoint before reset to step {}", skill_name, from_step_id);
+    if let Err(e) = crate::git::commit_all(std::path::Path::new(&skills_path), &msg) {
+        log::warn!("Git auto-commit failed ({}): {}", msg, e);
     }
 
-    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, skills_path.as_deref());
+    crate::cleanup::delete_step_output_files(&workspace_path, &skill_name, from_step_id, &skills_path);
 
     // Reset steps in SQLite
     let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -1735,6 +1784,12 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("e-commerce"));
         assert!(prompt.contains("my-skill"));
@@ -1758,6 +1813,12 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
         );
         assert!(prompt.contains("The skill type is: platform."));
     }
@@ -1773,6 +1834,12 @@ mod tests {
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
             5,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1793,6 +1860,12 @@ mod tests {
             None,
             None,
             5,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -1947,14 +2020,16 @@ mod tests {
 
     #[test]
     fn test_delete_step_output_files_from_step_onwards() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        // Context files live in skills_path/skill_name/
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
-        // Step 5 output is now directly in skill_dir (no skill/ subdir)
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 4, 5
+        // Create output files for steps 0, 2, 4, 5 in skills_path/my-skill/
         // Steps 0 and 2 both use clarifications.md (unified artifact)
         std::fs::write(
             skill_dir.join("context/clarifications.md"),
@@ -1966,8 +2041,7 @@ mod tests {
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
         // Reset from step 4 onwards — steps 0, 2 should be preserved
-        // No skills_path set, so step 5 files are in workspace_path/skill_name/
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
 
         // Steps 0, 2 output (unified clarifications.md) should still exist
         assert!(skill_dir.join("context/clarifications.md").exists());
@@ -1982,16 +2056,18 @@ mod tests {
     fn test_clean_step_output_step2_is_noop() {
         // Step 2 edits clarifications.md in-place (no unique artifact),
         // so cleaning step 2 has no files to delete.
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(skill_dir.join("context/clarifications.md"), "refined").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — both files should be untouched (step 2 has no unique output)
-        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, None);
+        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, skills_path);
 
         assert!(skill_dir.join("context/clarifications.md").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
@@ -2000,21 +2076,25 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_nonexistent_dir_is_ok() {
         // Should not panic on nonexistent directory
-        crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, None);
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_path = tmp.path().to_str().unwrap();
+        crate::cleanup::delete_step_output_files("/tmp/nonexistent", "no-skill", 0, skills_path);
     }
 
     #[test]
     fn test_delete_step_output_files_cleans_last_steps() {
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        let skill_dir = tmp.path().join("my-skill");
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 4 (decisions)
+        // Create files for step 4 (decisions) in skills_path
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Reset from step 4 onwards should clean up step 4+5
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, None);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
 
         // Step 4 outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -2023,10 +2103,12 @@ mod tests {
     #[test]
     fn test_delete_step_output_files_last_step() {
         // Verify delete_step_output_files(from=5) doesn't panic
-        let tmp = tempfile::tempdir().unwrap();
-        let workspace = tmp.path().to_str().unwrap();
-        std::fs::create_dir_all(tmp.path().join("my-skill")).unwrap();
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, None);
+        let workspace_tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = workspace_tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, skills_path);
     }
 
     #[test]
@@ -2529,7 +2611,7 @@ mod tests {
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
         // 5. Call delete_step_output_files from step 0 with skills_path
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, Some(skills_path));
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
         // 6. Assert ALL files in skills_path/my-skill/context/ are gone
         let mut remaining: Vec<String> = Vec::new();
@@ -2647,6 +2729,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Industry**: Healthcare"));
@@ -2661,6 +2744,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, None,
+            None, None, None, None, None, None,
         );
         assert!(!prompt.contains("## User Context"));
         assert!(prompt.contains("test-skill"));
@@ -2672,6 +2756,7 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Fintech"), None, None,
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Industry**: Fintech"));
@@ -2684,11 +2769,37 @@ mod tests {
         let prompt = build_prompt(
             "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, Some(intake),
+            None, None, None, None, None, None,
         );
         assert!(prompt.contains("## User Context"));
         assert!(prompt.contains("**Target Audience**: Analysts"));
         assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
         assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
+    }
+
+    #[test]
+    fn test_build_prompt_with_behaviour_fields() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+            Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
+        );
+        assert!(prompt.contains("The skill description is: A skill for sales analysis."));
+        assert!(prompt.contains("The version is: 2.0.0."));
+        assert!(prompt.contains("The preferred model is: sonnet."));
+        assert!(prompt.contains("The argument hint is: [org-url]."));
+        assert!(prompt.contains("User invocable: true."));
+        assert!(prompt.contains("Disable model invocation: false."));
+    }
+
+    #[test]
+    fn test_build_prompt_inherit_model_not_in_prompt() {
+        let prompt = build_prompt(
+            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+            None, None, 5, None, None, None,
+            None, None, Some("inherit"), None, None, None,
+        );
+        assert!(!prompt.contains("The preferred model is:"));
     }
 
     // --- VD-801: parse_decisions_guard tests ---
@@ -3071,7 +3182,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3080,7 +3196,7 @@ mod tests {
         assert!(section.contains("## Custom Skills"), "should use unified heading");
         assert!(section.contains("### /test-practices"), "should list skill by name");
         assert!(section.contains("Skill structure rules."), "should include description");
-        assert!(section.contains("Read the skill at .claude/skills/test-practices/SKILL.md."), "should include trigger");
+        assert!(!section.contains("Read and follow the skill at"), "should not include path line");
         assert!(!section.contains("## Skill Generation Guidance"), "old bundled heading must not appear");
         assert!(!section.contains("## Imported Skills"), "old imported heading must not appear");
     }
@@ -3097,7 +3213,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3131,7 +3252,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3142,7 +3268,12 @@ mod tests {
             imported_at: "2025-01-15T10:00:00Z".to_string(),
             is_bundled: false,
             description: None,
-            trigger_text: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &bundled).unwrap();
         crate::db::insert_imported_skill(&conn, &imported).unwrap();
@@ -3165,6 +3296,48 @@ mod tests {
         let conn = super::super::test_utils::create_test_db();
         let section = generate_skills_section(&conn).unwrap();
         assert!(section.is_empty(), "no skills should produce empty section");
+    }
+
+    #[test]
+    fn test_generate_skills_section_no_trigger_no_path() {
+        // Regression test: section must never contain "Read and follow" path line or trigger text
+        let conn = super::super::test_utils::create_test_db();
+        let skill_tmp = tempfile::tempdir().unwrap();
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "my-skill",
+            Some("When user asks about X, use this skill."),
+            Some("Skill description here."),
+        );
+
+        let skill = crate::types::ImportedSkill {
+            skill_id: "imp-my-skill-1".to_string(),
+            skill_name: "my-skill".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path,
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            is_bundled: false,
+            description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let section = generate_skills_section(&conn).unwrap();
+
+        // Must NOT contain trigger text or path directive
+        assert!(!section.contains("Read and follow"), "section must not contain 'Read and follow'");
+        assert!(!section.contains("When user asks about X"), "section must not contain trigger text");
+        assert!(!section.contains("SKILL.md"), "section must not contain skill path");
+
+        // MUST contain description
+        assert!(section.contains("Skill description here."), "section must include description");
+        assert!(section.contains("### /my-skill"), "section must include skill heading");
     }
 
 }

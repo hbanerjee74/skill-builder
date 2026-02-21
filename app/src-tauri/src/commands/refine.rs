@@ -547,7 +547,27 @@ pub async fn send_refine_message(
             (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
         };
 
-        // 3. Build full prompt with all paths, metadata, and user context
+        // 3. Ensure the skill's workspace dir exists before building the prompt.
+        // The prompt tells the agent "All directories already exist", so this must
+        // be true by the time the prompt is constructed. For marketplace skills,
+        // workspace_path/skill_name/ is not created during import.
+        let skill_workspace_dir = Path::new(&workspace_path).join(&skill_name);
+        if !skill_workspace_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
+                log::warn!(
+                    "[send_refine_message] failed to create skill workspace dir '{}': {}",
+                    skill_workspace_dir.display(),
+                    e
+                );
+            } else {
+                log::debug!(
+                    "[send_refine_message] created skill workspace dir '{}'",
+                    skill_workspace_dir.display()
+                );
+            }
+        }
+
+        // 4. Build full prompt with all paths, metadata, and user context
         let prompt = build_refine_prompt(
             &skill_name,
             &domain,
@@ -568,7 +588,7 @@ pub async fn send_refine_message(
             prompt
         );
 
-        // 4. Build config and agent_id
+        // 5. Build config and agent_id
         let (mut config, agent_id) = build_refine_config(
             prompt,
             &skill_name,

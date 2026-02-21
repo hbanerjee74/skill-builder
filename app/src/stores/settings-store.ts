@@ -11,8 +11,7 @@ interface SettingsState {
   githubUserLogin: string | null;
   githubUserAvatar: string | null;
   githubUserEmail: string | null;
-  remoteRepoOwner: string | null;
-  remoteRepoName: string | null;
+  marketplaceUrl: string | null;
   maxDimensions: number;
   industry: string | null;
   functionRole: string | null;
@@ -33,8 +32,7 @@ const initialState = {
   githubUserLogin: null,
   githubUserAvatar: null,
   githubUserEmail: null,
-  remoteRepoOwner: null,
-  remoteRepoName: null,
+  marketplaceUrl: null,
   maxDimensions: 5,
   industry: null,
   functionRole: null,

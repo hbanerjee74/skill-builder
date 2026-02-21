@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // --- Settings ---
 
@@ -32,7 +32,25 @@ export const updateSkillMetadata = (
   skillType: string | null,
   tags: string[] | null,
   intakeJson: string | null,
-) => invoke("update_skill_metadata", { skillName, domain, skillType, tags, intakeJson });
+  description?: string | null,
+  version?: string | null,
+  model?: string | null,
+  argumentHint?: string | null,
+  userInvocable?: boolean | null,
+  disableModelInvocation?: boolean | null,
+) => invoke("update_skill_metadata", {
+  skillName,
+  domain,
+  skillType,
+  tags,
+  intakeJson,
+  description: description ?? null,
+  version: version ?? null,
+  model: model ?? null,
+  argumentHint: argumentHint ?? null,
+  userInvocable: userInvocable ?? null,
+  disableModelInvocation: disableModelInvocation ?? null,
+});
 
 export const renameSkill = (
   oldName: string,
@@ -328,10 +346,17 @@ export const resetUsage = () =>
 export const exportSkill = (skillName: string) =>
   invoke<string>("export_skill", { skillName });
 
+export async function getInstalledSkillNames(): Promise<string[]> {
+  return invoke<string[]>("get_installed_skill_names")
+}
+
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>
   invoke<GitHubRepoInfo>("parse_github_url", { url });
+
+export const checkMarketplaceUrl = (url: string) =>
+  invoke<void>("check_marketplace_url", { url });
 
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
@@ -339,27 +364,10 @@ export const listGitHubSkills = (owner: string, repo: string, branch: string, su
 export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
   invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
 
-// --- GitHub Push ---
+// --- Marketplace Import ---
 
-export const validateRemoteRepo = (owner: string, repo: string) =>
-  invoke<void>("validate_remote_repo", { owner, repo })
-
-export const pushSkillToRemote = (skillName: string) =>
-  invoke<PushResult>("push_skill_to_remote", { skillName })
-
-export const reconcileManifests = () =>
-  invoke<number>("reconcile_manifests")
-
-export const listUserRepos = () =>
-  invoke<GitHubRepo[]>("list_user_repos")
-
-// --- Team Repo Import ---
-
-export const listTeamRepoSkills = () =>
-  invoke<TeamRepoSkill[]>("list_team_repo_skills")
-
-export const importTeamRepoSkill = (skillPath: string, skillName: string, force: boolean = false) =>
-  invoke<string>("import_team_repo_skill", { skillPath, skillName, force })
+export const importMarketplaceToLibrary = (skillPaths: string[]) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths })
 
 // --- Refine ---
 

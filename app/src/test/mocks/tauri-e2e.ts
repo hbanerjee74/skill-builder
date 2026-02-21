@@ -84,8 +84,6 @@ const mockResponses: Record<string, unknown> = {
   release_lock: undefined,
   get_locked_skills: [],
   check_lock: false,
-  list_team_repo_skills: [],
-  import_team_repo_skill: "imported-skill",
   // Refine page
   start_refine_session: {
     session_id: "e2e-refine-session-001",

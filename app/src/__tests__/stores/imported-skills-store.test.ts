@@ -11,9 +11,14 @@ const sampleSkills: ImportedSkill[] = [
     description: "Analytics skill for sales data",
     is_active: true,
     disk_path: "/skills/sales-analytics",
-    trigger_text: null,
     imported_at: "2026-01-15T10:00:00Z",
     is_bundled: false,
+    skill_type: null,
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
   {
     skill_id: "id-2",
@@ -22,9 +27,14 @@ const sampleSkills: ImportedSkill[] = [
     description: null,
     is_active: false,
     disk_path: "/skills/hr-metrics",
-    trigger_text: null,
     imported_at: "2026-01-10T08:00:00Z",
     is_bundled: false,
+    skill_type: null,
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
 ];
 
@@ -98,9 +108,14 @@ describe("useImportedSkillsStore", () => {
         description: "A new skill",
         is_active: true,
         disk_path: "/skills/new-skill",
-        trigger_text: null,
         imported_at: "2026-02-01T12:00:00Z",
         is_bundled: false,
+        skill_type: null,
+        version: null,
+        model: null,
+        argument_hint: null,
+        user_invocable: null,
+        disable_model_invocation: null,
       };
       mockInvokeCommands({ upload_skill: newSkill });
 

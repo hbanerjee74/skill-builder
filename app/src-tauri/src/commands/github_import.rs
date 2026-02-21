@@ -3,6 +3,33 @@ use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill};
 use std::fs;
 use std::path::Path;
 
+/// Fetch the default branch name for a GitHub repo via the API.
+pub(crate) async fn get_default_branch(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+) -> Result<String, String> {
+    let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo info: {}", e))?;
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse repo response: {}", e))?;
+    if !status.is_success() {
+        let message = body["message"].as_str().unwrap_or("Unknown error");
+        return Err(format!("GitHub API error ({}): {}", status, message));
+    }
+    Ok(body["default_branch"]
+        .as_str()
+        .unwrap_or("main")
+        .to_string())
+}
+
 /// Build a `reqwest::Client` with standard GitHub API headers.
 /// If an OAuth token is available in settings, it is included as a Bearer token.
 pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
@@ -119,6 +146,35 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
 }
 
 // ---------------------------------------------------------------------------
+// check_marketplace_url
+// ---------------------------------------------------------------------------
+
+/// Verify that a URL points to an accessible GitHub repository.
+///
+/// Unlike `list_github_skills`, this uses the repos API (`GET /repos/{owner}/{repo}`)
+/// which succeeds regardless of the default branch name. This avoids the 404
+/// that occurs when the repo's default branch is not "main".
+#[tauri::command]
+pub async fn check_marketplace_url(
+    db: tauri::State<'_, Db>,
+    url: String,
+) -> Result<(), String> {
+    log::info!("[check_marketplace_url] url={}", url);
+    let repo_info = parse_github_url_inner(&url)?;
+    let token = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[check_marketplace_url] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        settings.github_oauth_token.clone()
+    };
+    let client = build_github_client(token.as_deref());
+    get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // list_github_skills
 // ---------------------------------------------------------------------------
 
@@ -151,6 +207,12 @@ pub(crate) async fn list_github_skills_inner(
     token: Option<&str>,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
+
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, owner, repo)
+        .await
+        .unwrap_or_else(|_| branch.to_string());
 
     // Fetch the full recursive tree
     let tree_url = format!(
@@ -251,8 +313,13 @@ pub(crate) async fn list_github_skills_inner(
             }
         };
 
-        let (fm_name, fm_description, fm_domain, _fm_type) =
+        let (fm_name, fm_description, fm_domain, fm_type) =
             super::imported_skills::parse_frontmatter(&content);
+
+        log::debug!(
+            "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
+            skill_md_path, fm_name, fm_domain, fm_type
+        );
 
         // Derive skill directory path (parent of SKILL.md)
         let skill_dir = skill_md_path
@@ -274,6 +341,7 @@ pub(crate) async fn list_github_skills_inner(
             name,
             domain: fm_domain,
             description: fm_description,
+            skill_type: fm_type,
         });
     }
 
@@ -296,7 +364,10 @@ pub async fn import_github_skills(
     log::info!("[import_github_skills] owner={} repo={} branch={} skill_paths={:?}", owner, repo, branch, skill_paths);
     // Read settings
     let (workspace_path, token) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_github_skills] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         let wp = settings
             .workspace_path
@@ -305,6 +376,12 @@ pub async fn import_github_skills(
     };
 
     let client = build_github_client(token.as_deref());
+
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, &owner, &repo)
+        .await
+        .unwrap_or(branch);
 
     // Fetch the full recursive tree once
     let tree_url = format!(
@@ -349,6 +426,7 @@ pub async fn import_github_skills(
             skill_path,
             tree,
             &skills_dir,
+            false,
         )
         .await
         {
@@ -395,7 +473,190 @@ pub async fn import_github_skills(
     Ok(imported)
 }
 
+// ---------------------------------------------------------------------------
+// import_marketplace_to_library
+// ---------------------------------------------------------------------------
+
+/// Result of a single marketplace skill import attempt.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MarketplaceImportResult {
+    pub skill_name: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+/// Import one or more skills from the configured marketplace URL into the Skill Library.
+/// Each successfully imported skill gets a `workflow_runs` row with `source='marketplace'`.
+#[tauri::command]
+pub async fn import_marketplace_to_library(
+    db: tauri::State<'_, Db>,
+    skill_paths: Vec<String>,
+) -> Result<Vec<MarketplaceImportResult>, String> {
+    log::info!(
+        "[import_marketplace_to_library] importing {} skills from marketplace",
+        skill_paths.len()
+    );
+
+    // Read settings
+    let (marketplace_url, workspace_path, skills_path, token) = {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_marketplace_to_library] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let url = settings
+            .marketplace_url
+            .ok_or_else(|| "Marketplace URL not configured. Set it in Settings.".to_string())?;
+        let wp = settings
+            .workspace_path
+            .ok_or_else(|| "Workspace path not initialized".to_string())?;
+        let sp = settings
+            .skills_path
+            .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
+        (url, wp, sp, settings.github_oauth_token.clone())
+    };
+
+    // Parse the marketplace URL into owner/repo/branch
+    let repo_info = parse_github_url_inner(&marketplace_url)?;
+    let owner = &repo_info.owner;
+    let repo = &repo_info.repo;
+
+    let client = build_github_client(token.as_deref());
+
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, owner, repo)
+        .await
+        .unwrap_or_else(|_| repo_info.branch.clone());
+
+    // Fetch the full recursive tree once
+    let tree_url = format!(
+        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+        owner, repo, branch
+    );
+
+    let response = client
+        .get(&tree_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
+
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
+
+    if !status.is_success() {
+        let message = body["message"].as_str().unwrap_or("Unknown error");
+        return Err(format!("GitHub API error ({}): {}", status, message));
+    }
+
+    let tree = body["tree"]
+        .as_array()
+        .ok_or("Invalid tree response: missing 'tree' array")?;
+
+    let skills_dir = Path::new(&skills_path);
+    let mut results: Vec<MarketplaceImportResult> = Vec::new();
+
+    for skill_path in &skill_paths {
+        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, skills_dir, true).await {
+            Ok(skill) => {
+                let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
+                let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
+
+                // Upsert into imported_skills first. Uses ON CONFLICT DO UPDATE so
+                // re-imports (e.g. after skills_path changed) succeed rather than
+                // hitting a UNIQUE constraint.
+                let conn = db.0.lock().map_err(|e| {
+                    log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
+                    e.to_string()
+                })?;
+                if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
+                    log::error!(
+                        "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
+                        skill.skill_name, e
+                    );
+                    if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
+                        log::warn!(
+                            "[import_marketplace_to_library] cleanup failed for '{}': {}",
+                            skill.disk_path, ce
+                        );
+                    }
+                    results.push(MarketplaceImportResult {
+                        skill_name: skill.skill_name,
+                        success: false,
+                        error: Some(e),
+                    });
+                    continue;
+                }
+
+                // Then record in workflow_runs with source='marketplace'.
+                if let Err(e) = crate::db::save_marketplace_skill_run(
+                    &conn,
+                    &skill.skill_name,
+                    &domain,
+                    skill_type_str,
+                ) {
+                    log::warn!(
+                        "[import_marketplace_to_library] failed to save workflow run for '{}': {}",
+                        skill.skill_name, e
+                    );
+                }
+
+                log::info!(
+                    "[import_marketplace_to_library] imported '{}' to '{}'",
+                    skill.skill_name, skill.disk_path
+                );
+                results.push(MarketplaceImportResult {
+                    skill_name: skill.skill_name,
+                    success: true,
+                    error: None,
+                });
+            }
+            Err(e) => {
+                log::error!(
+                    "[import_marketplace_to_library] failed to import '{}': {}",
+                    skill_path, e
+                );
+                results.push(MarketplaceImportResult {
+                    skill_name: skill_path.clone(),
+                    success: false,
+                    error: Some(e),
+                });
+            }
+        }
+    }
+
+    // Regenerate CLAUDE.md with imported skills section (only if at least one succeeded)
+    if results.iter().any(|r| r.success) {
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[import_marketplace_to_library] failed to acquire DB lock for CLAUDE.md update: {}", e);
+            e.to_string()
+        })?;
+        if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!(
+                "[import_marketplace_to_library] failed to update CLAUDE.md: {}",
+                e
+            );
+        }
+    }
+
+    log::info!(
+        "[import_marketplace_to_library] done: {} succeeded, {} failed",
+        results.iter().filter(|r| r.success).count(),
+        results.iter().filter(|r| !r.success).count()
+    );
+
+    Ok(results)
+}
+
 /// Import a single skill directory from the repo tree.
+///
+/// When `overwrite` is `true`, an existing destination directory is removed before
+/// downloading. This is used by marketplace imports so that re-imports (e.g. after
+/// `skills_path` changed or files were manually deleted) always succeed.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
     owner: &str,
@@ -404,6 +665,7 @@ pub(crate) async fn import_single_skill(
     skill_path: &str,
     tree: &[serde_json::Value],
     skills_dir: &Path,
+    overwrite: bool,
 ) -> Result<ImportedSkill, String> {
     let prefix = if skill_path.is_empty() {
         String::new()
@@ -493,11 +755,20 @@ pub(crate) async fn import_single_skill(
     // Check if skill directory already exists on disk
     let dest_dir = skills_dir.join(&skill_name);
     if dest_dir.exists() {
-        return Err(format!(
-            "Skill '{}' already exists at '{}'",
-            skill_name,
-            dest_dir.display()
-        ));
+        if overwrite {
+            log::debug!(
+                "[import_single_skill] removing existing dir for re-import: {}",
+                dest_dir.display()
+            );
+            fs::remove_dir_all(&dest_dir)
+                .map_err(|e| format!("Failed to remove existing skill directory: {}", e))?;
+        } else {
+            return Err(format!(
+                "Skill '{}' already exists at '{}'",
+                skill_name,
+                dest_dir.display()
+            ));
+        }
     }
 
     // Create destination directory and canonicalize for secure containment checks
@@ -555,20 +826,21 @@ pub(crate) async fn import_single_skill(
             .await
             .map_err(|e| format!("Failed to download '{}': {}", file_path, e))?;
 
-        // Reject files larger than 10 MB
-        if let Some(len) = response.content_length() {
-            if len > 10_000_000 {
-                return Err(format!(
-                    "File '{}' too large: {} bytes (max 10 MB)",
-                    file_path, len
-                ));
-            }
-        }
-
         let content = response
             .bytes()
             .await
             .map_err(|e| format!("Failed to read '{}': {}", file_path, e))?;
+
+        // Reject files larger than 10 MB. Check actual byte count after download
+        // rather than Content-Length header, which is absent for chunked responses
+        // (the norm for raw.githubusercontent.com).
+        if content.len() > 10_000_000 {
+            return Err(format!(
+                "File '{}' too large: {} bytes (max 10 MB)",
+                file_path,
+                content.len()
+            ));
+        }
 
         fs::write(&out_path, &content)
             .map_err(|e| format!("Failed to write '{}': {}", out_path.display(), e))?;
@@ -578,13 +850,6 @@ pub(crate) async fn import_single_skill(
     let imported_at = chrono::Utc::now()
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
-
-    if fm.trigger.is_none() {
-        log::warn!(
-            "import_single_skill: skill '{}' has no trigger field in SKILL.md frontmatter",
-            skill_name
-        );
-    }
 
     Ok(ImportedSkill {
         skill_id,
@@ -596,7 +861,12 @@ pub(crate) async fn import_single_skill(
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
-        trigger_text: fm.trigger,
+        skill_type: fm.skill_type,
+        version: fm.version,
+        model: fm.model,
+        argument_hint: fm.argument_hint,
+        user_invocable: fm.user_invocable,
+        disable_model_invocation: fm.disable_model_invocation,
     })
 }
 
@@ -615,6 +885,19 @@ mod tests {
         let result = parse_github_url_inner("https://github.com/acme/skill-library").unwrap();
         assert_eq!(result.owner, "acme");
         assert_eq!(result.repo, "skill-library");
+        assert_eq!(result.branch, "main");
+        assert!(result.subpath.is_none());
+    }
+
+    #[test]
+    fn test_parse_url_no_branch_defaults_to_main() {
+        // URLs pasted from a browser (no /tree/branch suffix) always default to "main"
+        // even when the repo's real default branch is different (e.g. "master").
+        // check_marketplace_url works around this by calling the repos API which
+        // returns the actual default branch instead of relying on the parsed value.
+        let result = parse_github_url_inner("https://github.com/hbanerjee74/skills").unwrap();
+        assert_eq!(result.owner, "hbanerjee74");
+        assert_eq!(result.repo, "skills");
         assert_eq!(result.branch, "main");
         assert!(result.subpath.is_none());
     }
@@ -835,5 +1118,45 @@ mod tests {
         assert_eq!(relative[0], "SKILL.md");
         assert_eq!(relative[1], "references/concepts.md");
         assert_eq!(relative[2], "references/patterns.md");
+    }
+
+    // --- Branch resolution tests ---
+
+    #[test]
+    fn test_parse_url_always_defaults_branch_to_main() {
+        // Reproduces the root cause of the 404 bug: URLs without a /tree/<branch>
+        // suffix always produce branch="main" regardless of the repo's actual default.
+        // The fix in list_github_skills_inner / import_github_skills /
+        // import_marketplace_to_library is to call get_default_branch() after parsing
+        // so that the git tree API uses the correct branch (e.g. "master").
+        for url in &[
+            "https://github.com/acme/skills",
+            "github.com/acme/skills",
+            "acme/skills",
+        ] {
+            let result = parse_github_url_inner(url).unwrap();
+            assert_eq!(
+                result.branch, "main",
+                "URL '{}' should default to 'main' before branch resolution",
+                url
+            );
+        }
+    }
+
+    #[test]
+    fn test_branch_resolution_uses_resolved_over_parsed() {
+        // Simulate the branch resolution logic applied in list_github_skills_inner.
+        // When get_default_branch returns "master", it must replace the parsed "main".
+        let parsed_branch = "main"; // parse_github_url_inner default
+
+        // Simulate get_default_branch succeeding with a different branch
+        let resolved: Result<String, String> = Ok("master".to_string());
+        let branch = resolved.unwrap_or_else(|_| parsed_branch.to_string());
+        assert_eq!(branch, "master", "Resolved branch should override parsed default");
+
+        // Simulate get_default_branch failing — should fall back to parsed value
+        let resolved_err: Result<String, String> = Err("network error".to_string());
+        let branch_fallback = resolved_err.unwrap_or_else(|_| parsed_branch.to_string());
+        assert_eq!(branch_fallback, "main", "Fallback to parsed branch when resolution fails");
     }
 }

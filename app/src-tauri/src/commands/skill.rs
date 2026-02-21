@@ -56,6 +56,13 @@ fn list_skills_inner(
                 author_avatar: run.author_avatar,
                 display_name: run.display_name,
                 intake_json: run.intake_json,
+                source: Some(run.source),
+                description: run.description,
+                version: run.version,
+                model: run.model,
+                argument_hint: run.argument_hint,
+                user_invocable: run.user_invocable,
+                disable_model_invocation: run.disable_model_invocation,
             }
         })
         .collect();
@@ -96,7 +103,13 @@ pub fn list_refinable_skills(
     }; // conn lock released here
 
     // Filesystem existence checks happen outside the DB lock.
-    Ok(filter_by_skill_md_exists(&skills_path, completed))
+    let result = filter_by_skill_md_exists(&skills_path, completed);
+    log::debug!(
+        "[list_refinable_skills] {} skills eligible for refine (skills_path={})",
+        result.len(),
+        skills_path
+    );
+    Ok(result)
 }
 
 /// Filter completed skills to only those with a SKILL.md on disk.
@@ -105,10 +118,16 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
     completed
         .into_iter()
         .filter(|s| {
-            Path::new(skills_path)
-                .join(&s.name)
-                .join("SKILL.md")
-                .exists()
+            let skill_md = Path::new(skills_path).join(&s.name).join("SKILL.md");
+            let exists = skill_md.exists();
+            if !exists {
+                log::debug!(
+                    "[filter_by_skill_md_exists] '{}' excluded — SKILL.md not found at {}",
+                    s.name,
+                    skill_md.display()
+                );
+            }
+            exists
         })
         .collect()
 }
@@ -133,16 +152,22 @@ fn list_refinable_skills_inner(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn create_skill(
-    app: tauri::AppHandle,
+    _app: tauri::AppHandle,
     workspace_path: String,
     name: String,
     domain: String,
     tags: Option<Vec<String>>,
     skill_type: Option<String>,
     intake_json: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+    model: Option<String>,
+    argument_hint: Option<String>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[create_skill] name={} domain={} skill_type={:?} tags={:?} intake={}", name, domain, skill_type, tags, intake_json.is_some());
+    log::info!("[create_skill] name={} domain={} skill_type={:?} tags={:?} intake={} description={}", name, domain, skill_type, tags, intake_json.is_some(), description.is_some());
     let conn = db.0.lock().map_err(|e| {
         log::error!("[create_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -161,7 +186,6 @@ pub fn create_skill(
 
     let author_login = settings.as_ref().and_then(|s| s.github_user_login.clone());
     let author_avatar = settings.as_ref().and_then(|s| s.github_user_avatar.clone());
-    let app_version = app.config().version.clone().unwrap_or_default();
     create_skill_inner(
         &workspace_path,
         &name,
@@ -172,8 +196,13 @@ pub fn create_skill(
         skills_path.as_deref(),
         author_login.as_deref(),
         author_avatar.as_deref(),
-        &app_version,
         intake_json.as_deref(),
+        description.as_deref(),
+        version.as_deref(),
+        model.as_deref(),
+        argument_hint.as_deref(),
+        user_invocable,
+        disable_model_invocation,
     )
 }
 
@@ -188,8 +217,13 @@ fn create_skill_inner(
     skills_path: Option<&str>,
     author_login: Option<&str>,
     author_avatar: Option<&str>,
-    app_version: &str,
     intake_json: Option<&str>,
+    description: Option<&str>,
+    version: Option<&str>,
+    model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 ) -> Result<(), String> {
     // Check for collision in workspace_path (working directory)
     let base = Path::new(workspace_path).join(name);
@@ -242,15 +276,24 @@ fn create_skill_inner(
         if let Some(ij) = intake_json {
             let _ = crate::db::set_skill_intake(conn, name, Some(ij));
         }
-    }
 
-    // Write .skill-builder manifest into the skill output directory
-    if let Some(sp) = skills_path {
-        let skill_output = Path::new(sp).join(name);
-        if skill_output.exists() {
-            if let Err(e) = super::github_push::write_manifest_file(&skill_output, author_login, app_version) {
-                log::warn!("Failed to write .skill-builder manifest for '{}': {}", name, e);
-            }
+        if description.is_some()
+            || version.is_some()
+            || model.is_some()
+            || argument_hint.is_some()
+            || user_invocable.is_some()
+            || disable_model_invocation.is_some()
+        {
+            let _ = crate::db::set_skill_behaviour(
+                conn,
+                name,
+                description,
+                version,
+                model,
+                argument_hint,
+                user_invocable,
+                disable_model_invocation,
+            );
         }
     }
 
@@ -383,6 +426,18 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+pub fn get_installed_skill_names(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<String>, String> {
+    log::info!("[get_installed_skill_names]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_installed_skill_names] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    crate::db::get_all_installed_skill_names(&conn)
+}
+
+#[tauri::command]
 pub fn acquire_lock(
     skill_name: String,
     instance: tauri::State<'_, crate::InstanceInfo>,
@@ -451,15 +506,22 @@ pub fn check_lock(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn update_skill_metadata(
     skill_name: String,
     domain: Option<String>,
     skill_type: Option<String>,
     tags: Option<Vec<String>>,
     intake_json: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+    model: Option<String>,
+    argument_hint: Option<String>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[update_skill_metadata] skill={} domain={:?} skill_type={:?} tags={:?} intake={}", skill_name, domain, skill_type, tags, intake_json.is_some());
+    log::info!("[update_skill_metadata] skill={} domain={:?} skill_type={:?} tags={:?} intake={} description={}", skill_name, domain, skill_type, tags, intake_json.is_some(), description.is_some());
     let conn = db.0.lock().map_err(|e| {
         log::error!("[update_skill_metadata] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -492,6 +554,27 @@ pub fn update_skill_metadata(
     if let Some(ij) = &intake_json {
         crate::db::set_skill_intake(&conn, &skill_name, Some(ij)).map_err(|e| {
             log::error!("[update_skill_metadata] Failed to set intake_json: {}", e);
+            e
+        })?;
+    }
+    if description.is_some()
+        || version.is_some()
+        || model.is_some()
+        || argument_hint.is_some()
+        || user_invocable.is_some()
+        || disable_model_invocation.is_some()
+    {
+        crate::db::set_skill_behaviour(
+            &conn,
+            &skill_name,
+            description.as_deref(),
+            version.as_deref(),
+            model.as_deref(),
+            argument_hint.as_deref(),
+            user_invocable,
+            disable_model_invocation,
+        ).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to set behaviour fields: {}", e);
             e
         })?;
     }
@@ -579,8 +662,8 @@ fn rename_skill_inner(
 
         // workflow_runs: PK change — insert new, delete old
         tx.execute(
-            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json)
-             SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation)
+             SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
@@ -968,7 +1051,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, "0.1.0", None)
+        create_skill_inner(workspace, "my-skill", "sales pipeline", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -983,8 +1066,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let workspace = dir.path().to_str().unwrap();
 
-        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None).unwrap();
-        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, "0.1.0", None);
+        create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
+        let result = create_skill_inner(workspace, "dup-skill", "domain", None, None, None, None, None, None, None, None, None, None, None, None, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("already exists"));
     }
@@ -997,7 +1080,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
         let conn = create_test_db();
 
-        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None)
+        create_skill_inner(workspace, "to-delete", "domain", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None)
             .unwrap();
 
         let skills = list_skills_inner(workspace, &conn).unwrap();
@@ -1032,7 +1115,12 @@ mod tests {
             Some(skills_path),
             None,
             None,
-            "0.1.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -1071,7 +1159,12 @@ mod tests {
             None,
             None,
             None,
-            "0.1.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
         )
         .unwrap();
@@ -1185,7 +1278,7 @@ mod tests {
         // Create a symlink or sibling that the ".." traversal would resolve to
         // The workspace has a dir that resolves outside via ".."
         // workspace/legit is a real skill
-        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace_str, "legit", "domain", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
 
         // Attempt to delete using ".." to escape the workspace
         // This creates workspace/../outside-target which resolves to outside_dir
@@ -1258,7 +1351,12 @@ mod tests {
             Some(skills_path),
             None,
             None,
-            "0.1.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
         );
         assert!(result.is_err());
@@ -1287,7 +1385,12 @@ mod tests {
             Some(skills_path),
             None,
             None,
-            "0.1.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
         );
         assert!(result.is_err());
@@ -1314,7 +1417,12 @@ mod tests {
             Some(skills_path),
             None,
             None,
-            "0.1.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
         );
         assert!(result.is_ok());
@@ -1334,7 +1442,7 @@ mod tests {
         let workspace = dir.path().to_str().unwrap();
 
         // Create a skill
-        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace, "skill-with-logs", "analytics", None, None, None, None, None, None, None, None, None, None, None, None, None).unwrap();
 
         // Add a logs/ subdirectory with a fake log file inside the skill directory
         let skill_dir = dir.path().join("skill-with-logs");
@@ -1528,7 +1636,7 @@ mod tests {
             workspace, "old-name", "analytics",
             Some(&["tag-a".into(), "tag-b".into()]),
             Some("domain"), Some(&conn), Some(skills_path),
-            None, None, "0.1.0", None,
+            None, None, None, None, None, None, None, None, None,
         ).unwrap();
         crate::db::save_workflow_step(&conn, "old-name", 0, "completed").unwrap();
 
@@ -1606,8 +1714,8 @@ mod tests {
         let mut conn = create_test_db();
 
         // Create two skills in DB
-        create_skill_inner(workspace, "skill-a", "domain-a", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
-        create_skill_inner(workspace, "skill-b", "domain-b", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace, "skill-a", "domain-a", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+        create_skill_inner(workspace, "skill-b", "domain-b", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
 
         // Attempt to rename skill-a to skill-b (collision)
         let result = rename_skill_inner("skill-a", "skill-b", workspace, &mut conn, None);
@@ -1633,7 +1741,7 @@ mod tests {
         let mut conn = create_test_db();
         let workspace_dir = tempdir().unwrap();
         let workspace = workspace_dir.path().to_str().unwrap();
-        create_skill_inner(workspace, "same-name", "domain", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace, "same-name", "domain", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
 
         // rename_skill_inner with same name hits the "already exists" check in DB,
         // confirming the early-return in the wrapper is necessary.
@@ -1649,7 +1757,7 @@ mod tests {
         let mut conn = create_test_db();
 
         // Create the skill on disk (workspace dir) and in DB
-        create_skill_inner(workspace, "will-rollback", "analytics", None, None, Some(&conn), None, None, None, "0.1.0", None).unwrap();
+        create_skill_inner(workspace, "will-rollback", "analytics", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
         assert!(Path::new(workspace).join("will-rollback").exists());
 
         // To force the DB transaction to fail, we drop the workflow_runs table

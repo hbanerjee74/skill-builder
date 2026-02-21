@@ -8,6 +8,7 @@ import {
 } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import type { ImportedSkill } from "@/stores/imported-skills-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 // Mock sonner
 vi.mock("sonner", () => ({
@@ -40,9 +41,14 @@ const sampleSkills: ImportedSkill[] = [
     description: "Analytics skill for sales pipelines",
     is_active: true,
     disk_path: "/skills/sales-analytics",
-    trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    skill_type: "skill-builder",
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
   {
     skill_id: "id-2",
@@ -51,15 +57,21 @@ const sampleSkills: ImportedSkill[] = [
     description: null,
     is_active: false,
     disk_path: "/skills/hr-metrics",
-    trigger_text: null,
     imported_at: new Date().toISOString(),
     is_bundled: false,
+    skill_type: "skill-builder",
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
 ];
 
 describe("SkillsLibraryTab", () => {
   beforeEach(() => {
     resetTauriMocks();
+    useSettingsStore.getState().reset();
   });
 
   it("shows loading skeletons while fetching", async () => {
@@ -76,6 +88,28 @@ describe("SkillsLibraryTab", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Upload Skill/i })).toBeInTheDocument();
+    });
+  });
+
+  it("Marketplace button is disabled when marketplace URL is not configured", async () => {
+    // Store default: marketplaceUrl = null
+    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /Marketplace/i });
+      expect(btn).toBeDisabled();
+    });
+  });
+
+  it("Marketplace button is enabled when marketplace URL is configured", async () => {
+    useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
+    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /Marketplace/i });
+      expect(btn).not.toBeDisabled();
     });
   });
 
@@ -97,7 +131,7 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Upload a .skill package or import from GitHub to add skills to your library.")
+      screen.getByText("Upload a .skill package or browse the marketplace to add skills to your library.")
     ).toBeInTheDocument();
   });
 
@@ -111,12 +145,12 @@ describe("SkillsLibraryTab", () => {
     expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
-  it("shows trigger text on skill card when set", async () => {
-    const skillsWithTrigger = [
-      { ...sampleSkills[0], trigger_text: "Use for sales analytics" },
+  it("shows argument_hint on skill card when set", async () => {
+    const skillsWithHint = [
+      { ...sampleSkills[0], argument_hint: "Use for sales analytics" },
       sampleSkills[1],
     ];
-    mockInvokeCommands({ list_imported_skills: skillsWithTrigger });
+    mockInvokeCommands({ list_imported_skills: skillsWithHint });
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -155,9 +189,14 @@ describe("SkillsLibraryTab", () => {
       description: "A new skill",
       is_active: true,
       disk_path: "/skills/new-skill",
-      trigger_text: null,
       imported_at: new Date().toISOString(),
       is_bundled: false,
+      skill_type: "skill-builder",
+      version: null,
+      model: null,
+      argument_hint: null,
+      user_invocable: null,
+      disable_model_invocation: null,
     };
 
     mockInvokeCommands({
@@ -173,14 +212,30 @@ describe("SkillsLibraryTab", () => {
     });
 
     // Click the upload button in empty state
-    const uploadButtons = screen.getAllByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButtons[0]);
+    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
+    await user.click(uploadButton);
 
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("upload_skill", {
         filePath: "/path/to/file.skill",
       });
     });
+  });
+
+  it("only shows skills with skill_type 'skill-builder', hides other types", async () => {
+    const mixed: ImportedSkill[] = [
+      { ...sampleSkills[0], skill_id: "id-sb", skill_name: "my-sb-skill", skill_type: "skill-builder" },
+      { ...sampleSkills[0], skill_id: "id-domain", skill_name: "domain-skill", skill_type: "domain" },
+      { ...sampleSkills[0], skill_id: "id-null", skill_name: "null-type-skill", skill_type: null },
+    ];
+    mockInvokeCommands({ list_imported_skills: mixed });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      expect(screen.getByText("my-sb-skill")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("domain-skill")).not.toBeInTheDocument();
+    expect(screen.queryByText("null-type-skill")).not.toBeInTheDocument();
   });
 
   it("does not call upload_skill when dialog is cancelled", async () => {
@@ -195,8 +250,8 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
 
-    const uploadButtons = screen.getAllByRole("button", { name: /Upload Skill/i });
-    await user.click(uploadButtons[0]);
+    const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
+    await user.click(uploadButton);
 
     // upload_skill should never be called
     await new Promise((r) => setTimeout(r, 50));

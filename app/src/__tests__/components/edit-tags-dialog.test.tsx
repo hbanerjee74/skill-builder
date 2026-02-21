@@ -28,14 +28,18 @@ const sampleSkill: SkillSummary = {
   author_login: null,
   author_avatar: null,
   intake_json: null,
+  description: "A skill for managing sales pipelines",
 };
 
 /** Navigate to the given step by clicking Next buttons */
-async function goToStep(user: ReturnType<typeof userEvent.setup>, target: 2 | 3) {
+async function goToStep(user: ReturnType<typeof userEvent.setup>, target: 2 | 3 | 4) {
   if (target >= 2) {
     await user.click(screen.getByRole("button", { name: /Next/i }));
   }
   if (target >= 3) {
+    await user.click(screen.getByRole("button", { name: /Next/i }));
+  }
+  if (target >= 4) {
     await user.click(screen.getByRole("button", { name: /Next/i }));
   }
 }
@@ -74,8 +78,8 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByText("Update name, type, and tags.")).toBeInTheDocument();
-    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Update name, type, and description.")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
   });
 
   it("does not render when open is false", () => {
@@ -122,7 +126,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
   });
 
-  it("has Back, Next, and Save buttons on step 2", async () => {
+  it("has Back and Next buttons on step 2", async () => {
     const user = userEvent.setup();
     render(
       <SkillDialog
@@ -137,10 +141,10 @@ describe("SkillDialog (edit mode)", () => {
     await goToStep(user, 2);
     expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save/i })).not.toBeInTheDocument();
   });
 
-  it("has Back and Save buttons on step 3", async () => {
+  it("has Back and Next buttons on step 3", async () => {
     const user = userEvent.setup();
     render(
       <SkillDialog
@@ -154,6 +158,25 @@ describe("SkillDialog (edit mode)", () => {
     );
     await goToStep(user, 3);
     expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save/i })).not.toBeInTheDocument();
+  });
+
+  it("has Back, Skip, and Save buttons on step 4", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        tagSuggestions={[]}
+      />
+    );
+    await goToStep(user, 4);
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Skip/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Next/i })).not.toBeInTheDocument();
   });
@@ -191,29 +214,29 @@ describe("SkillDialog (edit mode)", () => {
     );
 
     // Step 1
-    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.getByLabelText("Skill Name")).toBeInTheDocument();
 
     // Go to step 2
     await user.click(screen.getByRole("button", { name: /Next/i }));
-    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("What does this skill cover?")).toBeInTheDocument();
 
     // Go to step 3
     await user.click(screen.getByRole("button", { name: /Next/i }));
-    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
-    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByText("Step 3 of 4")).toBeInTheDocument();
+    expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
 
     // Go back to step 2
     await user.click(screen.getByRole("button", { name: /Back/i }));
-    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
 
     // Go back to step 1
     await user.click(screen.getByRole("button", { name: /Back/i }));
-    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
   });
 
-  it("calls update_skill_metadata and callbacks on successful save from step 2", async () => {
+  it("calls update_skill_metadata and callbacks on successful save from step 4", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();
     const onSaved = vi.fn();
@@ -230,7 +253,7 @@ describe("SkillDialog (edit mode)", () => {
       />
     );
 
-    await goToStep(user, 2);
+    await goToStep(user, 4);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
@@ -240,6 +263,12 @@ describe("SkillDialog (edit mode)", () => {
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: null,
+        description: "A skill for managing sales pipelines",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
 
@@ -265,7 +294,7 @@ describe("SkillDialog (edit mode)", () => {
       />
     );
 
-    await goToStep(user, 2);
+    await goToStep(user, 4);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
@@ -350,7 +379,24 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByPlaceholderText("What does this skill cover?")).toHaveValue("sales");
   });
 
-  it("shows intake textarea fields on step 3", async () => {
+  it("shows audience and challenges fields on step 2", async () => {
+    const user = userEvent.setup();
+    render(
+      <SkillDialog
+        mode="edit"
+        skill={sampleSkill}
+        open={true}
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        tagSuggestions={[]}
+      />
+    );
+    await goToStep(user, 2);
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
+  });
+
+  it("shows optional detail fields on step 3", async () => {
     const user = userEvent.setup();
     render(
       <SkillDialog
@@ -363,13 +409,11 @@ describe("SkillDialog (edit mode)", () => {
       />
     );
     await goToStep(user, 3);
-    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
-    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
     expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
     expect(screen.getByLabelText("What does Claude get wrong?")).toBeInTheDocument();
   });
 
-  it("pre-fills intake fields from intake_json on step 3", async () => {
+  it("pre-fills intake fields from intake_json on step 2", async () => {
     const user = userEvent.setup();
     const skillWithIntake: SkillSummary = {
       ...sampleSkill,
@@ -389,7 +433,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    await goToStep(user, 3);
+    await goToStep(user, 2);
     expect(screen.getByLabelText("Target Audience")).toHaveValue("Revenue analysts");
     expect(screen.getByLabelText("Key Challenges")).toHaveValue("ASC 606 issues");
   });
@@ -415,8 +459,8 @@ describe("SkillDialog (edit mode)", () => {
       />
     );
 
-    // Save from step 2
-    await goToStep(user, 2);
+    // Save from step 4
+    await goToStep(user, 4);
     await user.click(screen.getByRole("button", { name: /Save/i }));
 
     await waitFor(() => {
@@ -426,6 +470,12 @@ describe("SkillDialog (edit mode)", () => {
         skillType: "domain",
         tags: ["analytics", "crm"],
         intakeJson: JSON.stringify({ audience: "Analysts" }),
+        description: "A skill for managing sales pipelines",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
   });
@@ -588,8 +638,8 @@ describe("SkillDialog (edit mode)", () => {
       await user.clear(nameInput);
       await user.type(nameInput, "revenue-tracker");
 
-      // Navigate to step 2 to access Save
-      await goToStep(user, 2);
+      // Navigate to step 4 to access Save
+      await goToStep(user, 4);
       await user.click(screen.getByRole("button", { name: /Save/i }));
 
       await waitFor(() => {
@@ -607,6 +657,12 @@ describe("SkillDialog (edit mode)", () => {
           skillType: "domain",
           tags: ["analytics", "crm"],
           intakeJson: null,
+          description: "A skill for managing sales pipelines",
+          version: "1.0.0",
+          model: null,
+          argumentHint: null,
+          userInvocable: true,
+          disableModelInvocation: false,
         });
       });
 
@@ -683,8 +739,8 @@ describe("SkillDialog (edit mode)", () => {
         />
       );
 
-      // Navigate to step 2 and save
-      await goToStep(user, 2);
+      // Navigate to step 4 and save
+      await goToStep(user, 4);
       await user.click(screen.getByRole("button", { name: /Save/i }));
 
       await waitFor(() => {
@@ -694,6 +750,12 @@ describe("SkillDialog (edit mode)", () => {
           skillType: "domain",
           tags: ["analytics", "crm"],
           intakeJson: null,
+          description: "A skill for managing sales pipelines",
+          version: "1.0.0",
+          model: null,
+          argumentHint: null,
+          userInvocable: true,
+          disableModelInvocation: false,
         });
       });
 

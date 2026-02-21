@@ -38,14 +38,11 @@ test.describe("Settings Page", { tag: "@settings" }, () => {
     await expect(page.getByText("Saved")).toBeVisible();
   });
 
-  test("remote repository section requires GitHub login", async ({ page }) => {
+  test("shows Marketplace URL section in GitHub tab", async ({ page }) => {
     // Switch to GitHub section
     await page.getByRole("button", { name: /GitHub/i }).click();
 
-    // Without being logged in, the Remote Repository card should show a message
-    await expect(page.getByText("Remote Repository")).toBeVisible();
-    await expect(
-      page.getByText("Sign in with GitHub above to configure remote push.")
-    ).toBeVisible();
+    // Marketplace URL card should be visible
+    await expect(page.getByText("Marketplace URL")).toBeVisible();
   });
 });

@@ -170,7 +170,7 @@ pub fn clear_workspace(
 }
 
 #[tauri::command]
-pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
+pub fn reconcile_startup(_app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Result<ReconciliationResult, String> {
     log::info!("[reconcile_startup]");
     let conn = db.0.lock().map_err(|e| {
         log::error!("[reconcile_startup] Failed to acquire DB lock: {}", e);
@@ -180,8 +180,9 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
     let workspace_path = settings
         .workspace_path
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
-    let skills_path = settings.skills_path;
-    let github_login = settings.github_user_login;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
+    log::debug!("[reconcile_startup] workspace={} skills_path={}", workspace_path, skills_path);
 
     // Reconcile orphaned workflow sessions from crashed instances
     match crate::db::reconcile_orphaned_sessions(&conn) {
@@ -194,16 +195,14 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
         _ => {}
     }
 
-    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, skills_path.as_deref())?;
+    let result = crate::reconciliation::reconcile_on_startup(&conn, &workspace_path, &skills_path)?;
 
     // Auto-commit new skill folders added while offline.
     // This is non-fatal: log warnings but don't block startup.
-    let app_version = app.config().version.clone().unwrap_or_default();
-    let output_root = skills_path.as_deref().unwrap_or(&workspace_path);
-    let output_path = Path::new(output_root);
+    let output_path = Path::new(&skills_path);
 
     if output_path.exists() {
-        // Pass 1: Commit untracked skill folders to git
+        // Commit untracked skill folders to git
         match crate::git::get_untracked_dirs(output_path) {
             Ok(untracked) if !untracked.is_empty() => {
                 let msg = format!("auto-commit new skill folders: {}", untracked.join(", "));
@@ -216,43 +215,6 @@ pub fn reconcile_startup(app: tauri::AppHandle, db: tauri::State<'_, Db>) -> Res
             Err(e) => log::warn!("[reconcile_startup] Failed to detect untracked folders: {}", e),
             _ => {}
         }
-
-        // Pass 2: Create .skill-builder manifests for folders missing them
-        let mut manifests_created = Vec::new();
-
-        if let Ok(entries) = std::fs::read_dir(output_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_dir() {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') {
-                    continue;
-                }
-                if !path.join(".skill-builder").exists() {
-                    if let Err(e) = super::github_push::write_manifest_file(&path, github_login.as_deref(), &app_version) {
-                        log::warn!("[reconcile_startup] Failed to create manifest for '{}': {}", name, e);
-                        continue;
-                    }
-                    manifests_created.push(name);
-                }
-            }
-        }
-
-        if !manifests_created.is_empty() {
-            let msg = format!("auto-create manifests: {}", manifests_created.join(", "));
-            match crate::git::commit_all(output_path, &msg) {
-                Ok(Some(_)) => log::info!("[reconcile_startup] {}", msg),
-                Ok(None) => log::debug!("[reconcile_startup] No changes after creating manifests"),
-                Err(e) => log::warn!("[reconcile_startup] Failed to commit new manifests: {}", e),
-            }
-        }
-    }
-
-    // Reconcile .skill-builder manifests (update creator field if GitHub user changed)
-    if let Err(e) = super::github_push::reconcile_manifests_inner(&conn, &app_version) {
-        log::warn!("Failed to reconcile .skill-builder manifests on startup: {}", e);
     }
 
     Ok(result)
@@ -270,9 +232,10 @@ pub fn resolve_orphan(
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
-    let skills_path = settings.skills_path;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, skills_path.as_deref())
+    crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
 // --- Workflow Sessions ---

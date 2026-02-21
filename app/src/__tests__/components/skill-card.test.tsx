@@ -1,284 +1,280 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import SkillCard, { isWorkflowComplete } from "@/components/skill-card";
+import SkillCard, {
+  parseStepProgress,
+  isWorkflowComplete,
+} from "@/components/skill-card";
 import type { SkillSummary } from "@/lib/types";
 
-const baseSkill: SkillSummary = {
-  name: "sales-pipeline",
-  domain: "sales",
-  current_step: "Step 3",
-  status: "in_progress",
-  last_modified: new Date().toISOString(),
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const createdComplete: SkillSummary = {
+  name: "my-skill",
+  domain: "Engineering",
+  current_step: null,
+  status: "completed",
+  last_modified: null,
   tags: [],
-  skill_type: null,
+  skill_type: "skill-builder",
   author_login: null,
   author_avatar: null,
   intake_json: null,
+  source: "created",
 };
 
-const completedSkill: SkillSummary = {
-  ...baseSkill,
-  current_step: "Step 5",
-  status: "completed",
+const createdIncomplete: SkillSummary = {
+  ...createdComplete,
+  status: "running",
+  current_step: "step 2",
 };
 
-describe("SkillCard", () => {
-  it("renders skill name", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
+const marketplaceSkill: SkillSummary = {
+  ...createdComplete,
+  source: "marketplace",
+};
+
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
+
+function renderCard(
+  skill: SkillSummary,
+  overrides: Partial<React.ComponentProps<typeof SkillCard>> = {}
+) {
+  const onContinue = vi.fn();
+  const onDelete = vi.fn();
+  const onDownload = vi.fn();
+  const onEdit = vi.fn();
+  const onEditWorkflow = vi.fn();
+  const onRefine = vi.fn();
+
+  render(
+    <SkillCard
+      skill={skill}
+      onContinue={onContinue}
+      onDelete={onDelete}
+      onDownload={onDownload}
+      onEdit={onEdit}
+      onEditWorkflow={onEditWorkflow}
+      onRefine={onRefine}
+      {...overrides}
+    />
+  );
+
+  return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow, onRefine };
+}
+
+// ---------------------------------------------------------------------------
+// parseStepProgress (pure function)
+// ---------------------------------------------------------------------------
+
+describe("parseStepProgress", () => {
+  it("returns 100 when status is completed", () => {
+    expect(parseStepProgress(null, "completed")).toBe(100);
   });
 
-  it("renders domain badge when domain is present", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("sales")).toBeInTheDocument();
+  it("returns 0 when no step and status is not completed", () => {
+    expect(parseStepProgress(null, "running")).toBe(0);
   });
 
-  it("does not render domain badge when domain is null", () => {
-    const skill = { ...baseSkill, domain: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.queryByText("sales")).not.toBeInTheDocument();
+  it("maps step 0 to ~17%", () => {
+    expect(parseStepProgress("step 0", null)).toBe(17);
   });
 
-  it("shows progress percentage from step number", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    // Step 3 => Math.round(((3+1)/6)*100) = 67%
-    expect(screen.getByText("67%")).toBeInTheDocument();
+  it("maps step 5 to 100%", () => {
+    expect(parseStepProgress("step 5", null)).toBe(100);
   });
 
-  it("shows 100% for completed step", () => {
-    const skill = { ...baseSkill, current_step: "completed" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("100%")).toBeInTheDocument();
+  it("returns 100 for current_step containing 'completed'", () => {
+    expect(parseStepProgress("completed", null)).toBe(100);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isWorkflowComplete (pure function)
+// ---------------------------------------------------------------------------
+
+describe("isWorkflowComplete", () => {
+  it("returns true when status is 'completed'", () => {
+    expect(isWorkflowComplete(createdComplete)).toBe(true);
   });
 
-  it("shows 0% for null step", () => {
-    const skill = { ...baseSkill, current_step: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("0%")).toBeInTheDocument();
+  it("returns false when status is not completed and no step", () => {
+    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: null })).toBe(false);
   });
 
-  it("calls onContinue when the card is clicked", async () => {
-    const user = userEvent.setup();
-    const onContinue = vi.fn();
-    render(
-      <SkillCard skill={baseSkill} onContinue={onContinue} onDelete={vi.fn()} />
-    );
-
-    await user.click(screen.getByText("sales-pipeline"));
-    expect(onContinue).toHaveBeenCalledWith(baseSkill);
+  it("returns true when current_step text is 'completed'", () => {
+    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "completed" })).toBe(true);
   });
 
-  it("calls onDelete with skill when delete button is clicked", async () => {
-    const user = userEvent.setup();
-    const onDelete = vi.fn();
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={onDelete} />
-    );
-
-    const deleteButton = screen.getByRole("button", { name: /Delete skill/i });
-    await user.click(deleteButton);
-    expect(onDelete).toHaveBeenCalledWith(baseSkill);
+  it("returns true when current_step is step 5", () => {
+    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "step 5" })).toBe(true);
   });
 
-  it("does not trigger onContinue when an icon button is clicked", async () => {
-    const user = userEvent.setup();
-    const onContinue = vi.fn();
-    const onDelete = vi.fn();
-    render(
-      <SkillCard skill={baseSkill} onContinue={onContinue} onDelete={onDelete} />
-    );
-
-    await user.click(screen.getByRole("button", { name: /Delete skill/i }));
-    expect(onDelete).toHaveBeenCalled();
-    expect(onContinue).not.toHaveBeenCalled();
+  it("returns false when current_step is step 2", () => {
+    expect(isWorkflowComplete({ ...createdComplete, status: "running", current_step: "step 2" })).toBe(false);
   });
+});
 
-  it("always shows Edit icon button", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onEdit={vi.fn()} />
-    );
+// ---------------------------------------------------------------------------
+// SkillCard — created skill
+// ---------------------------------------------------------------------------
+
+describe("SkillCard — created skill", () => {
+  it("shows Edit Workflow button", () => {
+    renderCard(createdComplete);
     expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 
-  it("shows Refine icon only when workflow is complete", () => {
-    const { rerender } = render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onRefine={vi.fn()} />
-    );
-    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
-
-    rerender(
-      <SkillCard skill={completedSkill} onContinue={vi.fn()} onDelete={vi.fn()} onRefine={vi.fn()} />
-    );
+  it("shows Refine button when workflow is complete", () => {
+    renderCard(createdComplete);
     expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
   });
 
-  it("shows Download icon only when workflow is complete", () => {
-    const { rerender } = render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} onDownload={vi.fn()} />
-    );
-    expect(screen.queryByRole("button", { name: /Download skill/i })).not.toBeInTheDocument();
-
-    rerender(
-      <SkillCard skill={completedSkill} onContinue={vi.fn()} onDelete={vi.fn()} onDownload={vi.fn()} />
-    );
+  it("shows Download button when workflow is complete", () => {
+    renderCard(createdComplete);
     expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
   });
 
-  it("shows Push to remote disabled when GitHub not configured", () => {
-    render(
-      <SkillCard
-        skill={completedSkill}
-        onContinue={vi.fn()}
-        onDelete={vi.fn()}
-        onPushToRemote={vi.fn()}
-        isGitHubLoggedIn={false}
-        remoteConfigured={false}
-      />
-    );
-    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
-    expect(pushButton).toBeDisabled();
+  it("shows Delete button", () => {
+    renderCard(createdComplete);
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
   });
 
-  it("shows Push to remote enabled when GitHub is configured", () => {
-    render(
-      <SkillCard
-        skill={completedSkill}
-        onContinue={vi.fn()}
-        onDelete={vi.fn()}
-        onPushToRemote={vi.fn()}
-        isGitHubLoggedIn={true}
-        remoteConfigured={true}
-      />
-    );
-    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
-    expect(pushButton).not.toBeDisabled();
+  it("hides Refine button when workflow is incomplete", () => {
+    renderCard(createdIncomplete);
+    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
   });
 
-  it("renders tag badges when tags are present", () => {
-    const skill = { ...baseSkill, tags: ["analytics", "salesforce"] };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("analytics")).toBeInTheDocument();
-    expect(screen.getByText("salesforce")).toBeInTheDocument();
+  it("hides Download button when workflow is incomplete", () => {
+    renderCard(createdIncomplete);
+    expect(screen.queryByRole("button", { name: /Download skill/i })).not.toBeInTheDocument();
   });
 
-  it("does not render tags section when tags are empty", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    // Only domain badge should be present (no status badge, no tag badges)
-    const badges = document.querySelectorAll('[data-slot="badge"]');
-    expect(badges.length).toBe(1);
+  it("still shows Edit Workflow and Delete when incomplete", () => {
+    renderCard(createdIncomplete);
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
   });
 
-  it("renders skill type badge with correct color when skill_type is set", () => {
-    const skill = { ...baseSkill, skill_type: "platform" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    const typeBadge = screen.getByText("Platform");
-    expect(typeBadge).toBeInTheDocument();
+  it("shows progress based on current_step", () => {
+    renderCard(createdIncomplete); // step 2 → 50%
+    expect(screen.getByText("50%")).toBeInTheDocument();
   });
 
-  it("does not render type badge when skill_type is null", () => {
-    render(
-      <SkillCard skill={baseSkill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.queryByText("Platform")).not.toBeInTheDocument();
-    expect(screen.queryByText("Domain")).not.toBeInTheDocument();
-    expect(screen.queryByText("Source")).not.toBeInTheDocument();
-    expect(screen.queryByText("Data Engineering")).not.toBeInTheDocument();
-  });
-});
-
-describe("isWorkflowComplete", () => {
-  it("returns false for null current_step", () => {
-    const skill = { ...baseSkill, current_step: null, status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns false for early steps (step 3)", () => {
-    const skill = { ...baseSkill, current_step: "Step 3", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns false for step 4 (Confirm Decisions step)", () => {
-    const skill = { ...baseSkill, current_step: "Step 4", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns true for step 5 (Generate Skill -- last step, 100%)", () => {
-    const skill = { ...baseSkill, current_step: "Step 5", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(true);
-  });
-
-  it("returns true when status is completed", () => {
-    const skill = { ...baseSkill, current_step: "Step 3", status: "completed" };
-    expect(isWorkflowComplete(skill)).toBe(true);
-  });
-
-  it("returns true when current_step text says completed", () => {
-    const skill = { ...baseSkill, current_step: "completed", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(true);
-  });
-
-  it("returns false for initialization step", () => {
-    const skill = { ...baseSkill, current_step: "initialization", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns true for completed status even with null step", () => {
-    const skill = { ...baseSkill, current_step: null, status: "completed" };
-    expect(isWorkflowComplete(skill)).toBe(true);
-  });
-
-  it("returns false for step 0 (not started)", () => {
-    const skill = { ...baseSkill, current_step: "Step 0", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(false);
-  });
-
-  it("returns true for step numbers above 5", () => {
-    const skill = { ...baseSkill, current_step: "Step 6", status: "in_progress" };
-    expect(isWorkflowComplete(skill)).toBe(true);
-  });
-});
-
-describe("parseStepProgress boundary tests", () => {
-  it("null step shows 0%", () => {
-    const skill = { ...baseSkill, current_step: null };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("0%")).toBeInTheDocument();
-  });
-
-  it("Step 4 shows 83%", () => {
-    const skill = { ...baseSkill, current_step: "Step 4" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
-    expect(screen.getByText("83%")).toBeInTheDocument();
-  });
-
-  it("completed shows 100%", () => {
-    const skill = { ...baseSkill, current_step: "completed" };
-    render(
-      <SkillCard skill={skill} onContinue={vi.fn()} onDelete={vi.fn()} />
-    );
+  it("shows 100% progress when complete", () => {
+    renderCard(createdComplete);
     expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("calls onContinue when card is clicked", async () => {
+    const user = userEvent.setup();
+    const { onContinue } = renderCard(createdComplete);
+    await user.click(screen.getByText("my-skill"));
+    expect(onContinue).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("calls onEditWorkflow when Edit Workflow button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onEditWorkflow } = renderCard(createdComplete);
+    await user.click(screen.getByRole("button", { name: /Edit workflow/i }));
+    expect(onEditWorkflow).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("calls onRefine when Refine button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onRefine } = renderCard(createdComplete);
+    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
+    expect(onRefine).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("calls onDelete when Delete button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onDelete } = renderCard(createdComplete);
+    await user.click(screen.getByRole("button", { name: /Delete skill/i }));
+    expect(onDelete).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("shows Edit Details in context menu on right-click", () => {
+    renderCard(createdComplete);
+    fireEvent.contextMenu(screen.getByText("my-skill"));
+    expect(screen.getByText("Edit details")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkillCard — marketplace skill (source='marketplace')
+// ---------------------------------------------------------------------------
+
+describe("SkillCard — marketplace skill", () => {
+  it("hides Edit Workflow button", () => {
+    renderCard(marketplaceSkill);
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Refine button", () => {
+    renderCard(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Download button", () => {
+    renderCard(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Delete button", () => {
+    renderCard(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
+  });
+
+  it("always shows 100% progress regardless of step data", () => {
+    renderCard({ ...marketplaceSkill, status: "running", current_step: "step 1" });
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("does not show Edit Details on right-click", () => {
+    renderCard(marketplaceSkill);
+    fireEvent.contextMenu(screen.getByText("my-skill"));
+    expect(screen.queryByText("Edit details")).not.toBeInTheDocument();
+  });
+
+  it("calls onContinue when card is clicked", async () => {
+    const user = userEvent.setup();
+    const { onContinue } = renderCard(marketplaceSkill);
+    await user.click(screen.getByText("my-skill"));
+    expect(onContinue).toHaveBeenCalledWith(marketplaceSkill);
+  });
+
+  it("calls onRefine when Refine button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onRefine } = renderCard(marketplaceSkill);
+    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
+    expect(onRefine).toHaveBeenCalledWith(marketplaceSkill);
+  });
+
+  it("calls onDownload when Download button is clicked", async () => {
+    const user = userEvent.setup();
+    const { onDownload } = renderCard(marketplaceSkill);
+    await user.click(screen.getByRole("button", { name: /Download skill/i }));
+    expect(onDownload).toHaveBeenCalledWith(marketplaceSkill);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkillCard — null/undefined source treated as created
+// ---------------------------------------------------------------------------
+
+describe("SkillCard — null/undefined source defaults to created behaviour", () => {
+  it("shows Edit Workflow when source is null", () => {
+    renderCard({ ...createdComplete, source: null });
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  });
+
+  it("shows Edit Workflow when source is undefined", () => {
+    renderCard({ ...createdComplete, source: undefined });
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 });

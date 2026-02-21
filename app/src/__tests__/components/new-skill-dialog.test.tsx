@@ -24,20 +24,38 @@ async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /New Skill/i }));
 }
 
-// Helper: fill Step 1 (name + type) and advance to Step 2
+// Helper: fill Step 1 (name + type + description) and advance to Step 2
 async function fillStep1AndAdvance(
   user: ReturnType<typeof userEvent.setup>,
   name = "test-skill",
   typeLabel = /Platform/i,
+  description = "A test skill description",
 ) {
   const nameInput = screen.getByLabelText("Skill Name");
   await user.type(nameInput, name);
   await user.click(screen.getByRole("radio", { name: typeLabel }));
+  const descriptionInput = screen.getByLabelText("Description");
+  await user.type(descriptionInput, description);
   await user.click(screen.getByRole("button", { name: /Next/i }));
 }
 
-// Helper: advance from Step 2 to Step 3
+// Helper: advance from Step 2 to Step 3.
+// Domain must be filled before calling this (canAdvanceStep2 requires domain).
 async function advanceToStep3(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /^Next$/i }));
+}
+
+// Helper: fill domain on Step 2 and advance to Step 3
+async function fillDomainAndAdvanceToStep3(
+  user: ReturnType<typeof userEvent.setup>,
+  domain = "test-domain",
+) {
+  await user.type(screen.getByLabelText("Domain"), domain);
+  await user.click(screen.getByRole("button", { name: /^Next$/i }));
+}
+
+// Helper: advance from Step 3 to Step 4
+async function advanceToStep4(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: /^Next$/i }));
 }
 
@@ -78,12 +96,12 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByText("Create New Skill")).toBeInTheDocument();
     expect(
-      screen.getByText("Name your skill, choose its type, and add tags."),
+      screen.getByText("Name your skill, choose its type, and add a description."),
     ).toBeInTheDocument();
-    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
   });
 
-  // --- Step 1: Name + Type ---
+  // --- Step 1: Name + Type + Description ---
 
   it("renders skill name input and type radio group on Step 1", async () => {
     const user = userEvent.setup();
@@ -98,6 +116,14 @@ describe("SkillDialog (create mode)", () => {
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("Data Engineering")).toBeInTheDocument();
     expect(screen.getByText(/Business domain knowledge/)).toBeInTheDocument();
+  });
+
+  it("renders description input on Step 1", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+
+    expect(screen.getByLabelText("Description")).toBeInTheDocument();
   });
 
   it("enforces kebab-case on skill name input", async () => {
@@ -127,18 +153,32 @@ describe("SkillDialog (create mode)", () => {
     await openDialog(user);
 
     await user.type(screen.getByLabelText("Skill Name"), "test-skill");
+    await user.type(screen.getByLabelText("Description"), "A description");
 
     const nextButton = screen.getByRole("button", { name: /Next/i });
     expect(nextButton).toBeDisabled();
   });
 
-  it("enables Next button when name is valid and type selected", async () => {
+  it("disables Next button when description is empty", async () => {
     const user = userEvent.setup();
     renderDialog();
     await openDialog(user);
 
     await user.type(screen.getByLabelText("Skill Name"), "test-skill");
     await user.click(screen.getByRole("radio", { name: /Platform/i }));
+
+    const nextButton = screen.getByRole("button", { name: /Next/i });
+    expect(nextButton).toBeDisabled();
+  });
+
+  it("enables Next button when name, type, and description are all filled", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+
+    await user.type(screen.getByLabelText("Skill Name"), "test-skill");
+    await user.click(screen.getByRole("radio", { name: /Platform/i }));
+    await user.type(screen.getByLabelText("Description"), "A test description");
 
     const nextButton = screen.getByRole("button", { name: /Next/i });
     expect(nextButton).toBeEnabled();
@@ -151,6 +191,7 @@ describe("SkillDialog (create mode)", () => {
 
     await user.type(screen.getByLabelText("Skill Name"), "sales-pipeline");
     await user.click(screen.getByRole("radio", { name: /Platform/i }));
+    await user.type(screen.getByLabelText("Description"), "A description");
 
     expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
     expect(screen.getByText("A skill with this name already exists")).toBeInTheDocument();
@@ -178,7 +219,7 @@ describe("SkillDialog (create mode)", () => {
     });
   });
 
-  // --- Step 2: Domain ---
+  // --- Step 2: Domain + Scope + Audience + Challenges ---
 
   it("advances to Step 2 when Next is clicked", async () => {
     const user = userEvent.setup();
@@ -186,12 +227,22 @@ describe("SkillDialog (create mode)", () => {
     await openDialog(user);
     await fillStep1AndAdvance(user);
 
-    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
     expect(
-      screen.getByText("Describe the domain and scope."),
+      screen.getByText("Describe the domain, scope, audience, and challenges."),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Domain")).toBeInTheDocument();
     expect(screen.getByLabelText("Scope")).toBeInTheDocument();
+  });
+
+  it("shows Target Audience and Key Challenges on Step 2", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+
+    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
+    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
   });
 
   it("shows skills output location on Step 2 when skillsPath is set", async () => {
@@ -204,7 +255,7 @@ describe("SkillDialog (create mode)", () => {
     expect(screen.getByText(/\/my\/skills\/sales-pipeline\//)).toBeInTheDocument();
   });
 
-  it("shows Back, Next, and Create buttons on Step 2", async () => {
+  it("shows Back and Next buttons on Step 2 (no Create)", async () => {
     const user = userEvent.setup();
     renderDialog();
     await openDialog(user);
@@ -212,7 +263,7 @@ describe("SkillDialog (create mode)", () => {
 
     expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Next$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Create$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Create$/i })).not.toBeInTheDocument();
   });
 
   it("navigates back to Step 1 when Back is clicked on Step 2", async () => {
@@ -221,22 +272,107 @@ describe("SkillDialog (create mode)", () => {
     await openDialog(user);
     await fillStep1AndAdvance(user);
 
-    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Back/i }));
 
-    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
     expect(screen.getByLabelText("Skill Name")).toBeInTheDocument();
   });
 
-  it("can submit from Step 2 with Create button", async () => {
+  // --- Step 3: Optional fields ---
+
+  it("advances to Step 3 when Next is clicked on Step 2", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+
+    expect(screen.getByText("Step 3 of 4")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add optional details to guide research."),
+    ).toBeInTheDocument();
+  });
+
+  it("renders optional detail fields on Step 3", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+
+    expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
+    expect(screen.getByLabelText("What does Claude get wrong?")).toBeInTheDocument();
+  });
+
+  it("shows Back and Next buttons on Step 3 (no Create)", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Next$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Create$/i })).not.toBeInTheDocument();
+  });
+
+  it("navigates back to Step 2 when Back is clicked on Step 3", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+
+    expect(screen.getByText("Step 3 of 4")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Back/i }));
+
+    expect(screen.getByText("Step 2 of 4")).toBeInTheDocument();
+    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
+  });
+
+  // --- Step 4: Behaviour settings ---
+
+  it("advances to Step 4 when Next is clicked on Step 3", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+    await advanceToStep4(user);
+
+    expect(screen.getByText("Step 4 of 4")).toBeInTheDocument();
+    expect(
+      screen.getByText("Configure skill behaviour (optional — defaults are fine)."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows Back, Skip, and Create buttons on Step 4 (no Next)", async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await openDialog(user);
+    await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+    await advanceToStep4(user);
+
+    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Skip/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Create$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Next$/i })).not.toBeInTheDocument();
+  });
+
+  it("can submit from Step 4 with Create button", async () => {
     const user = userEvent.setup();
     const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     mockInvoke.mockResolvedValue(undefined);
     renderDialog({ onCreated });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i);
+    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i, "A sales pipeline skill");
+    await fillDomainAndAdvanceToStep3(user, "sales pipeline");
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -249,6 +385,12 @@ describe("SkillDialog (create mode)", () => {
         tags: null,
         skillType: "domain",
         intakeJson: null,
+        description: "A sales pipeline skill",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
 
@@ -260,16 +402,38 @@ describe("SkillDialog (create mode)", () => {
     );
   });
 
+  it("can submit via Skip button on Step 4", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    mockInvoke.mockResolvedValue(undefined);
+    renderDialog({ onCreated });
+
+    await openDialog(user);
+    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i, "A sales pipeline skill");
+    await fillDomainAndAdvanceToStep3(user, "sales pipeline");
+    await advanceToStep4(user);
+
+    const skipButton = screen.getByRole("button", { name: /Skip/i });
+    await user.click(skipButton);
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled();
+    });
+  });
+
   it("uses explicit domain when provided on Step 2", async () => {
     const user = userEvent.setup();
     mockInvoke.mockResolvedValue(undefined);
     renderDialog();
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i);
+    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i, "A sales skill");
 
     const domainInput = screen.getByLabelText("Domain");
     await user.type(domainInput, "Revenue Pipeline Analysis");
+
+    await advanceToStep3(user);
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -282,63 +446,14 @@ describe("SkillDialog (create mode)", () => {
         tags: null,
         skillType: "domain",
         intakeJson: null,
+        description: "A sales skill",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
-  });
-
-  // --- Step 3: Optional fields ---
-
-  it("advances to Step 3 when Next is clicked on Step 2", async () => {
-    const user = userEvent.setup();
-    renderDialog();
-    await openDialog(user);
-    await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
-
-    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
-    expect(
-      screen.getByText("Add optional details to guide research."),
-    ).toBeInTheDocument();
-  });
-
-  it("renders all optional fields on Step 3", async () => {
-    const user = userEvent.setup();
-    renderDialog();
-    await openDialog(user);
-    await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
-
-    expect(screen.getByLabelText("Target Audience")).toBeInTheDocument();
-    expect(screen.getByLabelText("Key Challenges")).toBeInTheDocument();
-    expect(screen.getByLabelText("What makes your setup unique?")).toBeInTheDocument();
-    expect(screen.getByLabelText("What does Claude get wrong?")).toBeInTheDocument();
-  });
-
-  it("shows Back and Create buttons on Step 3 (no Next)", async () => {
-    const user = userEvent.setup();
-    renderDialog();
-    await openDialog(user);
-    await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
-
-    expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Create$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Next$/i })).not.toBeInTheDocument();
-  });
-
-  it("navigates back to Step 2 when Back is clicked on Step 3", async () => {
-    const user = userEvent.setup();
-    renderDialog();
-    await openDialog(user);
-    await fillStep1AndAdvance(user);
-    await advanceToStep3(user);
-
-    expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /Back/i }));
-
-    expect(screen.getByText("Step 2 of 3")).toBeInTheDocument();
-    expect(screen.getByLabelText("Domain")).toBeInTheDocument();
   });
 
   // --- Submit scenarios ---
@@ -349,7 +464,9 @@ describe("SkillDialog (create mode)", () => {
     renderDialog();
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "etl-patterns", /Data Engineering/i);
+    await fillStep1AndAdvance(user, "etl-patterns", /Data Engineering/i, "ETL patterns skill");
+    await fillDomainAndAdvanceToStep3(user, "etl patterns");
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -362,6 +479,12 @@ describe("SkillDialog (create mode)", () => {
         tags: null,
         skillType: "data-engineering",
         intakeJson: null,
+        description: "ETL patterns skill",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
   });
@@ -373,17 +496,20 @@ describe("SkillDialog (create mode)", () => {
 
     await openDialog(user);
 
-    // Fill name + type on step 1
+    // Fill name + type + description on step 1
     await user.type(screen.getByLabelText("Skill Name"), "test-domain");
     await user.click(screen.getByRole("radio", { name: /Source/i }));
+    await user.type(screen.getByLabelText("Description"), "A source skill");
 
     // Add tags on step 1
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "analytics{Enter}");
     await user.type(tagInput, "salesforce{Enter}");
 
-    // Advance to step 2 and submit
+    // Advance through all steps and submit
     await user.click(screen.getByRole("button", { name: /Next/i }));
+    await fillDomainAndAdvanceToStep3(user, "test domain");
+    await advanceToStep4(user);
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -395,6 +521,12 @@ describe("SkillDialog (create mode)", () => {
         tags: ["analytics", "salesforce"],
         skillType: "source",
         intakeJson: null,
+        description: "A source skill",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
   });
@@ -406,7 +538,9 @@ describe("SkillDialog (create mode)", () => {
     renderDialog({ onCreated });
 
     await openDialog(user);
-    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i);
+    await fillStep1AndAdvance(user, "sales-pipeline", /Domain/i, "A sales skill");
+    await fillDomainAndAdvanceToStep3(user, "sales pipeline");
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -430,6 +564,8 @@ describe("SkillDialog (create mode)", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -448,6 +584,8 @@ describe("SkillDialog (create mode)", () => {
 
     await openDialog(user);
     await fillStep1AndAdvance(user);
+    await fillDomainAndAdvanceToStep3(user);
+    await advanceToStep4(user);
 
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
@@ -484,9 +622,10 @@ describe("SkillDialog (create mode)", () => {
 
     await openDialog(user);
 
-    // Fill name + type first
+    // Fill name + type + description first
     await user.type(screen.getByLabelText("Skill Name"), "test");
     await user.click(screen.getByRole("radio", { name: /Platform/i }));
+    await user.type(screen.getByLabelText("Description"), "A platform skill");
 
     const tagInput = screen.getByRole("textbox", { name: /tag input/i });
     await user.type(tagInput, "sale");
@@ -504,8 +643,10 @@ describe("SkillDialog (create mode)", () => {
     // Dropdown should be dismissed
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
 
-    // Advance to step 2 and submit
+    // Advance through all steps and submit
     await user.click(screen.getByRole("button", { name: /Next/i }));
+    await fillDomainAndAdvanceToStep3(user, "test");
+    await advanceToStep4(user);
     const createButton = screen.getByRole("button", { name: /^Create$/i });
     await user.click(createButton);
 
@@ -517,6 +658,12 @@ describe("SkillDialog (create mode)", () => {
         tags: ["salesforce"],
         skillType: "platform",
         intakeJson: null,
+        description: "A platform skill",
+        version: "1.0.0",
+        model: null,
+        argumentHint: null,
+        userInvocable: true,
+        disableModelInvocation: false,
       });
     });
   });

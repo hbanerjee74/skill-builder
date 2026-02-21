@@ -6,7 +6,7 @@
     "description": "Analytics skill for data teams",
     "is_active": true,
     "disk_path": "/tmp/skills/data-analytics",
-    "trigger_text": "When the user asks about data analysis...",
+    "argument_hint": "When the user asks about data analysis...",
     "imported_at": "2025-01-15T10:00:00Z",
     "is_bundled": false
   },
@@ -17,7 +17,7 @@
     "description": "REST API design patterns",
     "is_active": true,
     "disk_path": "/tmp/skills/api-design",
-    "trigger_text": "When designing REST APIs...",
+    "argument_hint": "When designing REST APIs...",
     "imported_at": "2025-01-14T09:00:00Z",
     "is_bundled": false
   },
@@ -28,7 +28,7 @@
     "description": "Skill structure rules, content principles, quality dimensions...",
     "is_active": true,
     "disk_path": "/tmp/skills/skill-builder-practices",
-    "trigger_text": "When working on any skill generation, validation, or refinement task...",
+    "argument_hint": "When working on any skill generation, validation, or refinement task...",
     "imported_at": "2000-01-01T00:00:00Z",
     "is_bundled": true
   }

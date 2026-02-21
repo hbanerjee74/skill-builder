@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, Info, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -16,14 +16,31 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
 import { GhostInput, GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
+import { renameSkill, updateSkillMetadata, generateSuggestions, listGitHubSkills, parseGitHubUrl, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS, SKILL_TYPE_DESCRIPTIONS, INTAKE_PLACEHOLDERS } from "@/lib/types"
+
+// --- Built skill detection ---
+
+/**
+ * A skill is "built" when the generate step (step 5) has been completed.
+ * Locked fields: name, type, domain, tags.
+ */
+function isSkillBuilt(skill: SkillSummary | null): boolean {
+  if (!skill) return false
+  if (skill.status === "completed") return true
+  if (!skill.current_step) return false
+  if (/completed/i.test(skill.current_step)) return true
+  const match = skill.current_step.match(/step\s*(\d+)/i)
+  if (match) return Number(match[1]) >= 5
+  return false
+}
 
 // --- Cache key helper ---
 
@@ -61,6 +78,8 @@ interface SkillDialogCreateProps {
   existingNames?: string[]
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** Called when user picks "Import and refine" in the marketplace prompt. */
+  onOpenMarketplace?: (typeFilter: string[]) => void
 }
 
 interface SkillDialogEditProps {
@@ -78,21 +97,30 @@ export type SkillDialogProps = SkillDialogCreateProps | SkillDialogEditProps
 
 const STEP_DESCRIPTIONS = {
   create: {
-    1: "Name your skill, choose its type, and add tags.",
-    2: "Describe the domain and scope.",
+    1: "Name your skill, choose its type, and add a description.",
+    2: "Describe the domain, scope, audience, and challenges.",
     3: "Add optional details to guide research.",
+    4: "Configure skill behaviour (optional — defaults are fine).",
   },
   edit: {
-    1: "Update name, type, and tags.",
-    2: "Update domain and scope.",
+    1: "Update name, type, and description.",
+    2: "Update domain, scope, audience, and challenges.",
     3: "Update optional details.",
+    4: "Update skill behaviour settings.",
   },
 } as const
+
+const MODEL_OPTIONS = [
+  { value: "inherit", label: "Inherit (use workspace default)" },
+  { value: "sonnet", label: "Sonnet" },
+  { value: "opus", label: "Opus" },
+  { value: "haiku", label: "Haiku" },
+]
 
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -102,8 +130,12 @@ export default function SkillDialog(props: SkillDialogProps) {
   const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
   const createOnOpenChange = !isEdit ? (props as SkillDialogCreateProps).onOpenChange : undefined
+  const onOpenMarketplace = !isEdit ? (props as SkillDialogCreateProps).onOpenMarketplace : undefined
   const tagSuggestions = props.tagSuggestions ?? []
   const existingNames = props.existingNames ?? []
+
+  // Built skill detection (edit mode only)
+  const isBuilt = isEdit && isSkillBuilt(editSkill)
 
   // Dialog open state — controlled (edit always, create optionally) or internal
   const [internalOpen, setInternalOpen] = useState(false)
@@ -112,9 +144,10 @@ export default function SkillDialog(props: SkillDialogProps) {
     : (props as SkillDialogCreateProps).open ?? internalOpen
 
   // Form state
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [skillName, setSkillName] = useState("")
   const [skillType, setSkillType] = useState("")
+  const [description, setDescription] = useState("")
   const [domain, setDomain] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [audience, setAudience] = useState("")
@@ -122,10 +155,23 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [scope, setScope] = useState("")
   const [uniqueSetup, setUniqueSetup] = useState("")
   const [claudeMistakes, setClaudeMistakes] = useState("")
+  // Step 4 behaviour fields
+  const [version, setVersion] = useState("1.0.0")
+  const [model, setModel] = useState("inherit")
+  const [argumentHint, setArgumentHint] = useState("")
+  const [userInvocable, setUserInvocable] = useState(true)
+  const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Marketplace check state (create mode, step 1 only)
+  const [marketplaceCheckLoading, setMarketplaceCheckLoading] = useState(false)
+  const [marketplaceMatchFound, setMarketplaceMatchFound] = useState(false)
+  const [marketplacePromptDismissed, setMarketplacePromptDismissed] = useState(false)
+  const marketplaceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   // Ghost suggestion state — one per cascading group
+  const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
   const [domainSuggestion, setDomainSuggestion] = useState<string | null>(null)
   const [scopeSuggestion, setScopeSuggestion] = useState<string | null>(null)
   const [audienceSuggestion, setAudienceSuggestion] = useState<string | null>(null)
@@ -134,10 +180,12 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [claudeMistakesSuggestion, setClaudeMistakesSuggestion] = useState<string | null>(null)
 
   // Version refs and debounce timers for each group
+  const group0VersionRef = useRef(0)
   const domainVersionRef = useRef(0)
   const scopeVersionRef = useRef(0)
   const group3VersionRef = useRef(0)
   const group4VersionRef = useRef(0)
+  const group0DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const domainDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scopeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const group3DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -150,7 +198,8 @@ export default function SkillDialog(props: SkillDialogProps) {
   const nameChanged = isEdit && skillName !== originalName
   const nameValid = isValidKebab(skillName)
   const nameExists = skillName !== "" && skillName !== originalName && existingNames.includes(skillName)
-  const canAdvanceStep1 = skillName.trim() !== "" && nameValid && !nameExists && skillType !== ""
+  const canAdvanceStep1 = skillName.trim() !== "" && nameValid && !nameExists && skillType !== "" && description.trim() !== ""
+  const canAdvanceStep2 = domain.trim() !== ""
   const submitLabel = isEdit ? "Save" : "Create"
   const stepDescriptions = STEP_DESCRIPTIONS[props.mode]
 
@@ -160,6 +209,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setStep(1)
     setSkillName("")
     setSkillType("")
+    setDescription("")
     setDomain("")
     setTags([])
     setAudience("")
@@ -167,6 +217,12 @@ export default function SkillDialog(props: SkillDialogProps) {
     setScope("")
     setUniqueSetup("")
     setClaudeMistakes("")
+    setVersion("1.0.0")
+    setModel("inherit")
+    setArgumentHint("")
+    setUserInvocable(true)
+    setDisableModelInvocation(false)
+    setDescriptionSuggestion(null)
     setDomainSuggestion(null)
     setScopeSuggestion(null)
     setAudienceSuggestion(null)
@@ -175,11 +231,17 @@ export default function SkillDialog(props: SkillDialogProps) {
     setClaudeMistakesSuggestion(null)
     setError(null)
     setSubmitting(false)
+    setMarketplaceCheckLoading(false)
+    setMarketplaceMatchFound(false)
+    setMarketplacePromptDismissed(false)
+    if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
+    group0VersionRef.current++
     domainVersionRef.current++
     scopeVersionRef.current++
     group3VersionRef.current++
     group4VersionRef.current++
     suggestionCache.current.clear()
+    if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)
     if (domainDebounceRef.current) clearTimeout(domainDebounceRef.current)
     if (scopeDebounceRef.current) clearTimeout(scopeDebounceRef.current)
     if (group3DebounceRef.current) clearTimeout(group3DebounceRef.current)
@@ -193,12 +255,18 @@ export default function SkillDialog(props: SkillDialogProps) {
       setDomain(editSkill.domain || "")
       setSkillType(editSkill.skill_type || "domain")
       setTags([...editSkill.tags])
+      setDescription(editSkill.description || "")
       const intake = parseIntake(editSkill.intake_json)
       setAudience(intake.audience)
       setChallenges(intake.challenges)
       setScope(intake.scope)
       setUniqueSetup(intake.unique_setup)
       setClaudeMistakes(intake.claude_mistakes)
+      setVersion(editSkill.version || "1.0.0")
+      setModel(editSkill.model || "inherit")
+      setArgumentHint(editSkill.argumentHint || "")
+      setUserInvocable(editSkill.userInvocable ?? true)
+      setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
     } else if (!dialogOpen) {
       resetForm()
     }
@@ -215,6 +283,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   }, [editOnOpenChange, createOnOpenChange])
 
   // --- Cascading ghost suggestions ---
+  // Group 0: description ← name + type (new)
   // Group 1: domain ← name, industry, function
   // Group 2: scope ← name, industry, function, domain
   // Group 3: audience + challenges ← name, industry, function, domain, scope
@@ -259,6 +328,57 @@ export default function SkillDialog(props: SkillDialogProps) {
     },
     [skillName, skillType],
   )
+
+  // Group 0: fetch description when name + type are set (skip in edit mode)
+  useEffect(() => {
+    if (!dialogOpen || !skillName || !skillType || isEdit) { setDescriptionSuggestion(null); return }
+    const params = { name: skillName, skillType, industry, functionRole }
+    fetchGroup({
+      group: "description", fields: ["description"], params,
+      apiOpts: { industry, functionRole },
+      versionRef: group0VersionRef, debounceRef: group0DebounceRef,
+      debounceMs: 800,
+      onResult: (r) => setDescriptionSuggestion((r as unknown as Record<string, string>).description || null),
+    })
+    return () => { if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current) }
+  }, [dialogOpen, isEdit, skillName, skillType, industry, functionRole, fetchGroup])
+
+  // Marketplace check: fire after skillType + domain are both set (create mode, step 1 only, debounced 600ms)
+  useEffect(() => {
+    if (isEdit || !dialogOpen || !skillType || !domain || marketplacePromptDismissed) {
+      setMarketplaceMatchFound(false)
+      setMarketplaceCheckLoading(false)
+      return
+    }
+    if (!marketplaceUrl) return
+
+    if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
+    setMarketplaceCheckLoading(true)
+    marketplaceDebounceRef.current = setTimeout(async () => {
+      try {
+        const repoInfo = await parseGitHubUrl(marketplaceUrl)
+        const available = await listGitHubSkills(
+          repoInfo.owner,
+          repoInfo.repo,
+          repoInfo.branch,
+          repoInfo.subpath ?? undefined,
+        )
+        const matches = available.filter(
+          (s) => s.skill_type != null && s.skill_type === skillType,
+        )
+        setMarketplaceMatchFound(matches.length > 0)
+      } catch (err) {
+        console.warn("[skill-dialog] Marketplace check failed (non-fatal):", err)
+        setMarketplaceMatchFound(false)
+      } finally {
+        setMarketplaceCheckLoading(false)
+      }
+    }, 600)
+
+    return () => {
+      if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
+    }
+  }, [isEdit, dialogOpen, skillType, domain, marketplaceUrl, marketplacePromptDismissed])
 
   // Group 1: fetch domain when name + type are set (skip when closed or in edit mode)
   useEffect(() => {
@@ -332,8 +452,7 @@ export default function SkillDialog(props: SkillDialogProps) {
 
   // --- Submit ---
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const doSubmit = async () => {
     if (!canAdvanceStep1) return
 
     setSubmitting(true)
@@ -354,7 +473,14 @@ export default function SkillDialog(props: SkillDialogProps) {
             audience, challenges, scope,
             unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
           }),
+          description.trim() || null,
+          version.trim() || null,
+          model !== "inherit" ? model : null,
+          argumentHint.trim() || null,
+          userInvocable,
+          disableModelInvocation,
         )
+        console.log(`[skill] Updated skill "${skillName}"`)
         toast.success("Skill updated")
         handleOpenChange(false)
         editOnSaved?.()
@@ -369,6 +495,12 @@ export default function SkillDialog(props: SkillDialogProps) {
             audience, challenges, scope,
             unique_setup: uniqueSetup, claude_mistakes: claudeMistakes,
           }),
+          description: description.trim() || null,
+          version: version.trim() || null,
+          model: model !== "inherit" ? model : null,
+          argumentHint: argumentHint.trim() || null,
+          userInvocable,
+          disableModelInvocation,
         })
         console.log(`[skill] Created skill "${skillName}"`)
         toast.success(`Skill "${skillName}" created`)
@@ -391,6 +523,11 @@ export default function SkillDialog(props: SkillDialogProps) {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await doSubmit()
   }
 
   // --- Helpers ---
@@ -435,19 +572,19 @@ export default function SkillDialog(props: SkillDialogProps) {
 
           {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 py-3">
-            {[1, 2, 3].map((s) => (
+            {[1, 2, 3, 4].map((s) => (
               <div
                 key={s}
                 className={`size-2 rounded-full transition-colors ${stepDotColor(s)}`}
               />
             ))}
             <span className="ml-2 text-xs text-muted-foreground">
-              Step {step} of 3
+              Step {step} of 4
             </span>
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col gap-4 py-2 overflow-y-auto pr-1">
-            {/* Step 1: Name + Type + Tags */}
+            {/* Step 1: Name + Type + Description + Tags */}
             {step === 1 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -457,7 +594,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
                     value={skillName}
                     onChange={(e) => handleNameChange(e.target.value)}
-                    disabled={submitting || isLocked}
+                    disabled={submitting || isBuilt}
                     autoFocus={!isEdit}
                   />
                   {!isEdit && (
@@ -468,7 +605,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                       )}
                     </p>
                   )}
-                  {isEdit && skillName && !nameValid && (
+                  {isEdit && skillName && !nameValid && !isBuilt && (
                     <p className="text-xs text-destructive">
                       Must be kebab-case (e.g., sales-pipeline)
                     </p>
@@ -488,16 +625,16 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <Label>Skill Type</Label>
                   <RadioGroup
                     value={skillType}
-                    onValueChange={setSkillType}
+                    onValueChange={isBuilt ? undefined : setSkillType}
                     className="grid grid-cols-2 gap-2"
-                    disabled={submitting || isLocked}
+                    disabled={submitting || isBuilt}
                   >
                     {SKILL_TYPES.map((type) => (
                       <label
                         key={type}
-                        className="flex items-start gap-2 rounded-md border p-3 cursor-pointer hover:bg-accent [&:has([data-state=checked])]:border-primary"
+                        className={`flex items-start gap-2 rounded-md border p-3 [&:has([data-state=checked])]:border-primary ${isBuilt ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent"}`}
                       >
-                        <RadioGroupItem value={type} id={`type-${type}`} className="mt-0.5" />
+                        <RadioGroupItem value={type} id={`type-${type}`} className="mt-0.5" disabled={isBuilt} />
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium">{SKILL_TYPE_LABELS[type]}</span>
                           <span className="text-xs text-muted-foreground">
@@ -509,19 +646,82 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </RadioGroup>
                 </div>
                 <div className="flex flex-col gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <GhostInput
+                    id="description"
+                    placeholder="Brief description of what this skill does (1-2 sentences)"
+                    value={description}
+                    onChange={setDescription}
+                    suggestion={descriptionSuggestion}
+                    onAccept={setDescription}
+                    disabled={submitting}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Short description for how Claude Code decides when to activate this skill
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="tags">Tags</Label>
                   <TagInput
                     tags={tags}
                     onChange={setTags}
                     suggestions={tagSuggestions}
-                    disabled={submitting || isLocked}
+                    disabled={submitting || isBuilt}
                     placeholder="e.g., salesforce, analytics"
                   />
                 </div>
+
+                {/* Locked fields hint for built skills */}
+                {isBuilt && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      To change name, type, or domain, export and reimport as a new skill.
+                    </span>
+                  </div>
+                )}
+
+                {/* Marketplace match prompt (create mode, step 1, when type + domain are set) */}
+                {!isEdit && marketplaceCheckLoading && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Checking marketplace for matching skills...
+                  </div>
+                )}
+                {!isEdit && !marketplaceCheckLoading && marketplaceMatchFound && !marketplacePromptDismissed && (
+                  <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
+                    <div className="flex items-start gap-2">
+                      <Store className="mt-0.5 size-4 shrink-0 text-primary" />
+                      <p className="text-sm font-medium text-foreground">
+                        We found existing skills that match — would you like to import and refine one, or build from scratch?
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          handleOpenChange(false)
+                          onOpenMarketplace?.([skillType])
+                        }}
+                      >
+                        Import and refine
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMarketplacePromptDismissed(true)}
+                      >
+                        Build from scratch
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
-            {/* Step 2: Domain + Scope */}
+            {/* Step 2: Domain + Scope + Audience + Challenges */}
             {step === 2 && (
               <>
                 <div className="flex flex-col gap-2">
@@ -533,7 +733,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     onChange={setDomain}
                     suggestion={domainSuggestion}
                     onAccept={setDomain}
-                    disabled={submitting || isLocked}
+                    disabled={submitting || isBuilt}
                   />
                   <p className="text-xs text-muted-foreground">
                     Brief description of the skill&apos;s domain
@@ -554,19 +754,6 @@ export default function SkillDialog(props: SkillDialogProps) {
                     Helps agents focus research on what matters most
                   </p>
                 </div>
-
-                {/* Skills output location (create mode only) */}
-                {!isEdit && skillsPath && skillName && (
-                  <p className="text-xs text-muted-foreground">
-                    Output: <code className="text-xs">{skillsPath}/{skillName}/</code>
-                  </p>
-                )}
-              </>
-            )}
-
-            {/* Step 3: Optional detail fields */}
-            {step === 3 && (
-              <>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="audience">Target Audience</Label>
                   <GhostTextarea
@@ -591,6 +778,19 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting || isLocked}
                   />
                 </div>
+
+                {/* Skills output location (create mode only) */}
+                {!isEdit && skillsPath && skillName && (
+                  <p className="text-xs text-muted-foreground">
+                    Output: <code className="text-xs">{skillsPath}/{skillName}/</code>
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* Step 3: Optional detail fields */}
+            {step === 3 && (
+              <>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="unique-setup">What makes your setup unique?</Label>
                   <GhostTextarea
@@ -618,12 +818,84 @@ export default function SkillDialog(props: SkillDialogProps) {
               </>
             )}
 
+            {/* Step 4: Behaviour settings */}
+            {step === 4 && (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="version">Version</Label>
+                  <Input
+                    id="version"
+                    placeholder="1.0.0"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="model">Model</Label>
+                  <select
+                    id="model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    disabled={submitting}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {MODEL_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Model preference for this skill (inherit uses the workspace default)
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="argument-hint">Argument Hint</Label>
+                  <Input
+                    id="argument-hint"
+                    placeholder="e.g., [salesforce-org-url]"
+                    value={argumentHint}
+                    onChange={(e) => setArgumentHint(e.target.value)}
+                    disabled={submitting}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Optional hint shown to users when invoking this skill
+                  </p>
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium">User Invocable</span>
+                    <span className="text-xs text-muted-foreground">
+                      Allow users to invoke this skill directly
+                    </span>
+                  </div>
+                  <Switch
+                    checked={userInvocable}
+                    onCheckedChange={setUserInvocable}
+                    disabled={submitting}
+                  />
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium">Disable Model Invocation</span>
+                    <span className="text-xs text-muted-foreground">
+                      Prevent Claude from automatically invoking this skill
+                    </span>
+                  </div>
+                  <Switch
+                    checked={disableModelInvocation}
+                    onCheckedChange={setDisableModelInvocation}
+                    disabled={submitting}
+                  />
+                </div>
+              </>
+            )}
+
             {!isEdit && error && (
               <p className="text-sm text-destructive">{error}</p>
             )}
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-3">
             {step === 1 && (
               <>
                 <Button
@@ -658,18 +930,11 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
+                  disabled={submitting || !canAdvanceStep2}
                   onClick={() => setStep(3)}
-                  disabled={submitting}
                 >
                   Next
                   <ChevronRight className="size-4" />
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={submitting || isLocked || !canAdvanceStep1}
-                >
-                  {submitting && <Loader2 className="size-4 animate-spin" />}
-                  {submitLabel}
                 </Button>
               </>
             )}
@@ -683,6 +948,36 @@ export default function SkillDialog(props: SkillDialogProps) {
                 >
                   <ChevronLeft className="size-4" />
                   Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep(4)}
+                  disabled={submitting}
+                >
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </>
+            )}
+            {step === 4 && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setStep(3)}
+                  disabled={submitting}
+                >
+                  <ChevronLeft className="size-4" />
+                  Back
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={doSubmit}
+                  disabled={submitting || !canAdvanceStep1}
+                >
+                  Skip
                 </Button>
                 <Button
                   type="submit"

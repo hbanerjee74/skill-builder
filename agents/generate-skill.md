@@ -163,7 +163,25 @@ Calibrate by type:
 
 Follow the Skill Best Practices provided in the agent instructions -- structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
 
-The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive.
+**Full frontmatter format** — write all of these fields in every SKILL.md:
+
+```yaml
+---
+name: <skill-name from intake>
+description: <description from intake — use the user's description as the trigger pattern base; expand to full trigger pattern if it is too short>
+domain: <domain from intake>
+type: <type from intake: platform | domain | source | data-engineering | skill-builder>
+tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
+version: <version from intake, default 1.0.0>
+author: <coordinator-provided username>
+created: <coordinator-provided date>
+modified: <today's date>
+---
+```
+
+`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from intake or the coordinator.
+
+The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive. If the user provided a short description in intake, expand it to the full trigger pattern.
 
 **All types include these common sections:**
 1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
@@ -217,6 +235,10 @@ After all files are written, self-review:
 ---
 name: Procurement Analytics
 description: Domain knowledge for procurement spend analysis. Use when building procurement dashboards, analyzing supplier performance, or modeling purchase order lifecycle. Covers metric definitions, segmentation standards, and period handling specific to the customer's procurement organization. Also use when questions arise about spend classification or approval workflow impact on metrics.
+domain: Procurement
+type: domain
+tools: Read, Write, Edit, Glob, Grep, Bash
+version: 1.0.0
 author: octocat
 created: 2025-06-15
 modified: 2025-06-15
@@ -231,6 +253,10 @@ Sections: Overview → Quick Reference → Metric Definitions → Materiality Th
 ---
 name: dbt on Fabric
 description: Implementation decisions for running dbt projects on Microsoft Fabric. Use when configuring materializations, choosing incremental strategies, or optimizing CU consumption on Fabric. Covers decision dependencies between target architecture, materialization, and Direct Lake compatibility. Also use when troubleshooting Fabric-specific dbt adapter behaviors.
+domain: dbt on Microsoft Fabric
+type: platform
+tools: Read, Write, Edit, Glob, Grep, Bash
+version: 1.0.0
 author: octocat
 created: 2025-06-15
 modified: 2025-06-15
