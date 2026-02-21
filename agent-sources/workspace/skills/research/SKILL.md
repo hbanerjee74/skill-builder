@@ -79,8 +79,6 @@ Return detailed research text covering the dimension's questions and decision po
 
 Wait for all Tasks to return before proceeding to Step 4.
 
-If a dimension Task fails, note the failure and continue with the available outputs from other Tasks. Do not re-try automatically.
-
 ---
 
 ## Step 4 — Consolidate

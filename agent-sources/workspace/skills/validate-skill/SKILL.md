@@ -40,57 +40,33 @@ Glob `references/` in `skill_output_dir` to collect all reference file paths.
 
 ---
 
-## Step 2 — Parallel Sub-agents
+## Step 2 — Sub-agents
 
-Read the full content of:
-- `references/validate-quality-spec.md`
-- `references/test-skill-spec.md`
-- `references/companion-recommender-spec.md`
+Read the full content of the three spec files in `references/`. Spawn one sub-agent per spec, passing the spec content as instructions plus the paths below.
 
-Spawn 3 sub-agents via the Task tool:
+**Quality checker** — `references/validate-quality-spec.md`. Paths:
+- `decisions.md`: `{context_dir}/decisions.md`
+- `clarifications.md`: `{context_dir}/clarifications.md`
+- `SKILL.md`: `{skill_output_dir}/SKILL.md`
+- Reference files: all paths from Step 1 glob
+- Workspace directory: `{workspace_dir}`
+- Skill type: `{skill_type}`
 
-**Quality sub-agent** (`name: "validate-quality"`, `model: "sonnet"`). Construct the prompt from the full content of `references/validate-quality-spec.md`, then append:
+**Test evaluator** — `references/test-skill-spec.md`. Paths:
+- `decisions.md`: `{context_dir}/decisions.md`
+- `clarifications.md`: `{context_dir}/clarifications.md`
+- `SKILL.md`: `{skill_output_dir}/SKILL.md`
+- Reference files: all paths from Step 1 glob
+- Workspace directory: `{workspace_dir}`
 
-```
-You are given these paths:
-- decisions.md: {context_dir}/decisions.md
-- clarifications.md: {context_dir}/clarifications.md
-- SKILL.md: {skill_output_dir}/SKILL.md
-- Reference files: {all reference file paths from glob}
-- Workspace directory: {workspace_dir}
-- Skill type: {skill_type}
+**Companion recommender** — `references/companion-recommender-spec.md`. Paths:
+- `SKILL.md`: `{skill_output_dir}/SKILL.md`
+- Reference files: all paths from Step 1 glob
+- `decisions.md`: `{context_dir}/decisions.md`
+- `research-plan.md`: `{context_dir}/research-plan.md`
+- Workspace directory: `{workspace_dir}`
+- Skill type: `{skill_type}`
 
-```
-
-**Test evaluator sub-agent** (`name: "test-skill"`, `model: "haiku"`). Construct the prompt from the full content of `references/test-skill-spec.md`, then append:
-
-```
-You are given these paths:
-- decisions.md: {context_dir}/decisions.md
-- clarifications.md: {context_dir}/clarifications.md
-- SKILL.md: {skill_output_dir}/SKILL.md
-- Reference files: {all reference file paths from glob}
-- Workspace directory: {workspace_dir}
-
-```
-
-**Companion recommender sub-agent** (`name: "companion-recommender"`, `model: "sonnet"`). Construct the prompt from the full content of `references/companion-recommender-spec.md`, then append:
-
-```
-You are given these paths:
-- SKILL.md: {skill_output_dir}/SKILL.md
-- Reference files: {all reference file paths from glob}
-- decisions.md: {context_dir}/decisions.md
-- research-plan.md: {context_dir}/research-plan.md
-- Workspace directory: {workspace_dir}
-- Skill type: {skill_type}
-
-```
-
-**If a sub-agent fails**, re-spawn once. If it fails again:
-- Quality checker: perform coverage and quality checks yourself during consolidation
-- Test evaluator: note `TESTS NOT EVALUATED` in the test report
-- Companion recommender: use `companions: []` and note `COMPANION RECOMMENDATIONS UNAVAILABLE`
 
 ---
 

@@ -65,6 +65,7 @@ Use the lightest option that fits:
 - Include this directive in every sub-agent prompt:
   > Return your complete output as text. Do not write files. List outcomes, not process.
 - Scoped prompts with clear deliverables — tell the sub-agent exactly what to produce.
+- If a sub-agent fails, note the failure in the output and continue with available results.
 
 ---
 
