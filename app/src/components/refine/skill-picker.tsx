@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
@@ -93,12 +94,14 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
 
                 if (isLocked) {
                   return (
-                    <Tooltip key={skill.name}>
-                      <TooltipTrigger asChild>
-                        <div>{item}</div>
-                      </TooltipTrigger>
-                      <TooltipContent>Being edited in another window</TooltipContent>
-                    </Tooltip>
+                    <TooltipProvider key={skill.name}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div>{item}</div>
+                        </TooltipTrigger>
+                        <TooltipContent>Being edited in another window</TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   );
                 }
 
