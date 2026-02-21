@@ -414,6 +414,18 @@ pub fn get_all_tags(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+pub fn get_installed_skill_names(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<String>, String> {
+    log::info!("[get_installed_skill_names]");
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[get_installed_skill_names] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    crate::db::get_all_installed_skill_names(&conn)
+}
+
+#[tauri::command]
 pub fn acquire_lock(
     skill_name: String,
     instance: tauri::State<'_, crate::InstanceInfo>,

@@ -161,6 +161,7 @@ pub fn run() {
             commands::skill::rename_skill,
             commands::skill::generate_suggestions,
             commands::skill::get_all_tags,
+            commands::skill::get_installed_skill_names,
             commands::skill::acquire_lock,
             commands::skill::release_lock,
             commands::skill::get_locked_skills,

@@ -346,6 +346,10 @@ export const resetUsage = () =>
 export const exportSkill = (skillName: string) =>
   invoke<string>("export_skill", { skillName });
 
+export async function getInstalledSkillNames(): Promise<string[]> {
+  return invoke<string[]>("get_installed_skill_names")
+}
+
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>

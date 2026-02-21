@@ -1678,6 +1678,21 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
     Ok(skills)
 }
 
+/// Return the names of all locally installed skills.
+/// Combines workflow_runs (generated/marketplace skills) and imported_skills (GitHub imports).
+pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT skill_name FROM workflow_runs
+         UNION
+         SELECT skill_name FROM imported_skills"
+    ).map_err(|e| e.to_string())?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(names)
+}
+
 // --- Skill Locks ---
 
 pub fn acquire_skill_lock(

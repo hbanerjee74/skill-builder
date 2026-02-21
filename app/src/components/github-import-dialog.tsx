@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, getInstalledSkillNames } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
 
 interface GitHubImportDialogProps {
@@ -86,6 +86,16 @@ export default function GitHubImportDialog({
         setError("No skills found in this repository.")
         return
       }
+      // Pre-mark skills that are already installed
+      const installedNames = await getInstalledSkillNames()
+      const installedSet = new Set(installedNames)
+      const preStates = new Map<string, SkillState>()
+      for (const skill of available) {
+        if (installedSet.has(skill.name)) {
+          preStates.set(skill.path, "exists")
+        }
+      }
+      setSkillStates(preStates)
       setSkills(available)
     } catch (err) {
       console.error("[github-import] Failed to browse skills:", err)

@@ -128,6 +128,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
       });
     });
 
@@ -176,6 +177,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: mixed,
+        get_installed_skill_names: [],
       });
 
       renderDialog({ typeFilter: ["skill-builder"] });
@@ -194,6 +196,25 @@ describe("GitHubImportDialog", () => {
         expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
       });
     });
+
+    it("pre-marks skills that are already installed as 'In library'", async () => {
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: sampleSkills,
+        get_installed_skill_names: ["Sales Analytics"], // first skill already installed
+      });
+
+      renderDialog();
+
+      await waitFor(() => {
+        expect(screen.getByText("HR Metrics")).toBeInTheDocument();
+      });
+
+      // Sales Analytics should show "In library" without any click
+      expect(screen.getByText("In library")).toBeInTheDocument();
+      // HR Metrics should still have Import button
+      expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(1);
+    });
   });
 
   describe("Import — skill-library mode", () => {
@@ -205,6 +226,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
       });
     });
 
@@ -213,6 +235,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -238,6 +261,7 @@ describe("GitHubImportDialog", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
+        if (cmd === "get_installed_skill_names") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library") {
           return new Promise((res) => { resolveImport = res; });
         }
@@ -265,6 +289,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -288,6 +313,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: false, error: "already exists" }],
       });
 
@@ -312,6 +338,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -341,6 +368,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
       });
     });
 
@@ -349,6 +377,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_github_skills: [],
       });
 
@@ -375,6 +404,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_github_skills: [],
       });
 
@@ -408,6 +438,7 @@ describe("GitHubImportDialog", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
+        if (cmd === "get_installed_skill_names") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library")
           return Promise.reject(new Error("Import failed: server error"));
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -438,6 +469,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
+        get_installed_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
