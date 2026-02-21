@@ -107,6 +107,12 @@ export function AboutDialog({ open, onOpenChange }: AboutDialogProps) {
             </p>
           </div>
 
+          <p className="text-xs">
+            <ExternalLink href="https://github.com/hbanerjee74/skill-builder/blob/main/LICENSE">
+              License
+            </ExternalLink>
+          </p>
+
           <p className="text-xs text-muted-foreground/60">
             &copy; {new Date().getFullYear()} Accelerate Data, Inc. All rights reserved.
           </p>
