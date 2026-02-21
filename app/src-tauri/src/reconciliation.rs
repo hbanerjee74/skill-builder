@@ -17,9 +17,10 @@ use std::path::Path;
 ///
 /// Scenarios:
 /// 1. Disk dir exists, no DB record  -> create DB record conservatively
-/// 2. DB step ahead of disk          -> reset to latest safe step + notification
-/// 3. DB record, workspace missing   -> recreate workspace dir (transient)
-/// 4. Normal case                    -> reconcile step state
+/// 2. DB claims past a detectable step not confirmed on disk -> reset to last confirmed detectable step
+/// 3. Disk ahead of DB               -> advance DB to match
+/// 4. DB record, workspace missing   -> recreate workspace dir (transient)
+/// 5. Normal case                    -> trust DB current_step; mark detectable steps completed
 pub fn reconcile_on_startup(
     conn: &rusqlite::Connection,
     workspace_path: &str,
@@ -125,40 +126,33 @@ pub fn reconcile_on_startup(
         );
 
         if let Some(disk_step) = maybe_disk_step.map(|s| s as i32) {
-            // current_step semantics: "the step you're on / about to run".
-            // After step N completes, current_step = N+1. detect_furthest_step
-            // returns N (the last step with output files). So current_step being
-            // disk_step + 1 is the normal state after step N completes.
-            //
-            // Additionally, current_step can be disk_step + 2 when the step after
-            // the last agent step is a human review (1, 3) that
-            // auto-advances without producing files.
-            //
-            // Count how many non-detectable (file-less) steps sit between disk_step
-            // and current_step. If the gap is fully explained by normal progression
-            // plus non-detectable steps, the DB state is valid.
+            const DETECTABLE_STEPS: &[i32] = &[0, 4, 5];
+
+            // The highest detectable step the DB claims to have completed
+            let last_expected_detectable = DETECTABLE_STEPS
+                .iter()
+                .copied()
+                .filter(|&s| s <= run.current_step)
+                .max();
+
             let mut did_reset = false;
+
             if run.current_step > disk_step {
-                let gap = run.current_step - disk_step;
-                // Step 2 (detailed research) edits clarifications.md in-place,
-                // producing no unique artifact — treat it as non-detectable.
-                let non_detectable_in_gap = ((disk_step + 1)..run.current_step)
-                    .filter(|s| matches!(s, 1 | 2 | 3 | 7))
-                    .count() as i32;
-                // gap of 1 is always normal (step completed -> advanced to next).
-                // Each non-detectable step in the range accounts for one more.
-                let should_reset = gap > 1 + non_detectable_in_gap;
+                // DB is ahead of disk — check if disk confirms the last expected detectable step
+                let db_valid = last_expected_detectable
+                    .map(|s| disk_step >= s)
+                    .unwrap_or(true); // no detectable step expected yet → DB is valid
 
                 log::debug!(
-                    "[reconcile] '{}': db_step={} > disk_step={}, gap={}, non_detectable_in_gap={}, should_reset={}",
-                    run.skill_name, run.current_step, disk_step, gap, non_detectable_in_gap, should_reset
+                    "[reconcile] '{}': db_step={} > disk_step={}, last_expected_detectable={:?}, db_valid={}",
+                    run.skill_name, run.current_step, disk_step, last_expected_detectable, db_valid
                 );
 
-                if should_reset {
-                    // DB genuinely ahead of disk — reset
+                if !db_valid {
+                    // DB claims to have passed a detectable step that disk doesn't confirm — reset
                     log::info!(
-                        "[reconcile] '{}': resetting from step {} to {} (disk gap {} > 1+{} non-detectable)",
-                        run.skill_name, run.current_step, disk_step, gap, non_detectable_in_gap
+                        "[reconcile] '{}': resetting from step {} to {} (disk does not confirm detectable step {:?})",
+                        run.skill_name, run.current_step, disk_step, last_expected_detectable
                     );
                     crate::db::save_workflow_run(
                         conn,
@@ -176,10 +170,7 @@ pub fn reconcile_on_startup(
                     ));
                 }
             } else if disk_step > run.current_step {
-                // Disk is ahead of DB — advance current_step to match.
-                // The reset dialog always deletes both files and DB step
-                // records when navigating back, so disk ahead always means
-                // the DB is stale (never intentional navigation).
+                // Disk is ahead of DB — advance
                 log::info!(
                     "[reconcile] '{}': advancing from step {} to {} (disk ahead of DB)",
                     run.skill_name, run.current_step, disk_step
@@ -198,26 +189,22 @@ pub fn reconcile_on_startup(
                 ));
             }
 
-            // Mark steps with output on disk as completed.
-            for s in 0..=disk_step {
-                crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
+            // Mark all detectable steps confirmed by disk as completed
+            for &s in DETECTABLE_STEPS {
+                if s <= disk_step {
+                    crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
+                }
             }
-            // If we didn't reset and current_step > disk_step, the steps between
-            // disk_step+1 and current_step-1 are non-detectable — mark them too.
-            // After a reset, these steps are no longer valid so we skip this.
-            if !did_reset && run.current_step > disk_step + 1 {
+            // If no reset: also mark non-detectable steps between disk and current_step as completed
+            if !did_reset {
                 for s in (disk_step + 1)..run.current_step {
-                    if matches!(s, 1 | 2 | 3 | 7) {
+                    if !DETECTABLE_STEPS.contains(&s) {
                         crate::db::save_workflow_step(conn, &run.skill_name, s, "completed")?;
                     }
                 }
             }
 
-            // If disk evidence shows the full workflow completed (step 5 =
-            // generate has output), mark the run as "completed". This fixes a
-            // race where the frontend debounced save fires before the final
-            // step status is computed, leaving status = "pending" despite all
-            // steps being done.
+            // If disk shows full workflow complete, fix stuck "pending" status
             const LAST_WORKFLOW_STEP: i32 = 5;
             if disk_step >= LAST_WORKFLOW_STEP && run.status != "completed" {
                 log::info!(
@@ -235,13 +222,12 @@ pub fn reconcile_on_startup(
                 )?;
             }
 
-            // Defensive: clean up any files from steps beyond the reconciled point.
+            // Clean up any files from steps beyond the reconciled disk point
             cleanup_future_steps(workspace_path, &run.skill_name, disk_step, skills_path);
         } else if run.current_step > 0 {
-            // No output files on disk but DB thinks we're past step 0.
-            // Reset to step 0 pending — all work was lost.
+            // No output files found but DB thinks we're past step 0 — reset
             log::info!(
-                "[reconcile] '{}': resetting from step {} to 0 (workspace dir exists but no output files found)",
+                "[reconcile] '{}': resetting from step {} to 0 (no output files found on disk)",
                 run.skill_name, run.current_step
             );
             crate::db::save_workflow_run(
@@ -253,14 +239,13 @@ pub fn reconcile_on_startup(
                 &run.skill_type,
             )?;
             crate::db::reset_workflow_steps_from(conn, &run.skill_name, 0)?;
-            // Defensive: clean up any lingering files from all steps
             cleanup_future_steps(workspace_path, &run.skill_name, -1, skills_path);
             notifications.push(format!(
                 "'{}' was reset from step {} to step 0 (no output files found)",
                 run.skill_name, run.current_step
             ));
         }
-        // else: no output files and DB at step 0 — fresh skill, no action needed
+        // else: no output files, DB at step 0 → fresh skill, no action needed
 
         // Warn if a completed skill is missing its skills_path output
         if run.status == "completed" {
@@ -508,7 +493,7 @@ mod tests {
         create_step_output(skills_tmp.path(), "mid-skill", 0);
         create_step_output(skills_tmp.path(), "mid-skill", 4);
 
-        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+        let _result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
         let run = crate::db::get_workflow_run(&conn, "mid-skill")
             .unwrap()
@@ -804,9 +789,8 @@ mod tests {
     #[test]
     fn test_step_completed_advances_to_next_not_reset() {
         for (db_step, disk_steps) in [
-            (1, vec![0u32]),          // step 0 completed -> on step 1
-            (3, vec![0, 2]),          // step 2 completed -> on step 3
-            (5, vec![0, 2, 4]),       // step 4 completed -> on step 5
+            (1, vec![0u32]),          // step 0 completed -> on step 1 (non-detectable)
+            (3, vec![0, 2]),          // step 2 completed -> on step 3 (non-detectable); disk_step=0
             (6, vec![0, 2, 4, 5]),    // step 5 completed -> on step 6 (beyond last step)
         ] {
             let tmp = tempfile::tempdir().unwrap();
@@ -855,7 +839,10 @@ mod tests {
     }
 
     #[test]
-    fn test_step_4_on_db_but_step_2_on_disk_with_human_review() {
+    fn test_step_4_on_db_but_step_0_on_disk_resets() {
+        // DB=4, disk has step 0 and step 2 (but step 2 is non-detectable, so disk_step=0).
+        // last_expected_detectable = max([0,4,5] <= 4) = 4.
+        // disk_step(0) >= 4 → false → DB claims to have passed step 4 without disk proof → reset to 0.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
@@ -870,9 +857,10 @@ mod tests {
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-        assert!(result.notifications.is_empty());
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("reset from step 4 to step 0"));
         let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.current_step, 4);
+        assert_eq!(run.current_step, 0);
     }
 
     // --- Disk ahead ---
