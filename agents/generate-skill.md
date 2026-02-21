@@ -145,7 +145,14 @@ Pre-filled factual assertions allowed per type:
 
 ### Delta Principle
 
-Skills must encode only the delta between Claude's parametric knowledge and the customer's actual needs. Restating what Claude already knows risks knowledge suppression. Calibrate by type:
+Skills must encode only the delta between what Claude knows and what the customer's specific environment requires. There are two layers of knowledge to exclude:
+
+1. **Claude's parametric knowledge** — restating what Claude already knows from training risks knowledge suppression.
+2. **Publicly available documentation** — do NOT include standard library docs, API references, configuration syntax, CLI usage, or anything a coding agent can look up at runtime via Context7, web search, or `--help`. If it's in the official docs, it doesn't belong in the skill.
+
+What DOES belong: customer-specific decisions, business logic, environment-specific gotchas, and non-obvious platform traps that aren't in public documentation.
+
+Calibrate by type:
 
 - **Source** — Moderate suppression risk. Platform extraction knowledge varies; procedural annotations for non-obvious traps are safe.
 - **Domain** — Low risk. No pre-filled content; guided prompts only.
