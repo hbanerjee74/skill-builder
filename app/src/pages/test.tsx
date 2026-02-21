@@ -693,7 +693,7 @@ export default function TestPage() {
           />
           <Badge
             variant="outline"
-            className="border-green-800/50 bg-green-950/30 text-green-400 text-[10px] uppercase tracking-wider"
+            className="border-border text-muted-foreground text-[10px] uppercase tracking-wider"
           >
             Plan Mode
           </Badge>
@@ -749,7 +749,7 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="with skill"
-              badgeClass="bg-green-950 text-green-400"
+              badgeClass="bg-[#2D7A35]/15 text-[#5D9B62]"
               idlePlaceholder="Run a test to see the with-skill plan"
             />
           </div>
@@ -773,7 +773,7 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="no skill"
-              badgeClass="bg-orange-950 text-orange-400"
+              badgeClass="bg-[#A85A33]/15 text-[#D4916E]"
               idlePlaceholder="Run a test to see the no-skill plan"
             />
           </div>
