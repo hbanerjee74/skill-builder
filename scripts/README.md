@@ -24,7 +24,7 @@ scripts/
     ├── fixtures.sh                # Test fixtures
     ├── t1-structural.sh           # T1: Structural validation
     ├── t2-plugin-loading.sh       # T2: Plugin loading
-    ├── t3-mode-detection.sh       # T3: Mode detection
+    ├── t3-mode-detection.sh       # T3: State detection + intent dispatch
     ├── t4-agent-smoke.sh          # T4: Agent smoke tests
     └── t5-e2e-workflow.sh         # T5: E2E workflow
 
@@ -35,7 +35,7 @@ scripts/
 ### Plugin Build & Validation
 
 **`build-plugin-skill.sh`**
-- Packages `agent-sources/workspace/CLAUDE.md` into 4 reference files under `skills/generate-skill/references/`
+- Packages `agent-sources/workspace/CLAUDE.md` as `workspace-context.md` and copies `skill-builder-practices/` into `skills/generate-skill/references/`
 - Run after modifying workspace CLAUDE.md
 - Use `--check` flag to verify references are fresh (for CI)
 - Usage: `./scripts/build-plugin-skill.sh` or `./scripts/build-plugin-skill.sh --check`
