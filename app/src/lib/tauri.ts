@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, TeamRepoSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, PushResult, GitHubRepo, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, TeamRepoSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // --- Settings ---
 
@@ -339,19 +339,10 @@ export const listGitHubSkills = (owner: string, repo: string, branch: string, su
 export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
   invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
 
-// --- GitHub Push ---
+// --- Marketplace Import ---
 
-export const validateRemoteRepo = (owner: string, repo: string) =>
-  invoke<void>("validate_remote_repo", { owner, repo })
-
-export const pushSkillToRemote = (skillName: string) =>
-  invoke<PushResult>("push_skill_to_remote", { skillName })
-
-export const reconcileManifests = () =>
-  invoke<number>("reconcile_manifests")
-
-export const listUserRepos = () =>
-  invoke<GitHubRepo[]>("list_user_repos")
+export const importMarketplaceToLibrary = (skillPaths: string[]) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths })
 
 // --- Team Repo Import ---
 

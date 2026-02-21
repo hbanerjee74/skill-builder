@@ -41,6 +41,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (11, run_bundled_skill_migration),
         (12, run_drop_trigger_description_migration),
         (13, run_remove_validate_step_migration),
+        (14, run_source_migration),
+        (15, run_imported_skills_extended_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -372,6 +374,55 @@ fn run_remove_validate_step_migration(conn: &Connection) -> Result<(), rusqlite:
         "UPDATE workflow_runs SET current_step = 5, status = 'completed' WHERE current_step >= 6",
         [],
     )?;
+    Ok(())
+}
+
+/// Migration 14: Add `source` column to workflow_runs.
+/// Defaults to 'created' for all existing rows (user-built skills).
+/// 'marketplace' is used for skills imported from the marketplace.
+fn run_source_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let has_source = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "source").unwrap_or(false));
+    if !has_source {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'created';",
+        )?;
+    }
+    Ok(())
+}
+
+/// Migration 15: Add extended metadata columns to imported_skills.
+fn run_imported_skills_extended_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(imported_skills)")
+        .and_then(|mut stmt| {
+            stmt.query_map([], |row| row.get::<_, String>(1))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    if !columns.iter().any(|n| n == "skill_type") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN skill_type TEXT;")?;
+    }
+    if !columns.iter().any(|n| n == "version") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN version TEXT;")?;
+    }
+    if !columns.iter().any(|n| n == "model") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN model TEXT;")?;
+    }
+    if !columns.iter().any(|n| n == "argument_hint") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN argument_hint TEXT;")?;
+    }
+    if !columns.iter().any(|n| n == "user_invocable") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN user_invocable INTEGER;")?;
+    }
+    if !columns.iter().any(|n| n == "disable_model_invocation") {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN disable_model_invocation INTEGER;",
+        )?;
+    }
     Ok(())
 }
 
@@ -952,6 +1003,23 @@ pub fn save_workflow_run(
     Ok(())
 }
 
+pub fn save_marketplace_skill_run(
+    conn: &Connection,
+    skill_name: &str,
+    domain: &str,
+    skill_type: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source, updated_at)
+         VALUES (?1, ?2, 5, 'completed', ?3, 'marketplace', datetime('now') || 'Z')
+         ON CONFLICT(skill_name) DO UPDATE SET
+             domain = ?2, current_step = 5, status = 'completed', skill_type = ?3, source = 'marketplace', updated_at = datetime('now') || 'Z'",
+        rusqlite::params![skill_name, domain, skill_type],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn set_skill_author(
     conn: &Connection,
     skill_name: &str,
@@ -999,7 +1067,7 @@ pub fn get_workflow_run(
 ) -> Result<Option<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
              FROM workflow_runs WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1017,6 +1085,7 @@ pub fn get_workflow_run(
             author_avatar: row.get(8)?,
             display_name: row.get(9)?,
             intake_json: row.get(10)?,
+            source: row.get(11)?,
         })
     });
 
@@ -1037,7 +1106,7 @@ pub fn get_skill_type(conn: &Connection, skill_name: &str) -> Result<String, Str
 pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json
+            "SELECT skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, COALESCE(source, 'created')
              FROM workflow_runs ORDER BY skill_name",
         )
         .map_err(|e| e.to_string())?;
@@ -1056,6 +1125,7 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
                 author_avatar: row.get(8)?,
                 display_name: row.get(9)?,
                 intake_json: row.get(10)?,
+                source: row.get(11)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1285,8 +1355,9 @@ pub fn insert_imported_skill(
     skill: &ImportedSkill,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1295,6 +1366,12 @@ pub fn insert_imported_skill(
             skill.disk_path,
             skill.imported_at,
             skill.is_bundled as i32,
+            skill.skill_type,
+            skill.version,
+            skill.model,
+            skill.argument_hint,
+            skill.user_invocable.map(|v| v as i32),
+            skill.disable_model_invocation.map(|v| v as i32),
         ],
     )
     .map_err(|e| {
@@ -1336,7 +1413,8 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
 pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
+                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM imported_skills ORDER BY imported_at DESC",
         )
         .map_err(|e| e.to_string())?;
@@ -1352,6 +1430,12 @@ pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Str
                 imported_at: row.get(5)?,
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
+                skill_type: row.get(7)?,
+                version: row.get(8)?,
+                model: row.get(9)?,
+                argument_hint: row.get(10)?,
+                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1400,7 +1484,8 @@ pub fn get_imported_skill(
 ) -> Result<Option<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
+                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM imported_skills WHERE skill_name = ?1",
         )
         .map_err(|e| e.to_string())?;
@@ -1415,6 +1500,12 @@ pub fn get_imported_skill(
             imported_at: row.get(5)?,
             is_bundled: row.get::<_, i32>(6)? != 0,
             description: None,
+            skill_type: row.get(7)?,
+            version: row.get(8)?,
+            model: row.get(9)?,
+            argument_hint: row.get(10)?,
+            user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+            disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
         })
     });
 
@@ -1431,7 +1522,8 @@ pub fn get_imported_skill(
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled
+            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
+                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM imported_skills
              WHERE is_active = 1
              ORDER BY skill_name",
@@ -1449,6 +1541,12 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
                 imported_at: row.get(5)?,
                 is_bundled: row.get::<_, i32>(6)? != 0,
                 description: None,
+                skill_type: row.get(7)?,
+                version: row.get(8)?,
+                model: row.get(9)?,
+                argument_hint: row.get(10)?,
+                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1770,6 +1868,8 @@ mod tests {
         run_composite_pk_migration(&conn).unwrap();
         run_bundled_skill_migration(&conn).unwrap();
         run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
         conn
     }
 
@@ -1798,8 +1898,7 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-            remote_repo_owner: None,
-            remote_repo_name: None,
+            marketplace_url: None,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -1832,8 +1931,7 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-            remote_repo_owner: None,
-            remote_repo_name: None,
+            marketplace_url: None,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -1862,8 +1960,7 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-            remote_repo_owner: None,
-            remote_repo_name: None,
+            marketplace_url: None,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -1885,8 +1982,7 @@ mod tests {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-            remote_repo_owner: None,
-            remote_repo_name: None,
+            marketplace_url: None,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -2104,6 +2200,7 @@ mod tests {
         run_add_skill_type_migration(&conn).unwrap();
         run_author_migration(&conn).unwrap();
         run_intake_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();
@@ -3114,6 +3211,12 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
@@ -3127,6 +3230,12 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
@@ -3140,6 +3249,12 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 

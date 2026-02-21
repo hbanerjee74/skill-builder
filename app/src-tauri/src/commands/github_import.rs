@@ -3,6 +3,35 @@ use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill};
 use std::fs;
 use std::path::Path;
 
+/// Fetch the default branch name for a GitHub repo via the API.
+pub(crate) async fn get_default_branch(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo: &str,
+) -> Result<String, String> {
+    let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo info: {}", e))?;
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse repo response: {}", e))?;
+    if !status.is_success() {
+        let message = body["message"].as_str().unwrap_or("Unknown error");
+        return Err(format!("GitHub API error ({}): {}", status, message));
+    }
+    let _ = token; // token already embedded in client headers
+    Ok(body["default_branch"]
+        .as_str()
+        .unwrap_or("main")
+        .to_string())
+}
+
 /// Build a `reqwest::Client` with standard GitHub API headers.
 /// If an OAuth token is available in settings, it is included as a Bearer token.
 pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
@@ -251,7 +280,7 @@ pub(crate) async fn list_github_skills_inner(
             }
         };
 
-        let (fm_name, fm_description, fm_domain, _fm_type) =
+        let (fm_name, fm_description, fm_domain, fm_type) =
             super::imported_skills::parse_frontmatter(&content);
 
         // Derive skill directory path (parent of SKILL.md)
@@ -274,6 +303,7 @@ pub(crate) async fn list_github_skills_inner(
             name,
             domain: fm_domain,
             description: fm_description,
+            skill_type: fm_type,
         });
     }
 
@@ -393,6 +423,167 @@ pub async fn import_github_skills(
     }
 
     Ok(imported)
+}
+
+// ---------------------------------------------------------------------------
+// import_marketplace_to_library
+// ---------------------------------------------------------------------------
+
+/// Result of a single marketplace skill import attempt.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MarketplaceImportResult {
+    pub skill_name: String,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+/// Import one or more skills from the configured marketplace URL into the Skill Library.
+/// Each successfully imported skill gets a `workflow_runs` row with `source='marketplace'`.
+#[tauri::command]
+pub async fn import_marketplace_to_library(
+    db: tauri::State<'_, Db>,
+    skill_paths: Vec<String>,
+) -> Result<Vec<MarketplaceImportResult>, String> {
+    log::info!(
+        "[import_marketplace_to_library] importing {} skills from marketplace",
+        skill_paths.len()
+    );
+
+    // Read settings
+    let (marketplace_url, workspace_path, token) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let url = settings
+            .marketplace_url
+            .ok_or_else(|| "Marketplace URL not configured. Set it in Settings.".to_string())?;
+        let wp = settings
+            .workspace_path
+            .ok_or_else(|| "Workspace path not initialized".to_string())?;
+        (url, wp, settings.github_oauth_token.clone())
+    };
+
+    // Parse the marketplace URL into owner/repo/branch
+    let repo_info = parse_github_url_inner(&marketplace_url)?;
+    let owner = &repo_info.owner;
+    let repo = &repo_info.repo;
+    let branch = &repo_info.branch;
+
+    let client = build_github_client(token.as_deref());
+
+    // Fetch the full recursive tree once
+    let tree_url = format!(
+        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+        owner, repo, branch
+    );
+
+    let response = client
+        .get(&tree_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
+
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
+
+    if !status.is_success() {
+        let message = body["message"].as_str().unwrap_or("Unknown error");
+        return Err(format!("GitHub API error ({}): {}", status, message));
+    }
+
+    let tree = body["tree"]
+        .as_array()
+        .ok_or("Invalid tree response: missing 'tree' array")?;
+
+    let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
+    let mut results: Vec<MarketplaceImportResult> = Vec::new();
+
+    for skill_path in &skill_paths {
+        match import_single_skill(&client, owner, repo, branch, skill_path, tree, &skills_dir).await {
+            Ok(skill) => {
+                // Insert into imported_skills table
+                let conn = db.0.lock().map_err(|e| e.to_string())?;
+                let insert_result = crate::db::insert_imported_skill(&conn, &skill);
+
+                // Also record in workflow_runs with source='marketplace'
+                let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
+                let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
+                let run_result = crate::db::save_marketplace_skill_run(
+                    &conn,
+                    &skill.skill_name,
+                    &domain,
+                    skill_type_str,
+                );
+
+                if let Err(e) = run_result {
+                    log::warn!(
+                        "[import_marketplace_to_library] failed to save workflow run for '{}': {}",
+                        skill.skill_name, e
+                    );
+                }
+
+                match insert_result {
+                    Ok(()) => {
+                        log::info!(
+                            "[import_marketplace_to_library] imported '{}'",
+                            skill.skill_name
+                        );
+                        results.push(MarketplaceImportResult {
+                            skill_name: skill.skill_name,
+                            success: true,
+                            error: None,
+                        });
+                    }
+                    Err(e) => {
+                        // Clean up files on DB failure
+                        if let Err(ce) = fs::remove_dir_all(&skill.disk_path) {
+                            log::warn!(
+                                "[import_marketplace_to_library] cleanup failed for '{}': {}",
+                                skill.disk_path, ce
+                            );
+                        }
+                        results.push(MarketplaceImportResult {
+                            skill_name: skill.skill_name,
+                            success: false,
+                            error: Some(e),
+                        });
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[import_marketplace_to_library] failed to import '{}': {}",
+                    skill_path, e
+                );
+                results.push(MarketplaceImportResult {
+                    skill_name: skill_path.clone(),
+                    success: false,
+                    error: Some(e),
+                });
+            }
+        }
+    }
+
+    // Regenerate CLAUDE.md with imported skills section
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+            log::warn!(
+                "[import_marketplace_to_library] failed to update CLAUDE.md: {}",
+                e
+            );
+        }
+    }
+
+    log::info!(
+        "[import_marketplace_to_library] done: {} succeeded, {} failed",
+        results.iter().filter(|r| r.success).count(),
+        results.iter().filter(|r| !r.success).count()
+    );
+
+    Ok(results)
 }
 
 /// Import a single skill directory from the repo tree.
@@ -589,6 +780,12 @@ pub(crate) async fn import_single_skill(
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
+        skill_type: fm.skill_type,
+        version: fm.version,
+        model: fm.model,
+        argument_hint: fm.argument_hint,
+        user_invocable: fm.user_invocable,
+        disable_model_invocation: fm.disable_model_invocation,
     })
 }
 

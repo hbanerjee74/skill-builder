@@ -13,7 +13,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, MessageSquare, Pencil, SquarePen, Trash2, Upload } from "lucide-react"
+import { Download, Lock, MessageSquare, Pencil, SquarePen, Trash2 } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -33,9 +33,7 @@ interface SkillCardProps {
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
-  onPushToRemote?: (skill: SkillSummary) => void
-  remoteConfigured?: boolean
-  isGitHubLoggedIn?: boolean
+  marketplaceConfigured?: boolean
 }
 
 export function parseStepProgress(currentStep: string | null, status: string | null): number {
@@ -114,12 +112,6 @@ export function IconAction({ icon, label, tooltip, onClick, disabled, className 
   )
 }
 
-export function getPushDisabledReason(isGitHubLoggedIn?: boolean, remoteConfigured?: boolean): string | undefined {
-  if (!isGitHubLoggedIn) return "Sign in with GitHub in Settings"
-  if (!remoteConfigured) return "Configure remote repository in Settings"
-  return undefined
-}
-
 export default function SkillCard({
   skill,
   isLocked,
@@ -129,13 +121,9 @@ export default function SkillCard({
   onEdit,
   onEditWorkflow,
   onRefine,
-  onPushToRemote,
-  remoteConfigured,
-  isGitHubLoggedIn,
 }: SkillCardProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
   const canDownload = isWorkflowComplete(skill)
-  const pushDisabledReason = getPushDisabledReason(isGitHubLoggedIn, remoteConfigured)
 
   const cardContent = (
     <Card
@@ -201,15 +189,6 @@ export default function SkillCard({
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {canDownload && onPushToRemote && (
-              <IconAction
-                icon={<Upload className="size-3" />}
-                label="Push to remote"
-                tooltip={pushDisabledReason ?? "Push to remote"}
-                disabled={!remoteConfigured || !isGitHubLoggedIn}
-                onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
-              />
-            )}
             {canDownload && onDownload && (
               <IconAction
                 icon={<Download className="size-3" />}

@@ -3063,6 +3063,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3088,6 +3094,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -3121,6 +3133,12 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         let imported = crate::types::ImportedSkill {
             skill_id: "imp-data-analytics-123".to_string(),
@@ -3131,6 +3149,12 @@ mod tests {
             imported_at: "2025-01-15T10:00:00Z".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &bundled).unwrap();
         crate::db::insert_imported_skill(&conn, &imported).unwrap();
@@ -3176,6 +3200,12 @@ mod tests {
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 

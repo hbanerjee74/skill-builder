@@ -114,8 +114,7 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_val!(log_level, "log_level");
     cmp_bool!(extended_context, "extended_context");
     cmp_bool!(extended_thinking, "extended_thinking");
-    cmp_opt!(remote_repo_owner, "remote_repo_owner");
-    cmp_opt!(remote_repo_name, "remote_repo_name");
+    cmp_opt!(marketplace_url, "marketplace_url");
     cmp_val!(max_dimensions, "max_dimensions");
     cmp_opt!(industry, "industry");
     cmp_opt!(function_role, "function_role");

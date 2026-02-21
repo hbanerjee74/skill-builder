@@ -137,35 +137,6 @@ describe("SkillCard", () => {
     expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
   });
 
-  it("shows Push to remote disabled when GitHub not configured", () => {
-    render(
-      <SkillCard
-        skill={completedSkill}
-        onContinue={vi.fn()}
-        onDelete={vi.fn()}
-        onPushToRemote={vi.fn()}
-        isGitHubLoggedIn={false}
-        remoteConfigured={false}
-      />
-    );
-    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
-    expect(pushButton).toBeDisabled();
-  });
-
-  it("shows Push to remote enabled when GitHub is configured", () => {
-    render(
-      <SkillCard
-        skill={completedSkill}
-        onContinue={vi.fn()}
-        onDelete={vi.fn()}
-        onPushToRemote={vi.fn()}
-        isGitHubLoggedIn={true}
-        remoteConfigured={true}
-      />
-    );
-    const pushButton = screen.getByRole("button", { name: /Push to remote/i });
-    expect(pushButton).not.toBeDisabled();
-  });
 
   it("renders tag badges when tags are present", () => {
     const skill = { ...baseSkill, tags: ["analytics", "salesforce"] };

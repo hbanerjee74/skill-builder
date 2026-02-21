@@ -6,7 +6,6 @@ import {
   Pencil,
   SquarePen,
   Trash2,
-  Upload,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,7 +25,6 @@ import {
   IconAction,
   isWorkflowComplete,
   parseStepProgress,
-  getPushDisabledReason,
 } from "@/components/skill-card"
 import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS } from "@/lib/types"
@@ -41,9 +39,7 @@ interface SkillListRowProps {
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
-  onPushToRemote?: (skill: SkillSummary) => void
-  remoteConfigured?: boolean
-  isGitHubLoggedIn?: boolean
+  marketplaceConfigured?: boolean
 }
 
 export default function SkillListRow({
@@ -55,13 +51,9 @@ export default function SkillListRow({
   onEdit,
   onEditWorkflow,
   onRefine,
-  onPushToRemote,
-  remoteConfigured,
-  isGitHubLoggedIn,
 }: SkillListRowProps) {
   const progress = parseStepProgress(skill.current_step, skill.status)
   const canDownload = isWorkflowComplete(skill)
-  const pushDisabledReason = getPushDisabledReason(isGitHubLoggedIn, remoteConfigured)
 
   const row = (
     <div
@@ -129,15 +121,6 @@ export default function SkillListRow({
             label="Refine skill"
             tooltip="Refine"
             onClick={() => onRefine(skill)}
-          />
-        )}
-        {canDownload && onPushToRemote && (
-          <IconAction
-            icon={<Upload className="size-3" />}
-            label="Push to remote"
-            tooltip={pushDisabledReason ?? "Push to remote"}
-            disabled={!remoteConfigured || !isGitHubLoggedIn}
-            onClick={() => remoteConfigured && isGitHubLoggedIn && onPushToRemote(skill)}
           />
         )}
         {canDownload && onDownload && (

@@ -25,6 +25,11 @@ pub(crate) struct Frontmatter {
     pub description: Option<String>,
     pub domain: Option<String>,
     pub skill_type: Option<String>,
+    pub version: Option<String>,
+    pub model: Option<String>,
+    pub argument_hint: Option<String>,
+    pub user_invocable: Option<bool>,
+    pub disable_model_invocation: Option<bool>,
 }
 
 /// Parse YAML frontmatter from SKILL.md content.
@@ -46,6 +51,11 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             description: None,
             domain: None,
             skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
     }
 
@@ -59,6 +69,11 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
                 description: None,
                 domain: None,
                 skill_type: None,
+                version: None,
+                model: None,
+                argument_hint: None,
+                user_invocable: None,
+                disable_model_invocation: None,
             }
         }
     };
@@ -69,6 +84,11 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     let mut description = None;
     let mut domain = None;
     let mut skill_type = None;
+    let mut version = None;
+    let mut model = None;
+    let mut argument_hint = None;
+    let mut user_invocable: Option<bool> = None;
+    let mut disable_model_invocation: Option<bool> = None;
 
     // Track which multi-line field we're accumulating (for `>` folded scalars)
     let mut current_multiline: Option<&str> = None;
@@ -112,6 +132,18 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
             domain = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
         } else if let Some(val) = trimmed_line.strip_prefix("type:") {
             skill_type = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = trimmed_line.strip_prefix("version:") {
+            version = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = trimmed_line.strip_prefix("model:") {
+            model = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = trimmed_line.strip_prefix("argument-hint:") {
+            argument_hint = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+        } else if let Some(val) = trimmed_line.strip_prefix("user-invocable:") {
+            let v = val.trim().to_lowercase();
+            user_invocable = Some(v == "true" || v == "yes" || v == "1");
+        } else if let Some(val) = trimmed_line.strip_prefix("disable-model-invocation:") {
+            let v = val.trim().to_lowercase();
+            disable_model_invocation = Some(v == "true" || v == "yes" || v == "1");
         }
     }
 
@@ -136,6 +168,11 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         description: trim_opt(description),
         domain: trim_opt(domain),
         skill_type: trim_opt(skill_type),
+        version: trim_opt(version),
+        model: trim_opt(model),
+        argument_hint: trim_opt(argument_hint),
+        user_invocable,
+        disable_model_invocation,
     }
 }
 
@@ -295,9 +332,15 @@ fn upload_skill_inner(
         is_bundled: false,
         // Populated from frontmatter for the response, not stored in DB
         description: fm.description,
+        skill_type: fm.skill_type,
+        version: fm.version,
+        model: fm.model,
+        argument_hint: fm.argument_hint,
+        user_invocable: fm.user_invocable,
+        disable_model_invocation: fm.disable_model_invocation,
     };
 
-    // Insert into DB (description is not stored)
+    // Insert into DB
     crate::db::insert_imported_skill(conn, &skill)?;
 
     Ok(skill)
@@ -723,6 +766,12 @@ pub(crate) fn seed_bundled_skills(
             is_bundled: true,
             // Not stored in DB — read from SKILL.md frontmatter on disk
             description: None,
+            skill_type: fm.skill_type,
+            version: fm.version,
+            model: fm.model,
+            argument_hint: fm.argument_hint,
+            user_invocable: fm.user_invocable,
+            disable_model_invocation: fm.disable_model_invocation,
         };
 
         crate::db::upsert_bundled_skill(conn, &skill)?;
@@ -770,6 +819,12 @@ mod tests {
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         }
     }
 
@@ -1120,6 +1175,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1159,6 +1220,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1199,6 +1266,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1231,6 +1304,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1259,6 +1338,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
 
         let result = get_skill_content_inner(&skill).unwrap();
@@ -1276,6 +1361,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
 
         let result = get_skill_content_inner(&skill);
@@ -1337,6 +1428,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1403,6 +1500,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1448,6 +1551,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1500,6 +1609,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1547,6 +1662,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1582,6 +1703,12 @@ type: platform
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1642,6 +1769,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -1745,6 +1878,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill).unwrap();
 
@@ -1764,6 +1903,12 @@ type: platform
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
         };
         crate::db::upsert_bundled_skill(&conn, &skill2).unwrap();
 

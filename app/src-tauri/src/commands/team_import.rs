@@ -18,16 +18,15 @@ pub async fn list_team_repo_skills(
     let (owner, repo, token) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
-        let owner = settings.remote_repo_owner.ok_or_else(|| {
-            "Remote repository not configured. Set it in Settings.".to_string()
+        let marketplace_url = settings.marketplace_url.ok_or_else(|| {
+            "Marketplace URL not configured. Set it in Settings.".to_string()
         })?;
-        let repo = settings.remote_repo_name.ok_or_else(|| {
-            "Remote repository not configured. Set it in Settings.".to_string()
-        })?;
+        let repo_info = super::github_import::parse_github_url(marketplace_url)
+            .map_err(|e| format!("Invalid marketplace URL: {}", e))?;
         let token = settings.github_oauth_token.ok_or_else(|| {
             "Not authenticated with GitHub. Please sign in first.".to_string()
         })?;
-        (owner, repo, token)
+        (repo_info.owner, repo_info.repo, token)
     };
 
     info!(
@@ -39,7 +38,7 @@ pub async fn list_team_repo_skills(
 
     // Fetch the default branch (may be "main", "master", etc.)
     let default_branch =
-        super::github_push::get_default_branch(&client, &token, &owner, &repo).await?;
+        super::github_import::get_default_branch(&client, &token, &owner, &repo).await?;
     info!(
         "[list_team_repo_skills] using default branch '{}' for {}/{}",
         default_branch, owner, repo
@@ -94,7 +93,6 @@ pub async fn list_team_repo_skills(
 /// Import a single skill from the configured team repo into the local workspace.
 #[tauri::command]
 pub async fn import_team_repo_skill(
-    app: tauri::AppHandle,
     db: tauri::State<'_, Db>,
     skill_path: String,
     skill_name: String,
@@ -108,12 +106,11 @@ pub async fn import_team_repo_skill(
     let (owner, repo, token, workspace_path, skills_path, github_user_login, github_user_avatar) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
-        let owner = settings.remote_repo_owner.ok_or_else(|| {
-            "Remote repository not configured. Set it in Settings.".to_string()
+        let marketplace_url = settings.marketplace_url.ok_or_else(|| {
+            "Marketplace URL not configured. Set it in Settings.".to_string()
         })?;
-        let repo = settings.remote_repo_name.ok_or_else(|| {
-            "Remote repository not configured. Set it in Settings.".to_string()
-        })?;
+        let repo_info = super::github_import::parse_github_url(marketplace_url)
+            .map_err(|e| format!("Invalid marketplace URL: {}", e))?;
         let token = settings.github_oauth_token.ok_or_else(|| {
             "Not authenticated with GitHub. Please sign in first.".to_string()
         })?;
@@ -123,14 +120,16 @@ pub async fn import_team_repo_skill(
         let skills_path = settings.skills_path.ok_or_else(|| {
             "Skills output path is not configured. Please set it in Settings before importing skills.".to_string()
         })?;
+        let login: Option<String> = settings.github_user_login;
+        let avatar: Option<String> = settings.github_user_avatar;
         (
-            owner,
-            repo,
+            repo_info.owner,
+            repo_info.repo,
             token,
             workspace_path,
             skills_path,
-            settings.github_user_login,
-            settings.github_user_avatar,
+            login,
+            avatar,
         )
     };
 
@@ -216,7 +215,7 @@ pub async fn import_team_repo_skill(
 
     // Fetch the default branch (may be "main", "master", etc.)
     let default_branch =
-        super::github_push::get_default_branch(&client, &token, &owner, &repo).await?;
+        super::github_import::get_default_branch(&client, &token, &owner, &repo).await?;
 
     // Fetch the full recursive tree
     let tree_url = format!(
@@ -420,17 +419,6 @@ pub async fn import_team_repo_skill(
         }
     }
 
-    // Write .skill-builder manifest
-    let app_version = app.config().version.clone().unwrap_or_default();
-    let creator_for_manifest = manifest_creator
-        .as_deref()
-        .or(github_user_login.as_deref());
-    super::github_push::write_manifest_file(
-        &skill_output_dir,
-        creator_for_manifest,
-        &app_version,
-    )?;
-
     // Git auto-commit
     let commit_msg = format!("{}: imported from team repo", skill_name);
     if let Err(e) = crate::git::commit_all(Path::new(&skills_path), &commit_msg) {
@@ -459,17 +447,13 @@ mod tests {
 
     #[test]
     fn test_list_returns_error_without_config() {
-        // Simulate read_settings returning empty remote_repo_owner
-        // by creating a test DB without setting remote_repo_owner
+        // Simulate read_settings returning empty marketplace_url
+        // by creating a test DB without setting marketplace_url
         let conn = create_test_db();
         let settings = crate::db::read_settings(&conn).unwrap();
         assert!(
-            settings.remote_repo_owner.is_none(),
-            "Test precondition: remote_repo_owner should be None"
-        );
-        assert!(
-            settings.remote_repo_name.is_none(),
-            "Test precondition: remote_repo_name should be None"
+            settings.marketplace_url.is_none(),
+            "Test precondition: marketplace_url should be None"
         );
     }
 

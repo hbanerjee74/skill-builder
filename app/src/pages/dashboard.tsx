@@ -34,7 +34,7 @@ import { useSettingsStore } from "@/stores/settings-store"
 import { useSkillStore } from "@/stores/skill-store"
 import { useAuthStore } from "@/stores/auth-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { packageSkill, getLockedSkills, pushSkillToRemote } from "@/lib/tauri"
+import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 
@@ -52,9 +52,7 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
-  const remoteRepoOwner = useSettingsStore((s) => s.remoteRepoOwner)
-  const remoteRepoName = useSettingsStore((s) => s.remoteRepoName)
-  const remoteConfigured = !!(remoteRepoOwner && remoteRepoName)
+  const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
   const viewModeInitialized = useRef(false)
@@ -214,32 +212,6 @@ export default function DashboardPage() {
     }
   }, [workspacePath])
 
-  const handlePushToRemote = useCallback(async (skill: SkillSummary) => {
-    const toastId = toast.loading("Pushing skill to remote...")
-    try {
-      const result = await pushSkillToRemote(skill.name)
-      toast.success(
-        <div className="flex flex-col gap-1">
-          <span>Skill pushed successfully!</span>
-          <a
-            href={result.pr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm underline"
-          >
-            View PR #{result.pr_number}
-          </a>
-        </div>,
-        { id: toastId, duration: 8000 }
-      )
-    } catch (err) {
-      toast.error(
-        `Push failed: ${err instanceof Error ? err.message : String(err)}`,
-        { id: toastId, duration: Infinity }
-      )
-    }
-  }, [])
-
   function sharedSkillProps(skill: SkillSummary) {
     return {
       skill,
@@ -250,9 +222,7 @@ export default function DashboardPage() {
       onEdit: setEditTarget,
       onEditWorkflow: handleEditWorkflow,
       onRefine: handleRefine,
-      onPushToRemote: handlePushToRemote,
-      remoteConfigured,
-      isGitHubLoggedIn: isLoggedIn,
+      marketplaceConfigured: !!marketplaceUrl,
     }
   }
 
@@ -367,7 +337,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-end gap-2">
           <TeamRepoImportDialog
             onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-            remoteConfigured={remoteConfigured}
+            marketplaceConfigured={!!marketplaceUrl}
             isLoggedIn={isLoggedIn}
           />
           <Button onClick={() => setCreateOpen(true)}>

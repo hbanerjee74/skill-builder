@@ -38,8 +38,7 @@ export function AppLayout() {
         githubUserLogin: s.github_user_login,
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
-        remoteRepoOwner: s.remote_repo_owner,
-        remoteRepoName: s.remote_repo_name,
+        marketplaceUrl: s.marketplace_url,
         dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);

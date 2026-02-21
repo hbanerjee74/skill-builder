@@ -29,7 +29,7 @@ import { cn } from "@/lib/utils"
 
 interface TeamRepoImportDialogProps {
   onImported: () => Promise<void>
-  remoteConfigured: boolean
+  marketplaceConfigured: boolean
   isLoggedIn: boolean
 }
 
@@ -37,7 +37,7 @@ type Step = "loading" | "select" | "empty" | "importing"
 
 export default function TeamRepoImportDialog({
   onImported,
-  remoteConfigured,
+  marketplaceConfigured,
   isLoggedIn,
 }: TeamRepoImportDialogProps) {
   const [open, onOpenChange] = useState(false)
@@ -98,8 +98,8 @@ export default function TeamRepoImportDialog({
     }
   }
 
-  const buttonTitle = !remoteConfigured
-    ? "Configure remote repository in Settings"
+  const buttonTitle = !marketplaceConfigured
+    ? "Configure marketplace URL in Settings"
     : !isLoggedIn
       ? "Sign in to GitHub in Settings"
       : "Import skills from team repository"
@@ -110,7 +110,7 @@ export default function TeamRepoImportDialog({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          disabled={!remoteConfigured || !isLoggedIn}
+          disabled={!marketplaceConfigured || !isLoggedIn}
           title={buttonTitle}
         >
           <Download className="size-4" />

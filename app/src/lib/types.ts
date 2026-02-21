@@ -35,8 +35,7 @@ export interface AppSettings {
   github_user_login: string | null
   github_user_avatar: string | null
   github_user_email: string | null
-  remote_repo_owner: string | null
-  remote_repo_name: string | null
+  marketplace_url: string | null
   max_dimensions: number
   industry: string | null
   function_role: string | null
@@ -73,6 +72,7 @@ export interface SkillSummary {
   author_login: string | null
   author_avatar: string | null
   intake_json: string | null
+  source?: string | null
 }
 
 export interface SkillFileContent {
@@ -232,9 +232,14 @@ export interface ImportedSkill {
   description: string | null
   is_active: boolean
   disk_path: string
-  trigger_text: string | null
   imported_at: string
   is_bundled: boolean
+  skill_type: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
 }
 
 export interface GitHubRepoInfo {
@@ -249,6 +254,7 @@ export interface AvailableSkill {
   name: string
   domain: string | null
   description: string | null
+  skill_type: string | null
 }
 
 export interface TeamRepoSkill {
@@ -260,27 +266,10 @@ export interface TeamRepoSkill {
   created_at: string | null
 }
 
-export interface PushResult {
-  pr_url: string
-  pr_number: number
-  branch: string
-  version: number
-  is_new_pr: boolean
-}
-
-export interface SkillBuilderManifest {
-  version: string
-  creator: string | null
-  created_at: string
-  app_version: string
-}
-
-export interface GitHubRepo {
-  full_name: string
-  owner: string
-  name: string
-  description: string | null
-  is_private: boolean
+export interface MarketplaceImportResult {
+  skill_name: string
+  success: boolean
+  error: string | null
 }
 
 export interface SkillFileEntry {

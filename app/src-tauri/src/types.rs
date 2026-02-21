@@ -27,9 +27,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub github_user_email: Option<String>,
     #[serde(default)]
-    pub remote_repo_owner: Option<String>,
-    #[serde(default)]
-    pub remote_repo_name: Option<String>,
+    pub marketplace_url: Option<String>,
     #[serde(default = "default_max_dimensions")]
     pub max_dimensions: u32,
     #[serde(default)]
@@ -57,8 +55,7 @@ impl Default for AppSettings {
             github_user_login: None,
             github_user_avatar: None,
             github_user_email: None,
-            remote_repo_owner: None,
-            remote_repo_name: None,
+            marketplace_url: None,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -135,6 +132,8 @@ pub struct SkillSummary {
     pub display_name: Option<String>,
     #[serde(default)]
     pub intake_json: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +192,12 @@ pub struct WorkflowRunRow {
     pub display_name: Option<String>,
     #[serde(default)]
     pub intake_json: Option<String>,
+    #[serde(default = "default_source")]
+    pub source: String,
+}
+
+fn default_source() -> String {
+    "created".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -229,6 +234,18 @@ pub struct ImportedSkill {
     // Populated from SKILL.md frontmatter on disk, not from DB
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(default)]
+    pub skill_type: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub argument_hint: Option<String>,
+    #[serde(default)]
+    pub user_invocable: Option<bool>,
+    #[serde(default)]
+    pub disable_model_invocation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -365,6 +382,8 @@ pub struct AvailableSkill {
     pub name: String,
     pub domain: Option<String>,
     pub description: Option<String>,
+    #[serde(default)]
+    pub skill_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -459,8 +478,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
-        assert!(settings.remote_repo_owner.is_none());
-        assert!(settings.remote_repo_name.is_none());
+        assert!(settings.marketplace_url.is_none());
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
         assert!(settings.dashboard_view_mode.is_none());
@@ -482,8 +500,7 @@ mod tests {
             github_user_login: Some("testuser".to_string()),
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
-            remote_repo_owner: Some("my-org".to_string()),
-            remote_repo_name: Some("shared-skills".to_string()),
+            marketplace_url: Some("https://github.com/my-org/skills".to_string()),
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
@@ -508,12 +525,8 @@ mod tests {
             Some("sonnet")
         );
         assert_eq!(
-            deserialized.remote_repo_owner.as_deref(),
-            Some("my-org")
-        );
-        assert_eq!(
-            deserialized.remote_repo_name.as_deref(),
-            Some("shared-skills")
+            deserialized.marketplace_url.as_deref(),
+            Some("https://github.com/my-org/skills")
         );
         assert_eq!(
             deserialized.industry.as_deref(),
@@ -537,8 +550,7 @@ mod tests {
         assert!(settings.github_user_login.is_none());
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
-        assert!(settings.remote_repo_owner.is_none());
-        assert!(settings.remote_repo_name.is_none());
+        assert!(settings.marketplace_url.is_none());
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;

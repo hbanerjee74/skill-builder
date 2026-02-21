@@ -18,7 +18,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             author_login TEXT,
             author_avatar TEXT,
             display_name TEXT,
-            intake_json TEXT
+            intake_json TEXT,
+            source TEXT NOT NULL DEFAULT 'created'
         );
         CREATE TABLE IF NOT EXISTS workflow_steps (
             skill_name TEXT NOT NULL,
@@ -65,7 +66,13 @@ pub fn create_test_db() -> rusqlite::Connection {
             is_active INTEGER NOT NULL DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT NOT NULL DEFAULT (datetime('now')),
-            is_bundled INTEGER NOT NULL DEFAULT 0
+            is_bundled INTEGER NOT NULL DEFAULT 0,
+            skill_type TEXT,
+            version TEXT,
+            model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
         );
         CREATE TABLE IF NOT EXISTS skill_locks (
             skill_name TEXT PRIMARY KEY,
