@@ -113,6 +113,7 @@ sys.exit(0 if not missing else 1)
   # ---- Validation: validation logs written ----
   _t5_assert_or_skip "validation_log" "$context_dir/agent-validation-log.md" "may not have reached validation"
   _t5_assert_or_skip "validation_test_report" "$context_dir/test-skill.md" "may not have reached validation"
+  _t5_assert_or_skip "validation_companion_skills" "$context_dir/companion-skills.md" "may not have reached validation"
 
   # ---- Report last completed phase ----
   if [[ -f "$workspace/test-status.txt" ]]; then
