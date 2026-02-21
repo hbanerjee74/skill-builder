@@ -710,6 +710,7 @@ export default function TestPage() {
             className="min-h-[unset] resize-none font-sans text-sm"
           />
           <Button
+            variant="outline"
             onClick={handleRunTest}
             disabled={isRunning || !state.selectedSkill || !state.prompt.trim()}
             className="h-auto shrink-0 self-start px-4"
