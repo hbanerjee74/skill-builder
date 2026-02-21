@@ -43,14 +43,29 @@ The user's `user-context.md` file (in the workspace directory) contains their in
 
 When `scope_recommendation: true` appears in the YAML frontmatter of `clarifications.md` or `decisions.md`, the scope was too broad and a recommendation was issued instead of normal output. Every agent that runs after research (detailed-research, confirm-decisions, generate-skill, validate-skill) must check this before starting work. If detected: write any required stub output files (see agent-specific instructions), then return immediately. Do NOT spawn sub-agents, analyze content, or generate output.
 
-### Sub-agent Spawning
+### Delegation Policy
 
-Use the Task tool. Launch ALL Task calls in the **same turn** so they run in parallel. Name sub-agents descriptively (e.g., `"writer-<topic>"`, `"reviewer"`, `"tester-N"`).
+Use the lightest option that fits:
 
-Sub-agents return text, not files. The orchestrator writes all output to disk. Include this directive in every sub-agent prompt:
-> Do not provide progress updates. Return your complete output as text. Do not write files. List outcomes, not process — omit reasoning steps, search narratives, and intermediate analysis.
+1. **Inline** — trivial: single-file read, direct answer, one-liner computation
+2. **Task sub-agents** — independent workstreams with no mid-task coordination
 
-Exception: sub-agents may write files directly when the orchestrator explicitly delegates this (e.g., consolidator writing `clarifications.md`).
+#### Model Tiers
+
+| Tier | Model | When |
+|---|---|---|
+| Reasoning | sonnet | Planning, scoring, consolidation |
+| Generation | default | Research, writing, analysis |
+| Lightweight | haiku | Counting, metadata extraction, simple classification |
+
+#### Sub-agent Rules
+
+- Launch ALL Task calls in the **same turn** so they run in parallel.
+- Sub-agents return text, not files — the orchestrator writes all output to disk.
+- Include this directive in every sub-agent prompt:
+  > Return your complete output as text. Do not write files. List outcomes, not process.
+- Scoped prompts with clear deliverables — tell the sub-agent exactly what to produce.
+- If a sub-agent fails, note the failure in the output and continue with available results.
 
 ---
 

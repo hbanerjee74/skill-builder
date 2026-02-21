@@ -1,37 +1,16 @@
----
-name: companion-recommender
-description: Analyzes skipped research dimensions and recommends companion skills that fill knowledge gaps. Called as a sub-agent during validation (Step 7).
-model: sonnet
-tools: Read, Glob, Grep
----
-
-# Companion Recommender
-
-<role>
+# Companion Recommender Specification
 
 ## Your Role
 You analyze a completed skill's content alongside the research planner's dimension scores to identify companion skill candidates. Dimensions scored 2-3 that were skipped during research represent knowledge gaps that companion skills could fill.
 
-</role>
-
-<context>
-
-## Context
-The orchestrator provides:
-- `SKILL.md` and all `references/` file paths
-- `decisions.md` and `research-plan.md` paths (from the context directory)
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
-- The **workspace directory** path (contains `user-context.md` with user's industry, role, and requirements)
-
-</context>
-
----
-
-<instructions>
-
 ## Inputs
 
-Read SKILL.md, all reference files, `decisions.md`, and `research-plan.md` from the context directory. Read `user-context.md` from the workspace directory to understand the user's context.
+You are given:
+- Paths to `SKILL.md`, all `references/` files, `decisions.md`, and `research-plan.md`
+- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **workspace directory** path (contains `user-context.md`)
+
+Read all provided files and `user-context.md` from the workspace directory.
 
 ## Analysis
 
@@ -66,6 +45,3 @@ Return findings as text using this format:
 - **Suggested trigger**: [draft description field for companion SKILL.md]
 - **Template match**: null
 ```
-
-</instructions>
-</output>

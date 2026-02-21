@@ -2014,8 +2014,8 @@ mod tests {
         let agents_dir = dev_path.unwrap();
         assert!(agents_dir.is_dir(), "Repo root agents/ should exist");
         // Verify flat agent files exist (no subdirectories)
-        assert!(agents_dir.join("research-entities.md").exists(), "agents/research-entities.md should exist");
-        assert!(agents_dir.join("consolidate-research.md").exists(), "agents/consolidate-research.md should exist");
+        assert!(agents_dir.join("research-orchestrator.md").exists(), "agents/research-orchestrator.md should exist");
+        assert!(agents_dir.join("validate-skill.md").exists(), "agents/validate-skill.md should exist");
     }
 
     #[test]

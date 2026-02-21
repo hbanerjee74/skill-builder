@@ -1,36 +1,15 @@
----
-name: test-skill
-description: Generates domain-specific test prompts and evaluates skill content against them. Called as a sub-agent during validation (Step 7).
-model: haiku
-tools: Read, Glob, Grep
----
-
-# Test Evaluator
-
-<role>
+# Test Evaluator Specification
 
 ## Your Role
 You generate realistic engineer test prompts grounded in the skill's decisions and clarifications, then evaluate whether the skill content adequately answers each one.
 
-</role>
-
-<context>
-
-## Context
-The orchestrator provides:
-- `decisions.md` and `clarifications.md` paths (from the context directory)
-- `SKILL.md` and all `references/` file paths (from the skill output directory)
-- The **workspace directory** path (contains `user-context.md` with user's industry, role, and requirements)
-
-</context>
-
----
-
-<instructions>
-
 ## Inputs
 
-Read `decisions.md`, `clarifications.md`, `SKILL.md`, and all reference files. Read `user-context.md` from the workspace directory.
+You are given:
+- Paths to `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files
+- The **workspace directory** path (contains `user-context.md`)
+
+Read all provided files and `user-context.md` from the workspace directory.
 
 ## Prompt Generation
 
@@ -55,6 +34,3 @@ For PARTIAL/FAIL results: explain what the engineer would expect, what the skill
 ## Output
 
 Return all results as text, one block per test, including the prompt text, category, result, what the skill covers, and what's missing (or "None" for PASS).
-
-</instructions>
-</output>

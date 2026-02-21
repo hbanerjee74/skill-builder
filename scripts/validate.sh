@@ -41,8 +41,8 @@ fi
 # ---------- T1.2 + T1.3: Agent files + frontmatter ----------
 echo "=== Agents ==="
 
-# All 29 agents — flat in agents/ (name:expected_model)
-ALL_AGENTS="companion-recommender:sonnet confirm-decisions:opus consolidate-research:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-business-rules:sonnet research-config-patterns:haiku research-data-quality:sonnet research-entities:sonnet research-extraction:sonnet research-field-semantics:haiku research-historization:sonnet research-integration-orchestration:sonnet research-layer-design:sonnet research-lifecycle-and-state:haiku research-load-merge-patterns:sonnet research-metrics:sonnet research-modeling-patterns:sonnet research-operational-failure-modes:sonnet research-orchestrator:sonnet research-pattern-interactions:sonnet research-planner:opus research-platform-behavioral-overrides:sonnet research-reconciliation:haiku research-segmentation-and-periods:sonnet test-skill:haiku validate-quality:sonnet validate-skill:sonnet"
+# All 7 agents — flat in agents/ (name:expected_model)
+ALL_AGENTS="answer-evaluator:haiku confirm-decisions:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-orchestrator:sonnet validate-skill:sonnet"
 
 for entry in $ALL_AGENTS; do
   name="${entry%%:*}"
@@ -243,6 +243,54 @@ if [ -f "agents/generate-skill.md" ]; then
   fi
 else
   fail "agents/generate-skill.md not found"
+fi
+
+# ---------- Bundled Skills source ----------
+echo "=== Bundled Skills ==="
+BUNDLED_SKILLS_DIR="agent-sources/workspace/skills"
+# skill-builder-practices is already checked above — this checks research skill
+if [ -f "$BUNDLED_SKILLS_DIR/research/SKILL.md" ]; then
+  fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$BUNDLED_SKILLS_DIR/research/SKILL.md")
+  skill_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
+  if [ "$skill_name" = "research" ]; then
+    pass "bundled research skill has correct name"
+  else
+    fail "bundled research skill name='$skill_name', expected 'research'"
+  fi
+  for ref in references/dimension-sets.md references/scoring-rubric.md references/consolidation-handoff.md; do
+    if [ -f "$BUNDLED_SKILLS_DIR/research/$ref" ]; then
+      pass "research/$ref exists"
+    else
+      fail "research/$ref missing"
+    fi
+  done
+  dim_count=$(find "$BUNDLED_SKILLS_DIR/research/references/dimensions" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$dim_count" -eq 18 ]; then
+    pass "research/references/dimensions has 18 dimension specs"
+  else
+    fail "research/references/dimensions has $dim_count dimension specs (expected 18)"
+  fi
+else
+  fail "agent-sources/workspace/skills/research/SKILL.md not found"
+fi
+# validate-skill bundled skill
+if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md" ]; then
+  fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md")
+  skill_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
+  if [ "$skill_name" = "validate-skill" ]; then
+    pass "bundled validate-skill has correct name"
+  else
+    fail "bundled validate-skill name='$skill_name', expected 'validate-skill'"
+  fi
+  for ref in references/validate-quality-spec.md references/test-skill-spec.md references/companion-recommender-spec.md; do
+    if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/$ref" ]; then
+      pass "validate-skill/$ref exists"
+    else
+      fail "validate-skill/$ref missing"
+    fi
+  done
+else
+  fail "agent-sources/workspace/skills/validate-skill/SKILL.md not found"
 fi
 
 # ---------- Summary ----------

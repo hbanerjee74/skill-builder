@@ -6,42 +6,7 @@ run_t4() {
   local skill_name="pet-store-analytics"
   source "$TESTS_DIR/fixtures.sh"
 
-  # ---- T4.1: Consolidate-research agent ----
-  local consolidate_dir
-  consolidate_dir=$(make_temp_dir "t4-consolidate")
-  create_fixture_t4_consolidate "$consolidate_dir"
-  log_verbose "Consolidate workspace: $consolidate_dir"
-
-  local consolidate_prompt="You are the consolidate-research agent for the skill-builder plugin. Your job is to \
-consolidate clarification questions from multiple research agents into a cohesive questionnaire.
-
-Read these agent instructions for expected file formats and content principles: $PLUGIN_DIR/agent-sources/workspace/CLAUDE.md
-
-Read these input files:
-- $consolidate_dir/context/research-entities.md
-- $consolidate_dir/context/research-metrics.md
-- $consolidate_dir/context/clarifications-practices.md
-- $consolidate_dir/context/clarifications-implementation.md
-
-Consolidate them into a single cohesive file. Eliminate duplicates (like 'seasonal patterns' \
-which appears in multiple files), rephrase for clarity, and organize into logical sections.
-
-IMPORTANT: You MUST use the Write tool to create the file at: $consolidate_dir/context/clarifications.md
-
-Return a summary: total input questions, duplicates removed, final question count."
-
-  log_verbose "Running consolidate-research agent smoke test..."
-  local consolidate_output
-  consolidate_output=$(run_claude_unsafe "$consolidate_prompt" "$MAX_BUDGET_T4" 90 "$consolidate_dir")
-
-  assert_file_exists "$tier" "consolidate_creates_output" "$consolidate_dir/context/clarifications.md" || true
-  if [[ -s "$consolidate_dir/context/clarifications.md" ]]; then
-    record_result "$tier" "consolidate_output_not_empty" "PASS"
-  else
-    record_result "$tier" "consolidate_output_not_empty" "FAIL" "output file empty or missing"
-  fi
-
-  # ---- T4.2: Reasoning agent ----
+  # ---- T4.1: Reasoning agent ----
   local reason_dir
   reason_dir=$(make_temp_dir "t4-reasoning")
   create_fixture_t4_workspace "$reason_dir" "$skill_name"
@@ -84,7 +49,7 @@ Return a summary of key conclusions, assumptions, and any conflicts found."
     fi
   fi
 
-  # ---- T4.3: Build agent (only if reasoning produced decisions) ----
+  # ---- T4.2: Build agent (only if reasoning produced decisions) ----
   if [[ -s "$reason_dir/context/decisions.md" ]]; then
     local build_dir
     build_dir=$(make_temp_dir "t4-build")

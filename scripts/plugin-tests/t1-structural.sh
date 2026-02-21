@@ -29,13 +29,13 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (30 flat agents) ----
+  # ---- T1.3: Agent file count (7 flat agents) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_30" "30" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_7" "7" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="answer-evaluator companion-recommender confirm-decisions consolidate-research detailed-research generate-skill refine-skill research-business-rules research-config-patterns research-data-quality research-entities research-extraction research-field-semantics research-historization research-integration-orchestration research-layer-design research-lifecycle-and-state research-load-merge-patterns research-metrics research-modeling-patterns research-operational-failure-modes research-orchestrator research-pattern-interactions research-planner research-platform-behavioral-overrides research-reconciliation research-segmentation-and-periods test-skill validate-quality validate-skill"
+  local all_agents="answer-evaluator confirm-decisions detailed-research generate-skill refine-skill research-orchestrator validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
@@ -63,8 +63,8 @@ run_t1() {
   local model_errors=0
   expected_model_for() {
     case "$1" in
-      consolidate-research|confirm-decisions|research-planner) echo "opus" ;;
-      answer-evaluator|research-config-patterns|research-reconciliation|research-field-semantics|research-lifecycle-and-state|test-skill) echo "haiku" ;;
+      confirm-decisions) echo "opus" ;;
+      answer-evaluator) echo "haiku" ;;
       *) echo "sonnet" ;;
     esac
   }
@@ -167,4 +167,18 @@ run_t1() {
       record_result "$tier" "coordinator_refs_${safe_name}" "FAIL" "missing: $keyword"
     fi
   done
+
+  # ---- T1.12: Bundled skills source files present ----
+  assert_file_exists "$tier" "bundled_research_skill_source" "$PLUGIN_DIR/agent-sources/workspace/skills/research/SKILL.md"
+  assert_file_exists "$tier" "bundled_research_dimension_sets" "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/dimension-sets.md"
+  assert_file_exists "$tier" "bundled_research_consolidation_handoff" "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/consolidation-handoff.md"
+  local dim_count
+  dim_count=$(find "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/dimensions" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
+  assert_count_eq "$tier" "bundled_research_dimension_count_is_18" "18" "$dim_count"
+
+  # ---- T1.13: Bundled validate-skill source files present ----
+  assert_file_exists "$tier" "bundled_validate_skill_source" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/SKILL.md"
+  assert_file_exists "$tier" "bundled_validate_quality_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+  assert_file_exists "$tier" "bundled_test_skill_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+  assert_file_exists "$tier" "bundled_companion_recommender_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
 }
