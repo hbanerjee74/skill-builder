@@ -42,10 +42,20 @@ phase to: $workspace/test-status.txt
   local context_dir="$skill_dir/context"
   local workspace_dir="$workspace/.vibedata/$skill_name"
 
+  # Records PASS if file exists, SKIP (not FAIL) if missing — E2E may not reach all phases
+  _t5_assert_or_skip() {
+    local name="$1" filepath="$2" skip_msg="$3"
+    if [[ -f "$filepath" ]]; then
+      record_result "$tier" "$name" "PASS"
+      return 0
+    else
+      record_result "$tier" "$name" "SKIP" "$skip_msg"
+      return 1
+    fi
+  }
+
   # ---- Scoping: session.json created ----
-  if [[ -f "$workspace_dir/session.json" ]]; then
-    record_result "$tier" "scoping_session_json" "PASS"
-    # Verify session.json has expected fields
+  if _t5_assert_or_skip "scoping_session_json" "$workspace_dir/session.json" "may not have reached scoping"; then
     if python3 -c "
 import json, sys
 d = json.load(open('$workspace_dir/session.json'))
@@ -58,13 +68,11 @@ sys.exit(0 if not missing else 1)
       record_result "$tier" "scoping_session_json_valid" "FAIL" "missing required fields"
     fi
   else
-    record_result "$tier" "scoping_session_json" "SKIP" "may not have reached scoping"
     record_result "$tier" "scoping_session_json_valid" "SKIP" "depends on scoping"
   fi
 
   # ---- Research: clarifications.md written ----
-  if [[ -f "$context_dir/clarifications.md" ]]; then
-    record_result "$tier" "research_clarifications_md" "PASS"
+  if _t5_assert_or_skip "research_clarifications_md" "$context_dir/clarifications.md" "may not have reached research"; then
     local q_count
     q_count=$(grep -c "^### Q[0-9]" "$context_dir/clarifications.md" 2>/dev/null || true)
     if [[ "$q_count" -ge 5 ]]; then
@@ -73,13 +81,11 @@ sys.exit(0 if not missing else 1)
       record_result "$tier" "research_min_5_questions" "FAIL" "only $q_count questions"
     fi
   else
-    record_result "$tier" "research_clarifications_md" "SKIP" "may not have reached research"
     record_result "$tier" "research_min_5_questions" "SKIP" "depends on research"
   fi
 
   # ---- Decisions: decisions.md written ----
-  if [[ -f "$context_dir/decisions.md" ]]; then
-    record_result "$tier" "decisions_md" "PASS"
+  if _t5_assert_or_skip "decisions_md" "$context_dir/decisions.md" "may not have reached decisions"; then
     local d_count
     d_count=$(grep -c "^### D[0-9]" "$context_dir/decisions.md" 2>/dev/null || true)
     if [[ "$d_count" -ge 3 ]]; then
@@ -88,20 +94,15 @@ sys.exit(0 if not missing else 1)
       record_result "$tier" "decisions_min_3" "FAIL" "only $d_count decisions"
     fi
   else
-    record_result "$tier" "decisions_md" "SKIP" "may not have reached decisions"
     record_result "$tier" "decisions_min_3" "SKIP" "depends on decisions"
   fi
 
   # ---- Generation: SKILL.md + references/ written ----
-  if [[ -f "$skill_dir/SKILL.md" ]]; then
-    record_result "$tier" "generation_skill_md" "PASS"
-  else
-    record_result "$tier" "generation_skill_md" "SKIP" "may not have reached generation"
-  fi
+  _t5_assert_or_skip "generation_skill_md" "$skill_dir/SKILL.md" "may not have reached generation"
 
   local ref_count=0
   if [[ -d "$skill_dir/references" ]]; then
-    ref_count=$(ls "$skill_dir/references/"*.md 2>/dev/null | wc -l | tr -d ' ')
+    ref_count=$(find "$skill_dir/references" -maxdepth 1 -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
   fi
   if [[ "$ref_count" -gt 0 ]]; then
     record_result "$tier" "generation_references" "PASS" "$ref_count files"
@@ -110,22 +111,13 @@ sys.exit(0 if not missing else 1)
   fi
 
   # ---- Validation: validation logs written ----
-  if [[ -f "$context_dir/agent-validation-log.md" ]]; then
-    record_result "$tier" "validation_log" "PASS"
-  else
-    record_result "$tier" "validation_log" "SKIP" "may not have reached validation"
-  fi
-
-  if [[ -f "$context_dir/test-skill.md" ]]; then
-    record_result "$tier" "validation_test_report" "PASS"
-  else
-    record_result "$tier" "validation_test_report" "SKIP" "may not have reached validation"
-  fi
+  _t5_assert_or_skip "validation_log" "$context_dir/agent-validation-log.md" "may not have reached validation"
+  _t5_assert_or_skip "validation_test_report" "$context_dir/test-skill.md" "may not have reached validation"
 
   # ---- Report last completed phase ----
   if [[ -f "$workspace/test-status.txt" ]]; then
     local last_phase
-    last_phase=$(cat "$workspace/test-status.txt" | tr -d '[:space:]')
+    last_phase=$(tr -d '[:space:]' < "$workspace/test-status.txt")
     record_result "$tier" "last_completed_phase" "PASS" "reached: $last_phase"
   else
     record_result "$tier" "last_completed_phase" "SKIP" "no status file written"

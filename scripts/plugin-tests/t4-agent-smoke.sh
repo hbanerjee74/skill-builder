@@ -4,10 +4,11 @@
 run_t4() {
   local tier="t4"
   local skill_name="pet-store-analytics"
+  local budget="${MAX_BUDGET_T4:-0.50}"
   source "$TESTS_DIR/fixtures.sh"
 
   local workspace_context
-  workspace_context=$(cat "$PLUGIN_DIR/agent-sources/workspace/CLAUDE.md")
+  workspace_context=$(< "$PLUGIN_DIR/skills/generate-skill/references/workspace-context.md")
 
   # ---- T4.1: research-orchestrator → creates clarifications.md ----
   local research_dir
@@ -44,7 +45,7 @@ Return: path to clarifications.md and question count."
 
   log_verbose "Running research-orchestrator smoke test..."
   local research_output
-  research_output=$(run_claude_unsafe "$research_prompt" "${MAX_BUDGET_T4:-0.50}" 180 "$research_dir")
+  research_output=$(run_claude_unsafe "$research_prompt" "$budget" 180 "$research_dir")
 
   assert_file_exists "$tier" "research_orch_creates_clarifications" \
     "$research_dir/$skill_name/context/clarifications.md" || true
@@ -101,7 +102,7 @@ Return: the evaluation JSON contents."
 
   log_verbose "Running answer-evaluator smoke test..."
   local eval_output
-  eval_output=$(run_claude_unsafe "$eval_prompt" "${MAX_BUDGET_T4:-0.50}" 120 "$eval_dir")
+  eval_output=$(run_claude_unsafe "$eval_prompt" "$budget" 120 "$eval_dir")
 
   assert_file_exists "$tier" "answer_eval_creates_json" \
     "$eval_dir/.vibedata/$skill_name/answer-evaluation.json" || true
@@ -166,7 +167,7 @@ Return: path to decisions.md and a one-line summary of key decisions."
 
     log_verbose "Running confirm-decisions smoke test..."
     local decisions_output
-    decisions_output=$(run_claude_unsafe "$decisions_prompt" "${MAX_BUDGET_T4:-0.50}" 120 "$decisions_dir")
+    decisions_output=$(run_claude_unsafe "$decisions_prompt" "$budget" 120 "$decisions_dir")
 
     assert_file_exists "$tier" "confirm_decisions_creates_decisions_md" \
       "$decisions_dir/$skill_name/context/decisions.md" || true
