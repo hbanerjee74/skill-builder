@@ -3,13 +3,14 @@
 
 run_t2() {
   local tier="t2"
+  local budget="${MAX_BUDGET_T2:-0.10}"
 
   # ---- T2.1: Plugin loads and Claude responds ----
   log_verbose "Testing plugin loading with claude -p"
   local output
-  output=$(run_claude_safe \
+  output=$(run_claude_unsafe \
     "You have a plugin loaded called skill-builder that has a skill called 'start'. Confirm you can see this plugin by replying with exactly: PLUGIN_LOADED" \
-    45)
+    "$budget" 45)
 
   if [[ -z "$output" ]]; then
     record_result "$tier" "claude_responds" "FAIL" "empty output (timeout or error)"
@@ -30,9 +31,9 @@ run_t2() {
   # ---- T2.2: Skill can be triggered ----
   log_verbose "Testing skill trigger"
   local output2
-  output2=$(run_claude_safe \
+  output2=$(run_claude_unsafe \
     "I want to build a domain skill for pet-store analytics. What are the first steps? Be brief." \
-    60)
+    "$budget" 60)
 
   if [[ -z "$output2" ]]; then
     record_result "$tier" "skill_trigger" "FAIL" "empty output"

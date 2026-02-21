@@ -9,6 +9,7 @@
 #
 # Environment variables:
 #   PLUGIN_DIR          Override plugin directory (default: script's parent)
+#   MAX_BUDGET_T2       Max USD for T2 plugin loading tests (default: 0.10)
 #   MAX_BUDGET_T4       Max USD for T4 smoke tests (default: 0.50)
 #   MAX_BUDGET_T5       Max USD for T5 E2E test (default: 5.00)
 #   CLAUDE_BIN          Path to claude binary (default: claude)
@@ -27,13 +28,14 @@ source "$TESTS_DIR/lib.sh"
 
 # ---------- Configuration ----------
 CLAUDE_BIN="${CLAUDE_BIN:-claude}"
+MAX_BUDGET_T2="${MAX_BUDGET_T2:-0.10}"
 MAX_BUDGET_T4="${MAX_BUDGET_T4:-0.50}"
 MAX_BUDGET_T5="${MAX_BUDGET_T5:-5.00}"
 KEEP_TEMP="${KEEP_TEMP:-0}"
 VERBOSE="${VERBOSE:-0}"
 
 export PLUGIN_DIR CLAUDE_BIN TESTS_DIR
-export MAX_BUDGET_T4 MAX_BUDGET_T5 KEEP_TEMP VERBOSE
+export MAX_BUDGET_T2 MAX_BUDGET_T4 MAX_BUDGET_T5 KEEP_TEMP VERBOSE
 
 # ---------- Tier helpers (bash 3.2 compatible — no associative arrays) ----------
 
