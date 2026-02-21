@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react"
-import { Loader2, Github, ArrowLeft, Check, AlertCircle } from "lucide-react"
+import { Loader2, Check, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -9,19 +9,20 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
 
-type Step = "url" | "select" | "importing" | "done"
+type Step = "loading" | "select" | "importing" | "done"
 
 interface GitHubImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImported: () => Promise<void>
+  /** The marketplace repository URL (from settings). Required — dialog auto-browses on open. */
+  url: string
   /**
    * When set, only skills whose skill_type is in this list are shown.
    * Defaults to showing all skills.
@@ -33,40 +34,31 @@ interface GitHubImportDialogProps {
    * Defaults to 'settings-skills' for backward compatibility.
    */
   mode?: 'skill-library' | 'settings-skills'
-  /**
-   * When set, the dialog skips the URL entry step and immediately browses
-   * skills from this URL when opened. The back button is hidden in this mode.
-   */
-  initialUrl?: string
 }
 
 export default function GitHubImportDialog({
   open,
   onOpenChange,
   onImported,
+  url,
   typeFilter,
   mode = 'settings-skills',
-  initialUrl,
 }: GitHubImportDialogProps) {
-  const [step, setStep] = useState<Step>("url")
-  const [url, setUrl] = useState("")
+  const [step, setStep] = useState<Step>("loading")
   const [repoInfo, setRepoInfo] = useState<GitHubRepoInfo | null>(null)
   const [skills, setSkills] = useState<AvailableSkill[]>([])
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importedCount, setImportedCount] = useState(0)
 
   const reset = useCallback(() => {
-    setStep("url")
-    setUrl(initialUrl ?? "")
+    setStep("loading")
     setRepoInfo(null)
     setSkills([])
     setSelectedPaths(new Set())
-    setLoading(false)
     setError(null)
     setImportedCount(0)
-  }, [initialUrl])
+  }, [])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -76,12 +68,11 @@ export default function GitHubImportDialog({
     [onOpenChange, reset]
   )
 
-  // Core browse logic — accepts an explicit URL so it can be called with initialUrl
-  const browseUrl = useCallback(async (targetUrl: string) => {
+  const browse = useCallback(async () => {
     setError(null)
-    setLoading(true)
+    setStep("loading")
     try {
-      const info = await parseGitHubUrl(targetUrl.trim())
+      const info = await parseGitHubUrl(url.trim())
       setRepoInfo(info)
       let available = await listGitHubSkills(
         info.owner,
@@ -89,7 +80,6 @@ export default function GitHubImportDialog({
         info.branch,
         info.subpath ?? undefined
       )
-      // Apply typeFilter if provided
       if (typeFilter && typeFilter.length > 0) {
         available = available.filter(
           (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
@@ -97,7 +87,6 @@ export default function GitHubImportDialog({
       }
       if (available.length === 0) {
         setError("No skills found in this repository.")
-        setLoading(false)
         return
       }
       setSkills(available)
@@ -106,19 +95,12 @@ export default function GitHubImportDialog({
     } catch (err) {
       console.error("[github-import] Failed to browse skills:", err)
       setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
     }
-  }, [typeFilter])
+  }, [url, typeFilter])
 
-  const handleBrowse = useCallback(() => browseUrl(url), [browseUrl, url])
-
-  // Auto-browse when opening with a pre-configured URL
+  // Auto-browse whenever the dialog opens
   useEffect(() => {
-    if (open && initialUrl) {
-      setUrl(initialUrl)
-      browseUrl(initialUrl)
-    }
+    if (open) browse()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -175,7 +157,6 @@ export default function GitHubImportDialog({
       } else {
         toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
       }
-
     } catch (err) {
       console.error("[github-import] Import failed:", err)
       setError(err instanceof Error ? err.message : String(err))
@@ -188,58 +169,29 @@ export default function GitHubImportDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        {step === "url" && (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Github className="size-5" />
-                Import from Marketplace
-              </DialogTitle>
-              <DialogDescription>
-                Paste a public GitHub repository URL to browse available skills.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-3">
-              <Input
-                placeholder="https://github.com/owner/repo"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && url.trim()) handleBrowse()
-                }}
-              />
-              {error && (
-                <p className="flex items-center gap-1.5 text-sm text-destructive">
-                  <AlertCircle className="size-4 shrink-0" />
-                  {error}
-                </p>
-              )}
-            </div>
-            <div className="flex justify-end">
-              <Button onClick={handleBrowse} disabled={!url.trim() || loading}>
-                {loading && <Loader2 className="size-4 animate-spin" />}
-                Browse Skills
-              </Button>
-            </div>
-          </>
+        {step === "loading" && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            {error ? (
+              <>
+                <AlertCircle className="size-8 text-destructive" />
+                <p className="text-sm text-destructive text-center">{error}</p>
+                <Button variant="outline" onClick={browse}>Retry</Button>
+              </>
+            ) : (
+              <>
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Loading skills...</p>
+              </>
+            )}
+          </div>
         )}
 
         {step === "select" && repoInfo && (
           <>
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                {!initialUrl && (
-                  <button
-                    onClick={() => { setStep("url"); setError(null) }}
-                    className="rounded-sm p-0.5 hover:bg-accent"
-                  >
-                    <ArrowLeft className="size-4" />
-                  </button>
-                )}
-                Select Skills from {repoInfo.owner}/{repoInfo.repo}
-              </DialogTitle>
+              <DialogTitle>Browse Marketplace</DialogTitle>
               <DialogDescription>
-                {skills.length} skill{skills.length !== 1 ? "s" : ""} found.
+                {skills.length} skill{skills.length !== 1 ? "s" : ""} found in {repoInfo.owner}/{repoInfo.repo}.
                 Select the ones you'd like to import.
               </DialogDescription>
             </DialogHeader>

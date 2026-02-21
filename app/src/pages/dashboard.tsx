@@ -490,6 +490,7 @@ export default function DashboardPage() {
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
         typeFilter={skillLibraryMarketplaceTypeFilter}
         mode="skill-library"
+        url={marketplaceUrl ?? ""}
       />
 
     </div>

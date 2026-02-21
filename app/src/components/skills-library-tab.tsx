@@ -110,9 +110,14 @@ export function SkillsLibraryTab() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
+        <Button
+          variant="outline"
+          onClick={() => setShowGitHubImport(true)}
+          disabled={!marketplaceUrl}
+          title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
+        >
           <Github className="size-4" />
-          Import from Marketplace
+          Browse Marketplace
         </Button>
         <Button onClick={handleUpload}>
           <Upload className="size-4" />
@@ -143,7 +148,7 @@ export function SkillsLibraryTab() {
             </div>
             <CardTitle>No imported skills</CardTitle>
             <CardDescription>
-              Upload a .skill package or import from Marketplace to add skills to your library.
+              Upload a .skill package or browse the marketplace to add skills to your library.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
@@ -152,9 +157,14 @@ export function SkillsLibraryTab() {
                 <Upload className="size-4" />
                 Upload Skill
               </Button>
-              <Button variant="outline" onClick={() => setShowGitHubImport(true)}>
+              <Button
+                variant="outline"
+                onClick={() => setShowGitHubImport(true)}
+                disabled={!marketplaceUrl}
+                title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
+              >
                 <Github className="size-4" />
-                Import from Marketplace
+                Browse Marketplace
               </Button>
             </div>
           </CardContent>
@@ -186,7 +196,7 @@ export function SkillsLibraryTab() {
         onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
         mode="settings-skills"
-        initialUrl={marketplaceUrl ?? undefined}
+        url={marketplaceUrl ?? ""}
       />
     </div>
   )

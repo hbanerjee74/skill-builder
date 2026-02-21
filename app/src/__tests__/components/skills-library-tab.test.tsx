@@ -8,6 +8,7 @@ import {
 } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
 import type { ImportedSkill } from "@/stores/imported-skills-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 // Mock sonner
 vi.mock("sonner", () => ({
@@ -70,6 +71,7 @@ const sampleSkills: ImportedSkill[] = [
 describe("SkillsLibraryTab", () => {
   beforeEach(() => {
     resetTauriMocks();
+    useSettingsStore.getState().reset();
   });
 
   it("shows loading skeletons while fetching", async () => {
@@ -86,6 +88,28 @@ describe("SkillsLibraryTab", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Upload Skill/i })).toBeInTheDocument();
+    });
+  });
+
+  it("Browse Marketplace button is disabled when marketplace URL is not configured", async () => {
+    // Store default: marketplaceUrl = null
+    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /Browse Marketplace/i });
+      expect(btn).toBeDisabled();
+    });
+  });
+
+  it("Browse Marketplace button is enabled when marketplace URL is configured", async () => {
+    useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
+    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    render(<SkillsLibraryTab />);
+
+    await waitFor(() => {
+      const btn = screen.getByRole("button", { name: /Browse Marketplace/i });
+      expect(btn).not.toBeDisabled();
     });
   });
 
@@ -107,7 +131,7 @@ describe("SkillsLibraryTab", () => {
       expect(screen.getByText("No imported skills")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Upload a .skill package or import from Marketplace to add skills to your library.")
+      screen.getByText("Upload a .skill package or browse the marketplace to add skills to your library.")
     ).toBeInTheDocument();
   });
 
