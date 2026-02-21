@@ -205,6 +205,12 @@ pub(crate) async fn list_github_skills_inner(
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
 
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, owner, repo)
+        .await
+        .unwrap_or_else(|_| branch.to_string());
+
     // Fetch the full recursive tree
     let tree_url = format!(
         "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
@@ -360,6 +366,12 @@ pub async fn import_github_skills(
 
     let client = build_github_client(token.as_deref());
 
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, &owner, &repo)
+        .await
+        .unwrap_or(branch);
+
     // Fetch the full recursive tree once
     let tree_url = format!(
         "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
@@ -490,9 +502,14 @@ pub async fn import_marketplace_to_library(
     let repo_info = parse_github_url_inner(&marketplace_url)?;
     let owner = &repo_info.owner;
     let repo = &repo_info.repo;
-    let branch = &repo_info.branch;
 
     let client = build_github_client(token.as_deref());
+
+    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
+    // but repos may use a different default (e.g. "master").
+    let branch = get_default_branch(&client, owner, repo)
+        .await
+        .unwrap_or_else(|_| repo_info.branch.clone());
 
     // Fetch the full recursive tree once
     let tree_url = format!(
@@ -525,7 +542,7 @@ pub async fn import_marketplace_to_library(
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
-        match import_single_skill(&client, owner, repo, branch, skill_path, tree, &skills_dir).await {
+        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, &skills_dir).await {
             Ok(skill) => {
                 // Insert into imported_skills table
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -1061,5 +1078,45 @@ mod tests {
         assert_eq!(relative[0], "SKILL.md");
         assert_eq!(relative[1], "references/concepts.md");
         assert_eq!(relative[2], "references/patterns.md");
+    }
+
+    // --- Branch resolution tests ---
+
+    #[test]
+    fn test_parse_url_always_defaults_branch_to_main() {
+        // Reproduces the root cause of the 404 bug: URLs without a /tree/<branch>
+        // suffix always produce branch="main" regardless of the repo's actual default.
+        // The fix in list_github_skills_inner / import_github_skills /
+        // import_marketplace_to_library is to call get_default_branch() after parsing
+        // so that the git tree API uses the correct branch (e.g. "master").
+        for url in &[
+            "https://github.com/acme/skills",
+            "github.com/acme/skills",
+            "acme/skills",
+        ] {
+            let result = parse_github_url_inner(url).unwrap();
+            assert_eq!(
+                result.branch, "main",
+                "URL '{}' should default to 'main' before branch resolution",
+                url
+            );
+        }
+    }
+
+    #[test]
+    fn test_branch_resolution_uses_resolved_over_parsed() {
+        // Simulate the branch resolution logic applied in list_github_skills_inner.
+        // When get_default_branch returns "master", it must replace the parsed "main".
+        let parsed_branch = "main"; // parse_github_url_inner default
+
+        // Simulate get_default_branch succeeding with a different branch
+        let resolved: Result<String, String> = Ok("master".to_string());
+        let branch = resolved.unwrap_or_else(|_| parsed_branch.to_string());
+        assert_eq!(branch, "master", "Resolved branch should override parsed default");
+
+        // Simulate get_default_branch failing — should fall back to parsed value
+        let resolved_err: Result<String, String> = Err("network error".to_string());
+        let branch_fallback = resolved_err.unwrap_or_else(|_| parsed_branch.to_string());
+        assert_eq!(branch_fallback, "main", "Fallback to parsed branch when resolution fails");
     }
 }
