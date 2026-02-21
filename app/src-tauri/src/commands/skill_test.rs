@@ -1,5 +1,14 @@
 use std::path::Path;
 
+use crate::commands::imported_skills::validate_skill_name;
+
+#[derive(serde::Serialize)]
+pub struct PrepareResult {
+    pub test_id: String,
+    pub baseline_cwd: String,
+    pub transcript_log_dir: String,
+}
+
 /// Prepare a temp workspace for the "without skill" baseline agent.
 ///
 /// Creates a temp directory with an empty `.claude/CLAUDE.md` so the agent
@@ -7,6 +16,7 @@ use std::path::Path;
 /// cwd path.
 #[tauri::command]
 pub fn prepare_skill_test(workspace_path: String, skill_name: String) -> Result<PrepareResult, String> {
+    validate_skill_name(&skill_name)?;
     let test_id = uuid::Uuid::new_v4().to_string();
     let tmp_root = std::env::temp_dir().join(format!("skill-builder-test-{}", test_id));
 
@@ -54,13 +64,6 @@ pub fn cleanup_skill_test(test_id: String) -> Result<(), String> {
         log::info!("[cleanup_skill_test] test_id={} cleaned up", test_id);
     }
     Ok(())
-}
-
-#[derive(serde::Serialize)]
-pub struct PrepareResult {
-    pub test_id: String,
-    pub baseline_cwd: String,
-    pub transcript_log_dir: String,
 }
 
 #[cfg(test)]

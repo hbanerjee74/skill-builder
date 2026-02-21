@@ -13,6 +13,7 @@ import {
   cleanupSkillSidecar,
   prepareSkillTest,
   cleanupSkillTest,
+  hasRunningAgents,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -64,6 +65,8 @@ const INITIAL_STATE: TestState = {
   errorMessage: null,
 };
 
+const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -108,13 +111,97 @@ Prefix with \u2191 if the skill improved the plan, \u2193 if there is a gap or r
 Output ONLY the bullet list, one per line, no other text.`;
 }
 
+type EvalDirection = "up" | "down" | null;
+
+interface EvalLine {
+  direction: EvalDirection;
+  text: string;
+}
+
 /** Parse an evaluator line into direction and text. */
-function parseEvalLine(line: string): { direction: "up" | "down" | null; text: string } {
+function parseEvalLine(line: string): EvalLine {
   const trimmed = line.trim();
   if (!trimmed) return { direction: null, text: "" };
   if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
   if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
+}
+
+/** Return the arrow/bullet character for an eval direction. */
+function evalDirectionIcon(direction: EvalDirection): string {
+  if (direction === "up") return "\u2191";
+  if (direction === "down") return "\u2193";
+  return "\u2022";
+}
+
+/** Return the color class for an eval direction's icon. */
+function evalIconColor(direction: EvalDirection): string {
+  if (direction === "up") return "text-green-400";
+  if (direction === "down") return "text-red-400";
+  return "text-muted-foreground";
+}
+
+/** Return the color class for an eval direction's text. */
+function evalTextColor(direction: EvalDirection): string {
+  if (direction === "up") return "text-muted-foreground";
+  if (direction === "down") return "text-muted-foreground/70";
+  return "text-muted-foreground/60";
+}
+
+/** Return the evaluator placeholder message based on phase. */
+function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
+  if (phase === "idle") return "Evaluation will appear after both plans complete";
+  if (phase === "running") return "Waiting for both plans to finish...";
+  if (phase === "evaluating") return "Evaluating differences...";
+  if (phase === "error") return errorMessage ?? "An error occurred";
+  return "No evaluation results";
+}
+
+/** Auto-scroll a container to the bottom. */
+function scrollToBottom(ref: React.RefObject<HTMLDivElement | null>): void {
+  if (ref.current) {
+    ref.current.scrollTop = ref.current.scrollHeight;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+interface PlanPanelProps {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  text: string;
+  phase: Phase;
+  label: string;
+  badgeText: string;
+  badgeClass: string;
+  idlePlaceholder: string;
+}
+
+function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder }: PlanPanelProps) {
+  return (
+    <>
+      <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
+        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+        <Badge className={cn("text-[10px] px-1.5 py-0", badgeClass)}>
+          {badgeText}
+        </Badge>
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-auto p-4">
+        {text ? (
+          <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
+            {text}
+          </pre>
+        ) : (
+          <p className="text-xs text-muted-foreground/40 italic">
+            {phase === "idle" ? idlePlaceholder : "Waiting for agent response..."}
+          </p>
+        )}
+      </div>
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -296,23 +383,9 @@ export default function TestPage() {
   // Auto-scroll panels
   // ---------------------------------------------------------------------------
 
-  useEffect(() => {
-    if (withScrollRef.current) {
-      withScrollRef.current.scrollTop = withScrollRef.current.scrollHeight;
-    }
-  }, [state.withText]);
-
-  useEffect(() => {
-    if (withoutScrollRef.current) {
-      withoutScrollRef.current.scrollTop = withoutScrollRef.current.scrollHeight;
-    }
-  }, [state.withoutText]);
-
-  useEffect(() => {
-    if (evalScrollRef.current) {
-      evalScrollRef.current.scrollTop = evalScrollRef.current.scrollHeight;
-    }
-  }, [state.evalText]);
+  useEffect(() => scrollToBottom(withScrollRef), [state.withText]);
+  useEffect(() => scrollToBottom(withoutScrollRef), [state.withoutText]);
+  useEffect(() => scrollToBottom(evalScrollRef), [state.evalText]);
 
   // ---------------------------------------------------------------------------
   // Watch agent exits to transition phases
@@ -333,10 +406,8 @@ export default function TestPage() {
     if (state.phase !== "running") return;
     if (!state.withAgentId || !state.withoutAgentId) return;
 
-    const withTerminal =
-      withStatus && ["completed", "error", "shutdown"].includes(withStatus);
-    const withoutTerminal =
-      withoutStatus && ["completed", "error", "shutdown"].includes(withoutStatus);
+    const withTerminal = withStatus != null && TERMINAL_STATUSES.has(withStatus);
+    const withoutTerminal = withoutStatus != null && TERMINAL_STATUSES.has(withoutStatus);
 
     if (withTerminal && !state.withDone) {
       setState((prev) => ({ ...prev, withDone: true }));
@@ -433,10 +504,7 @@ export default function TestPage() {
   useEffect(() => {
     if (state.phase !== "evaluating") return;
     if (!state.evalAgentId) return;
-
-    const isTerminal =
-      evalStatus && ["completed", "error", "shutdown"].includes(evalStatus);
-    if (!isTerminal) return;
+    if (!evalStatus || !TERMINAL_STATUSES.has(evalStatus)) return;
 
     flushMessageBuffer();
 
@@ -497,7 +565,14 @@ export default function TestPage() {
 
     console.log("[test] starting test: skill=%s", s.selectedSkill.name);
 
-    // Clear previous agent runs
+    // Guard: don't clobber in-progress workflow runs
+    const agentsRunning = await hasRunningAgents().catch(() => false);
+    if (agentsRunning) {
+      toast.error("Cannot start test while other agents are running");
+      return;
+    }
+
+    // Clear previous test runs from agent store
     useAgentStore.getState().clearRuns();
 
     const ts = Date.now();
@@ -562,6 +637,9 @@ export default function TestPage() {
       ]);
     } catch (err) {
       console.error("[test] Failed to start test:", err);
+      // Clean up temp dir if it was created before the failure
+      const currentTestId = stateRef.current.testId;
+      if (currentTestId) cleanup(currentTestId);
       setState((prev) => ({
         ...prev,
         phase: "error",
@@ -664,30 +742,15 @@ export default function TestPage() {
             className="flex flex-col overflow-hidden border-r border-border"
             style={{ width: `${vSplit}%` }}
           >
-            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Agent Plan
-              </span>
-              <Badge className="bg-green-950 text-green-400 text-[10px] px-1.5 py-0">
-                with skill
-              </Badge>
-            </div>
-            <div
-              ref={withScrollRef}
-              className="flex-1 overflow-auto p-4"
-            >
-              {state.withText ? (
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
-                  {state.withText}
-                </pre>
-              ) : (
-                <p className="text-xs text-muted-foreground/40 italic">
-                  {state.phase === "idle"
-                    ? "Run a test to see the with-skill plan"
-                    : "Waiting for agent response..."}
-                </p>
-              )}
-            </div>
+            <PlanPanel
+              scrollRef={withScrollRef}
+              text={state.withText}
+              phase={state.phase}
+              label="Agent Plan"
+              badgeText="with skill"
+              badgeClass="bg-green-950 text-green-400"
+              idlePlaceholder="Run a test to see the with-skill plan"
+            />
           </div>
 
           {/* Vertical divider */}
@@ -703,30 +766,15 @@ export default function TestPage() {
 
           {/* Without-skill panel */}
           <div className="flex flex-1 flex-col overflow-hidden">
-            <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-              <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Agent Plan
-              </span>
-              <Badge className="bg-orange-950 text-orange-400 text-[10px] px-1.5 py-0">
-                no skill
-              </Badge>
-            </div>
-            <div
-              ref={withoutScrollRef}
-              className="flex-1 overflow-auto p-4"
-            >
-              {state.withoutText ? (
-                <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
-                  {state.withoutText}
-                </pre>
-              ) : (
-                <p className="text-xs text-muted-foreground/40 italic">
-                  {state.phase === "idle"
-                    ? "Run a test to see the no-skill plan"
-                    : "Waiting for agent response..."}
-                </p>
-              )}
-            </div>
+            <PlanPanel
+              scrollRef={withoutScrollRef}
+              text={state.withoutText}
+              phase={state.phase}
+              label="Agent Plan"
+              badgeText="no skill"
+              badgeClass="bg-orange-950 text-orange-400"
+              idlePlaceholder="Run a test to see the no-skill plan"
+            />
           </div>
         </div>
 
@@ -763,32 +811,10 @@ export default function TestPage() {
                     )}
                     style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
                   >
-                    <span
-                      className={cn(
-                        "mt-0.5 shrink-0 text-xs font-semibold",
-                        line.direction === "up"
-                          ? "text-green-400"
-                          : line.direction === "down"
-                            ? "text-red-400"
-                            : "text-muted-foreground",
-                      )}
-                    >
-                      {line.direction === "up"
-                        ? "\u2191"
-                        : line.direction === "down"
-                          ? "\u2193"
-                          : "\u2022"}
+                    <span className={cn("mt-0.5 shrink-0 text-xs font-semibold", evalIconColor(line.direction))}>
+                      {evalDirectionIcon(line.direction)}
                     </span>
-                    <span
-                      className={cn(
-                        "text-xs leading-relaxed",
-                        line.direction === "up"
-                          ? "text-muted-foreground"
-                          : line.direction === "down"
-                            ? "text-muted-foreground/70"
-                            : "text-muted-foreground/60",
-                      )}
-                    >
+                    <span className={cn("text-xs leading-relaxed", evalTextColor(line.direction))}>
                       {line.text}
                     </span>
                   </div>
@@ -796,15 +822,7 @@ export default function TestPage() {
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/40 italic">
-                {state.phase === "idle"
-                  ? "Evaluation will appear after both plans complete"
-                  : state.phase === "running"
-                    ? "Waiting for both plans to finish..."
-                    : state.phase === "evaluating"
-                      ? "Evaluating differences..."
-                      : state.phase === "error"
-                        ? state.errorMessage ?? "An error occurred"
-                        : "No evaluation results"}
+                {evalPlaceholder(state.phase, state.errorMessage)}
               </p>
             )}
           </div>
