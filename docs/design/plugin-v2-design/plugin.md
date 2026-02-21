@@ -88,10 +88,10 @@ skills/
 
 ## Marketplace Distribution
 
-Hosted as a GitHub repo with a `.claude-plugin/marketplace.json` at root.
+Hosted at `https://github.com/hbanerjee74/skills` with a `.claude-plugin/marketplace.json` at root.
 
 ```
-acceleratedata-plugins/
+hbanerjee74/skills/
 ├── .claude-plugin/
 │   └── marketplace.json
 └── plugins/
@@ -104,8 +104,8 @@ acceleratedata-plugins/
 **marketplace.json:**
 ```json
 {
-  "name": "acceleratedata-plugins",
-  "owner": { "name": "AccelerateData" },
+  "name": "skills",
+  "owner": { "name": "hbanerjee74" },
   "metadata": { "pluginRoot": "./plugins" },
   "plugins": [
     { "name": "skill-builder",            "source": "./plugins/skill-builder" },
@@ -118,7 +118,7 @@ acceleratedata-plugins/
 
 **User setup:**
 ```bash
-claude plugin marketplace add acceleratedata/acceleratedata-plugins
+claude plugin marketplace add hbanerjee74/skills
 claude plugin install skill-builder
 ```
 
