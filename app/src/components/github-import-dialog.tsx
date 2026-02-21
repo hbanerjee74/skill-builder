@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react"
-import { Loader2, Check, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle, Download, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -9,13 +9,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo } from "@/lib/types"
-
-type Step = "loading" | "select" | "importing" | "done"
 
 interface GitHubImportDialogProps {
   open: boolean
@@ -36,6 +33,8 @@ interface GitHubImportDialogProps {
   mode?: 'skill-library' | 'settings-skills'
 }
 
+type SkillState = "idle" | "importing" | "imported" | "exists"
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
@@ -44,20 +43,18 @@ export default function GitHubImportDialog({
   typeFilter,
   mode = 'settings-skills',
 }: GitHubImportDialogProps) {
-  const [step, setStep] = useState<Step>("loading")
+  const [loading, setLoading] = useState(false)
   const [repoInfo, setRepoInfo] = useState<GitHubRepoInfo | null>(null)
   const [skills, setSkills] = useState<AvailableSkill[]>([])
-  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [importedCount, setImportedCount] = useState(0)
+  const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
 
   const reset = useCallback(() => {
-    setStep("loading")
+    setLoading(false)
     setRepoInfo(null)
     setSkills([])
-    setSelectedPaths(new Set())
     setError(null)
-    setImportedCount(0)
+    setSkillStates(new Map())
   }, [])
 
   const handleOpenChange = useCallback(
@@ -70,7 +67,7 @@ export default function GitHubImportDialog({
 
   const browse = useCallback(async () => {
     setError(null)
-    setStep("loading")
+    setLoading(true)
     try {
       const info = await parseGitHubUrl(url.trim())
       setRepoInfo(info)
@@ -81,102 +78,56 @@ export default function GitHubImportDialog({
         info.subpath ?? undefined
       )
       if (typeFilter && typeFilter.length > 0) {
-        console.log("[github-import] before filter:", available.map(s => `${s.name}(${s.skill_type})`))
         available = available.filter(
           (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
         )
-        console.log("[github-import] after filter (typeFilter=" + JSON.stringify(typeFilter) + "):", available.map(s => s.name))
       }
       if (available.length === 0) {
         setError("No skills found in this repository.")
         return
       }
       setSkills(available)
-      setSelectedPaths(new Set(available.map((s) => s.path)))
-      setStep("select")
     } catch (err) {
       console.error("[github-import] Failed to browse skills:", err)
       setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
     }
   }, [url, typeFilter])
 
-  // Auto-browse whenever the dialog opens
   useEffect(() => {
     if (open) browse()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const handleTogglePath = useCallback((path: string) => {
-    setSelectedPaths((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) {
-        next.delete(path)
-      } else {
-        next.add(path)
-      }
-      return next
-    })
-  }, [])
-
-  const handleToggleAll = useCallback(() => {
-    setSelectedPaths((prev) => {
-      if (prev.size === skills.length) {
-        return new Set()
-      }
-      return new Set(skills.map((s) => s.path))
-    })
-  }, [skills])
-
-  const handleImport = useCallback(async () => {
-    if (!repoInfo || selectedPaths.size === 0) return
-    setStep("importing")
+  const handleImport = useCallback(async (skill: AvailableSkill) => {
+    if (!repoInfo) return
+    setSkillStates((prev) => new Map(prev).set(skill.path, "importing"))
     try {
-      const paths = Array.from(selectedPaths)
-
-      let importedCount = 0
       if (mode === 'skill-library') {
-        const results = await importMarketplaceToLibrary(paths)
-        importedCount = results.filter((r) => r.success).length
-        const skipped = results.filter((r) => !r.success).length
-        if (importedCount === 0 && skipped > 0) {
-          setError(
-            skipped === 1
-              ? "This skill already exists in your library."
-              : `${skipped} skills already exist in your library.`
-          )
-          setStep("select")
+        const results = await importMarketplaceToLibrary([skill.path])
+        const result = results[0]
+        if (!result?.success) {
+          setSkillStates((prev) => new Map(prev).set(skill.path, "exists"))
           return
         }
-        if (skipped > 0) {
-          toast.warning(`${skipped} skill${skipped !== 1 ? "s" : ""} already in library — skipped.`)
-        }
       } else {
-        const imported = await importGitHubSkills(
-          repoInfo.owner,
-          repoInfo.repo,
-          repoInfo.branch,
-          paths
-        )
-        importedCount = imported.length
+        await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, [skill.path])
       }
-
-      setImportedCount(importedCount)
+      setSkillStates((prev) => new Map(prev).set(skill.path, "imported"))
+      toast.success(`Imported "${skill.name}"`)
       await onImported()
-      setStep("done")
-      toast.success(`Imported ${importedCount} skill${importedCount !== 1 ? "s" : ""}`)
     } catch (err) {
       console.error("[github-import] Import failed:", err)
-      setError(err instanceof Error ? err.message : String(err))
-      setStep("select")
+      setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
+      toast.error(err instanceof Error ? err.message : String(err))
     }
-  }, [repoInfo, selectedPaths, onImported, mode])
-
-  const allSelected = selectedPaths.size === skills.length && skills.length > 0
+  }, [repoInfo, onImported, mode])
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        {step === "loading" && (
+        {loading && (
           <div className="flex flex-col items-center gap-3 py-8">
             {error ? (
               <>
@@ -193,46 +144,26 @@ export default function GitHubImportDialog({
           </div>
         )}
 
-        {step === "select" && repoInfo && (
+        {!loading && skills.length > 0 && repoInfo && (
           <>
             <DialogHeader>
               <DialogTitle>Browse Marketplace</DialogTitle>
               <DialogDescription>
-                {skills.length} skill{skills.length !== 1 ? "s" : ""} found in {repoInfo.owner}/{repoInfo.repo}.
-                Select the ones you'd like to import.
+                {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
               </DialogDescription>
             </DialogHeader>
-            {error && (
-              <p className="flex items-center gap-1.5 text-sm text-destructive">
-                <AlertCircle className="size-4 shrink-0" />
-                {error}
-              </p>
-            )}
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={handleToggleAll}
-                />
-                Select all
-              </label>
-              <ScrollArea className="max-h-64">
-                <div className="flex flex-col gap-1">
-                  {skills.map((skill) => (
-                    <label
+            <ScrollArea className="max-h-96">
+              <div className="flex flex-col gap-1">
+                {skills.map((skill) => {
+                  const state = skillStates.get(skill.path) ?? "idle"
+                  return (
+                    <div
                       key={skill.path}
-                      className="flex items-start gap-2 rounded-md px-2 py-2 hover:bg-accent cursor-pointer"
+                      className="flex items-start gap-3 rounded-md px-2 py-2.5"
                     >
-                      <Checkbox
-                        checked={selectedPaths.has(skill.path)}
-                        onCheckedChange={() => handleTogglePath(skill.path)}
-                        className="mt-0.5"
-                      />
-                      <div className="flex flex-col gap-0.5 min-w-0">
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">
-                            {skill.name}
-                          </span>
+                          <span className="text-sm font-medium truncate">{skill.name}</span>
                           {skill.domain && (
                             <Badge variant="secondary" className="text-xs shrink-0">
                               {skill.domain}
@@ -244,47 +175,46 @@ export default function GitHubImportDialog({
                             {skill.description}
                           </span>
                         )}
+                        {state === "exists" && (
+                          <span className="text-xs text-muted-foreground">Already in your library</span>
+                        )}
                       </div>
-                    </label>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                onClick={handleImport}
-                disabled={selectedPaths.size === 0}
-              >
-                Import Selected ({selectedPaths.size})
-              </Button>
-            </div>
-          </>
-        )}
-
-        {step === "importing" && (
-          <div className="flex flex-col items-center gap-3 py-8">
-            <Loader2 className="size-8 animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">
-              Importing {selectedPaths.size} skill{selectedPaths.size !== 1 ? "s" : ""}...
-            </p>
-          </div>
-        )}
-
-        {step === "done" && (
-          <>
-            <DialogHeader>
-              <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                <Check className="size-6 text-emerald-600 dark:text-emerald-400" />
+                      <div className="shrink-0 pt-0.5">
+                        {state === "imported" ? (
+                          <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="size-4" />
+                            Imported
+                          </span>
+                        ) : state === "exists" ? (
+                          <span className="text-xs text-muted-foreground">In library</span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={state === "importing"}
+                            onClick={() => handleImport(skill)}
+                          >
+                            {state === "importing" ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Download className="size-3.5" />
+                            )}
+                            {state === "importing" ? "Importing…" : "Import"}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-              <DialogTitle className="text-center">Import Complete</DialogTitle>
-              <DialogDescription className="text-center">
-                Successfully imported {importedCount} skill{importedCount !== 1 ? "s" : ""}.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-end">
-              <Button onClick={() => handleOpenChange(false)}>Done</Button>
-            </div>
+            </ScrollArea>
           </>
+        )}
+
+        {!loading && !error && skills.length === 0 && (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <p className="text-sm text-muted-foreground">No skills found in this repository.</p>
+          </div>
         )}
       </DialogContent>
     </Dialog>
