@@ -59,6 +59,7 @@ On startup: glob `.vibedata/*/session.json`. For each found, derive `skill_dir` 
 | `context/clarifications.md` with answered `#### Refinements` | `refinement` |
 | `context/clarifications.md` with `#### Refinements` (unanswered) | `refinement_pending` |
 | `context/clarifications.md` with any `**Answer:**` filled | `clarification` |
+| `context/clarifications.md` with all answers empty AND `session.json.interactive_questions_asked` non-empty | `clarification_interactive_pending` |
 | `context/clarifications.md` with all answers empty | `research` |
 | `session.json` only | `scoping` |
 | nothing | `fresh` |
@@ -78,6 +79,7 @@ Artifact table overrides `session.json.current_phase` when they disagree. If mul
 |---|---|
 | "build", "create", "new skill", "I need a skill" | `new_skill` |
 | "I answered", "continue", "ready", "done" | `resume` |
+| "my answers are", "here are my answers", "answer above", "for Q" | `resume` |
 | "validate" | `validate_only` |
 | "improve", "fix", "update", "missing" | `improve` |
 | "start over", "start fresh", "reset" | `start_fresh` |
@@ -96,6 +98,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | `fresh` | `new_skill` + domain in message | → Scoping (pre-fill domain) |
 | `scoping` | `resume` | → Research |
 | `research` | `resume` | Show clarification status, prompt to answer |
+| `clarification_interactive_pending` | `resume` | → Capture Inline Answers |
 | `clarification` | `resume` | → answer-evaluator → [detailed-research] → Decisions |
 | `refinement_pending` | `resume` | Show refinement status, prompt to answer |
 | `refinement` | `resume` | → answer-evaluator → Decisions |
@@ -133,7 +136,9 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
      "mode": "<guided|express>",
      "research_dimensions_used": [],
      "clarification_status": { "total_questions": 0, "answered": 0 },
-     "auto_filled": false
+     "auto_filled": false,
+     "interactive_questions_asked": [],
+     "interactive_questions_answered": false
    }
    ```
 5. Detect mode from user message (express if "express"/"skip research"/detailed spec provided)
@@ -147,8 +152,51 @@ Passes: skill_type, domain, context_dir, workspace_dir
 ```
 
 - After agent returns: check `context/clarifications.md` for `scope_recommendation: true` in frontmatter — if found, surface to user and stop
-- Tell user: questions are in `<context_dir>/clarifications.md` — fill in `**Answer:**` fields and say "done" when ready
-- Update `session.json`: `current_phase = research`, append `research` to `phases_completed`
+- Read `context/clarifications.md` frontmatter.
+  - If `priority_questions` list exists and has 1+ entries:
+    - Read the full question block for each Q-ID (up to 4) from `clarifications.md`
+    - Present conversationally:
+      ```
+      Before you open the full question set, let me ask the most important ones:
+
+      **Q1: [question title]**
+      [question body]
+      A. [choice A]
+      B. [choice B]
+      C. [choice C]
+      D. Other (please specify)
+
+      [repeat for each priority question]
+
+      Answer above. I'll capture your responses and write the remaining questions to clarifications.md.
+      ```
+    - Update `session.json`: set `interactive_questions_asked` to the Q-IDs shown (e.g. `["Q1", "Q4", "Q7"]`)
+    - End turn — wait for user response
+  - If `priority_questions` is empty or absent:
+    - Tell user: questions are in `<context_dir>/clarifications.md` — fill in `**Answer:**` fields and say "done" when ready
+    - Update `session.json`: `current_phase = research`, append `research` to `phases_completed`
+
+### Capture Inline Answers (inline — no agent)
+
+Triggered when state = `clarification_interactive_pending`.
+
+1. Read `session.json` to get `interactive_questions_asked` (the list of Q-IDs presented, e.g. `["Q1", "Q4", "Q7"]`)
+2. Parse the current user message to match answers to Q-IDs:
+   - Explicit: "Q1: A", "first one: B", "1. weighted pipeline"
+   - Positional: if user gives comma-separated answers, map to Q-IDs in order
+   - Accept letter (A/B/C/D) or prose verbatim
+3. For each matched Q-ID: edit `context/clarifications.md`
+   - Locate `### Q{n}:` heading
+   - Find its `**Answer:**` line
+   - Fill in the user's answer text after the colon
+4. Update `session.json`:
+   - `interactive_questions_answered`: true
+   - `current_phase`: "research" (so the artifact-based detection takes over cleanly)
+   - append "research" to `phases_completed`
+5. Count remaining unanswered questions (question_count minus interactive ones already answered)
+6. Tell user:
+   "Got it — I've pre-filled your [N] answers. [M] more questions are in `[context_dir]/clarifications.md`. Answer when ready, or say 'use defaults' to proceed with recommendations."
+7. Next invocation: state detected as `clarification` (some answers filled), Clarification Gate runs normally
 
 ### Clarification Gate
 
