@@ -32,11 +32,56 @@ When you finish (or are forced to stop), write the name of the last completed
 phase to: $workspace/test-status.txt
 (e.g., 'scoping', 'research', 'clarification', 'decisions', 'generation', or 'validation')"
 
-  log_verbose "Running full E2E workflow (budget: \$$MAX_BUDGET_T5)..."
-  echo "  (this may take several minutes)"
+  # Run Claude in the background and stream progress via workspace artifact polling.
+  # This makes long E2E runs observable — you can see which phase is active and
+  # how much time has elapsed, rather than watching a silent process.
+  local log_file
+  log_file=$(mktemp)
+  local start_secs
+  start_secs=$(date +%s)
+
+  _t5_elapsed() { echo "$(( $(date +%s) - start_secs ))s"; }
+
+  local claude_cmd="$CLAUDE_BIN -p --plugin-dir $PLUGIN_DIR --dangerously-skip-permissions --max-budget-usd $MAX_BUDGET_T5"
+  (cd "$workspace" && echo "$e2e_prompt" | _timeout_cmd 2700 $claude_cmd > "$log_file" 2>&1) &
+  local claude_pid=$!
+
+  echo "  [t5] started — budget=\$$MAX_BUDGET_T5, timeout=45min"
+
+  local last_phase_shown="" last_print_secs=0
+  while kill -0 "$claude_pid" 2>/dev/null; do
+    sleep 5
+    local now_elapsed
+    now_elapsed=$(( $(date +%s) - start_secs ))
+
+    # Detect current phase from artifacts (highest-priority first)
+    local current_phase=""
+    if   [[ -f "$context_dir/agent-validation-log.md" ]]; then current_phase="validation"
+    elif [[ -f "$skill_dir/SKILL.md"                  ]]; then current_phase="generation"
+    elif [[ -f "$context_dir/decisions.md"            ]]; then current_phase="decisions"
+    elif [[ -f "$context_dir/clarifications.md"       ]]; then
+      local answered
+      answered=$(grep -c "^\*\*Answer:\*\* [A-Z]" "$context_dir/clarifications.md" 2>/dev/null || echo 0)
+      [[ "$answered" -gt 0 ]] && current_phase="clarification" || current_phase="research"
+    elif [[ -f "$workspace_dir/session.json"          ]]; then current_phase="scoping"
+    fi
+
+    if [[ -n "$current_phase" && "$current_phase" != "$last_phase_shown" ]]; then
+      echo "  [t5] ${now_elapsed}s — reached: $current_phase"
+      last_phase_shown="$current_phase"
+      last_print_secs=$now_elapsed
+    elif (( now_elapsed - last_print_secs >= 30 )); then
+      echo "  [t5] ${now_elapsed}s — running (last: ${last_phase_shown:-waiting for scoping})"
+      last_print_secs=$now_elapsed
+    fi
+  done
+
+  wait "$claude_pid" || true
+  echo "  [t5] $(_t5_elapsed) — done"
 
   local e2e_output
-  e2e_output=$(run_claude_unsafe "$e2e_prompt" "$MAX_BUDGET_T5" 2700 "$workspace")
+  e2e_output=$(cat "$log_file")
+  rm -f "$log_file"
 
   local skill_dir="$workspace/$skill_name"
   local context_dir="$skill_dir/context"
