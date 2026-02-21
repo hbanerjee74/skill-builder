@@ -585,6 +585,25 @@ pub async fn send_refine_message(
             }
         }
 
+        // Ensure the skill's workspace dir exists (needed for transcript logs
+        // and the agent's workspace_dir path). For marketplace skills,
+        // workspace_path/skill_name/ is not created during import.
+        let skill_workspace_dir = Path::new(&workspace_path).join(&skill_name);
+        if !skill_workspace_dir.exists() {
+            if let Err(e) = std::fs::create_dir_all(&skill_workspace_dir) {
+                log::warn!(
+                    "[send_refine_message] failed to create skill workspace dir '{}': {}",
+                    skill_workspace_dir.display(),
+                    e
+                );
+            } else {
+                log::debug!(
+                    "[send_refine_message] created skill workspace dir '{}'",
+                    skill_workspace_dir.display()
+                );
+            }
+        }
+
         log::debug!(
             "[send_refine_message] starting stream session {} agent={} cwd={}",
             session_id, agent_id, config.cwd,

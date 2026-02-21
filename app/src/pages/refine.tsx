@@ -78,7 +78,9 @@ export default function RefinePage() {
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
 
-  const autoSelectedRef = useRef(false);
+  // Track which skillParam was last auto-selected so navigating back with a
+  // different skill (e.g. from the skill library) triggers a fresh selection.
+  const autoSelectedRef = useRef<string | null>(null);
 
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
@@ -205,11 +207,13 @@ export default function RefinePage() {
 
   // --- Auto-select skill from search param ---
   useEffect(() => {
-    if (!skillParam || autoSelectedRef.current || refinableSkills.length === 0) return;
+    if (!skillParam || refinableSkills.length === 0) return;
+    // Re-run if skillParam changes (e.g. navigating back with a different skill).
+    if (autoSelectedRef.current === skillParam) return;
 
     const match = refinableSkills.find((s) => s.name === skillParam);
     if (match) {
-      autoSelectedRef.current = true;
+      autoSelectedRef.current = skillParam;
       handleSelectSkill(match);
     }
   }, [skillParam, refinableSkills, handleSelectSkill]);

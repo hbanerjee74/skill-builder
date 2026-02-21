@@ -103,7 +103,13 @@ pub fn list_refinable_skills(
     }; // conn lock released here
 
     // Filesystem existence checks happen outside the DB lock.
-    Ok(filter_by_skill_md_exists(&skills_path, completed))
+    let result = filter_by_skill_md_exists(&skills_path, completed);
+    log::debug!(
+        "[list_refinable_skills] {} skills eligible for refine (skills_path={})",
+        result.len(),
+        skills_path
+    );
+    Ok(result)
 }
 
 /// Filter completed skills to only those with a SKILL.md on disk.
@@ -112,10 +118,16 @@ fn filter_by_skill_md_exists(skills_path: &str, completed: Vec<SkillSummary>) ->
     completed
         .into_iter()
         .filter(|s| {
-            Path::new(skills_path)
-                .join(&s.name)
-                .join("SKILL.md")
-                .exists()
+            let skill_md = Path::new(skills_path).join(&s.name).join("SKILL.md");
+            let exists = skill_md.exists();
+            if !exists {
+                log::debug!(
+                    "[filter_by_skill_md_exists] '{}' excluded — SKILL.md not found at {}",
+                    s.name,
+                    skill_md.display()
+                );
+            }
+            exists
         })
         .collect()
 }
