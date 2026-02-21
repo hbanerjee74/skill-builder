@@ -108,7 +108,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | `validation` | `resume` | Offer: finalize / improve / regenerate |
 | any + SKILL.md exists | `improve` | → Iterative |
 | any + SKILL.md exists | `validate_only` | → Validation |
-| any | `start_fresh` | Delete `.vibedata/<name>/` + `context/` → Scoping |
+| any | `start_fresh` | Confirm reset, delete `.vibedata/<name>/` + `context/`, tell user session cleared → Scoping |
 | `clarification_interactive_pending` | `express` | Auto-fill empty answers → Clarification Gate → Decisions |
 | any | `express` | Tell user: "Switching to express mode — filling in recommended answers and skipping ahead to decisions." Auto-fill empty `**Answer:**` fields with their `**Recommendation:**` values → Decisions |
 | any | `process_question` | Answer inline. When asked about current phase or state, always state the phase name explicitly: "The current phase is [phase-name]." Use exact names: fresh, scoping, research, clarification, refinement_pending, refinement, decisions, generation, validation. |

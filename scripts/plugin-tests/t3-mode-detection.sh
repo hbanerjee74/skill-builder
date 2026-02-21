@@ -95,7 +95,7 @@ run_t3() {
   # Full express dispatch (research → express → decisions) is tested in T4/T5.
   local dir_express
   dir_express=$(make_temp_dir "t3-express")
-  create_fixture_fresh "$dir_express"
+  create_fixture_research "$dir_express" "$skill_name"
   log_verbose "T3.10 express dispatch workspace: $dir_express"
   local express_output
   express_output=$(run_claude_unsafe \
