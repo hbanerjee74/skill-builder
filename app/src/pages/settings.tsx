@@ -559,20 +559,7 @@ export default function SettingsPage() {
                         {marketplaceValid ? "Valid" : "Test"}
                       </Button>
                     )}
-                    {marketplaceUrl && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground"
-                        onClick={() => {
-                          setMarketplaceUrl("")
-                          setMarketplaceValid(null)
-                          autoSave({ marketplaceUrl: null })
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    )}
+
                   </div>
                   {marketplaceValid === false && (
                     <p className="text-xs text-destructive">
