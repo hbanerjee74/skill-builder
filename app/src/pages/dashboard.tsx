@@ -179,6 +179,10 @@ export default function DashboardPage() {
   const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
 
   const handleContinue = (skill: SkillSummary) => {
+    if (skill.source === 'marketplace') {
+      navigate({ to: "/refine", search: { skill: skill.name } })
+      return
+    }
     useWorkflowStore.getState().setReviewMode(true)
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
