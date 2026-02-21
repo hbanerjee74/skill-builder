@@ -52,7 +52,7 @@ For each of the 5–6 candidate dimensions from the type-scoped set:
 
 ### 2. Select top dimensions
 
-Pick the top scoring dimensions. Aim for 3–5 selections. Do not apply a hard cap — prefer quality of coverage over meeting a target count. The orchestrator may enforce an external threshold, but the skill coordinator selects based on score.
+Pick the top scoring dimensions. Aim for 3–5 selections. Do not apply a hard cap — prefer quality of coverage over meeting a target count.
 
 ### 3. Return the scored dimension table
 
