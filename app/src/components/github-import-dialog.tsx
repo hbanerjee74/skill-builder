@@ -97,6 +97,7 @@ export default function GitHubImportDialog({
       setSelectedPaths(new Set(available.map((s) => s.path)))
       setStep("select")
     } catch (err) {
+      console.error("[github-import] Failed to browse skills:", err)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setLoading(false)
@@ -158,6 +159,7 @@ export default function GitHubImportDialog({
       }
 
     } catch (err) {
+      console.error("[github-import] Import failed:", err)
       setError(err instanceof Error ? err.message : String(err))
       setStep("select")
     }

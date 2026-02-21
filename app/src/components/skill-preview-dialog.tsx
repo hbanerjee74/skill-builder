@@ -49,6 +49,7 @@ export default function SkillPreviewDialog({
       })
       .catch((err) => {
         if (!cancelled) {
+          console.error("[skill-preview] Failed to load skill content:", err)
           setError(err instanceof Error ? err.message : String(err))
           setLoading(false)
         }

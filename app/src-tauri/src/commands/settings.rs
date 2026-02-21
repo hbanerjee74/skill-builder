@@ -52,6 +52,7 @@ pub fn save_settings(
     db: tauri::State<'_, Db>,
     settings: AppSettings,
 ) -> Result<(), String> {
+    log::info!("[save_settings]");
     let mut settings = settings;
     // Normalize skills_path before persisting
     if let Some(ref sp) = settings.skills_path {
@@ -59,7 +60,10 @@ pub fn save_settings(
         settings.skills_path = Some(normalized);
     }
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[save_settings] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
 
     // Handle skills_path changes: first set → init; changed → move
     let old_settings = crate::db::read_settings(&conn)?;

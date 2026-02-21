@@ -76,8 +76,9 @@ export function AppLayout() {
 
         setReconciled(true);
       })
-      .catch(() => {
+      .catch((err) => {
         // Reconciliation failed (e.g., workspace not set up yet) — proceed anyway
+        console.warn("[app-layout] Reconciliation failed:", err);
         setReconciled(true);
       });
   }, [settingsLoaded]);

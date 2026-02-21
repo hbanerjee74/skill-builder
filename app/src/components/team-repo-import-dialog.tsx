@@ -86,6 +86,7 @@ export default function TeamRepoImportDialog({
         setConflictSkill(selected)
         setStep("select")
       } else {
+        console.error("[team-repo-import] Import failed:", err)
         toast.error(`Import failed: ${message}`)
         setStep("select")
       }
@@ -102,6 +103,7 @@ export default function TeamRepoImportDialog({
       onOpenChange(false)
       await onImported()
     } catch (err) {
+      console.error("[team-repo-import] Force import failed:", err)
       const message = err instanceof Error ? err.message : String(err)
       toast.error(`Import failed: ${message}`)
       setStep("select")

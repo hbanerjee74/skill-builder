@@ -94,7 +94,8 @@ export default function DashboardPage() {
         workspacePath,
       })
       setSkills(result)
-    } catch {
+    } catch (err) {
+      console.error("[dashboard] Failed to load skills:", err)
       setSkills([])
     } finally {
       setLoading(false)
@@ -105,7 +106,8 @@ export default function DashboardPage() {
     try {
       const tags = await invoke<string[]>("get_all_tags")
       setAvailableTags(tags)
-    } catch {
+    } catch (err) {
+      console.error("[dashboard] Failed to load tags:", err)
       setAvailableTags([])
     }
   }, [])
