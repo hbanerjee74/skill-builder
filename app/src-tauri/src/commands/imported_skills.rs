@@ -1923,6 +1923,69 @@ type: platform
         assert!(crate::db::get_imported_skill(&conn, "research").unwrap().is_some());
     }
 
+    #[test]
+    fn test_seed_bundled_validate_skill_copies_reference_specs() {
+        // The validate-skill bundled skill has 3 reference spec files (no nested subdirs).
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("validate-skill");
+        fs::create_dir_all(skill_src.join("references")).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: validate-skill\ndescription: Validates a completed skill\n---\n# Validate Skill",
+        ).unwrap();
+        fs::write(skill_src.join("references").join("validate-quality-spec.md"), "# Quality Checker").unwrap();
+        fs::write(skill_src.join("references").join("test-skill-spec.md"), "# Test Evaluator").unwrap();
+        fs::write(skill_src.join("references").join("companion-recommender-spec.md"), "# Companion Recommender").unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let skill = crate::db::get_imported_skill(&conn, "validate-skill").unwrap().unwrap();
+        assert!(skill.is_bundled);
+        assert_eq!(skill.skill_id, "bundled-validate-skill");
+        assert_eq!(skill.description.as_deref(), Some("Validates a completed skill"));
+
+        let dest = workspace.path().join(".claude").join("skills").join("validate-skill");
+        assert!(dest.join("SKILL.md").exists());
+        assert!(dest.join("references").join("validate-quality-spec.md").exists());
+        assert!(dest.join("references").join("test-skill-spec.md").exists());
+        assert!(dest.join("references").join("companion-recommender-spec.md").exists());
+    }
+
+    #[test]
+    fn test_delete_bundled_validate_skill_blocked() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let skills_dir = workspace.path().join(".claude").join("skills").join("validate-skill");
+        fs::create_dir_all(&skills_dir).unwrap();
+        fs::write(skills_dir.join("SKILL.md"), "---\nname: validate-skill\n---\n# Validate Skill").unwrap();
+
+        let skill = ImportedSkill {
+            skill_id: "bundled-validate-skill".to_string(),
+            skill_name: "validate-skill".to_string(),
+            domain: None,
+            is_active: true,
+            disk_path: skills_dir.to_string_lossy().to_string(),
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            trigger_text: None,
+        };
+        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+
+        let result = delete_imported_skill_inner("validate-skill", workspace_path, &conn);
+        assert!(result.is_err(), "Deleting bundled validate-skill should fail");
+        let err = result.unwrap_err();
+        assert!(err.contains("Cannot delete bundled skill"), "Expected bundled guard error, got: {}", err);
+
+        assert!(crate::db::get_imported_skill(&conn, "validate-skill").unwrap().is_some());
+    }
+
     // --- Export skill tests ---
 
     #[test]

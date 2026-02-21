@@ -359,4 +359,69 @@ describe("ImportedSkillCard", () => {
       expect(onToggleActive).toHaveBeenCalledWith("research", false);
     });
   });
+
+  describe("validate-skill bundled skill", () => {
+    const validateSkill: ImportedSkill = {
+      ...baseSkill,
+      skill_id: "bundled-validate-skill",
+      skill_name: "validate-skill",
+      is_bundled: true,
+      is_active: true,
+      description: "Validates a completed skill against its decisions and clarifications",
+    };
+
+    it("shows Built-in badge for validate-skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={validateSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.getByText("Built-in")).toBeInTheDocument();
+    });
+
+    it("does not show delete button for validate-skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={validateSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      expect(screen.queryByRole("button", { name: /Delete skill/i })).not.toBeInTheDocument();
+    });
+
+    it("shows toggle active switch for validate-skill", () => {
+      render(
+        <ImportedSkillCard
+          skill={validateSkill}
+          onToggleActive={vi.fn()}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      const toggle = screen.getByRole("switch");
+      expect(toggle).toBeInTheDocument();
+      expect(toggle).not.toBeDisabled();
+    });
+
+    it("calls onToggleActive when validate-skill toggle is clicked", async () => {
+      const user = userEvent.setup();
+      const onToggleActive = vi.fn();
+      render(
+        <ImportedSkillCard
+          skill={validateSkill}
+          onToggleActive={onToggleActive}
+          onDelete={vi.fn()}
+          onPreview={vi.fn()}
+        />
+      );
+      const toggle = screen.getByRole("switch");
+      await user.click(toggle);
+      expect(onToggleActive).toHaveBeenCalledWith("validate-skill", false);
+    });
+  });
 });

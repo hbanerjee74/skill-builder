@@ -29,13 +29,13 @@ run_t1() {
     record_result "$tier" "validate_sh_overall" "FAIL" "$fail_count individual failures"
   fi
 
-  # ---- T1.3: Agent file count (10 flat agents) ----
+  # ---- T1.3: Agent file count (7 flat agents) ----
   local agent_count
   agent_count=$(find "$PLUGIN_DIR/agents" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
-  assert_count_eq "$tier" "agent_file_count_is_10" "10" "$agent_count"
+  assert_count_eq "$tier" "agent_file_count_is_7" "7" "$agent_count"
 
   # ---- T1.4: Each expected agent exists in agents/ ----
-  local all_agents="answer-evaluator companion-recommender confirm-decisions detailed-research generate-skill refine-skill research-orchestrator test-skill validate-quality validate-skill"
+  local all_agents="answer-evaluator confirm-decisions detailed-research generate-skill refine-skill research-orchestrator validate-skill"
 
   for agent in $all_agents; do
     assert_file_exists "$tier" "agent_${agent}" "$PLUGIN_DIR/agents/${agent}.md"
@@ -64,7 +64,7 @@ run_t1() {
   expected_model_for() {
     case "$1" in
       confirm-decisions) echo "opus" ;;
-      answer-evaluator|test-skill) echo "haiku" ;;
+      answer-evaluator) echo "haiku" ;;
       *) echo "sonnet" ;;
     esac
   }
@@ -175,4 +175,10 @@ run_t1() {
   local dim_count
   dim_count=$(find "$PLUGIN_DIR/agent-sources/workspace/skills/research/references/dimensions" -name "*.md" -type f 2>/dev/null | wc -l | tr -d ' ')
   assert_count_eq "$tier" "bundled_research_dimension_count_is_18" "18" "$dim_count"
+
+  # ---- T1.13: Bundled validate-skill source files present ----
+  assert_file_exists "$tier" "bundled_validate_skill_source" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/SKILL.md"
+  assert_file_exists "$tier" "bundled_validate_quality_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/validate-quality-spec.md"
+  assert_file_exists "$tier" "bundled_test_skill_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/test-skill-spec.md"
+  assert_file_exists "$tier" "bundled_companion_recommender_spec" "$PLUGIN_DIR/agent-sources/workspace/skills/validate-skill/references/companion-recommender-spec.md"
 }

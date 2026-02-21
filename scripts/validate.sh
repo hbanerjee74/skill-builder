@@ -41,8 +41,8 @@ fi
 # ---------- T1.2 + T1.3: Agent files + frontmatter ----------
 echo "=== Agents ==="
 
-# All 9 agents — flat in agents/ (name:expected_model)
-ALL_AGENTS="answer-evaluator:haiku companion-recommender:sonnet confirm-decisions:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-orchestrator:sonnet test-skill:haiku validate-quality:sonnet validate-skill:sonnet"
+# All 7 agents — flat in agents/ (name:expected_model)
+ALL_AGENTS="answer-evaluator:haiku confirm-decisions:opus detailed-research:sonnet generate-skill:sonnet refine-skill:sonnet research-orchestrator:sonnet validate-skill:sonnet"
 
 for entry in $ALL_AGENTS; do
   name="${entry%%:*}"
@@ -272,6 +272,25 @@ if [ -f "$BUNDLED_SKILLS_DIR/research/SKILL.md" ]; then
   fi
 else
   fail "agent-sources/workspace/skills/research/SKILL.md not found"
+fi
+# validate-skill bundled skill
+if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md" ]; then
+  fm=$(awk 'BEGIN{n=0} /^---$/{n++; next} n==1{print}' "$BUNDLED_SKILLS_DIR/validate-skill/SKILL.md")
+  skill_name=$(echo "$fm" | grep "^name:" | sed 's/name: *//')
+  if [ "$skill_name" = "validate-skill" ]; then
+    pass "bundled validate-skill has correct name"
+  else
+    fail "bundled validate-skill name='$skill_name', expected 'validate-skill'"
+  fi
+  for ref in references/validate-quality-spec.md references/test-skill-spec.md references/companion-recommender-spec.md; do
+    if [ -f "$BUNDLED_SKILLS_DIR/validate-skill/$ref" ]; then
+      pass "validate-skill/$ref exists"
+    else
+      fail "validate-skill/$ref missing"
+    fi
+  done
+else
+  fail "agent-sources/workspace/skills/validate-skill/SKILL.md not found"
 fi
 
 # ---------- Summary ----------
