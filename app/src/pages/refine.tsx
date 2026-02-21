@@ -34,6 +34,13 @@ import { PreviewPanel } from "@/components/refine/preview-panel";
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
 
+/** Fire-and-forget: release skill lock and shut down persistent sidecar. */
+function releaseSkillResources(skillName: string, reason: string): void {
+  releaseLock(skillName).catch(() => {});
+  console.log("[refine] releaseLock: %s (%s)", skillName, reason);
+  cleanupSkillSidecar(skillName).catch(() => {});
+}
+
 /** Load skill files from disk, returning null on failure. */
 async function loadSkillFiles(basePath: string, skillName: string): Promise<SkillFile[] | null> {
   try {
@@ -97,11 +104,8 @@ export default function RefinePage() {
       closeRefineSession(store.sessionId).catch(() => {});
     }
 
-    // Fire-and-forget: release skill lock and shut down persistent sidecar for this skill
     if (store.selectedSkill) {
-      releaseLock(store.selectedSkill.name).catch(() => {});
-      console.log("[refine] releaseLock: %s (navigation)", store.selectedSkill.name);
-      cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+      releaseSkillResources(store.selectedSkill.name, "navigation");
     }
 
     proceed?.();
@@ -142,7 +146,7 @@ export default function RefinePage() {
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== skill.name) {
         releaseLock(prevSkill.name).catch(() => {});
-        console.log("[refine] releaseLock: %s", prevSkill.name);
+        console.log("[refine] releaseLock: %s (skill switch)", prevSkill.name);
       }
 
       // Acquire lock on the new skill before proceeding
@@ -262,11 +266,8 @@ export default function RefinePage() {
         closeRefineSession(store.sessionId).catch(() => {});
       }
 
-      // Fire-and-forget: release skill lock and shut down persistent sidecar
       if (store.selectedSkill) {
-        releaseLock(store.selectedSkill.name).catch(() => {});
-        console.log("[refine] releaseLock: %s (unmount)", store.selectedSkill.name);
-        cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
+        releaseSkillResources(store.selectedSkill.name, "unmount");
       }
     };
   }, []);
