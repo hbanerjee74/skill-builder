@@ -126,7 +126,7 @@ export default function SkillListRow({
             onClick={() => onRefine(skill)}
           />
         )}
-        {!isMarketplace && canDownload && onDownload && (
+        {canDownload && onDownload && (
           <IconAction
             icon={<Download className="size-3" />}
             label="Download skill"

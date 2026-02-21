@@ -192,7 +192,7 @@ export default function SkillCard({
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            {!isMarketplace && canDownload && onDownload && (
+            {canDownload && onDownload && (
               <IconAction
                 icon={<Download className="size-3" />}
                 label="Download skill"

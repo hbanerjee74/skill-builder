@@ -1,0 +1,223 @@
+import { describe, it, expect, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import SkillListRow from "@/components/skill-list-row";
+import type { SkillSummary } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const createdComplete: SkillSummary = {
+  name: "my-skill",
+  domain: "Engineering",
+  current_step: null,
+  status: "completed",
+  last_modified: null,
+  tags: [],
+  skill_type: "skill-builder",
+  author_login: null,
+  author_avatar: null,
+  intake_json: null,
+  source: "created",
+};
+
+const createdIncomplete: SkillSummary = {
+  ...createdComplete,
+  status: "running",
+  current_step: "step 2",
+};
+
+const marketplaceSkill: SkillSummary = {
+  ...createdComplete,
+  source: "marketplace",
+};
+
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
+
+function renderRow(
+  skill: SkillSummary,
+  overrides: Partial<React.ComponentProps<typeof SkillListRow>> = {}
+) {
+  const onContinue = vi.fn();
+  const onDelete = vi.fn();
+  const onDownload = vi.fn();
+  const onEdit = vi.fn();
+  const onEditWorkflow = vi.fn();
+  const onRefine = vi.fn();
+
+  render(
+    <SkillListRow
+      skill={skill}
+      onContinue={onContinue}
+      onDelete={onDelete}
+      onDownload={onDownload}
+      onEdit={onEdit}
+      onEditWorkflow={onEditWorkflow}
+      onRefine={onRefine}
+      {...overrides}
+    />
+  );
+
+  return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow, onRefine };
+}
+
+// ---------------------------------------------------------------------------
+// SkillListRow — created skill
+// ---------------------------------------------------------------------------
+
+describe("SkillListRow — created skill", () => {
+  it("shows Edit Workflow button", () => {
+    renderRow(createdComplete);
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  });
+
+  it("shows Refine button when workflow is complete", () => {
+    renderRow(createdComplete);
+    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Download button when workflow is complete", () => {
+    renderRow(createdComplete);
+    expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Delete button", () => {
+    renderRow(createdComplete);
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
+  });
+
+  it("shows More Actions button", () => {
+    renderRow(createdComplete);
+    expect(screen.getByRole("button", { name: /More actions/i })).toBeInTheDocument();
+  });
+
+  it("hides Refine when workflow is incomplete", () => {
+    renderRow(createdIncomplete);
+    expect(screen.queryByRole("button", { name: /Refine skill/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Download when workflow is incomplete", () => {
+    renderRow(createdIncomplete);
+    expect(screen.queryByRole("button", { name: /Download skill/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Edit Workflow and Delete when incomplete", () => {
+    renderRow(createdIncomplete);
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
+  });
+
+  it("shows progress based on current_step", () => {
+    renderRow(createdIncomplete); // step 2 → 50%
+    expect(screen.getAllByText("50%").length).toBeGreaterThan(0);
+  });
+
+  it("shows 100% when complete", () => {
+    renderRow(createdComplete);
+    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+  });
+
+  it("calls onContinue when row is clicked", async () => {
+    const user = userEvent.setup();
+    const { onContinue } = renderRow(createdComplete);
+    await user.click(screen.getByText("my-skill"));
+    expect(onContinue).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("calls onEditWorkflow when Edit Workflow is clicked", async () => {
+    const user = userEvent.setup();
+    const { onEditWorkflow } = renderRow(createdComplete);
+    await user.click(screen.getByRole("button", { name: /Edit workflow/i }));
+    expect(onEditWorkflow).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("calls onDelete when Delete is clicked", async () => {
+    const user = userEvent.setup();
+    const { onDelete } = renderRow(createdComplete);
+    await user.click(screen.getByRole("button", { name: /Delete skill/i }));
+    expect(onDelete).toHaveBeenCalledWith(createdComplete);
+  });
+
+  it("shows Edit Details inside More Actions dropdown", async () => {
+    const user = userEvent.setup();
+    renderRow(createdComplete);
+    await user.click(screen.getByRole("button", { name: /More actions/i }));
+    expect(screen.getByText("Edit details")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkillListRow — marketplace skill (source='marketplace')
+// ---------------------------------------------------------------------------
+
+describe("SkillListRow — marketplace skill", () => {
+  it("hides Edit Workflow button", () => {
+    renderRow(marketplaceSkill);
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Refine button", () => {
+    renderRow(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Refine skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Download button", () => {
+    renderRow(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Download skill/i })).toBeInTheDocument();
+  });
+
+  it("shows Delete button", () => {
+    renderRow(marketplaceSkill);
+    expect(screen.getByRole("button", { name: /Delete skill/i })).toBeInTheDocument();
+  });
+
+  it("hides More Actions button", () => {
+    renderRow(marketplaceSkill);
+    expect(screen.queryByRole("button", { name: /More actions/i })).not.toBeInTheDocument();
+  });
+
+  it("always shows 100% progress regardless of step data", () => {
+    renderRow({ ...marketplaceSkill, status: "running", current_step: "step 1" });
+    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+  });
+
+  it("calls onContinue when row is clicked", async () => {
+    const user = userEvent.setup();
+    const { onContinue } = renderRow(marketplaceSkill);
+    await user.click(screen.getByText("my-skill"));
+    expect(onContinue).toHaveBeenCalledWith(marketplaceSkill);
+  });
+
+  it("calls onRefine when Refine is clicked", async () => {
+    const user = userEvent.setup();
+    const { onRefine } = renderRow(marketplaceSkill);
+    await user.click(screen.getByRole("button", { name: /Refine skill/i }));
+    expect(onRefine).toHaveBeenCalledWith(marketplaceSkill);
+  });
+
+  it("calls onDownload when Download is clicked", async () => {
+    const user = userEvent.setup();
+    const { onDownload } = renderRow(marketplaceSkill);
+    await user.click(screen.getByRole("button", { name: /Download skill/i }));
+    expect(onDownload).toHaveBeenCalledWith(marketplaceSkill);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkillListRow — null/undefined source defaults to created behaviour
+// ---------------------------------------------------------------------------
+
+describe("SkillListRow — null/undefined source defaults to created behaviour", () => {
+  it("shows Edit Workflow when source is null", () => {
+    renderRow({ ...createdComplete, source: null });
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  });
+
+  it("shows Edit Workflow when source is undefined", () => {
+    renderRow({ ...createdComplete, source: undefined });
+    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  });
+});
