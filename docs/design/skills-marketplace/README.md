@@ -11,7 +11,7 @@ The marketplace is a one-way import layer — skills flow in from a GitHub repo,
 | **Purpose** | App infrastructure — powers the workflow agents | Domain knowledge — skills users create, import, and refine |
 | **Examples** | `research`, `validate-skill`, `skill-builder-practices` | Sales Pipeline Analytics, dbt Incremental Silver |
 | **Storage** | `workspace_path/.claude/skills/` (agent workspace) | `skills_path/` (user-configured output directory) |
-| **Wired into** | Agent workspace CLAUDE.md | Dashboard + Refine page |
+| **After import** | Wired into workspace CLAUDE.md — Claude Code loads the skill on every agent run. Active/inactive toggle moves the skill in and out of CLAUDE.md. | Appears in the dashboard as a completed skill. Immediately refinable — user can open it in the Refine page and tailor it to their specific context. |
 | **DB tables** | `imported_skills` only | `imported_skills` + `workflow_runs` |
 
 A data engineer installing a custom `research` skill in Settings→Skills is changing how the workflow itself runs. A data engineer importing a domain skill into the Skill Library is acquiring a finished knowledge package to deploy to their own Claude Code projects.
@@ -111,17 +111,7 @@ disable-model-invocation: false
 
 ---
 
-## Skill Lifecycle
-
-### CLAUDE.md integration
-
-`update_skills_section` regenerates the `## Custom Skills` section of the agent workspace CLAUDE.md on every import, toggle, or delete. Each active skill gets a `### /{name}` entry with its `description` read from SKILL.md on disk (not from DB). The `## Customization` section content is preserved across rebuilds.
-
-### Refine integration
-
-Marketplace skills qualify for `list_refinable_skills` (status='completed', SKILL.md exists on disk). On first refine use, the skill's scratch workspace directory is created (marketplace imports don't have one until then, so transcript logs can be written). The refine page auto-select tracks by skill name — navigating from the dashboard to a specific skill correctly selects it even if a different skill was previously active.
-
-### Skill creation wizard
+## Skill Creation Wizard
 
 Skills built via the workflow go through a 4-step intake wizard:
 
@@ -130,6 +120,6 @@ Skills built via the workflow go through a 4-step intake wizard:
 3. **Behaviour** — `argument_hint`, `user_invocable`, `disable_model_invocation`
 4. **Options** — model preference (skippable)
 
-The extended frontmatter fields from the wizard are stored on the `workflow_runs` row and written into the generated SKILL.md — unifying the metadata schema between built and marketplace skills.
+The frontmatter fields from the wizard are written into the generated SKILL.md, giving built skills the same metadata schema as marketplace-imported skills.
 
-**Marketplace check**: when a marketplace URL is configured and the user starts creating a new skill, the wizard checks for matching skills in the marketplace (by name/domain) and offers "Import and refine" before starting the research workflow.
+**Marketplace check**: when a marketplace URL is configured and the user starts creating a new skill, the wizard checks for matching skills in the marketplace and offers "Import and refine" before starting the research workflow.
