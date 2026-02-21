@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -339,6 +340,8 @@ export default function DashboardPage() {
             onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
             marketplaceConfigured={!!marketplaceUrl}
             isLoggedIn={isLoggedIn}
+            open={marketplaceOpen}
+            onOpenChange={setMarketplaceOpen}
           />
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
@@ -440,6 +443,10 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
+          onOpenMarketplace={(_typeFilter) => {
+            setCreateOpen(false)
+            setMarketplaceOpen(true)
+          }}
         />
       )}
 

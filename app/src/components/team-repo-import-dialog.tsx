@@ -31,6 +31,10 @@ interface TeamRepoImportDialogProps {
   onImported: () => Promise<void>
   marketplaceConfigured: boolean
   isLoggedIn: boolean
+  /** Optional: controlled open state from parent. */
+  open?: boolean
+  /** Optional: controlled onOpenChange from parent. */
+  onOpenChange?: (open: boolean) => void
 }
 
 type Step = "loading" | "select" | "empty" | "importing"
@@ -39,8 +43,14 @@ export default function TeamRepoImportDialog({
   onImported,
   marketplaceConfigured,
   isLoggedIn,
+  open: externalOpen,
+  onOpenChange: externalOnOpenChange,
 }: TeamRepoImportDialogProps) {
-  const [open, onOpenChange] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = externalOpen !== undefined ? externalOpen : internalOpen
+  const onOpenChange = externalOnOpenChange !== undefined
+    ? externalOnOpenChange
+    : setInternalOpen
   const [step, setStep] = useState<Step>("loading")
   const [skills, setSkills] = useState<TeamRepoSkill[]>([])
   const [selected, setSelected] = useState<TeamRepoSkill | null>(null)
@@ -98,11 +108,12 @@ export default function TeamRepoImportDialog({
     }
   }
 
-  const buttonTitle = !marketplaceConfigured
-    ? "Configure marketplace URL in Settings"
-    : !isLoggedIn
-      ? "Sign in to GitHub in Settings"
-      : "Import skills from team repository"
+  let buttonTitle = "Import skills from team repository"
+  if (!marketplaceConfigured) {
+    buttonTitle = "Configure marketplace URL in Settings"
+  } else if (!isLoggedIn) {
+    buttonTitle = "Sign in to GitHub in Settings"
+  }
 
   return (
     <>
