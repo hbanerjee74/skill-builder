@@ -1,5 +1,5 @@
 ---
-name: generate-skill
+name: building-skills
 description: Generate domain-specific Claude skills through a guided multi-agent workflow. Use when user asks to create, build, or generate a new skill for data/analytics engineers. Orchestrates research, clarification, decision-making, skill generation, and validation phases with human review gates. Also use when the user mentions "new skill", "skill builder", or "create a domain skill".
 ---
 
@@ -118,13 +118,14 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 1. Ask: skill type (platform / domain / source / data-engineering), domain/topic, and optionally "what does Claude typically get wrong in this area?"
 2. Derive `skill_name` (kebab-case from domain), confirm with user
 3. Create directories: `.vibedata/<skill-name>/`, `<skill-dir>/`, `<skill-dir>/context/`, `<skill-dir>/references/`
+   - Default `skill_dir`: `~/skill-builder/<skill-name>/`. Ask user only if they mention a different location.
 4. Write `.vibedata/<skill-name>/session.json`:
    ```json
    {
      "skill_name": "<skill-name>",
      "skill_type": "<skill-type>",
      "domain": "<domain>",
-     "skill_dir": "./<skill-name>/",
+     "skill_dir": "~/skill-builder/<skill-name>/",
      "created_at": "<ISO timestamp>",
      "last_activity": "<ISO timestamp>",
      "current_phase": "scoping",
@@ -222,6 +223,15 @@ Passes: skill_dir, context_dir, workspace_dir, skill_type,
 
 - Supports `/rewrite` (full rewrite), `/validate` (re-run validation), `@file` (target specific file)
 - After agent returns: ask user to review changes, offer further iterations or validation
+
+### Moving the Skill Directory
+
+If the user reports they moved the skill dir, or asks to relocate it:
+
+1. Confirm the new path with the user
+2. Move the skill directory: `mv <old-skill-dir> <new-skill-dir>`
+3. Update `session.json.skill_dir` to the new path
+4. Confirm to the user: "Skill directory moved to `<new-skill-dir>`. Session updated."
 
 ---
 

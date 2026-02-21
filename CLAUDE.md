@@ -74,7 +74,7 @@ Determine what you changed, then pick the right runner:
 | Rust command | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
 | Sidecar code | `cd app/sidecar && npx vitest run` |
 | Agent prompt (`agents/`) | `./scripts/test-plugin.sh t1` |
-| Coordinator (`skills/generate-skill/SKILL.md`) | `./scripts/test-plugin.sh t1 t2 t3` |
+| Coordinator (`skills/building-skills/SKILL.md`) | `./scripts/test-plugin.sh t1 t2 t3` |
 | Mock templates or E2E fixtures | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | `app/tests/run.sh` (all levels) |
 | Eval scripts | `app/tests/run.sh eval` |
@@ -122,7 +122,7 @@ Every new feature must include logging. The app uses `log` crate (Rust) and `con
 
 Both frontends use the same files — no conversion needed:
 - `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK). The plugin packages it into `skills/generate-skill/references/` via `scripts/build-plugin-skill.sh` — run this script after modifying the file.
+- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK). The plugin packages it into `skills/building-skills/references/` via `scripts/build-plugin-skill.sh` — run this script after modifying the file.
 
 ## Issue Management
 
