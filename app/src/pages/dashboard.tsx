@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -341,6 +341,15 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-6 p-6">
       {workspacePath && skillsPath && (
         <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setSkillLibraryMarketplaceOpen(true)}
+            disabled={!marketplaceUrl}
+            title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
+          >
+            <Github className="size-4" />
+            Marketplace
+          </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             New Skill
