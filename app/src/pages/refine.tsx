@@ -100,6 +100,7 @@ export default function RefinePage() {
     // Fire-and-forget: release skill lock and shut down persistent sidecar for this skill
     if (store.selectedSkill) {
       releaseLock(store.selectedSkill.name).catch(() => {});
+      console.log("[refine] releaseLock: %s (navigation)", store.selectedSkill.name);
       cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
     }
 
@@ -141,12 +142,15 @@ export default function RefinePage() {
       const prevSkill = store.selectedSkill;
       if (prevSkill && prevSkill.name !== skill.name) {
         releaseLock(prevSkill.name).catch(() => {});
+        console.log("[refine] releaseLock: %s", prevSkill.name);
       }
 
       // Acquire lock on the new skill before proceeding
       try {
         await acquireLock(skill.name);
+        console.log("[refine] acquireLock: %s", skill.name);
       } catch (err) {
+        console.error("[refine] acquireLock failed: %s", skill.name, err);
         toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`);
         return;
       }
@@ -261,6 +265,7 @@ export default function RefinePage() {
       // Fire-and-forget: release skill lock and shut down persistent sidecar
       if (store.selectedSkill) {
         releaseLock(store.selectedSkill.name).catch(() => {});
+        console.log("[refine] releaseLock: %s (unmount)", store.selectedSkill.name);
         cleanupSkillSidecar(store.selectedSkill.name).catch(() => {});
       }
     };
