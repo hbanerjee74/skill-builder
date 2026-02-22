@@ -291,6 +291,7 @@ pub(crate) async fn list_github_skills_inner(
 
     // Fetch each SKILL.md and parse frontmatter
     let mut skills = Vec::new();
+    let has_value = |opt: &Option<String>| opt.as_deref().is_some_and(|s| !s.is_empty());
 
     for skill_md_path in &skill_md_paths {
         let raw_url = format!(
@@ -325,7 +326,6 @@ pub(crate) async fn list_github_skills_inner(
         );
 
         // Filter out skills missing required front matter fields — they must not appear in the UI
-        let has_value = |opt: &Option<String>| opt.as_deref().is_some_and(|s| !s.is_empty());
         if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
             log::warn!(
                 "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
@@ -341,13 +341,8 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or(skill_md_path)
             .trim_end_matches('/');
 
-        // Derive a display name: frontmatter name > directory name > "unknown"
-        let dir_name = skill_dir
-            .rsplit('/')
-            .next()
-            .unwrap_or(skill_dir);
-
-        let name = fm_name.unwrap_or_else(|| dir_name.to_string());
+        // Safety: the `continue` above guarantees fm_name.is_some() at this point.
+        let name = fm_name.unwrap();
 
         skills.push(AvailableSkill {
             path: skill_dir.to_string(),
@@ -759,7 +754,7 @@ pub(crate) async fn import_single_skill(
 
     let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
-    // Log absent optional fields at info level
+    // Log absent optional fields at debug level — this is internal detail, not a lifecycle event
     for (field, absent) in [
         ("version", fm.version.is_none()),
         ("model", fm.model.is_none()),
@@ -768,7 +763,7 @@ pub(crate) async fn import_single_skill(
         ("disable-model-invocation", fm.disable_model_invocation.is_none()),
     ] {
         if absent {
-            log::info!(
+            log::debug!(
                 "import_single_skill: optional field '{}' absent for skill '{}'",
                 field,
                 skill_name
@@ -1158,23 +1153,40 @@ mod tests {
 
     #[test]
     fn test_required_frontmatter_filtering_logic() {
-        // Simulate the filtering logic applied in list_github_skills_inner:
-        // skills missing name, description, or domain must be filtered out.
-        let has = |opt: Option<&str>| opt.is_some_and(|s| !s.is_empty());
+        // Exercise the real parse_frontmatter_full path so that regressions in
+        // the production parsing or predicate are caught here.
+        let parse = super::super::imported_skills::parse_frontmatter_full;
 
-        // (name, description, domain) -> should_include
-        let cases: Vec<(Option<&str>, Option<&str>, Option<&str>, bool)> = vec![
-            (Some("analytics"), Some("Desc"), Some("data"), true),
-            (None,              Some("Desc"), Some("data"), false),
-            (Some("reporting"), None,         Some("data"), false),
-            (Some("research"),  Some("Desc"), None,         false),
-            (None,              None,         None,         false),
-        ];
+        // Complete, valid frontmatter — all three required fields must be present.
+        let complete = parse(
+            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
+        );
+        assert_eq!(complete.name.as_deref(), Some("analytics"));
+        assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
+        assert_eq!(complete.domain.as_deref(), Some("data"));
 
-        for (name, desc, domain, expected) in &cases {
-            let result = has(*name) && has(*desc) && has(*domain);
-            assert_eq!(result, *expected, "name={:?} desc={:?} domain={:?}", name, desc, domain);
-        }
+        // Whitespace-only values: trim_opt converts these to None, so the skill
+        // should be treated as missing the field.
+        let whitespace_name = parse(
+            "---\nname:    \ndescription: Desc\ndomain: data\n---\n",
+        );
+        assert!(whitespace_name.name.is_none(), "whitespace-only name must be None");
+
+        let whitespace_desc = parse(
+            "---\nname: reporting\ndescription:   \ndomain: data\n---\n",
+        );
+        assert!(whitespace_desc.description.is_none(), "whitespace-only description must be None");
+
+        let whitespace_domain = parse(
+            "---\nname: research\ndescription: Desc\ndomain:  \n---\n",
+        );
+        assert!(whitespace_domain.domain.is_none(), "whitespace-only domain must be None");
+
+        // No frontmatter at all — all fields None.
+        let empty = parse("# Just a heading\nNo frontmatter here.");
+        assert!(empty.name.is_none());
+        assert!(empty.description.is_none());
+        assert!(empty.domain.is_none());
     }
 
     #[test]
