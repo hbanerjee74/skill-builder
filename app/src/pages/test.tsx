@@ -122,10 +122,14 @@ Plan B (no skill loaded):
 ${withoutPlanText}
 """
 
-Use the Evaluation Rubric from your context to compare the two plans. Output ONLY bullet points, one per line, using:
+Use the Evaluation Rubric from your context to compare the two plans.
+
+First, output bullet points (one per line) using:
 - \u2191 if Plan A (with skill) is meaningfully better on this dimension
 - \u2193 if Plan B (no skill) is meaningfully better on this dimension
-- \u2192 if both plans are similar, weak, or neither is clearly better`;
+- \u2192 if both plans are similar, weak, or neither is clearly better
+
+Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
 }
 
 type EvalDirection = "up" | "down" | "neutral" | null;
@@ -149,6 +153,23 @@ function parseEvalLine(line: string): EvalLine {
   if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
   if (trimmed.startsWith("\u2192")) return { direction: "neutral", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
+}
+
+/** Split evaluator output into directional bullet lines and a recommendations block. */
+function parseEvalOutput(text: string): { lines: EvalLine[]; recommendations: string } {
+  const markerMatch = /^##\s*recommendations/im.exec(text);
+  if (!markerMatch) {
+    return {
+      lines: text.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+      recommendations: "",
+    };
+  }
+  const bulletSection = text.slice(0, markerMatch.index).trim();
+  const recsSection = text.slice(markerMatch.index + markerMatch[0].length).trim();
+  return {
+    lines: bulletSection.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+    recommendations: recsSection,
+  };
 }
 
 /** Return the arrow character for an eval direction. */
@@ -695,20 +716,18 @@ export default function TestPage() {
   const isRunning = state.phase === "running" || state.phase === "evaluating";
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
 
-  const evalLines = state.evalText
-    .split("\n")
-    .map(parseEvalLine)
-    .filter((l) => l.text.length > 0);
+  const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
   const needsRefinement = state.phase === "done" && evalLines.some((l) => l.direction === "down");
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
-    const downLines = evalLines.filter((l) => l.direction === "down");
-    const recommendation = `The skill evaluation identified these gaps based on the dbt rubric:\n\n${downLines.map((l) => `• ${l.text}`).join("\n")}\n\nPlease refine the skill to address these gaps.`;
-    useRefineStore.getState().setPendingInitialMessage(recommendation);
+    const message = evalRecommendations
+      ? `The skill evaluation identified these improvement opportunities:\n\n${evalRecommendations}\n\nPlease refine the skill to address these gaps.`
+      : `The skill evaluation identified these gaps:\n\n${evalLines.filter((l) => l.direction === "down").map((l) => `• ${l.text}`).join("\n")}\n\nPlease refine the skill to address these gaps.`;
+    useRefineStore.getState().setPendingInitialMessage(message);
     navigate({ to: "/refine", search: { skill: state.selectedSkill.name } });
-  }, [evalLines, state.selectedSkill, navigate]);
+  }, [evalLines, evalRecommendations, state.selectedSkill, navigate]);
 
   // ---------------------------------------------------------------------------
   // Status bar config
@@ -849,25 +868,38 @@ export default function TestPage() {
             className="flex-1 overflow-auto p-4"
           >
             {evalLines.length > 0 ? (
-              <div className="space-y-1">
-                {evalLines.map((line, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex items-start gap-2.5 rounded border-b border-border/40 px-1 py-1.5 last:border-0",
-                      "animate-in fade-in-0 slide-in-from-bottom-1",
-                      evalRowBg(line.direction),
-                    )}
-                    style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
-                  >
-                    <span className={cn("mt-0.5 shrink-0 text-xs font-bold", evalIconColor(line.direction))}>
-                      {evalDirectionIcon(line.direction)}
-                    </span>
-                    <span className="font-mono text-xs leading-relaxed text-foreground">
-                      {line.text}
-                    </span>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  {evalLines.map((line, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex items-start gap-2.5 rounded border-b border-border/40 px-1 py-1.5 last:border-0",
+                        "animate-in fade-in-0 slide-in-from-bottom-1",
+                        evalRowBg(line.direction),
+                      )}
+                      style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+                    >
+                      <span className={cn("mt-0.5 shrink-0 text-xs font-bold", evalIconColor(line.direction))}>
+                        {evalDirectionIcon(line.direction)}
+                      </span>
+                      <span className="font-mono text-xs leading-relaxed text-foreground">
+                        {line.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {evalRecommendations && (
+                  <div className="rounded-md border border-[var(--color-pacific)]/20 bg-[var(--color-pacific)]/5 p-3">
+                    <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
+                      Recommendations
+                    </p>
+                    <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
+                      {evalRecommendations}
+                    </pre>
                   </div>
-                ))}
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/40 italic">
