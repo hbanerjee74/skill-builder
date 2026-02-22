@@ -3,8 +3,9 @@ set -euo pipefail
 
 # Unified test runner for the Skill Builder desktop app.
 #
-# Usage: ./tests/run.sh [level] [--tag TAG]
+# Usage: ./tests/run.sh [level] [tiers...] [--tag TAG]
 # Levels: unit, integration, e2e, plugin, eval, all (default: all)
+# Tiers (plugin): t1 t2 t3 t4  (default: t1 t2 t3 t4; t5 is opt-in — expensive)
 # Tags (E2E): @dashboard, @settings, @workflow, @workflow-agent, @navigation
 # Tags (plugin): @structure, @agents, @coordinator, @workflow, @all
 
@@ -28,12 +29,22 @@ RESET='\033[0m'
 # ---------------------------------------------------------------------------
 LEVEL="all"
 TAG=""
+PLUGIN_TIERS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    unit|integration|e2e|plugin|eval|all)
+    unit|integration|e2e|eval|all)
       LEVEL="$1"
       shift
+      ;;
+    plugin)
+      LEVEL="plugin"
+      shift
+      # Consume optional tier arguments that follow (t1..t5)
+      while [[ $# -gt 0 ]] && [[ "$1" =~ ^t[1-5]$ ]]; do
+        PLUGIN_TIERS+=("$1")
+        shift
+      done
       ;;
     --tag)
       TAG="${2:-}"
@@ -44,15 +55,22 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      echo "Usage: ./tests/run.sh [level] [--tag TAG]"
+      echo "Usage: ./tests/run.sh [level] [tiers...] [--tag TAG]"
       echo ""
       echo "Levels:"
-      echo "  unit          Pure logic: stores, utils, hooks, Rust, sidecar"
-      echo "  integration   Component rendering with mocked APIs"
-      echo "  e2e           Full browser tests (Playwright)"
-      echo "  plugin        CLI plugin tests (scripts/test-plugin.sh)"
-      echo "  eval          Eval harness tests (API tests run if ANTHROPIC_API_KEY set)"
-      echo "  all           Run all levels sequentially (default)"
+      echo "  unit              Pure logic: stores, utils, hooks, Rust, sidecar"
+      echo "  integration       Component rendering with mocked APIs"
+      echo "  e2e               Full browser tests (Playwright)"
+      echo "  plugin [t1..t4]   Plugin tests — T1-T4 by default (T5 is opt-in, expensive)"
+      echo "  eval              Eval harness tests (API tests run if ANTHROPIC_API_KEY set)"
+      echo "  all               Run all levels sequentially (default; plugin runs T1-T4)"
+      echo ""
+      echo "Plugin tiers:"
+      echo "  t1  Structural validation (free — no API key needed)"
+      echo "  t2  Plugin loading (~\$0.30)"
+      echo "  t3  State detection + intent dispatch (~\$0.40)"
+      echo "  t4  Agent smoke tests (~\$0.50)"
+      echo "  t5  Full E2E workflow (~\$5.00) — opt-in only, not run by default"
       echo ""
       echo "Options:"
       echo "  --tag TAG     Filter tests by tag"
@@ -60,11 +78,15 @@ while [[ $# -gt 0 ]]; do
       echo "    Plugin tags: @structure, @agents, @coordinator, @workflow, @all"
       echo ""
       echo "Examples:"
-      echo "  ./tests/run.sh                         # Run everything"
-      echo "  ./tests/run.sh unit                    # Unit tests only"
-      echo "  ./tests/run.sh e2e --tag @dashboard    # Dashboard E2E tests"
-      echo "  ./tests/run.sh plugin --tag @agents    # Plugin agent tests"
-      echo "  ./tests/run.sh eval                    # Eval harness tests"
+      echo "  ./tests/run.sh                           # Run everything (plugin: T1-T4)"
+      echo "  ./tests/run.sh unit                      # Unit tests only"
+      echo "  ./tests/run.sh plugin                    # Plugin T1-T4"
+      echo "  ./tests/run.sh plugin t1                 # Structural checks only (free)"
+      echo "  ./tests/run.sh plugin t1 t2 t3           # T1-T3 (coordinator changes)"
+      echo "  ./tests/run.sh plugin t5                 # Full E2E (explicit opt-in)"
+      echo "  ./tests/run.sh plugin --tag @agents      # Plugin agent tests"
+      echo "  ./tests/run.sh e2e --tag @dashboard      # Dashboard E2E tests"
+      echo "  FOREGROUND=1 ./tests/run.sh plugin t5    # T5 with live output"
       exit 0
       ;;
     *)
@@ -158,21 +180,30 @@ run_e2e() {
 # Level: plugin
 # ---------------------------------------------------------------------------
 run_plugin() {
+  # Default to T1-T4. T5 (full E2E, ~$5) must be requested explicitly.
+  local tiers=("${PLUGIN_TIERS[@]+"${PLUGIN_TIERS[@]}"}")
+  if [[ ${#tiers[@]} -eq 0 ]]; then
+    tiers=(t1 t2 t3 t4)
+  fi
+
   local tag_args=()
   if [[ -n "$TAG" ]]; then
     tag_args=(--tag "$TAG")
   fi
 
-  header "Plugin Tests${TAG:+ (tag: $TAG)}"
+  local tier_label
+  tier_label=$(IFS=' '; echo "${tiers[*]}")
+  header "Plugin Tests (${tier_label})${TAG:+ (tag: $TAG)}"
+
   PLUGIN_SCRIPT="$APP_DIR/../scripts/test-plugin.sh"
   if [[ ! -x "$PLUGIN_SCRIPT" ]]; then
     fail "Plugin tests (scripts/test-plugin.sh not found)"
     return
   fi
-  if ("$PLUGIN_SCRIPT" "${tag_args[@]+"${tag_args[@]}"}"); then
-    pass "Plugin tests${TAG:+ ($TAG)}"
+  if ("$PLUGIN_SCRIPT" "${tiers[@]}" "${tag_args[@]+"${tag_args[@]}"}"); then
+    pass "Plugin tests (${tier_label})${TAG:+ ($TAG)}"
   else
-    fail "Plugin tests${TAG:+ ($TAG)}"
+    fail "Plugin tests (${tier_label})${TAG:+ ($TAG)}"
   fi
 }
 
