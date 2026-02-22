@@ -180,7 +180,7 @@ export default function DashboardPage() {
   const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
 
   const handleContinue = (skill: SkillSummary) => {
-    if (skill.source === 'marketplace') {
+    if (skill.skill_source === 'marketplace') {
       navigate({ to: "/refine", search: { skill: skill.name } })
       return
     }
@@ -195,6 +195,10 @@ export default function DashboardPage() {
 
   const handleRefine = useCallback((skill: SkillSummary) => {
     navigate({ to: "/refine", search: { skill: skill.name } })
+  }, [navigate])
+
+  const handleTest = useCallback((skill: SkillSummary) => {
+    navigate({ to: "/test", search: { skill: skill.name } })
   }, [navigate])
 
   const handleDownload = useCallback(async (skill: SkillSummary) => {
@@ -228,6 +232,7 @@ export default function DashboardPage() {
       onEdit: setEditTarget,
       onEditWorkflow: handleEditWorkflow,
       onRefine: handleRefine,
+      onTest: handleTest,
       marketplaceConfigured: !!marketplaceUrl,
     }
   }
