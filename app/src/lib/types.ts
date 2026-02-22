@@ -168,10 +168,17 @@ export interface OrphanSkill {
   skill_type: string
 }
 
+export interface DiscoveredSkill {
+  name: string
+  detected_step: number
+  scenario: string
+}
+
 export interface ReconciliationResult {
   orphans: OrphanSkill[]
   notifications: string[]
   auto_cleaned: number
+  discovered_skills: DiscoveredSkill[]
 }
 
 export interface AgentRunRecord {

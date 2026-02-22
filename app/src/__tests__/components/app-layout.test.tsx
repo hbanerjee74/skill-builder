@@ -106,6 +106,7 @@ const emptyReconciliation: ReconciliationResult = {
   orphans: [],
   notifications: [],
   auto_cleaned: 0,
+  discovered_skills: [],
 };
 
 describe("AppLayout", () => {

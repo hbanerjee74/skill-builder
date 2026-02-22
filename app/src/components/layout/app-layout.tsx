@@ -7,12 +7,13 @@ import { CloseGuard } from "@/components/close-guard";
 import { SplashScreen } from "@/components/splash-screen";
 import { SetupScreen } from "@/components/setup-screen";
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
+import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, reconcileStartup } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
-import type { OrphanSkill } from "@/lib/types";
+import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
@@ -25,6 +26,9 @@ export function AppLayout() {
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [nodeReady, setNodeReady] = useState(false);
   const [orphans, setOrphans] = useState<OrphanSkill[]>([]);
+  const [reconNotifications, setReconNotifications] = useState<string[]>([]);
+  const [reconDiscovered, setReconDiscovered] = useState<DiscoveredSkill[]>([]);
+  const [ackDone, setAckDone] = useState(true);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -65,16 +69,18 @@ export function AppLayout() {
 
     reconcileStartup()
       .then((result) => {
-        // Show toasts for auto-cleaned skills
+        // Show toast for auto-cleaned skills (informational, not blocking)
         if (result.auto_cleaned > 0) {
           toast.info(
             `Cleaned up ${result.auto_cleaned} incomplete skill${result.auto_cleaned !== 1 ? "s" : ""}`
           );
         }
 
-        // Show toasts for reset notifications (DB-ahead-of-disk)
-        for (const notification of result.notifications) {
-          toast.warning(notification, { duration: 5000 });
+        // Block dashboard with ACK dialog if there are notifications or discovered skills
+        if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
+          setReconNotifications(result.notifications);
+          setReconDiscovered(result.discovered_skills);
+          setAckDone(false);
         }
 
         // Set orphans for dialog
@@ -115,7 +121,7 @@ export function AppLayout() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate]);
 
-  const ready = settingsLoaded && reconciled && nodeReady;
+  const ready = settingsLoaded && reconciled && nodeReady && ackDone;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -139,6 +145,18 @@ export function AppLayout() {
           orphans={orphans}
           open={orphans.length > 0}
           onResolved={() => setOrphans([])}
+        />
+      )}
+      {reconNotifications.length > 0 && !ackDone && (
+        <ReconciliationAckDialog
+          notifications={reconNotifications}
+          discoveredSkills={reconDiscovered}
+          open={!ackDone}
+          onAcknowledge={() => {
+            setAckDone(true);
+            setReconNotifications([]);
+            setReconDiscovered([]);
+          }}
         />
       )}
     </div>
