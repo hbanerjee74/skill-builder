@@ -716,11 +716,10 @@ export default function TestPage() {
   const isRunning = state.phase === "running" || state.phase === "evaluating";
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
-  const modelLabel = {
-    "claude-haiku-4-5-20251001": "haiku",
-    "claude-sonnet-4-6": "sonnet",
-    "claude-opus-4-6": "opus",
-  }[activeModel] ?? activeModel;
+  // Derive display label from model string — works for shorthands and full IDs alike
+  const modelLabel = activeModel.includes("haiku") ? "haiku"
+    : activeModel.includes("opus") ? "opus"
+    : "sonnet";
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 

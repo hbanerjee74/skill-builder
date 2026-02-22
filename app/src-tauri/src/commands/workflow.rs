@@ -14,11 +14,12 @@ use crate::types::{
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
 
 /// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
+/// Uses version-level aliases (no date suffix) so this never needs updating for new snapshots.
 /// If the input is already a full ID, pass it through unchanged.
 pub fn resolve_model_id(shorthand: &str) -> String {
     match shorthand {
-        "sonnet" => "claude-sonnet-4-5-20250929".to_string(),
-        "haiku" => "claude-haiku-4-5-20251001".to_string(),
+        "sonnet" => "claude-sonnet-4-6".to_string(),
+        "haiku" => "claude-haiku-4-5".to_string(),
         "opus" => "claude-opus-4-6".to_string(),
         other => other.to_string(), // passthrough for full IDs
     }
@@ -1764,10 +1765,11 @@ mod tests {
 
     #[test]
     fn test_resolve_model_id() {
-        assert_eq!(resolve_model_id("sonnet"), "claude-sonnet-4-5-20250929");
-        assert_eq!(resolve_model_id("haiku"), "claude-haiku-4-5-20251001");
+        assert_eq!(resolve_model_id("sonnet"), "claude-sonnet-4-6");
+        assert_eq!(resolve_model_id("haiku"), "claude-haiku-4-5");
         assert_eq!(resolve_model_id("opus"), "claude-opus-4-6");
-        assert_eq!(resolve_model_id("claude-sonnet-4-5-20250929"), "claude-sonnet-4-5-20250929");
+        // Full IDs pass through unchanged
+        assert_eq!(resolve_model_id("claude-sonnet-4-6"), "claude-sonnet-4-6");
     }
 
     #[test]
@@ -2400,7 +2402,7 @@ mod tests {
     fn test_resolve_model_id_sonnet_returns_full_id() {
         // The sonnet shorthand is used for debug mode model override
         let sonnet_id = resolve_model_id("sonnet");
-        assert_eq!(sonnet_id, "claude-sonnet-4-5-20250929");
+        assert_eq!(sonnet_id, "claude-sonnet-4-6");
         assert!(sonnet_id.contains("sonnet"), "Sonnet model ID should contain 'sonnet'");
     }
 

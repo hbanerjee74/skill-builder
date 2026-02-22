@@ -433,9 +433,9 @@ export default function SettingsPage() {
                     onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
                     className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
-                    <option value="claude-haiku-4-5-20251001">Haiku — fastest, lowest cost</option>
-                    <option value="claude-sonnet-4-6">Sonnet — balanced (default)</option>
-                    <option value="claude-opus-4-6">Opus — most capable</option>
+                    <option value="haiku">Haiku — fastest, lowest cost</option>
+                    <option value="sonnet">Sonnet — balanced (default)</option>
+                    <option value="opus">Opus — most capable</option>
                   </select>
                 </div>
               </CardContent>
