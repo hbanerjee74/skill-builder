@@ -932,6 +932,7 @@ export default function WorkflowPage() {
         stepName={currentStepDef.name}
         stepId={currentStep}
         outputFiles={stepConfig?.outputFiles ?? []}
+        cost={activeRun?.totalCost}
         onNextStep={advanceToNextStep}
         onClose={handleClose}
         onRefine={handleRefine}

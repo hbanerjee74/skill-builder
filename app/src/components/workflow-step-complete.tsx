@@ -98,7 +98,7 @@ export function WorkflowStepComplete({
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
 
   useEffect(() => {
-    if (!reviewMode || !skillName || stepId == null) {
+    if (!skillName || stepId == null) {
       setAgentRuns([]);
       return;
     }
@@ -106,7 +106,7 @@ export function WorkflowStepComplete({
     getStepAgentRuns(skillName, stepId)
       .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
-  }, [reviewMode, skillName, stepId]);
+  }, [skillName, stepId]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -157,6 +157,13 @@ export function WorkflowStepComplete({
 
   const hasFileContents = fileContents.size > 0;
 
+  // Cost from DB (sum across all agents that ran for this step). Falls back to
+  // the prop for the brief window before the async DB write completes.
+  const dbCost = agentRuns.length > 0
+    ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
+    : undefined;
+  const displayCost = dbCost ?? cost;
+
   // Show file contents when available (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
     if (loadingFiles) {
@@ -169,7 +176,7 @@ export function WorkflowStepComplete({
 
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
-        {agentRuns.length > 0 && (
+        {reviewMode && agentRuns.length > 0 && (
           <div className="shrink-0">
             <AgentStatsBar runs={agentRuns} />
           </div>
@@ -185,10 +192,10 @@ export function WorkflowStepComplete({
                   {formatDuration(duration)}
                 </span>
               )}
-              {cost !== undefined && (
+              {displayCost !== undefined && (
                 <span className="flex items-center gap-1">
                   <DollarSign className="size-3" />
-                  ${cost.toFixed(4)}
+                  ${displayCost.toFixed(4)}
                 </span>
               )}
             </div>
@@ -277,10 +284,10 @@ export function WorkflowStepComplete({
                 {formatDuration(duration)}
               </span>
             )}
-            {cost !== undefined && (
+            {displayCost !== undefined && (
               <span className="flex items-center gap-1">
                 <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
+                ${displayCost.toFixed(4)}
               </span>
             )}
           </div>
