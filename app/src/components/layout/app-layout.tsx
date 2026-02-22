@@ -10,6 +10,8 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, reconcileStartup } from "@/lib/tauri";
+import { invoke } from "@tauri-apps/api/core";
+import type { ModelInfo } from "@/stores/settings-store";
 import type { OrphanSkill } from "@/lib/types";
 
 export function AppLayout() {
@@ -42,6 +44,12 @@ export function AppLayout() {
         dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);
+      // Fetch available models in the background — no need to await
+      if (s.anthropic_api_key) {
+        invoke<ModelInfo[]>("list_models", { apiKey: s.anthropic_api_key })
+          .then((models) => setSettings({ availableModels: models }))
+          .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
+      }
     }).catch(() => {
       // Settings may not exist yet — show splash
       setSettingsLoaded(true);
