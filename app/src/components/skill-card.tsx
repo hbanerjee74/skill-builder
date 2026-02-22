@@ -35,7 +35,6 @@ interface SkillCardProps {
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
   onTest?: (skill: SkillSummary) => void
-  marketplaceConfigured?: boolean
 }
 
 export function parseStepProgress(currentStep: string | null, status: string | null): number {
@@ -242,23 +241,26 @@ export default function SkillCard({
     )
   }
 
-  if (skill.skill_source !== 'skill-builder') {
-    return <TooltipProvider>{cardContent}</TooltipProvider>
-  }
+  // Only skill-builder skills have the right-click context menu
+  const showContextMenu = skill.skill_source === 'skill-builder'
 
   return (
     <TooltipProvider>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          {cardContent}
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onSelect={() => onEdit?.(skill)}>
-            <SquarePen className="size-4" />
-            Edit details
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      {showContextMenu ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            {cardContent}
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={() => onEdit?.(skill)}>
+              <SquarePen className="size-4" />
+              Edit details
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        cardContent
+      )}
     </TooltipProvider>
   )
 }

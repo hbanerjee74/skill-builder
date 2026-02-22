@@ -148,15 +148,15 @@ export function AppLayout() {
       {orphans.length > 0 && (
         <OrphanResolutionDialog
           orphans={orphans}
-          open={orphans.length > 0}
+          open
           onResolved={() => setOrphans([])}
         />
       )}
-      {reconNotifications.length > 0 && !ackDone && (
+      {!ackDone && (
         <ReconciliationAckDialog
           notifications={reconNotifications}
           discoveredSkills={reconDiscovered}
-          open={!ackDone}
+          open
           onAcknowledge={() => {
             setAckDone(true);
             setReconNotifications([]);

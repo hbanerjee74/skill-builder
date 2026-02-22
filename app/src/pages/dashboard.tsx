@@ -234,7 +234,6 @@ export default function DashboardPage() {
       onEditWorkflow: handleEditWorkflow,
       onRefine: handleRefine,
       onTest: handleTest,
-      marketplaceConfigured: !!marketplaceUrl,
     }
   }
 

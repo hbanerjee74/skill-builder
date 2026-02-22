@@ -45,12 +45,9 @@ export default function ReconciliationAckDialog({
         notifications.length,
         discoveredSkills.length,
       )
-      // Initialize resolution state for each discovered skill
-      const initial: Record<string, ResolutionState> = {}
-      for (const skill of discoveredSkills) {
-        initial[skill.name] = "pending"
-      }
-      setResolutions(initial)
+      setResolutions(
+        Object.fromEntries(discoveredSkills.map((s) => [s.name, "pending" as ResolutionState])),
+      )
     }
   }, [open, notifications.length, discoveredSkills])
 

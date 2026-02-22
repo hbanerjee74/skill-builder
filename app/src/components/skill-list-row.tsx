@@ -42,7 +42,6 @@ interface SkillListRowProps {
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
   onTest?: (skill: SkillSummary) => void
-  marketplaceConfigured?: boolean
 }
 
 export default function SkillListRow({
