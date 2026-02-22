@@ -165,16 +165,17 @@ export function WorkflowStepComplete({
     : undefined;
   const displayCost = reviewMode ? dbCost : cost;
 
+  // Loading spinner — shown while files are being fetched (initial or re-fetch)
+  if (loadingFiles) {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   // Show file contents when available (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
-    if (loadingFiles) {
-      return (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      );
-    }
-
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
         {reviewMode && agentRuns.length > 0 && (
@@ -242,15 +243,6 @@ export function WorkflowStepComplete({
           onClose={onClose}
           onNextStep={onNextStep}
         />
-      </div>
-    );
-  }
-
-  // Fallback: no file contents loaded yet (loading state or no files)
-  if (loadingFiles) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
