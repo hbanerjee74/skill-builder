@@ -7,6 +7,15 @@ pub fn create_test_db() -> rusqlite::Connection {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS skills (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            domain       TEXT,
+            skill_type   TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         CREATE TABLE IF NOT EXISTS workflow_runs (
             skill_name TEXT PRIMARY KEY,
             domain TEXT NOT NULL,
@@ -25,7 +34,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             model TEXT,
             argument_hint TEXT,
             user_invocable INTEGER DEFAULT 1,
-            disable_model_invocation INTEGER DEFAULT 0
+            disable_model_invocation INTEGER DEFAULT 0,
+            skill_id INTEGER REFERENCES skills(id)
         );
         CREATE TABLE IF NOT EXISTS workflow_steps (
             skill_name TEXT NOT NULL,

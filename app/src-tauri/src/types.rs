@@ -126,6 +126,9 @@ pub struct SkillSummary {
     pub intake_json: Option<String>,
     #[serde(default)]
     pub source: Option<String>,
+    /// The skill_source from the skills master table (skill-builder, marketplace, upload).
+    #[serde(default)]
+    pub skill_source: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
@@ -214,6 +217,17 @@ pub struct WorkflowRunRow {
 
 fn default_source() -> String {
     "created".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillMasterRow {
+    pub id: i64,
+    pub name: String,
+    pub skill_source: String,
+    pub domain: Option<String>,
+    pub skill_type: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
