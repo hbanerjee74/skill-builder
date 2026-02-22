@@ -1343,6 +1343,182 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
   });
 });
 
+describe("WorkflowPage — VD-863 autosave on human review steps", () => {
+  beforeEach(() => {
+    resetTauriMocks();
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+
+    useSettingsStore.getState().setSettings({
+      workspacePath: "/test/workspace",
+      skillsPath: "/test/skills",
+      anthropicApiKey: "sk-test",
+    });
+
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
+    mockToast.info.mockClear();
+    mockBlocker.proceed.mockClear();
+    mockBlocker.reset.mockClear();
+    mockBlocker.status = "idle";
+
+    vi.mocked(saveWorkflowState).mockClear();
+    vi.mocked(getWorkflowState).mockClear();
+    vi.mocked(readFile).mockClear();
+    vi.mocked(writeFile).mockClear();
+    vi.mocked(runAnswerEvaluator).mockClear();
+  });
+
+  afterEach(() => {
+    useWorkflowStore.getState().reset();
+    useAgentStore.getState().clearRuns();
+    useSettingsStore.getState().reset();
+  });
+
+  function setupHumanReviewStep(content: string) {
+    vi.mocked(readFile).mockImplementation((path: string) => {
+      if (path === "/test/skills/test-skill/context/clarifications.md") {
+        return Promise.resolve(content);
+      }
+      return Promise.reject("not found");
+    });
+
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().updateStepStatus(0, "completed");
+    useWorkflowStore.getState().setCurrentStep(1);
+    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+  }
+
+  it("autosave fires writeFile after 1500ms debounce when content is edited", async () => {
+    // Use real timers for this test to avoid conflicts with waitFor polling
+    vi.useRealTimers();
+
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    // Wait for editor to load content
+    await waitFor(() => {
+      expect((screen.getByTestId("md-editor") as HTMLTextAreaElement).value).toBe("# Original");
+    });
+
+    vi.mocked(writeFile).mockClear();
+
+    // Edit content — triggers dirty flag and 1500ms autosave timer
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(textarea, "# Autosaved content");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Autosave fires after 1500ms — wait up to 3000ms
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+        "/test/skills/test-skill/context/clarifications.md",
+        "# Autosaved content",
+      );
+    }, { timeout: 3000 });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Saved");
+  }, 10000);
+
+  it("autosave does NOT fire on non-human-review steps", async () => {
+    // Use real timers — no timer-based interaction needed
+    vi.useRealTimers();
+
+    // Set up an agent step (step 0)
+    vi.mocked(readFile).mockRejectedValue("not found");
+    useWorkflowStore.getState().initWorkflow("test-skill", "test domain");
+    useWorkflowStore.getState().setHydrated(true);
+    useWorkflowStore.getState().setReviewMode(false);
+    useWorkflowStore.getState().setCurrentStep(0);
+
+    render(<WorkflowPage />);
+
+    // Wait a bit — autosave should never fire on non-human steps
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+
+    // On a non-human-review step, writeFile should not be called by autosave
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+  });
+
+  it("dirty indicator clears after autosave completes", async () => {
+    vi.useRealTimers();
+
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect((screen.getByTestId("md-editor") as HTMLTextAreaElement).value).toBe("# Original");
+    });
+
+    // Initially no unsaved indicator
+    expect(document.querySelector(".bg-orange-500")).toBeNull();
+
+    // Edit content — dirty indicator should appear
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(textarea, "# Dirty content");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector(".bg-orange-500")).toBeTruthy();
+    });
+
+    // After autosave fires (1500ms), dirty indicator should clear
+    await waitFor(() => {
+      expect(document.querySelector(".bg-orange-500")).toBeNull();
+    }, { timeout: 3000 });
+  }, 10000);
+
+  it("manual Save button still works (regression)", async () => {
+    vi.useRealTimers();
+
+    setupHumanReviewStep("# Original");
+    render(<WorkflowPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    });
+
+    vi.mocked(writeFile).mockClear();
+
+    // Edit content
+    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(textarea, "# Manual save");
+      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    // Save button should be enabled
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
+    });
+
+    // Click manual Save (before autosave timer fires)
+    await act(async () => {
+      screen.getByRole("button", { name: /Save/ }).click();
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
+        "/test/skills/test-skill/context/clarifications.md",
+        "# Manual save",
+      );
+    });
+
+    expect(mockToast.success).toHaveBeenCalledWith("Saved");
+  });
+});
+
 describe("WorkflowPage — review mode default state", () => {
   beforeEach(() => {
     resetTauriMocks();
