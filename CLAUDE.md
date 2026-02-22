@@ -70,18 +70,20 @@ Before writing any test code, read existing tests for the files you changed:
 
 Determine what you changed, then pick the right runner:
 
-| What changed | Test command |
-|---|---|
-| Frontend (store/hook/component/page) | `npm run test:changed` |
-| Rust command | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
-| Sidecar code | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agents/`) | `cd app && npm run test:plugin:structural` |
-| Coordinator (`skills/building-skills/SKILL.md`) | `cd app && npm run test:plugin` |
-| Mock templates or E2E fixtures | `npm run test:unit` |
-| Shared infrastructure (`src/lib/tauri.ts`, test mocks) | `app/tests/run.sh` (all levels) |
-| Eval scripts | `app/tests/run.sh eval` |
+| What changed | Plugin tests | App tests |
+|---|---|---|
+| Frontend (store/hook/component/page) | — | `npm run test:changed` |
+| Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
+| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:plugin:structural test:plugin:agents` | `cd app/sidecar && npx vitest run` |
+| Agent prompt (`agents/`) | `cd app && npm run test:plugin:structural` | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:plugin:structural test:plugin:agents` | `npm run test:unit` (canonical-format) |
+| Coordinator (`skills/building-skills/SKILL.md`) | `cd app && npm run test:plugin:structural test:plugin:loading test:plugin:modes` | — |
+| `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:plugin:structural` | `npm run test:unit` |
+| Mock templates or E2E fixtures | — | `npm run test:unit` |
+| Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
+| Eval scripts | — | `app/tests/run.sh eval` |
 
-**Cross-cutting:** When a change affects both agents and app (e.g. artifact format change), run both `cd app && npm run test:plugin:structural` and `npm run test:unit`. The `canonical-format.test.ts` suite catches drift between agent prompts, mock templates, and app parsers.
+**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:plugin:structural test:plugin:agents` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
 **Unsure?** `app/tests/run.sh` runs everything. `./scripts/test-plugin.sh` runs the full E2E workflow (~$5).
 
