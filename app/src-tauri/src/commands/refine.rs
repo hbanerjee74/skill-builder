@@ -519,9 +519,9 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Anthropic API key not configured");
                 "Anthropic API key not configured".to_string()
             })?;
-            let model = settings
-                .preferred_model
-                .unwrap_or_else(|| "sonnet".to_string());
+            let model = crate::commands::workflow::resolve_model_id(
+                &settings.preferred_model.unwrap_or_else(|| "sonnet".to_string()),
+            );
 
             let skills_path = settings
                 .skills_path
