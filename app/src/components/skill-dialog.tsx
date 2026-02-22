@@ -110,17 +110,16 @@ const STEP_DESCRIPTIONS = {
   },
 } as const
 
-const MODEL_OPTIONS = [
-  { value: "inherit", label: "Inherit (use workspace default)" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "opus", label: "Opus" },
-  { value: "haiku", label: "Haiku" },
+const FALLBACK_MODEL_OPTIONS = [
+  { id: "claude-haiku-4-5", displayName: "Haiku — fastest, lowest cost" },
+  { id: "claude-sonnet-4-6", displayName: "Sonnet — balanced" },
+  { id: "claude-opus-4-6", displayName: "Opus — most capable" },
 ]
 
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -840,8 +839,9 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {MODEL_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option value="inherit">Inherit (use workspace default)</option>
+                    {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">

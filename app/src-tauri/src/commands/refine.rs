@@ -589,6 +589,7 @@ pub async fn send_refine_message(
         );
 
         // 5. Build config and agent_id
+        log::info!("[send_refine_message] skill={} model={}", skill_name, model);
         let (mut config, agent_id) = build_refine_config(
             prompt,
             &skill_name,

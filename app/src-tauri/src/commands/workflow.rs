@@ -864,6 +864,7 @@ async fn run_workflow_step_inner(
 
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
+    log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model);
 
     let config = SidecarConfig {
         prompt,
@@ -1304,7 +1305,8 @@ pub async fn run_answer_evaluator(
             .ok()
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
-        let model = settings.preferred_model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+        // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
+        let model = "claude-haiku-4-5".to_string();
         (key, sp, settings.industry, settings.function_role, ij, model)
     };
 
@@ -1342,6 +1344,7 @@ pub async fn run_answer_evaluator(
     }
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
+    log::info!("run_answer_evaluator: skill={} model={}", skill_name, preferred_model);
 
     let agent_id = make_agent_id(&skill_name, "gate-eval");
 
