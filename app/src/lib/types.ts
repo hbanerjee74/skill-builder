@@ -69,6 +69,7 @@ export interface SkillSummary {
   last_modified: string | null
   tags: string[]
   skill_type: string | null
+  skill_source?: string | null
   author_login: string | null
   author_avatar: string | null
   intake_json: string | null
