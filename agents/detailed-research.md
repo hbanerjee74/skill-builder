@@ -75,23 +75,23 @@ Follow the format example below. Return ONLY `##### R{n}.{m}:` blocks — no pre
 
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
 - Each block starts with `##### R{n}.{m}: Short Title` then a rationale sentence
-- 2-4 choices in `A. Choice text` format plus "Other (please specify)" — each choice must change the skill's design
-- Include `**Recommendation:** Full sentence.` between choices and answer (colon inside bold)
+- 2-4 choices in `A. Choice text` format plus "Other (please specify)" — each choice must change the skill's design. Keep choice labels short (a few words each), not full sentences — reasoning belongs in `**Recommendation:**`
+- Include `**Recommendation:** Full sentence.` between choices and answer (colon inside bold). Keep the reasoning at full length here
 - End each sub-question with a blank `**Answer:**` line followed by an empty line (colon inside bold)
 - Do NOT re-display original question text, choices, or recommendation
 
 ### Refinement format example
 
 ```
-##### R6.1: Which event triggers revenue recognition?
+##### R6.1: Revenue recognition trigger?
 The skill cannot calculate pipeline metrics without knowing when revenue enters the model.
 
-A. Booking date — revenue recognized when deal closes
-B. Invoice date — revenue recognized at billing
-C. Payment date — revenue recognized at collection
+A. Booking date
+B. Invoice date
+C. Payment date
 D. Other (please specify)
 
-**Recommendation:** B — Invoice date is the most common convention for SaaS businesses.
+**Recommendation:** B — Invoice date is the most common convention for SaaS businesses and aligns with standard accrual accounting.
 
 **Answer:**
 
