@@ -324,6 +324,18 @@ pub(crate) async fn list_github_skills_inner(
             skill_md_path, fm_name, fm_domain, fm_type
         );
 
+        // Filter out skills missing required front matter fields — they must not appear in the UI
+        let name_present = fm_name.as_deref().map_or(false, |s| !s.is_empty());
+        let description_present = fm_description.as_deref().map_or(false, |s| !s.is_empty());
+        let domain_present = fm_domain.as_deref().map_or(false, |s| !s.is_empty());
+        if !name_present || !description_present || !domain_present {
+            log::warn!(
+                "list_github_skills: skipping '{}' — missing required front matter fields (name={} description={} domain={})",
+                skill_md_path, name_present, description_present, domain_present
+            );
+            continue;
+        }
+
         // Derive skill directory path (parent of SKILL.md)
         let skill_dir = skill_md_path
             .strip_suffix("/SKILL.md")
@@ -747,30 +759,6 @@ pub(crate) async fn import_single_skill(
 
     let fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
 
-    // Validate required frontmatter fields — reject skill if any are missing
-    let missing_required: Vec<&str> = [
-        ("name", fm.name.is_none()),
-        ("description", fm.description.is_none()),
-        ("domain", fm.domain.is_none()),
-    ]
-    .iter()
-    .filter(|(_, missing)| *missing)
-    .map(|(f, _)| *f)
-    .collect();
-    if !missing_required.is_empty() {
-        for field in &missing_required {
-            log::error!(
-                "import_marketplace_skill: required field '{}' missing for skill at '{}'",
-                field,
-                skill_path
-            );
-        }
-        return Err(format!(
-            "missing_mandatory_fields:{}",
-            missing_required.join(",")
-        ));
-    }
-
     let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
     // Log absent optional fields at info level
@@ -1169,6 +1157,43 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert!(filtered.contains(&&"analytics/SKILL.md"));
         assert!(filtered.contains(&&"skill-builder-practices/SKILL.md"));
+    }
+
+    #[test]
+    fn test_required_frontmatter_filtering_logic() {
+        // Simulate the filtering logic applied in list_github_skills_inner:
+        // skills missing name, description, or domain must be filtered out.
+        struct SkillCandidate {
+            name: Option<&'static str>,
+            description: Option<&'static str>,
+            domain: Option<&'static str>,
+        }
+
+        let candidates = vec![
+            // complete — should be included
+            SkillCandidate { name: Some("analytics"), description: Some("Desc"), domain: Some("data") },
+            // missing name — should be excluded
+            SkillCandidate { name: None, description: Some("Desc"), domain: Some("data") },
+            // missing description — should be excluded
+            SkillCandidate { name: Some("reporting"), description: None, domain: Some("data") },
+            // missing domain — should be excluded
+            SkillCandidate { name: Some("research"), description: Some("Desc"), domain: None },
+            // missing all — should be excluded
+            SkillCandidate { name: None, description: None, domain: None },
+        ];
+
+        let included: Vec<_> = candidates
+            .iter()
+            .filter(|c| {
+                let name_ok = c.name.map_or(false, |s| !s.is_empty());
+                let desc_ok = c.description.map_or(false, |s| !s.is_empty());
+                let domain_ok = c.domain.map_or(false, |s| !s.is_empty());
+                name_ok && desc_ok && domain_ok
+            })
+            .collect();
+
+        assert_eq!(included.len(), 1);
+        assert_eq!(included[0].name, Some("analytics"));
     }
 
     #[test]
