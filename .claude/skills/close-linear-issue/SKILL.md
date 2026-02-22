@@ -55,7 +55,7 @@ Spawn a **single `general-purpose` sub-agent** with the worktree path, `gitBranc
 2. If conflicts occur, attempt to resolve. Escalate to coordinator (who asks the user) if human judgment is needed.
 3. Run `npx tsc --noEmit` (from the `app/` directory in the worktree) — catches type errors introduced by rebase or missed during implementation. If errors found, fix them, commit, and re-run until clean.
 4. Push with `--force-with-lease`
-5. Wait for CI to pass (`gh pr checks --watch`)
+5. Wait for required CI to pass (`gh pr checks --watch --required`)
 6. Merge the PR with `--delete-branch` (prefer squash if allowed)
 7. Return: merge commit SHA
 
