@@ -110,17 +110,30 @@ const STEP_DESCRIPTIONS = {
   },
 } as const
 
-const MODEL_OPTIONS = [
-  { value: "inherit", label: "Inherit (use workspace default)" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "opus", label: "Opus" },
-  { value: "haiku", label: "Haiku" },
+const FALLBACK_MODEL_OPTIONS = [
+  { id: "claude-haiku-4-5", displayName: "Haiku — fastest, lowest cost" },
+  { id: "claude-sonnet-4-6", displayName: "Sonnet — balanced" },
+  { id: "claude-opus-4-6", displayName: "Opus — most capable" },
 ]
+
+// Map old shorthand values stored in DB to real model IDs.
+const SHORTHAND_TO_MODEL: Record<string, string> = {
+  haiku: "claude-haiku-4-5",
+  sonnet: "claude-sonnet-4-6",
+  opus: "claude-opus-4-6",
+}
+
+const DEFAULT_MODEL = FALLBACK_MODEL_OPTIONS[0].id // claude-haiku-4-5
+
+function normalizeModelValue(raw: string | null | undefined): string {
+  if (!raw) return DEFAULT_MODEL
+  return SHORTHAND_TO_MODEL[raw] ?? raw
+}
 
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -157,7 +170,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [claudeMistakes, setClaudeMistakes] = useState("")
   // Step 4 behaviour fields
   const [version, setVersion] = useState("1.0.0")
-  const [model, setModel] = useState("inherit")
+  const [model, setModel] = useState(DEFAULT_MODEL)
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -218,7 +231,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setUniqueSetup("")
     setClaudeMistakes("")
     setVersion("1.0.0")
-    setModel("inherit")
+    setModel(DEFAULT_MODEL)
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
@@ -263,7 +276,7 @@ export default function SkillDialog(props: SkillDialogProps) {
       setUniqueSetup(intake.unique_setup)
       setClaudeMistakes(intake.claude_mistakes)
       setVersion(editSkill.version || "1.0.0")
-      setModel(editSkill.model || "inherit")
+      setModel(normalizeModelValue(editSkill.model))
       setArgumentHint(editSkill.argumentHint || "")
       setUserInvocable(editSkill.userInvocable ?? true)
       setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
@@ -475,7 +488,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           }),
           description.trim() || null,
           version.trim() || null,
-          model !== "inherit" ? model : null,
+          model || null,
           argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -497,7 +510,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           }),
           description: description.trim() || null,
           version: version.trim() || null,
-          model: model !== "inherit" ? model : null,
+          model: model || null,
           argumentHint: argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -840,12 +853,12 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {MODEL_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
+                      <option key={m.id} value={m.id}>{m.displayName}</option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    Model preference for this skill (inherit uses the workspace default)
+                    Model this skill is designed and tested for
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">

@@ -150,6 +150,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::save_settings,
             commands::settings::test_api_key,
+            commands::settings::list_models,
             commands::settings::set_log_level,
             commands::settings::get_log_file_path,
             commands::settings::get_default_skills_path,

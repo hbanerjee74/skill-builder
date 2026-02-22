@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { AppSettings } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { useSettingsStore } from "@/stores/settings-store"
+import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
 import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
@@ -65,6 +65,7 @@ export default function SettingsPage() {
   const [marketplaceTesting, setMarketplaceTesting] = useState(false)
   const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const availableModels = useSettingsStore((s) => s.availableModels)
   const { user, isLoggedIn, logout } = useAuthStore()
   const { theme, setTheme } = useTheme()
 
@@ -86,6 +87,10 @@ export default function SettingsPage() {
             setFunctionRole(result.function_role ?? "")
             setMarketplaceUrl(result.marketplace_url ?? "")
             setLoading(false)
+            // Fetch available models once we have an API key
+            if (result.anthropic_api_key) {
+              fetchModels(result.anthropic_api_key)
+            }
           }
           return
         } catch (err) {
@@ -117,6 +122,16 @@ export default function SettingsPage() {
       .then(setLogFilePath)
       .catch(() => setLogFilePath(null))
   }, [])
+
+  const fetchModels = async (key: string) => {
+    try {
+      const models = await invoke<ModelInfo[]>("list_models", { apiKey: key })
+      setStoreSettings({ availableModels: models })
+      // If current preferredModel is a shorthand not in the list, keep it (resolve_model_id handles it)
+    } catch (err) {
+      console.warn("[settings] Could not fetch model list:", err)
+    }
+  }
 
   const autoSave = async (overrides: Partial<{
     apiKey: string | null;
@@ -187,6 +202,7 @@ export default function SettingsPage() {
       await invoke("test_api_key", { apiKey })
       setApiKeyValid(true)
       toast.success("API key is valid")
+      fetchModels(apiKey)
     } catch (err) {
       setApiKeyValid(false)
       toast.error(
@@ -419,6 +435,37 @@ export default function SettingsPage() {
 
           {activeSection === "skill-building" && (
           <div className="space-y-6 p-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Model</CardTitle>
+                <CardDescription>
+                  The Claude model used for all agents — skill building, refining, and testing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-3">
+                  <select
+                    value={preferredModel}
+                    onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
+                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    {availableModels.length > 0
+                      ? availableModels.map((m) => (
+                          <option key={m.id} value={m.id}>{m.displayName}</option>
+                        ))
+                      : (
+                        <>
+                          <option value="haiku">Haiku — fastest, lowest cost</option>
+                          <option value="sonnet">Sonnet — balanced (default)</option>
+                          <option value="opus">Opus — most capable</option>
+                        </>
+                      )
+                    }
+                  </select>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle>Agent Features</CardTitle>

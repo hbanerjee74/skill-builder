@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
@@ -73,14 +74,30 @@ const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract accumulated assistant text content from agent store messages. */
+/** Extract accumulated assistant text content from agent store messages.
+ * Includes text blocks and AskUserQuestion inputs so the evaluator can see
+ * what clarification questions the agent asked. */
 function extractAssistantText(agentId: string): string {
   const run = useAgentStore.getState().runs[agentId];
   if (!run) return "";
   return run.messages
-    .filter((m) => m.type === "assistant" && m.content)
-    .map((m) => m.content!)
-    .join("");
+    .filter((m) => m.type === "assistant")
+    .map((m) => {
+      const textContent = m.content ?? "";
+      // Capture AskUserQuestion inputs so the evaluator sees what was asked
+      const apiBlocks = (
+        (m.raw?.message as Record<string, unknown> | undefined)?.content
+      ) as Array<{ type: string; name?: string; input?: Record<string, unknown> }> | undefined;
+      const questions = Array.isArray(apiBlocks)
+        ? apiBlocks
+            .filter((b) => b.type === "tool_use" && b.name === "AskUserQuestion")
+            .map((b) => (typeof b.input?.question === "string" ? b.input.question : ""))
+            .filter(Boolean)
+        : [];
+      return [textContent, ...questions].filter(Boolean).join("\n");
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Build the evaluator prompt from both plans. */
@@ -105,30 +122,62 @@ Plan B (no skill loaded):
 ${withoutPlanText}
 """
 
-Use the Evaluation Rubric from your context to compare the two plans. Output ONLY bullet points with \u2191 or \u2193 prefixes, one per line.`;
+Use the Evaluation Rubric from your context to compare the two plans.
+
+First, output bullet points (one per line) using:
+- \u2191 if Plan A (with skill) is meaningfully better on this dimension
+- \u2193 if Plan B (no skill) is meaningfully better on this dimension
+- \u2192 if both plans are similar, weak, or neither is clearly better
+
+Then output a "## Recommendations" section with 2-4 specific, actionable suggestions for how to improve the skill based on the evaluation. Focus on gaps where Plan A underperformed or where the skill could have provided more guidance.`;
 }
 
-type EvalDirection = "up" | "down" | null;
+type EvalDirection = "up" | "down" | "neutral" | null;
 
 interface EvalLine {
   direction: EvalDirection;
   text: string;
 }
 
-/** Parse an evaluator line into direction and text. */
+/** Parse an evaluator line into direction and text.
+ * Strips leading markdown bullet prefixes (-, *, •) before detecting direction. */
 function parseEvalLine(line: string): EvalLine {
   const trimmed = line.trim();
   if (!trimmed) return { direction: null, text: "" };
+  // Strip optional markdown bullet (-, *, •) so "- ↑ text" parses correctly
+  const stripped = trimmed.replace(/^[-*•]\s*/, "");
+  if (stripped.startsWith("\u2191")) return { direction: "up", text: stripped.slice(1).trim() };
+  if (stripped.startsWith("\u2193")) return { direction: "down", text: stripped.slice(1).trim() };
+  if (stripped.startsWith("\u2192")) return { direction: "neutral", text: stripped.slice(1).trim() };
   if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
   if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
+  if (trimmed.startsWith("\u2192")) return { direction: "neutral", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
 }
 
-/** Return the arrow/bullet character for an eval direction. */
+/** Split evaluator output into directional bullet lines and a recommendations block. */
+function parseEvalOutput(text: string): { lines: EvalLine[]; recommendations: string } {
+  const markerMatch = /^##\s*recommendations/im.exec(text);
+  if (!markerMatch) {
+    return {
+      lines: text.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+      recommendations: "",
+    };
+  }
+  const bulletSection = text.slice(0, markerMatch.index).trim();
+  const recsSection = text.slice(markerMatch.index + markerMatch[0].length).trim();
+  return {
+    lines: bulletSection.split("\n").map(parseEvalLine).filter((l) => l.text.length > 0),
+    recommendations: recsSection,
+  };
+}
+
+/** Return the arrow character for an eval direction. */
 function evalDirectionIcon(direction: EvalDirection): string {
   switch (direction) {
     case "up": return "\u2191";
     case "down": return "\u2193";
+    case "neutral": return "\u2192";
     default: return "\u2022";
   }
 }
@@ -136,18 +185,19 @@ function evalDirectionIcon(direction: EvalDirection): string {
 /** Return the color class for an eval direction's icon. */
 function evalIconColor(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "text-green-400";
-    case "down": return "text-red-400";
-    default: return "text-muted-foreground";
+    case "up": return "text-[var(--color-seafoam)]";
+    case "down": return "text-destructive";
+    case "neutral": return "text-muted-foreground";
+    default: return "text-muted-foreground/50";
   }
 }
 
-/** Return the color class for an eval direction's text. */
-function evalTextColor(direction: EvalDirection): string {
+/** Return the row background class for an eval direction. */
+function evalRowBg(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "text-muted-foreground";
-    case "down": return "text-muted-foreground/70";
-    default: return "text-muted-foreground/60";
+    case "up": return "bg-[var(--color-seafoam)]/5";
+    case "down": return "bg-destructive/5";
+    default: return "";
   }
 }
 
@@ -484,11 +534,12 @@ export default function TestPage() {
       return;
     }
 
-    useAgentStore.getState().registerRun(evalId, "haiku", "__test_baseline__");
+    const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__");
     startAgent(
       evalId,
       evalPrompt,
-      "haiku",
+      evalModel,
       state.baselineCwd,
       [],
       1,
@@ -612,18 +663,19 @@ export default function TestPage() {
       }));
 
       // Register runs in agent store
-      useAgentStore.getState().registerRun(withId, "haiku", skillName);
-      useAgentStore.getState().registerRun(withoutId, "haiku", "__test_baseline__");
+      const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+      useAgentStore.getState().registerRun(withId, testModel, skillName);
+      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
 
       // Start both agents in parallel
       await Promise.all([
         startAgent(
           withId,
           s.prompt,
-          "haiku",
+          testModel,
           prepared.with_skill_cwd,
           [],
-          1,
+          15,
           undefined,
           skillName,
           "test-with",
@@ -633,10 +685,10 @@ export default function TestPage() {
         startAgent(
           withoutId,
           s.prompt,
-          "haiku",
+          testModel,
           prepared.baseline_cwd,
           [],
-          1,
+          15,
           undefined,
           "__test_baseline__",
           "test-without",
@@ -663,21 +715,24 @@ export default function TestPage() {
 
   const isRunning = state.phase === "running" || state.phase === "evaluating";
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
+  const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
+  const availableModels = useSettingsStore((s) => s.availableModels);
+  // Use API display name if available, otherwise derive from model string
+  const modelLabel = availableModels.find((m) => m.id === activeModel)?.displayName
+    ?? (activeModel.includes("haiku") ? "Haiku" : activeModel.includes("opus") ? "Opus" : "Sonnet");
 
-  const evalLines = state.evalText
-    .split("\n")
-    .map(parseEvalLine)
-    .filter((l) => l.text.length > 0);
+  const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
-  const needsRefinement = state.phase === "done" && evalLines.some((l) => l.direction === "down");
+  const needsRefinement = state.phase === "done" && (evalRecommendations.length > 0 || evalLines.some((l) => l.direction === "down"));
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
-    const downLines = evalLines.filter((l) => l.direction === "down");
-    const recommendation = `The skill evaluation identified these gaps based on the dbt rubric:\n\n${downLines.map((l) => `• ${l.text}`).join("\n")}\n\nPlease refine the skill to address these gaps.`;
-    useRefineStore.getState().setPendingInitialMessage(recommendation);
+    const message = evalRecommendations
+      ? `The skill evaluation identified these improvement opportunities:\n\n${evalRecommendations}\n\nPlease refine the skill to address these gaps.`
+      : `The skill evaluation identified these gaps:\n\n${evalLines.filter((l) => l.direction === "down").map((l) => `• ${l.text}`).join("\n")}\n\nPlease refine the skill to address these gaps.`;
+    useRefineStore.getState().setPendingInitialMessage(message);
     navigate({ to: "/refine", search: { skill: state.selectedSkill.name } });
-  }, [evalLines, state.selectedSkill, navigate]);
+  }, [evalLines, evalRecommendations, state.selectedSkill, navigate]);
 
   // ---------------------------------------------------------------------------
   // Status bar config
@@ -709,12 +764,6 @@ export default function TestPage() {
             disabled={isRunning}
             onSelect={handleSelectSkill}
           />
-          <Badge
-            variant="outline"
-            className="border-border text-muted-foreground text-[10px] uppercase tracking-wider"
-          >
-            Plan Mode
-          </Badge>
         </div>
         <div className="flex gap-2">
           <Textarea
@@ -813,35 +862,51 @@ export default function TestPage() {
             <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </span>
-            {needsRefinement && (
-              <Button size="sm" variant="outline" className="ml-auto h-6 text-xs" onClick={handleRefine}>
-                Refine
-              </Button>
-            )}
           </div>
           <div
             ref={evalScrollRef}
             className="flex-1 overflow-auto p-4"
           >
             {evalLines.length > 0 ? (
-              <div className="space-y-1">
-                {evalLines.map((line, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      "flex items-start gap-2.5 border-b border-border/40 py-1.5 last:border-0",
-                      "animate-in fade-in-0 slide-in-from-bottom-1",
-                    )}
-                    style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
-                  >
-                    <span className={cn("mt-0.5 shrink-0 text-xs font-semibold", evalIconColor(line.direction))}>
-                      {evalDirectionIcon(line.direction)}
-                    </span>
-                    <span className={cn("text-xs leading-relaxed", evalTextColor(line.direction))}>
-                      {line.text}
-                    </span>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  {evalLines.map((line, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "flex items-start gap-2.5 rounded border-b border-border/40 px-1 py-1.5 last:border-0",
+                        "animate-in fade-in-0 slide-in-from-bottom-1",
+                        evalRowBg(line.direction),
+                      )}
+                      style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
+                    >
+                      <span className={cn("mt-0.5 shrink-0 text-xs font-bold", evalIconColor(line.direction))}>
+                        {evalDirectionIcon(line.direction)}
+                      </span>
+                      <span className="font-mono text-xs leading-relaxed text-foreground">
+                        {line.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {evalRecommendations && (
+                  <div className="rounded-md border border-[var(--color-pacific)]/20 bg-[var(--color-pacific)]/5 p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
+                        Recommendations
+                      </p>
+                      {needsRefinement && (
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleRefine}>
+                          Refine skill
+                        </Button>
+                      )}
+                    </div>
+                    <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
+                      {evalRecommendations}
+                    </pre>
                   </div>
-                ))}
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/40 italic">
@@ -870,6 +935,8 @@ export default function TestPage() {
         )}
         <span className="text-muted-foreground/20">&middot;</span>
         <span className="text-[10.5px] text-muted-foreground/60">plan mode</span>
+        <span className="text-muted-foreground/20">&middot;</span>
+        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearch, useBlocker } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
@@ -63,6 +63,7 @@ export default function RefinePage() {
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
+  const availableModels = useSettingsStore((s) => s.availableModels);
   const lockedSkills = useSkillStore((s) => s.lockedSkills);
 
   const selectedSkill = useRefineStore((s) => s.selectedSkill);
@@ -110,6 +111,13 @@ export default function RefinePage() {
       releaseSkillResources(store.selectedSkill.name, "navigation");
     }
 
+    // Clear session state so that returning to this page always creates a
+    // fresh session. Without this, the stale sessionId remains in the store
+    // and the auto-select guard skips session creation, causing send_refine_message
+    // to fail on the dead session.
+    store.clearSession();
+    autoSelectedRef.current = null;
+
     proceed?.();
   }, [proceed]);
 
@@ -144,7 +152,10 @@ export default function RefinePage() {
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
-      if (store.selectedSkill?.name === skill.name) return;
+      // Skip re-selection only when the same skill is already active with a live session.
+      // After navigation away, clearSession() nulls sessionId, so we fall through
+      // and create a fresh session even for the same skill.
+      if (store.selectedSkill?.name === skill.name && store.sessionId) return;
 
       // Release lock on previous skill (if any) before acquiring new lock
       const prevSkill = store.selectedSkill;
@@ -330,6 +341,37 @@ export default function RefinePage() {
     [selectedSkill, workspacePath, preferredModel, isRunning],
   );
 
+  // --- Status bar ---
+  const [elapsed, setElapsed] = useState(0);
+  const runStartRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (isRunning) {
+      runStartRef.current = Date.now();
+      setElapsed(0);
+      timerRef.current = setInterval(() => {
+        setElapsed(Date.now() - runStartRef.current!);
+      }, 100);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isRunning]);
+
+  const activeModel = preferredModel ?? "claude-sonnet-4-6";
+  const modelLabel =
+    availableModels.find((m) => m.id === activeModel)?.displayName ??
+    (activeModel.includes("haiku") ? "Haiku" : activeModel.includes("opus") ? "Opus" : "Sonnet");
+
+  const dotClass = isRunning ? "bg-blue-500 animate-pulse" : selectedSkill ? "bg-green-500" : "bg-zinc-500";
+  const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
+
   return (
     <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
       {/* Top bar with skill picker */}
@@ -357,6 +399,28 @@ export default function RefinePage() {
           }
           right={<PreviewPanel />}
         />
+      </div>
+
+      {/* Status bar */}
+      <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
+        <div className="flex items-center gap-1.5">
+          <div className={`size-[5px] rounded-full ${dotClass}`} />
+          <span className="text-[10.5px] text-muted-foreground/60">{statusLabel}</span>
+        </div>
+        {selectedSkill && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-[10.5px] text-muted-foreground/60">{selectedSkill.name}</span>
+          </>
+        )}
+        <span className="text-muted-foreground/20">&middot;</span>
+        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
+        {isRunning && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-[10.5px] text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
+          </>
+        )}
       </div>
 
       {/* Navigation guard dialog */}
