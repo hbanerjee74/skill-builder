@@ -98,15 +98,6 @@ The reconciler infers step completion from files in `{skills_path}/{name}/`:
 | 11 | SKILL.md exists | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` present | No action. No notification. |
 | 12 | SKILL.md missing | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` absent | Delete row from `skills` master. Notify: "'{name}' marketplace skill removed — SKILL.md not found on disk". |
 
-#### Pass 1: upload
-
-Only created via discovery scenario 9. No upload button exists today.
-
-| # | Scenario | Tables to check | Artifacts to check | Decision |
-|---|----------|-----------------|--------------------|----------|
-| 11u | SKILL.md exists | `skills`: `skill_source` = 'upload' | `{skills_path}/{name}/SKILL.md` present | No action. No notification. |
-| 12u | SKILL.md missing | `skills`: `skill_source` = 'upload' | `{skills_path}/{name}/SKILL.md` absent | Delete row from `skills` master. Notify: "'{name}' removed — SKILL.md not found on disk". |
-
 #### Pass 2: discovery
 
 | # | Scenario | Tables to check | Artifacts to check | Decision |
