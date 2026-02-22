@@ -436,7 +436,6 @@ export default function SettingsPage() {
                     <option value="claude-haiku-4-5-20251001">Haiku — fastest, lowest cost</option>
                     <option value="claude-sonnet-4-6">Sonnet — balanced (default)</option>
                     <option value="claude-opus-4-6">Opus — most capable</option>
-                    <option value="claude-opus-4-6-1m">Opus (1M context) — extended context window</option>
                   </select>
                 </div>
               </CardContent>
