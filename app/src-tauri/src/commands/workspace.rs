@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::types::ReconciliationResult;
+use std::fs;
 use std::path::Path;
 
 const WORKSPACE_DIR_NAME: &str = ".vibedata";
@@ -240,6 +241,25 @@ pub fn resolve_orphan(
 
 // --- Discovery Resolution ---
 
+/// Validate that a path derived from `skill_name` stays inside `parent`.
+/// The `parent` directory must exist; `child` is joined from it.
+fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<(), String> {
+    let child = parent.join(skill_name);
+    if child.exists() {
+        let canonical_parent = fs::canonicalize(parent).map_err(|e| {
+            format!("[resolve_discovery] Failed to canonicalize {}: {}", label, e)
+        })?;
+        let canonical_child = fs::canonicalize(&child).map_err(|e| {
+            format!("[resolve_discovery] Failed to canonicalize {} child: {}", label, e)
+        })?;
+        if !canonical_child.starts_with(&canonical_parent) {
+            log::error!("[resolve_discovery] Path traversal attempt on {}: {}", label, skill_name);
+            return Err(format!("Invalid skill path: path traversal not allowed on {}", label));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn resolve_discovery(
     skill_name: String,
@@ -247,6 +267,10 @@ pub fn resolve_discovery(
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
     log::info!("[resolve_discovery] skill={} action={}", skill_name, action);
+
+    // Defense-in-depth: reject obviously malicious skill names early
+    super::imported_skills::validate_skill_name(&skill_name)?;
+
     let conn = db.0.lock().map_err(|e| {
         log::error!("[resolve_discovery] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -263,17 +287,23 @@ pub fn resolve_discovery(
             crate::db::save_workflow_run(
                 &conn, &skill_name, "unknown", 5, "completed", "domain",
             )?;
+            // Validate workspace path before creating directory
+            let ws_path = Path::new(&workspace_path);
+            validate_path_within(ws_path, &skill_name, "workspace_path")?;
             // Create workspace marker
-            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+            let workspace_dir = ws_path.join(&skill_name);
             let _ = std::fs::create_dir_all(&workspace_dir);
             log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
             Ok(())
         }
         "add-upload" => {
-            // Add as upload, clear context folder
-            crate::db::upsert_skill(&conn, &skill_name, "upload", "unknown", "domain")?;
+            // Add as upload, clear context folder — force skill_source to "upload"
+            crate::db::upsert_skill_with_source(&conn, &skill_name, "upload", "unknown", "domain")?;
+            // Validate skills_path before touching filesystem
+            let sp = Path::new(&skills_path);
+            validate_path_within(sp, &skill_name, "skills_path")?;
             // Clear context folder
-            let context_dir = std::path::Path::new(&skills_path).join(&skill_name).join("context");
+            let context_dir = sp.join(&skill_name).join("context");
             if context_dir.exists() {
                 let _ = std::fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
@@ -282,9 +312,23 @@ pub fn resolve_discovery(
             Ok(())
         }
         "remove" => {
+            // Validate skills_path before deleting
+            let sp = Path::new(&skills_path);
+            validate_path_within(sp, &skill_name, "skills_path")?;
             // Delete from disk
-            let skill_dir = std::path::Path::new(&skills_path).join(&skill_name);
+            let skill_dir = sp.join(&skill_name);
             if skill_dir.exists() {
+                // Re-validate after confirming existence (canonicalize requires existing path)
+                let canonical_sp = fs::canonicalize(sp).map_err(|e| {
+                    format!("[resolve_discovery] Failed to canonicalize skills_path: {}", e)
+                })?;
+                let canonical_dir = fs::canonicalize(&skill_dir).map_err(|e| {
+                    format!("[resolve_discovery] Failed to canonicalize skill dir: {}", e)
+                })?;
+                if !canonical_dir.starts_with(&canonical_sp) {
+                    log::error!("[resolve_discovery] Path traversal attempt on remove: {}", skill_name);
+                    return Err("Invalid skill path: path traversal not allowed".to_string());
+                }
                 std::fs::remove_dir_all(&skill_dir)
                     .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
             }

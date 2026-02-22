@@ -361,13 +361,13 @@ pub fn delete_skill(
         log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    // Read skills_path from settings DB
+    // Read skills_path from settings DB — may be None
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    // Require skills_path to be configured
+    // DB cleanup works even without skills_path; only filesystem cleanup needs it
     if skills_path.is_none() {
-        return Err("Skills path not configured. Please set it in Settings.".to_string());
+        log::warn!("[delete_skill] skills_path not configured; skipping filesystem cleanup for '{}'", name);
     }
 
     delete_skill_inner(

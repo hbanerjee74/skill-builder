@@ -1121,6 +1121,42 @@ pub fn upsert_skill(
     Ok(id)
 }
 
+/// Like `upsert_skill`, but ALWAYS updates `skill_source` on conflict.
+/// Use this when the caller explicitly wants to set the source (e.g. `resolve_discovery`).
+/// `upsert_skill` intentionally skips `skill_source` on conflict to prevent
+/// `save_workflow_run` from overwriting a marketplace skill's source.
+pub fn upsert_skill_with_source(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    domain: &str,
+    skill_type: &str,
+) -> Result<i64, String> {
+    log::debug!("upsert_skill_with_source: name={} skill_source={}", name, skill_source);
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(name) DO UPDATE SET
+             skill_source = ?2, domain = ?3, skill_type = ?4, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, domain, skill_type],
+    )
+    .map_err(|e| {
+        log::error!("upsert_skill_with_source: failed to upsert '{}': {}", name, e);
+        e.to_string()
+    })?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )
+        .map_err(|e| {
+            log::error!("upsert_skill_with_source: failed to retrieve id for '{}': {}", name, e);
+            e.to_string()
+        })?;
+    Ok(id)
+}
+
 /// List all skills from the master table, ordered by name.
 pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
     let mut stmt = conn
@@ -1450,6 +1486,12 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
     .map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM skill_tags WHERE skill_name = ?1",
+        [skill_name],
+    )
+    .map_err(|e| e.to_string())?;
+    // Delete from imported_skills to prevent stale rows blocking re-import
+    conn.execute(
+        "DELETE FROM imported_skills WHERE skill_name = ?1",
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
