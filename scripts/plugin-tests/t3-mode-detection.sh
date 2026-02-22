@@ -50,14 +50,17 @@ run_t3() {
 
   # ---- T3.8–T3.10: Intent dispatch tests ----
   # Longer pause to allow API rate limit recovery after 9 back-to-back state detection calls.
-  sleep 15
+  sleep 30
+
+  # Dispatch tests need more budget headroom than state detection — coordinator may explain at length.
+  local dispatch_budget="${MAX_BUDGET_T3_DISPATCH:-0.50}"
 
   # Each test creates a fixture, sends a prompt, and checks output for expected keywords.
 
   _t3_dispatch_test() {
     local test_name="$1" dir="$2" prompt="$3" pattern="$4" label="$5"
     local output
-    output=$(run_claude_unsafe "$prompt" "$budget" 120 "$dir")
+    output=$(run_claude_unsafe "$prompt" "$dispatch_budget" 120 "$dir")
     if [[ -z "$output" ]]; then
       record_result "$tier" "$test_name" "FAIL" "empty output"
     elif echo "$output" | grep -qiE "$pattern"; then
