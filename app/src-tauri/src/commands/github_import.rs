@@ -611,15 +611,16 @@ pub async fn import_marketplace_to_library(
                     continue;
                 }
 
-                // Then record in workflow_runs with source='marketplace'.
-                if let Err(e) = crate::db::save_marketplace_skill_run(
+                // Record in skills master with skill_source='marketplace'.
+                // No workflow_runs row — marketplace skills live only in the master.
+                if let Err(e) = crate::db::save_marketplace_skill(
                     &conn,
                     &skill.skill_name,
                     &domain,
                     skill_type_str,
                 ) {
                     log::warn!(
-                        "[import_marketplace_to_library] failed to save workflow run for '{}': {}",
+                        "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
                         skill.skill_name, e
                     );
                 }
