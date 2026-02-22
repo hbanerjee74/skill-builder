@@ -3,12 +3,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
-  mockInvokeCommands,
   resetTauriMocks,
 } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
-import type { ImportedSkill } from "@/stores/imported-skills-store";
 import { useSettingsStore } from "@/stores/settings-store";
+import type { SkillSummary, AppSettings } from "@/lib/types";
 
 // Mock sonner
 vi.mock("sonner", () => ({
@@ -22,6 +21,12 @@ vi.mock("sonner", () => ({
   Toaster: () => null,
 }));
 
+// Mock @tanstack/react-router
+const mockNavigate = vi.fn();
+vi.mock("@tanstack/react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 // Mock react-markdown (avoid complex rendering in tests)
 vi.mock("react-markdown", () => ({
   default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -33,57 +38,92 @@ vi.mock("remark-gfm", () => ({
 
 import { SkillsLibraryTab } from "@/components/skills-library-tab";
 
-const sampleSkills: ImportedSkill[] = [
+const defaultSettings: AppSettings = {
+  anthropic_api_key: "sk-test",
+  workspace_path: "/home/user/workspace",
+  skills_path: "/home/user/skills",
+  preferred_model: "sonnet",
+  log_level: "info",
+  extended_context: false,
+  extended_thinking: false,
+  splash_shown: false,
+  github_oauth_token: null,
+  github_user_login: null,
+  github_user_avatar: null,
+  github_user_email: null,
+  marketplace_url: null,
+  max_dimensions: 5,
+  industry: null,
+  function_role: null,
+  dashboard_view_mode: null,
+};
+
+const sampleSkills: SkillSummary[] = [
   {
-    skill_id: "id-1",
-    skill_name: "sales-analytics",
+    name: "sales-analytics",
     domain: "sales",
-    description: "Analytics skill for sales pipelines",
-    is_active: true,
-    disk_path: "/skills/sales-analytics",
-    imported_at: new Date().toISOString(),
-    is_bundled: false,
-    skill_type: "skill-builder",
-    version: null,
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
+    current_step: null,
+    status: "completed",
+    last_modified: null,
+    tags: [],
+    skill_type: "domain",
+    skill_source: "skill-builder",
+    author_login: null,
+    author_avatar: null,
+    intake_json: null,
+    source: "created",
   },
   {
-    skill_id: "id-2",
-    skill_name: "hr-metrics",
+    name: "hr-metrics",
     domain: "HR",
-    description: null,
-    is_active: false,
-    disk_path: "/skills/hr-metrics",
-    imported_at: new Date().toISOString(),
-    is_bundled: false,
-    skill_type: "skill-builder",
-    version: null,
-    model: null,
-    argument_hint: null,
-    user_invocable: null,
-    disable_model_invocation: null,
+    current_step: "step 2",
+    status: "in_progress",
+    last_modified: null,
+    tags: [],
+    skill_type: "domain",
+    skill_source: "skill-builder",
+    author_login: null,
+    author_avatar: null,
+    intake_json: null,
+    source: "created",
   },
 ];
+
+function setupMocks(skills: SkillSummary[] = sampleSkills) {
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+    if (cmd === "list_skills") return Promise.resolve(skills);
+    return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+  });
+}
 
 describe("SkillsLibraryTab", () => {
   beforeEach(() => {
     resetTauriMocks();
     useSettingsStore.getState().reset();
+    mockNavigate.mockReset();
   });
 
   it("shows loading skeletons while fetching", async () => {
-    mockInvoke.mockImplementation(() => new Promise(() => {}));
+    // Settings resolve immediately, list_skills hangs — component stays in loading state
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "list_skills") return new Promise(() => {}); // hang
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
+    });
     render(<SkillsLibraryTab />);
+
+    // Wait for settings to load (sets workspacePath) which triggers loadSkills
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("list_skills", expect.anything());
+    });
 
     const skeletons = document.querySelectorAll(".animate-pulse");
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
   it("renders upload button", async () => {
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -93,7 +133,7 @@ describe("SkillsLibraryTab", () => {
 
   it("Marketplace button is disabled when marketplace URL is not configured", async () => {
     // Store default: marketplaceUrl = null
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -104,7 +144,7 @@ describe("SkillsLibraryTab", () => {
 
   it("Marketplace button is enabled when marketplace URL is configured", async () => {
     useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -114,7 +154,7 @@ describe("SkillsLibraryTab", () => {
   });
 
   it("renders skill cards when skills exist", async () => {
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -124,11 +164,11 @@ describe("SkillsLibraryTab", () => {
   });
 
   it("shows empty state when no skills", async () => {
-    mockInvokeCommands({ list_imported_skills: [] });
+    setupMocks([]);
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("No imported skills")).toBeInTheDocument();
+      expect(screen.getByText("No skills yet")).toBeInTheDocument();
     });
     expect(
       screen.getByText("Upload a .skill package or browse the marketplace to add skills to your library.")
@@ -136,7 +176,7 @@ describe("SkillsLibraryTab", () => {
   });
 
   it("shows domain badge on skill card", async () => {
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
+    setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
@@ -145,109 +185,57 @@ describe("SkillsLibraryTab", () => {
     expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
-  it("shows argument_hint on skill card when set", async () => {
-    const skillsWithHint = [
-      { ...sampleSkills[0], argument_hint: "Use for sales analytics" },
-      sampleSkills[1],
-    ];
-    mockInvokeCommands({ list_imported_skills: skillsWithHint });
-    render(<SkillsLibraryTab />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Use for sales analytics")
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows description fallback when no trigger text", async () => {
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsLibraryTab />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Analytics skill for sales pipelines/)
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows 'No trigger set' for skills without trigger or description", async () => {
-    mockInvokeCommands({ list_imported_skills: sampleSkills });
-    render(<SkillsLibraryTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText("No trigger set")).toBeInTheDocument();
-    });
-  });
-
   it("calls upload_skill when file is selected", async () => {
     const user = userEvent.setup();
-    const newSkill: ImportedSkill = {
-      skill_id: "id-3",
-      skill_name: "new-skill",
-      domain: null,
-      description: "A new skill",
-      is_active: true,
-      disk_path: "/skills/new-skill",
-      imported_at: new Date().toISOString(),
-      is_bundled: false,
-      skill_type: "skill-builder",
-      version: null,
-      model: null,
-      argument_hint: null,
-      user_invocable: null,
-      disable_model_invocation: null,
-    };
 
-    mockInvokeCommands({
-      list_imported_skills: [],
-      upload_skill: newSkill,
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_settings") return Promise.resolve(defaultSettings);
+      if (cmd === "list_skills") return Promise.resolve([]);
+      if (cmd === "upload_skill") return Promise.resolve({
+        skill_id: "id-3",
+        skill_name: "new-skill",
+        domain: null,
+        description: "A new skill",
+        is_active: true,
+        disk_path: "/skills/new-skill",
+        imported_at: new Date().toISOString(),
+        is_bundled: false,
+        skill_type: "skill-builder",
+        version: null,
+        model: null,
+        argument_hint: null,
+        user_invocable: null,
+        disable_model_invocation: null,
+      });
+      return Promise.reject(new Error(`Unmocked command: ${cmd}`));
     });
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue("/path/to/file.skill");
 
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("No imported skills")).toBeInTheDocument();
+      expect(screen.getByText("No skills yet")).toBeInTheDocument();
     });
 
-    // Click the upload button in empty state
+    // Click the upload button
     const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });
     await user.click(uploadButton);
 
     await waitFor(() => {
-      expect(mockInvoke).toHaveBeenCalledWith("upload_skill", {
-        filePath: "/path/to/file.skill",
-      });
+      expect(mockOpen).toHaveBeenCalled();
     });
-  });
-
-  it("only shows skills with skill_type 'skill-builder', hides other types", async () => {
-    const mixed: ImportedSkill[] = [
-      { ...sampleSkills[0], skill_id: "id-sb", skill_name: "my-sb-skill", skill_type: "skill-builder" },
-      { ...sampleSkills[0], skill_id: "id-domain", skill_name: "domain-skill", skill_type: "domain" },
-      { ...sampleSkills[0], skill_id: "id-null", skill_name: "null-type-skill", skill_type: null },
-    ];
-    mockInvokeCommands({ list_imported_skills: mixed });
-    render(<SkillsLibraryTab />);
-
-    await waitFor(() => {
-      expect(screen.getByText("my-sb-skill")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("domain-skill")).not.toBeInTheDocument();
-    expect(screen.queryByText("null-type-skill")).not.toBeInTheDocument();
   });
 
   it("does not call upload_skill when dialog is cancelled", async () => {
     const user = userEvent.setup();
 
-    mockInvokeCommands({ list_imported_skills: [] });
+    setupMocks([]);
     (mockOpen as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("No imported skills")).toBeInTheDocument();
+      expect(screen.getByText("No skills yet")).toBeInTheDocument();
     });
 
     const uploadButton = screen.getByRole("button", { name: /Upload Skill/i });

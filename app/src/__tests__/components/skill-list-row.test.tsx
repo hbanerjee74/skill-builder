@@ -16,6 +16,7 @@ const createdComplete: SkillSummary = {
   last_modified: null,
   tags: [],
   skill_type: "skill-builder",
+  skill_source: "skill-builder",
   author_login: null,
   author_avatar: null,
   intake_json: null,
@@ -30,6 +31,7 @@ const createdIncomplete: SkillSummary = {
 
 const marketplaceSkill: SkillSummary = {
   ...createdComplete,
+  skill_source: "marketplace",
   source: "marketplace",
 };
 
@@ -210,14 +212,19 @@ describe("SkillListRow — marketplace skill", () => {
 // SkillListRow — null/undefined source defaults to created behaviour
 // ---------------------------------------------------------------------------
 
-describe("SkillListRow — null/undefined source defaults to created behaviour", () => {
-  it("shows Edit Workflow when source is null", () => {
-    renderRow({ ...createdComplete, source: null });
+describe("SkillListRow — null/undefined skill_source defaults to non-editable behaviour", () => {
+  it("shows Edit Workflow when skill_source is skill-builder", () => {
+    renderRow({ ...createdComplete, skill_source: "skill-builder" });
     expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 
-  it("shows Edit Workflow when source is undefined", () => {
-    renderRow({ ...createdComplete, source: undefined });
-    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  it("hides Edit Workflow when skill_source is null", () => {
+    renderRow({ ...createdComplete, skill_source: null });
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Edit Workflow when skill_source is undefined", () => {
+    renderRow({ ...createdComplete, skill_source: undefined });
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
   });
 });
