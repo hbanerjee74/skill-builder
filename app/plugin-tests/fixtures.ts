@@ -317,15 +317,7 @@ export function createFixtureValidation(dir: string, skillName: string) {
   );
 }
 
-// Agent smoke fixtures
-export function createFixtureT4Research(dir: string, skillName: string) {
-  createFixtureScoping(dir, skillName);
-}
-
-export function createFixtureT4AnswerEvaluator(dir: string, skillName: string) {
-  createFixtureClarification(dir, skillName);
-}
-
+// Agent smoke fixture: fully answered clarifications for confirm-decisions tests
 export function createFixtureT4Workspace(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "clarification");
   makeSkillDirs(dir, skillName);

@@ -14,7 +14,6 @@ export const HAS_API_KEY =
  * Resolve the spending cap for a test tier.
  * Checks each value in order; returns the first that is set.
  * Pass "none" (or set MAX_BUDGET_WORKFLOW=none) to run without a cap.
- * Hardcoded final fallback ensures tests always have a safe default.
  */
 export function parseBudget(
   ...candidates: (string | undefined)[]

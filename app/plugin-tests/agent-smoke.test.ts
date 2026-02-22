@@ -3,8 +3,8 @@ import fs from "fs";
 import path from "path";
 import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude, parseBudget } from "./helpers";
 import {
-  createFixtureT4Research,
-  createFixtureT4AnswerEvaluator,
+  createFixtureScoping,
+  createFixtureClarification,
   createFixtureT4Workspace,
 } from "./fixtures";
 
@@ -27,7 +27,7 @@ describe.skipIf(!HAS_API_KEY)("research-orchestrator", () => {
 
   beforeAll(() => {
     researchDir = makeTempDir("agents-research");
-    createFixtureT4Research(researchDir, SKILL_NAME);
+    createFixtureScoping(researchDir, SKILL_NAME);
 
     const prompt = `You are the research-orchestrator agent for the skill-builder plugin.
 
@@ -86,7 +86,7 @@ describe.skipIf(!HAS_API_KEY)("answer-evaluator", () => {
 
   beforeAll(() => {
     evalDir = makeTempDir("agents-answer-eval");
-    createFixtureT4AnswerEvaluator(evalDir, SKILL_NAME);
+    createFixtureClarification(evalDir, SKILL_NAME);
 
     const prompt = `You are the answer-evaluator agent for the skill-builder plugin.
 
@@ -147,7 +147,7 @@ describe.skipIf(!HAS_API_KEY)("confirm-decisions", () => {
   beforeAll(() => {
     // Run answer-evaluator first to get the JSON dependency
     const evalDir = makeTempDir("agents-decisions-eval");
-    createFixtureT4AnswerEvaluator(evalDir, SKILL_NAME);
+    createFixtureClarification(evalDir, SKILL_NAME);
     const evalPrompt = `You are the answer-evaluator agent for the skill-builder plugin.
 Context directory: ${evalDir}/${SKILL_NAME}/context
 Workspace directory: ${evalDir}/.vibedata/${SKILL_NAME}

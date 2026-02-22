@@ -11,21 +11,6 @@ const BUDGET = parseBudget(
 
 describe.skipIf(!HAS_API_KEY)("plugin loading", () => {
   it(
-    "Claude responds to plugin query",
-    { timeout: 60_000 },
-    () => {
-      const dir = makeTempDir("loading-responds");
-      const output = runClaude(
-        "What can the skill-builder plugin help me with? What types of skills can it build?",
-        BUDGET,
-        45_000,
-        dir
-      );
-      expect(output).not.toBeNull();
-    }
-  );
-
-  it(
     "response acknowledges plugin capabilities",
     { timeout: 60_000 },
     () => {

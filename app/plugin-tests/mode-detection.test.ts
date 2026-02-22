@@ -62,14 +62,14 @@ describe.skipIf(!HAS_API_KEY)(
       const dir = makeTempDir("modes-research");
       createFixtureResearch(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
-      expect(output).toMatch(/research/i);
+      expect(output).toMatch(phasePattern("research"));
     });
 
     it("detects: clarification", { timeout: 75_000 }, () => {
       const dir = makeTempDir("modes-clarification");
       createFixtureClarification(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
-      expect(output).toMatch(/clarification/i);
+      expect(output).toMatch(phasePattern("clarification"));
     });
 
     it("detects: refinement_pending", { timeout: 75_000 }, () => {
@@ -83,14 +83,14 @@ describe.skipIf(!HAS_API_KEY)(
       const dir = makeTempDir("modes-refinement");
       createFixtureRefinement(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
-      expect(output).toMatch(/refinement/i);
+      expect(output).toMatch(phasePattern("refinement"));
     });
 
     it("detects: decisions", { timeout: 75_000 }, () => {
       const dir = makeTempDir("modes-decisions");
       createFixtureDecisions(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
-      expect(output).toMatch(/decisions/i);
+      expect(output).toMatch(phasePattern("decisions"));
     });
 
     it("detects: generation", { timeout: 75_000 }, () => {
@@ -104,7 +104,7 @@ describe.skipIf(!HAS_API_KEY)(
       const dir = makeTempDir("modes-validation");
       createFixtureValidation(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
-      expect(output).toMatch(/validation/i);
+      expect(output).toMatch(phasePattern("validation"));
     });
   }
 );
