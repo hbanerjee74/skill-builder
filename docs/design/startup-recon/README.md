@@ -102,8 +102,9 @@ The reconciler infers step completion from files in `{skills_path}/{name}/`:
 
 | # | Scenario | Tables to check | Artifacts to check | Decision |
 |---|----------|-----------------|--------------------|----------|
-| 9a | SKILL.md on disk, no master row, ALL artifacts present | `skills` master: no row for this name | `detect_furthest_step` returns step 5 (all context confirmed: `context/clarifications.md`, `context/research-plan.md`, `context/decisions.md`, `SKILL.md`) | **User choice required.** Present dialog: (a) "Add to library" → add as `skill-builder` (completed), auto-create `workflow_runs` at step 5. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
-| 9b | SKILL.md on disk, no master row, INCOMPLETE artifacts | `skills` master: no row for this name | `detect_furthest_step` returns < 5 or None (partial or missing context) | Delete `{skills_path}/{name}/`. Notify: "'{name}' removed — incomplete artifacts on disk". No user choice. |
+| 9a | Folder found, no SKILL.md | `skills` master: no row for this name | `{skills_path}/{name}/` exists but no `SKILL.md` inside | Delete `{skills_path}/{name}/`. Notify: "'{name}' removed — no SKILL.md found". No user choice. |
+| 9b | SKILL.md + ALL context artifacts | `skills` master: no row for this name | `detect_furthest_step` returns step 5 (all confirmed: `context/clarifications.md`, `context/research-plan.md`, `context/decisions.md`, `SKILL.md`) | **User choice required.** (a) "Add to library" → add as `skill-builder` (completed), auto-create `workflow_runs` at step 5. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
+| 9c | SKILL.md + SOME context artifacts | `skills` master: no row for this name | `SKILL.md` exists but `detect_furthest_step` returns < 5 (some context files present, some missing) | **User choice required.** (a) "Add to library" → add as `upload`, delete `{skills_path}/{name}/context/` folder, no `workflow_runs`. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
 
 ---
 
