@@ -16,7 +16,8 @@ const SESSION_JSON = (
   "mode": "guided",
   "research_dimensions_used": ["entities", "metrics"],
   "clarification_status": { "total_questions": 6, "answered": 0 },
-  "auto_filled": false
+  "auto_filled": false,
+  "iterative_history": []
 }`;
 
 function writeSessionJson(dir: string, skillName: string, phase: string) {
@@ -30,6 +31,24 @@ function makeSkillDirs(dir: string, skillName: string) {
   fs.mkdirSync(path.join(dir, skillName, "references"), { recursive: true });
 }
 
+function writeUserContextMd(dir: string, skillName: string) {
+  const vibeDir = path.join(dir, ".vibedata", skillName);
+  fs.mkdirSync(vibeDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(vibeDir, "user-context.md"),
+    `# User Context
+
+- **Industry**: Retail / E-commerce
+- **Function**: Analytics Engineering
+- **Target Audience**: Intermediate data engineers building dbt models
+- **Key Challenges**: Handling seasonal spikes, multi-location inventory reconciliation
+- **Scope**: Silver and gold layer dbt modeling for pet store operations
+- **What Makes This Setup Unique**: Multi-location with centralized e-commerce fulfillment
+- **What Claude Gets Wrong**: Assumes single-store context; misses cross-location stock logic
+`
+  );
+}
+
 // fresh: empty workspace — no session.json, no artifacts
 export function createFixtureFresh(_dir: string) {
   // nothing to create
@@ -41,9 +60,10 @@ export function createFixtureScoping(dir: string, skillName: string) {
   makeSkillDirs(dir, skillName);
 }
 
-// research: session.json + clarifications.md with all answers empty
+// research: session.json + user-context.md + clarifications.md with all answers empty
 export function createFixtureResearch(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "research");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "context", "clarifications.md"),
@@ -104,9 +124,10 @@ C. 5+ locations
   );
 }
 
-// clarification: session.json + clarifications.md with SOME answers filled
+// clarification: session.json + user-context.md + clarifications.md with SOME answers filled
 export function createFixtureClarification(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "clarification");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "context", "clarifications.md"),
@@ -170,6 +191,7 @@ C. 5+ locations
 // refinement_pending: clarifications.md with unanswered #### Refinements section
 export function createFixtureRefinementPending(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "refinement_pending");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "context", "clarifications.md"),
@@ -207,6 +229,7 @@ C. Customers are merged by loyalty card number
 // refinement: answered #### Refinements section
 export function createFixtureRefinement(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "refinement");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "context", "clarifications.md"),
@@ -229,9 +252,10 @@ export function createFixtureRefinement(dir: string, skillName: string) {
   );
 }
 
-// decisions: session.json + decisions.md
+// decisions: session.json + user-context.md + decisions.md
 export function createFixtureDecisions(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "decisions");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "context", "decisions.md"),
@@ -250,9 +274,10 @@ export function createFixtureDecisions(dir: string, skillName: string) {
   );
 }
 
-// generation: session.json + SKILL.md (no decisions.md — keeps state signal unambiguous)
+// generation: session.json + user-context.md + SKILL.md (no decisions.md — keeps state signal unambiguous)
 export function createFixtureGeneration(dir: string, skillName: string) {
   writeSessionJson(dir, skillName, "generation");
+  writeUserContextMd(dir, skillName);
   makeSkillDirs(dir, skillName);
   fs.writeFileSync(
     path.join(dir, skillName, "SKILL.md"),
@@ -292,7 +317,7 @@ export function createFixtureValidation(dir: string, skillName: string) {
   );
 }
 
-// T4 fixtures
+// Agent smoke fixtures
 export function createFixtureT4Research(dir: string, skillName: string) {
   createFixtureScoping(dir, skillName);
 }

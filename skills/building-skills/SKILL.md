@@ -30,6 +30,7 @@ Directory layout:
 .vibedata/                    ← plugin internals, never committed
   <skill-name>/
     session.json
+    user-context.md           ← written by coordinator during Scoping (Turn 2)
     answer-evaluation.json    ← written by answer-evaluator
 
 <skill-dir>/                  ← default: ./<skill-name>/
@@ -81,6 +82,8 @@ Artifact table overrides `session.json.current_phase` when they disagree. If mul
 | "I answered", "continue", "ready", "done" | `resume` |
 | "my answers are", "here are my answers", "answer above", "for Q" | `resume` |
 | "validate" | `validate_only` |
+| "improve [X] section", "update the [X] section", "fix [X] in", "add [X] to [section]" when SKILL.md exists | `targeted_edit` |
+| "regenerate everything", "rewrite the whole skill", "redo from scratch" when SKILL.md exists | `full_rewrite` |
 | "improve", "fix", "update", "missing" | `improve` |
 | "start over", "start fresh", "reset" | `start_fresh` |
 | "skip", "use defaults", "express" | `express` |
@@ -96,7 +99,7 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 |---|---|---|
 | `fresh` | `new_skill` | → Scoping |
 | `fresh` | `new_skill` + domain in message | → Scoping (pre-fill domain) |
-| `scoping` | `resume` | → Research |
+| `scoping` | `resume` | If `.vibedata/<skill-name>/user-context.md` does not exist: parse user message as user-context answers → write user-context.md → Research. Otherwise → Research |
 | `research` | `resume` | Show clarification status, prompt to answer |
 | `clarification_interactive_pending` | `resume` | → Capture Inline Answers |
 | `clarification` | `resume` | → answer-evaluator → [detailed-research] → Decisions |
@@ -106,6 +109,8 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 | `generation` | `resume` | → Validation |
 | `generation` | `validate_only` | → Validation |
 | `validation` | `resume` | Offer: finalize / improve / regenerate |
+| any + SKILL.md exists | `targeted_edit` | → Iterative (targeted) |
+| any + SKILL.md exists | `full_rewrite` | → Iterative (full rewrite) |
 | any + SKILL.md exists | `improve` | → Iterative |
 | any + SKILL.md exists | `validate_only` | → Validation |
 | any | `start_fresh` | Confirm reset, delete `.vibedata/<name>/` + `context/`, tell user session cleared → Scoping |
@@ -139,11 +144,39 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
      "clarification_status": { "total_questions": 0, "answered": 0 },
      "auto_filled": false,
      "interactive_questions_asked": [],
-     "interactive_questions_answered": false
+     "interactive_questions_answered": false,
+     "iterative_history": []
    }
    ```
 5. Detect mode from user message (express if "express"/"skip research"/detailed spec provided)
-6. → Research (guided) or → Decisions (express)
+6. If express mode: → Decisions (skip user-context collection)
+   If guided mode: ask the following questions conversationally and **end the turn** (do not dispatch yet):
+   ```
+   Before starting research, I'd like to understand your context so the research is tailored to your needs:
+
+   1. What industry is this skill for?
+   2. What is your function or role?
+   3. Who is the target audience for this skill?
+   4. What are the key challenges this skill should address?
+   5. What should this skill cover in terms of scope?
+   6. What makes your setup unique vs. standard implementations?
+   7. What does Claude most often get wrong in this domain?
+
+   Feel free to skip any that aren't relevant.
+   ```
+   When the user responds (next invocation, `scoping | resume`): parse their answers from the message, write `.vibedata/<skill-name>/user-context.md`:
+   ```markdown
+   # User Context
+
+   - **Industry**: {answer}
+   - **Function**: {answer}
+   - **Target Audience**: {answer}
+   - **Key Challenges**: {answer}
+   - **Scope**: {answer}
+   - **What Makes This Setup Unique**: {answer}
+   - **What Claude Gets Wrong**: {answer}
+   ```
+   Skip any field with an empty or skipped answer. Then → Research.
 
 ### Research
 
@@ -274,6 +307,21 @@ Passes: skill_dir, context_dir, workspace_dir, skill_type,
 
 - Supports `/rewrite` (full rewrite), `/validate` (re-run validation), `@file` (target specific file)
 - After agent returns: ask user to review changes, offer further iterations or validation
+
+**Targeted edit path (`targeted_edit` intent):**
+1. Glob `<skill_dir>/references/*.md` to find the reference file whose name best matches the section named in the user message. Append `@<filename>` to the user message passed to refine-skill so edits are constrained to that file.
+2. After refine-skill returns, automatically spawn validate-skill.
+3. Append to `session.json.iterative_history`:
+   ```json
+   { "timestamp": "<ISO>", "type": "targeted", "description": "<section name>" }
+   ```
+
+**Full rewrite path (`full_rewrite` intent):**
+1. Prepend `/rewrite` to the user message passed to refine-skill (it delegates to generate-skill + validate-skill internally).
+2. Append to `session.json.iterative_history`:
+   ```json
+   { "timestamp": "<ISO>", "type": "full_rewrite", "description": "full rewrite" }
+   ```
 
 ### Moving the Skill Directory
 

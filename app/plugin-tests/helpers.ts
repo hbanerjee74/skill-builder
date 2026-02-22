@@ -5,7 +5,26 @@ import path from "path";
 
 export const PLUGIN_DIR = path.resolve(__dirname, "../..");
 export const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
-export const HAS_API_KEY = !!process.env.ANTHROPIC_API_KEY;
+// True when API access is available. Checks for an API key OR the
+// FORCE_PLUGIN_TESTS flag (set in .claude/settings.json for OAuth sessions).
+export const HAS_API_KEY =
+  !!process.env.ANTHROPIC_API_KEY || !!process.env.FORCE_PLUGIN_TESTS;
+
+/**
+ * Resolve the spending cap for a test tier.
+ * Checks each value in order; returns the first that is set.
+ * Pass "none" (or set MAX_BUDGET_WORKFLOW=none) to run without a cap.
+ * Hardcoded final fallback ensures tests always have a safe default.
+ */
+export function parseBudget(
+  ...candidates: (string | undefined)[]
+): string | null {
+  for (const v of candidates) {
+    if (v === "none") return null;
+    if (v != null && v !== "") return v;
+  }
+  return null;
+}
 
 export function hasClaude(): boolean {
   const result = spawnSync("which", [CLAUDE_BIN], { encoding: "utf8" });
@@ -20,15 +39,19 @@ export function makeTempDir(label: string): string {
 /**
  * Run Claude CLI with a prompt and return the stdout output.
  * Returns null if the process times out or exits non-zero.
+ * Pass budgetUsd as null to run without a spending cap.
  */
 export function runClaude(
   prompt: string,
-  budgetUsd: string,
+  budgetUsd: string | null,
   timeoutMs: number,
   cwd: string
 ): string | null {
   // Unset CLAUDECODE so Claude doesn't detect it's inside a Claude Code session
   const env = { ...process.env, CLAUDECODE: undefined };
+
+  const budgetArgs =
+    budgetUsd != null ? ["--max-budget-usd", budgetUsd] : [];
 
   const result = spawnSync(
     CLAUDE_BIN,
@@ -37,8 +60,7 @@ export function runClaude(
       "--plugin-dir",
       PLUGIN_DIR,
       "--dangerously-skip-permissions",
-      "--max-budget-usd",
-      budgetUsd,
+      ...budgetArgs,
     ],
     {
       input: prompt,

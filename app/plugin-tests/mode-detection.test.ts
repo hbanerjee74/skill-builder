@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { HAS_API_KEY, makeTempDir, runClaude } from "./helpers";
+import { HAS_API_KEY, makeTempDir, runClaude, parseBudget } from "./helpers";
 import {
   createFixtureFresh,
   createFixtureScoping,
@@ -13,7 +13,12 @@ import {
 } from "./fixtures";
 
 const SKILL_NAME = "pet-store-analytics";
-const BUDGET = process.env.MAX_BUDGET_T3 ?? "0.25";
+// Per-test cap. Override precedence: MAX_BUDGET_MODES > MAX_BUDGET_WORKFLOW > 0.25
+const BUDGET = parseBudget(
+  process.env.MAX_BUDGET_MODES,
+  process.env.MAX_BUDGET_WORKFLOW,
+  "0.25"
+);
 
 function phasePattern(phase: string): RegExp {
   switch (phase) {
@@ -40,63 +45,63 @@ describe.skipIf(!HAS_API_KEY)(
       "What is the current phase of this skill session? Answer with just the phase name.";
 
     it("detects: fresh", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-fresh");
+      const dir = makeTempDir("modes-fresh");
       createFixtureFresh(dir);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(phasePattern("fresh"));
     });
 
     it("detects: scoping", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-scoping");
+      const dir = makeTempDir("modes-scoping");
       createFixtureScoping(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(phasePattern("scoping"));
     });
 
     it("detects: research", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-research");
+      const dir = makeTempDir("modes-research");
       createFixtureResearch(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(/research/i);
     });
 
     it("detects: clarification", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-clarification");
+      const dir = makeTempDir("modes-clarification");
       createFixtureClarification(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(/clarification/i);
     });
 
     it("detects: refinement_pending", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-refinement-pending");
+      const dir = makeTempDir("modes-refinement-pending");
       createFixtureRefinementPending(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(phasePattern("refinement_pending"));
     });
 
     it("detects: refinement", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-refinement");
+      const dir = makeTempDir("modes-refinement");
       createFixtureRefinement(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(/refinement/i);
     });
 
     it("detects: decisions", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-decisions");
+      const dir = makeTempDir("modes-decisions");
       createFixtureDecisions(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(/decisions/i);
     });
 
     it("detects: generation", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-generation");
+      const dir = makeTempDir("modes-generation");
       createFixtureGeneration(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(phasePattern("generation"));
     });
 
     it("detects: validation", { timeout: 75_000 }, () => {
-      const dir = makeTempDir("t3-validation");
+      const dir = makeTempDir("modes-validation");
       createFixtureValidation(dir, SKILL_NAME);
       const output = runClaude(STATE_PROMPT, BUDGET, 60_000, dir);
       expect(output).toMatch(/validation/i);
@@ -116,7 +121,7 @@ describe.skipIf(!HAS_API_KEY)(
     });
 
     it("new_skill intent enters scoping", { timeout: 135_000 }, () => {
-      const dir = makeTempDir("t3-new-skill");
+      const dir = makeTempDir("modes-new-skill");
       createFixtureFresh(dir);
       const output = runClaude(
         "I want to build a domain skill for pet store analytics.",
@@ -130,7 +135,7 @@ describe.skipIf(!HAS_API_KEY)(
     });
 
     it("start_fresh intent offers reset", { timeout: 135_000 }, () => {
-      const dir = makeTempDir("t3-start-fresh");
+      const dir = makeTempDir("modes-start-fresh");
       createFixtureClarification(dir, SKILL_NAME);
       const output = runClaude("start over", BUDGET, 120_000, dir);
       expect(output).toMatch(
@@ -138,8 +143,32 @@ describe.skipIf(!HAS_API_KEY)(
       );
     });
 
+    it("targeted_edit intent enters iterative targeted path", { timeout: 135_000 }, () => {
+      const dir = makeTempDir("modes-targeted-edit");
+      createFixtureGeneration(dir, SKILL_NAME);
+      const output = runClaude(
+        "Improve the metrics section of my skill.",
+        BUDGET,
+        120_000,
+        dir
+      );
+      expect(output).toMatch(/refin|iterative|targeted|section|metrics|edit/i);
+    });
+
+    it("full_rewrite intent triggers rewrite", { timeout: 135_000 }, () => {
+      const dir = makeTempDir("modes-full-rewrite");
+      createFixtureGeneration(dir, SKILL_NAME);
+      const output = runClaude(
+        "Regenerate the entire skill from scratch.",
+        BUDGET,
+        120_000,
+        dir
+      );
+      expect(output).toMatch(/rewrite|regenerat|entire|whole|from.scratch/i);
+    });
+
     it("process_question describes workflow modes", { timeout: 195_000 }, () => {
-      const dir = makeTempDir("t3-express");
+      const dir = makeTempDir("modes-express");
       createFixtureFresh(dir);
       const output = runClaude(
         "What workflow modes does this skill builder support? List them briefly.",

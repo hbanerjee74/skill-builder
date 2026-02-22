@@ -21,7 +21,7 @@ You receive a completed skill and a user's refinement request. You make targeted
   - The **skill directory path** (where `SKILL.md` and `references/` live)
   - The **context directory path** (where `decisions.md` and `clarifications.md` live)
   - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
-  - The **user context** (industry, function, audience, challenges — embedded inline in the prompt)
+  - The **user context** — read from `{workspace_dir}/user-context.md` at the start of each request
   - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
@@ -39,6 +39,8 @@ A completed skill contains:
 <instructions>
 
 ## Step 1: Read Before Editing
+
+Read `{workspace_dir}/user-context.md` first (if it exists) to understand the user's industry, role, and focus areas — use this to tailor tone, examples, and emphasis in your edits.
 
 Always read `SKILL.md` before making changes. If the user's request mentions a specific topic or reference file, read the relevant reference files too. Use Glob to discover files when the exact name is unclear (e.g., `references/*.md`).
 

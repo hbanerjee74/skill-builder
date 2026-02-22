@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
-import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude } from "./helpers";
+import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude, parseBudget } from "./helpers";
 
 const SKILL_NAME = "pet-store-analytics";
-const BUDGET = process.env.MAX_BUDGET_WORKFLOW ?? "5.00";
+// Cap for the full workflow run. Set MAX_BUDGET_WORKFLOW=none for no cap.
+const BUDGET = parseBudget(process.env.MAX_BUDGET_WORKFLOW, "5.00");
 // 45 minutes — matches the bash harness timeout
 const TIMEOUT_MS = 45 * 60 * 1000;
 
@@ -16,7 +17,7 @@ describe.skipIf(!HAS_API_KEY)("plugin::workflow", () => {
 
   beforeAll(
     () => {
-      workspace = makeTempDir("t5-e2e");
+      workspace = makeTempDir("workflow-e2e");
       skillDir = path.join(workspace, SKILL_NAME);
       contextDir = path.join(skillDir, "context");
       workspaceDir = path.join(workspace, ".vibedata", SKILL_NAME);

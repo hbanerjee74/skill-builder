@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import fs from "fs";
 import path from "path";
-import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude } from "./helpers";
+import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude, parseBudget } from "./helpers";
 import {
   createFixtureT4Research,
   createFixtureT4AnswerEvaluator,
@@ -9,7 +9,12 @@ import {
 } from "./fixtures";
 
 const SKILL_NAME = "pet-store-analytics";
-const BUDGET = process.env.MAX_BUDGET_T4 ?? "0.50";
+// Per-test cap. Override precedence: MAX_BUDGET_AGENTS > MAX_BUDGET_WORKFLOW > 0.50
+const BUDGET = parseBudget(
+  process.env.MAX_BUDGET_AGENTS,
+  process.env.MAX_BUDGET_WORKFLOW,
+  "0.50"
+);
 const WORKSPACE_CONTEXT = fs.readFileSync(
   path.join(PLUGIN_DIR, "skills", "building-skills", "references", "workspace-context.md"),
   "utf8"
@@ -21,7 +26,7 @@ describe.skipIf(!HAS_API_KEY)("research-orchestrator", () => {
   let researchDir: string;
 
   beforeAll(() => {
-    researchDir = makeTempDir("t4-research");
+    researchDir = makeTempDir("agents-research");
     createFixtureT4Research(researchDir, SKILL_NAME);
 
     const prompt = `You are the research-orchestrator agent for the skill-builder plugin.
@@ -80,7 +85,7 @@ describe.skipIf(!HAS_API_KEY)("answer-evaluator", () => {
   let evalDir: string;
 
   beforeAll(() => {
-    evalDir = makeTempDir("t4-answer-eval");
+    evalDir = makeTempDir("agents-answer-eval");
     createFixtureT4AnswerEvaluator(evalDir, SKILL_NAME);
 
     const prompt = `You are the answer-evaluator agent for the skill-builder plugin.
@@ -141,7 +146,7 @@ describe.skipIf(!HAS_API_KEY)("confirm-decisions", () => {
 
   beforeAll(() => {
     // Run answer-evaluator first to get the JSON dependency
-    const evalDir = makeTempDir("t4-decisions-eval");
+    const evalDir = makeTempDir("agents-decisions-eval");
     createFixtureT4AnswerEvaluator(evalDir, SKILL_NAME);
     const evalPrompt = `You are the answer-evaluator agent for the skill-builder plugin.
 Context directory: ${evalDir}/${SKILL_NAME}/context
@@ -154,7 +159,7 @@ Return the JSON.`;
     answerEvalPath = path.join(evalDir, ".vibedata", SKILL_NAME, "answer-evaluation.json");
 
     // Set up decisions workspace
-    decisionsDir = makeTempDir("t4-decisions");
+    decisionsDir = makeTempDir("agents-decisions");
     createFixtureT4Workspace(decisionsDir, SKILL_NAME);
 
     if (fs.existsSync(answerEvalPath)) {

@@ -14,7 +14,7 @@ export default defineConfig({
       junit: "./test-results/vitest-plugin-results.xml",
     },
     // Individual LLM tests can take up to 3 minutes (API latency + rate limits).
-    // T1 structural tests are fast; LLM tests use per-test timeouts via describe/it options.
+    // Structural tests are fast; LLM tests use per-test timeouts via describe/it options.
     testTimeout: 180_000,
     hookTimeout: 10_000,
   },
