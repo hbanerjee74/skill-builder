@@ -77,7 +77,6 @@ assert_contains "--help lists e2e level"      "e2e"         "$RUN_SH" --help
 assert_contains "--help lists plugin level"   "plugin"      "$RUN_SH" --help
 assert_contains "--help lists all level"      "all"         "$RUN_SH" --help
 assert_contains "--help shows E2E tags"       "@dashboard"  "$RUN_SH" --help
-assert_contains "--help shows plugin tags"    "@agents"     "$RUN_SH" --help
 
 echo ""
 echo -e "${CYAN}${BOLD}━━━ run.sh: Error Handling ━━━${RESET}"
@@ -90,18 +89,8 @@ assert_exit "--tag without value exits 1"     1 "$RUN_SH" --tag
 echo ""
 echo -e "${CYAN}${BOLD}━━━ test-plugin.sh: List Output ━━━${RESET}"
 assert_exit   "--list exits 0"                0 "$PLUGIN_SH" --list
-assert_contains "--list shows t1"             "t1"           "$PLUGIN_SH" --list
-assert_contains "--list shows t5"             "t5"           "$PLUGIN_SH" --list
-assert_contains "--list shows @structure"     "@structure"   "$PLUGIN_SH" --list
-assert_contains "--list shows @agents"        "@agents"      "$PLUGIN_SH" --list
-assert_contains "--list shows @coordinator"   "@coordinator" "$PLUGIN_SH" --list
-assert_contains "--list shows @workflow"      "@workflow"    "$PLUGIN_SH" --list
-
-echo ""
-echo -e "${CYAN}${BOLD}━━━ test-plugin.sh: Error Handling ━━━${RESET}"
-assert_exit "invalid tier exits non-zero"     1 "$PLUGIN_SH" t99
-assert_exit "invalid tag exits non-zero"      1 "$PLUGIN_SH" --tag @bogus
-assert_exit "--tag without value exits 1"     1 "$PLUGIN_SH" --tag
+assert_contains "--list mentions T5"          "T5"           "$PLUGIN_SH" --list
+assert_contains "--list mentions FOREGROUND"  "FOREGROUND"   "$PLUGIN_SH" --list
 
 # ===== Summary =====
 

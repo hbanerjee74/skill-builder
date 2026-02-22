@@ -7,27 +7,30 @@ Unified test documentation for the Skill Builder desktop app. Tests span four ru
 ```bash
 cd app
 
-# Run everything (all levels; plugin runs T1-T4 by default)
+# Run everything (all levels)
 ./tests/run.sh
 
 # Run a single level
 ./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust, sidecar
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
-./tests/run.sh plugin          # Plugin T1-T4 (structural + smoke, excludes expensive T5)
+./tests/run.sh plugin          # Plugin tests (Vitest — structural + LLM)
+./tests/run.sh plugin t5       # Full E2E workflow (opt-in, ~$5 / 45min)
 ./tests/run.sh eval            # Eval harness tests
 
-# Plugin: run specific tiers
-./tests/run.sh plugin t1                 # Structural only (free, no API key)
-./tests/run.sh plugin t1 t2 t3           # Coordinator changes
-./tests/run.sh plugin t4                 # Agent smoke tests
-./tests/run.sh plugin t5                 # Full E2E workflow (opt-in, ~$5 / 45min)
-FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
+# Plugin: run individual suites via npm (from app/)
+npm run test:plugin              # All plugin tests
+npm run test:plugin:structural   # Structural only (free, no API key needed)
+npm run test:plugin:loading      # Plugin loading tests (~$0.30)
+npm run test:plugin:modes        # State detection + intent dispatch (~$0.40)
+npm run test:plugin:agents       # Agent smoke tests (~$0.50)
 
-# Plugin: run by tag
-./tests/run.sh plugin --tag @agents
-./tests/run.sh plugin --tag @coordinator
-./tests/run.sh plugin --tag @structure
+# Plugin: run a single test case
+npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluator"
+npx vitest run --config vitest.config.plugin.ts -t "detects: clarification"
+
+# Plugin: full E2E
+FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
 
 # E2E: run by feature area
 ./tests/run.sh e2e --tag @dashboard
@@ -84,22 +87,27 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 ### Level 4: Plugin Tests
 
-CLI plugin tests. T1-T4 run by default; T5 (full E2E, ~$5) is opt-in.
+CLI plugin tests in Vitest. Each `it()` can be run independently. LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set. The full E2E workflow (`t5`) is opt-in via shell script.
 
-| Tier | What | Cost | Command |
+| Suite | What | Cost | npm script |
 |---|---|---|---|
-| T1 | Structural validation — plugin manifest, agent files, coordinator content | Free | `./tests/run.sh plugin t1` |
-| T2 | Plugin loading — Claude loads plugin, responds to queries | ~$0.30 | `./tests/run.sh plugin t2` |
-| T3 | State detection + intent dispatch — coordinator identifies phases, dispatches intents | ~$0.40 | `./tests/run.sh plugin t3` |
-| T4 | Agent smoke tests — individual agents produce expected output | ~$0.50 | `./tests/run.sh plugin t4` |
-| T5 | Full E2E workflow — scoping through validation, asserts all artifacts | ~$5.00 | `./tests/run.sh plugin t5` |
+| structural | plugin.json, agent files, coordinator content, anti-patterns | Free | `test:plugin:structural` |
+| loading | Claude loads plugin, responds to queries | ~$0.30 | `test:plugin:loading` |
+| modes | Coordinator identifies all phases, dispatches intents | ~$0.40 | `test:plugin:modes` |
+| agents | Individual agents produce expected output | ~$0.50 | `test:plugin:agents` |
+| full E2E | Scoping through validation, asserts all artifacts | ~$5.00 | `./scripts/test-plugin.sh` |
 
 ```bash
-./tests/run.sh plugin              # T1-T4 (default)
-./tests/run.sh plugin t1           # Free structural checks only
-./tests/run.sh plugin t1 t2 t3     # After coordinator changes
-./tests/run.sh plugin t5           # Full E2E (explicit opt-in)
-FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live output — see where it's stuck
+./tests/run.sh plugin              # All Vitest plugin tests
+./tests/run.sh plugin t5           # Full E2E (explicit opt-in, ~$5)
+FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
+
+# From app/ directly:
+npm run test:plugin:structural     # Free structural checks only
+npm run test:plugin                # All suites (LLM tests skip if no API key)
+
+# Run a single test case:
+npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluator"
 ```
 
 ### Level 5: Eval Harness Tests
@@ -169,16 +177,25 @@ Available tags: `@dashboard`, `@navigation`, `@settings`, `@skills`, `@usage`, `
 ## Directory Structure
 
 ```
-app/tests/
-  README.md              # This file
-  TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
-  run.sh                 # Unified test runner (unit, integration, e2e, plugin)
-  harness-test.sh        # Self-tests for run.sh and test-plugin.sh (21 tests)
-  manifest-scenarios.sh  # Cross-layer manifest validation (45 scenarios)
-  unit/
-    frontend/            -> ../../src/__tests__/       (symlink)
-    sidecar/             -> ../../sidecar/__tests__/   (symlink)
-  e2e/                   -> ../e2e/                    (symlink)
+app/
+  vitest.config.plugin.ts  # Vitest config for plugin tests (node env)
+  plugin-tests/
+    helpers.ts             # Shared helpers (PLUGIN_DIR, runClaude, makeTempDir)
+    fixtures.ts            # Fixture factories for each workflow phase
+    structural.test.ts     # Plugin manifest, agent files, coordinator content (free)
+    plugin-loading.test.ts # Claude loads plugin, responds to queries (~$0.30)
+    mode-detection.test.ts # State detection + intent dispatch (~$0.40)
+    agent-smoke.test.ts    # Individual agent output (~$0.50)
+  tests/
+    README.md              # This file
+    TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
+    run.sh                 # Unified test runner (unit, integration, e2e, plugin)
+    harness-test.sh        # Self-tests for run.sh and test-plugin.sh
+    manifest-scenarios.sh  # Cross-layer manifest validation
+    unit/
+      frontend/            -> ../../src/__tests__/       (symlink)
+      sidecar/             -> ../../sidecar/__tests__/   (symlink)
+    e2e/                   -> ../e2e/                    (symlink)
 ```
 
 Symlinks provide a single entry point for browsing tests without moving files from their framework-idiomatic locations.

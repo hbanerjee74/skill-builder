@@ -30,11 +30,13 @@ cd app && npm run test:integration       # Integration tests only (frontend)
 cd app && npm run test:e2e               # All E2E tests
 cd app/src-tauri && cargo test           # Rust tests
 
-# Testing — plugin (run from repo root)
+# Testing — plugin (run from repo root or app/)
 ./scripts/build-plugin-skill.sh          # Package workspace CLAUDE.md into skill references
 ./scripts/build-plugin-skill.sh --check  # Check if reference files are stale (CI)
 ./scripts/validate.sh                    # Structural validation
-./scripts/test-plugin.sh                 # Full test harness (T1-T5)
+cd app && npm run test:plugin            # Plugin tests: structural + LLM (Vitest)
+cd app && npm run test:plugin:structural # Structural checks only (free, no API key)
+./scripts/test-plugin.sh                 # Full E2E workflow test (~$5)
 claude --plugin-dir .                    # Load plugin locally
 
 # Skill evaluation (LLM-as-judge, run from repo root)
@@ -73,15 +75,15 @@ Determine what you changed, then pick the right runner:
 | Frontend (store/hook/component/page) | `npm run test:changed` |
 | Rust command | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
 | Sidecar code | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agents/`) | `./scripts/test-plugin.sh t1` |
-| Coordinator (`skills/building-skills/SKILL.md`) | `./scripts/test-plugin.sh t1 t2 t3` |
+| Agent prompt (`agents/`) | `cd app && npm run test:plugin:structural` |
+| Coordinator (`skills/building-skills/SKILL.md`) | `cd app && npm run test:plugin` |
 | Mock templates or E2E fixtures | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | `app/tests/run.sh` (all levels) |
 | Eval scripts | `app/tests/run.sh eval` |
 
-**Cross-cutting:** When a change affects both agents and app (e.g. artifact format change), run both `./scripts/test-plugin.sh t1` and `npm run test:unit`. The `canonical-format.test.ts` suite catches drift between agent prompts, mock templates, and app parsers.
+**Cross-cutting:** When a change affects both agents and app (e.g. artifact format change), run both `cd app && npm run test:plugin:structural` and `npm run test:unit`. The `canonical-format.test.ts` suite catches drift between agent prompts, mock templates, and app parsers.
 
-**Unsure?** `app/tests/run.sh` runs everything. `./scripts/test-plugin.sh` runs all plugin tiers.
+**Unsure?** `app/tests/run.sh` runs everything. `./scripts/test-plugin.sh` runs the full E2E workflow (~$5).
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 
