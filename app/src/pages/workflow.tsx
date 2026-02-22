@@ -222,8 +222,6 @@ export default function WorkflowPage() {
   // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
   // Scoped to human review steps so it doesn't block on non-review steps.
   const hasUnsavedChangesRef = useRef(false);
-  // Ref for autosave debounce timer
-  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
   }, [isHumanReviewStep, hasUnsavedChanges]);
@@ -920,27 +918,17 @@ export default function WorkflowPage() {
     }
   };
 
-  // Debounce autosave — fires 1500ms after the last edit on a human review step
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Debounce autosave — fires 1500ms after the last edit on a human review step.
+  // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
   useEffect(() => {
     if (!isHumanReviewStep || !editorDirty) return;
 
-    if (autosaveTimerRef.current !== null) {
-      clearTimeout(autosaveTimerRef.current);
-    }
-
-    autosaveTimerRef.current = setTimeout(() => {
-      autosaveTimerRef.current = null;
+    const timer = setTimeout(() => {
       handleSave();
     }, 1500);
 
-    return () => {
-      if (autosaveTimerRef.current !== null) {
-        clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorContent, editorDirty, isHumanReviewStep]);
 
   const currentStepDef = steps[currentStep];
