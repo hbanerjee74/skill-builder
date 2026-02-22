@@ -78,6 +78,11 @@ export function AppLayout() {
 
         // Block dashboard with ACK dialog if there are notifications or discovered skills
         if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
+          console.warn(
+            "[app-layout] Reconciliation produced %d notifications, %d discovered skills",
+            result.notifications.length,
+            result.discovered_skills.length,
+          );
           setReconNotifications(result.notifications);
           setReconDiscovered(result.discovered_skills);
           setAckDone(false);

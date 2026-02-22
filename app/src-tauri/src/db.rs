@@ -1104,14 +1104,20 @@ pub fn upsert_skill(
              domain = ?3, skill_type = ?4, updated_at = datetime('now')",
         rusqlite::params![name, skill_source, domain, skill_type],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
+        e.to_string()
+    })?;
     let id: i64 = conn
         .query_row(
             "SELECT id FROM skills WHERE name = ?1",
             rusqlite::params![name],
             |row| row.get(0),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("upsert_skill: failed to retrieve id for '{}': {}", name, e);
+            e.to_string()
+        })?;
     Ok(id)
 }
 
@@ -1122,7 +1128,10 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
             "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at
              FROM skills ORDER BY name",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("list_all_skills: failed to prepare query: {}", e);
+            e.to_string()
+        })?;
 
     let rows = stmt
         .query_map([], |row| {
@@ -1136,11 +1145,17 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
                 updated_at: row.get(6)?,
             })
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("list_all_skills: query failed: {}", e);
+            e.to_string()
+        })?;
 
     let result: Vec<SkillMasterRow> = rows
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("list_all_skills: failed to collect rows: {}", e);
+            e.to_string()
+        })?;
     log::debug!("list_all_skills: returning {} skills", result.len());
     Ok(result)
 }
@@ -1149,7 +1164,10 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
 pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
     log::info!("delete_skill: name={}", name);
     conn.execute("DELETE FROM skills WHERE name = ?1", rusqlite::params![name])
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("delete_skill: failed to delete '{}': {}", name, e);
+            e.to_string()
+        })?;
     Ok(())
 }
 
@@ -1158,12 +1176,16 @@ pub fn get_skill_by_name(
     conn: &Connection,
     name: &str,
 ) -> Result<Option<SkillMasterRow>, String> {
+    log::debug!("get_skill_by_name: name={}", name);
     let mut stmt = conn
         .prepare(
             "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at
              FROM skills WHERE name = ?1",
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("get_skill_by_name: failed to prepare query for '{}': {}", name, e);
+            e.to_string()
+        })?;
 
     let result = stmt.query_row(rusqlite::params![name], |row| {
         Ok(SkillMasterRow {
@@ -1180,7 +1202,10 @@ pub fn get_skill_by_name(
     match result {
         Ok(row) => Ok(Some(row)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(e.to_string()),
+        Err(e) => {
+            log::error!("get_skill_by_name: query failed for '{}': {}", name, e);
+            Err(e.to_string())
+        }
     }
 }
 
@@ -1216,7 +1241,10 @@ pub fn save_marketplace_skill(
     skill_type: &str,
 ) -> Result<(), String> {
     log::info!("save_marketplace_skill: name={}", skill_name);
-    upsert_skill(conn, skill_name, "marketplace", domain, skill_type)?;
+    upsert_skill(conn, skill_name, "marketplace", domain, skill_type).map_err(|e| {
+        log::error!("save_marketplace_skill: failed for '{}': {}", skill_name, e);
+        e
+    })?;
     Ok(())
 }
 

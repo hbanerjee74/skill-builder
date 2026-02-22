@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Info } from "lucide-react"
 import {
   AlertDialog,
@@ -24,6 +25,15 @@ export default function ReconciliationAckDialog({
   open,
   onAcknowledge,
 }: ReconciliationAckDialogProps) {
+  useEffect(() => {
+    if (open) {
+      console.warn(
+        "[reconciliation-ack-dialog] showing %d notifications",
+        notifications.length,
+      )
+    }
+  }, [open, notifications.length])
+
   return (
     <AlertDialog open={open}>
       <AlertDialogContent>

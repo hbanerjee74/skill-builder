@@ -198,6 +198,7 @@ export default function DashboardPage() {
   }, [navigate])
 
   const handleTest = useCallback((skill: SkillSummary) => {
+    console.log("[dashboard] navigating to test: skill=%s", skill.name)
     navigate({ to: "/test", search: { skill: skill.name } })
   }, [navigate])
 
