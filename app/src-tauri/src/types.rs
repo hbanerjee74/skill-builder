@@ -294,10 +294,18 @@ pub struct SkillLock {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveredSkill {
+    pub name: String,
+    pub detected_step: i32,
+    pub scenario: String, // "9a", "9b", "9c"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReconciliationResult {
     pub orphans: Vec<OrphanSkill>,
     pub notifications: Vec<String>,
     pub auto_cleaned: u32,
+    pub discovered_skills: Vec<DiscoveredSkill>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
