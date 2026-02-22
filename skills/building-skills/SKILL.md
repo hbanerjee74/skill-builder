@@ -309,6 +309,7 @@ Passes: skill_dir, context_dir, workspace_dir, skill_type,
 - After agent returns: ask user to review changes, offer further iterations or validation
 
 **Targeted edit path (`targeted_edit` intent):**
+Before dispatching: emit "Starting a targeted iterative edit of the [section] section — will refine and then validate the skill."
 1. Glob `<skill_dir>/references/*.md` to find the reference file whose name best matches the section named in the user message. Append `@<filename>` to the user message passed to refine-skill so edits are constrained to that file. If no reference file closely matches, omit the `@` annotation and pass the user message as-is.
 2. After refine-skill returns, automatically spawn validate-skill.
 3. Append to `session.json.iterative_history`:
@@ -317,6 +318,7 @@ Passes: skill_dir, context_dir, workspace_dir, skill_type,
    ```
 
 **Full rewrite path (`full_rewrite` intent):**
+Before dispatching: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and validate."
 1. Prepend `/rewrite` to the user message passed to refine-skill (it delegates to generate-skill + validate-skill internally).
 2. Append to `session.json.iterative_history`:
    ```json

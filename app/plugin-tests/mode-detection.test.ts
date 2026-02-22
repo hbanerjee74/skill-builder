@@ -146,9 +146,10 @@ describe.skipIf(!HAS_API_KEY)(
     it("targeted_edit intent enters iterative targeted path", { timeout: 135_000 }, () => {
       const dir = makeTempDir("modes-targeted-edit");
       createFixtureGeneration(dir, SKILL_NAME);
+      // Higher budget: coordinator spawns refine-skill + validate-skill agents
       const output = runClaude(
         "Improve the metrics section of my skill.",
-        BUDGET,
+        parseBudget(process.env.MAX_BUDGET_MODES, process.env.MAX_BUDGET_WORKFLOW, "1.50"),
         120_000,
         dir
       );
@@ -158,16 +159,19 @@ describe.skipIf(!HAS_API_KEY)(
     it("full_rewrite intent triggers rewrite", { timeout: 135_000 }, () => {
       const dir = makeTempDir("modes-full-rewrite");
       createFixtureGeneration(dir, SKILL_NAME);
+      // Higher budget: coordinator spawns refine-skill (which runs generate-skill + validate-skill)
       const output = runClaude(
         "Regenerate the entire skill from scratch.",
-        BUDGET,
+        parseBudget(process.env.MAX_BUDGET_MODES, process.env.MAX_BUDGET_WORKFLOW, "1.50"),
         120_000,
         dir
       );
       expect(output).toMatch(/rewrite|regenerat|entire|whole|from.scratch/i);
     });
 
-    it("process_question describes workflow modes", { timeout: 195_000 }, () => {
+    it("process_question describes workflow modes", { timeout: 255_000 }, async () => {
+      // Pause to allow rate-limit recovery after the preceding agent-spawning tests
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
       const dir = makeTempDir("modes-express");
       createFixtureFresh(dir);
       const output = runClaude(

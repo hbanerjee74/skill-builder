@@ -96,6 +96,7 @@ The user may send these commands instead of a free-form request.
 
 **`/rewrite` (no `@` targets)** — Full skill rewrite. Delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
+Before spawning agents: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and then validate."
 1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
    - The skill type, domain name (read from SKILL.md frontmatter), and skill name
    - The context directory path (for `decisions.md`)
@@ -121,6 +122,7 @@ The user may send these commands instead of a free-form request.
 
 **`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
 
+Before spawning agents: emit "Running validation on the skill — checking structure, content, and quality."
 1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite`.
 2. Report the validation results to the user.
 
