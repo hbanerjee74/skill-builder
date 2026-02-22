@@ -124,7 +124,7 @@ Validate the test infrastructure itself — argument parsing, tag routing, and c
 
 | Script | Tests | What it validates |
 |---|---|---|
-| `./tests/harness-test.sh` | 21 | run.sh and test-plugin.sh accept valid args, reject invalid ones, show help |
+| `./tests/harness-test.sh` | — | run.sh accepts valid args, rejects invalid ones, shows help |
 | `./tests/manifest-scenarios.sh` | 45 | Cross-layer mappings: Rust → E2E tags, shared infra, plugin sources |
 
 ## Running by Area
@@ -190,7 +190,7 @@ app/
     README.md              # This file
     TEST_MANIFEST.md       # Cross-layer map (Rust → E2E tags, shared infra, plugin)
     run.sh                 # Unified test runner (unit, integration, e2e, plugin)
-    harness-test.sh        # Self-tests for run.sh and test-plugin.sh
+    harness-test.sh        # Self-tests for run.sh
     manifest-scenarios.sh  # Cross-layer manifest validation
     unit/
       frontend/            -> ../../src/__tests__/       (symlink)

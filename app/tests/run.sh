@@ -27,7 +27,7 @@ RESET='\033[0m'
 # ---------------------------------------------------------------------------
 LEVEL="all"
 TAG=""
-RUN_T5=false
+RUN_WORKFLOW=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -130,7 +130,7 @@ run_unit() {
   fi
 
   # Canonical format compliance is now covered by:
-  # - Agent prompts: ./scripts/test-plugin.sh t1 (T1.11)
+  # - Agent prompts: npm run test:plugin:structural (plugin-tests/structural.test.ts)
   # - Mock templates / fixtures: vitest canonical-format.test.ts (included in unit tests above)
 }
 

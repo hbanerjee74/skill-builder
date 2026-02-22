@@ -36,7 +36,7 @@ cd app/src-tauri && cargo test           # Rust tests
 ./scripts/validate.sh                    # Structural validation
 cd app && npm run test:plugin            # Plugin tests: structural + LLM (Vitest)
 cd app && npm run test:plugin:structural # Structural checks only (free, no API key)
-./scripts/test-plugin.sh                 # Full E2E workflow test (~$5)
+cd app && npm run test:plugin:workflow    # Full E2E workflow test (~$5)
 claude --plugin-dir .                    # Load plugin locally
 
 # Skill evaluation (LLM-as-judge, run from repo root)
