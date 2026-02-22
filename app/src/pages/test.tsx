@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
@@ -484,11 +485,12 @@ export default function TestPage() {
       return;
     }
 
-    useAgentStore.getState().registerRun(evalId, "haiku", "__test_baseline__");
+    const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__");
     startAgent(
       evalId,
       evalPrompt,
-      "haiku",
+      evalModel,
       state.baselineCwd,
       [],
       1,
@@ -612,15 +614,16 @@ export default function TestPage() {
       }));
 
       // Register runs in agent store
-      useAgentStore.getState().registerRun(withId, "haiku", skillName);
-      useAgentStore.getState().registerRun(withoutId, "haiku", "__test_baseline__");
+      const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
+      useAgentStore.getState().registerRun(withId, testModel, skillName);
+      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
 
       // Start both agents in parallel
       await Promise.all([
         startAgent(
           withId,
           s.prompt,
-          "haiku",
+          testModel,
           prepared.with_skill_cwd,
           [],
           1,
@@ -633,7 +636,7 @@ export default function TestPage() {
         startAgent(
           withoutId,
           s.prompt,
-          "haiku",
+          testModel,
           prepared.baseline_cwd,
           [],
           1,
