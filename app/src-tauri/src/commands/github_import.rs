@@ -261,7 +261,8 @@ pub(crate) async fn list_github_skills_inner(
                 return None;
             }
 
-            // If subpath is specified, only include entries under it
+            // If subpath is specified, only include entries under it;
+            // otherwise exclude top-level directories used for plugin packaging (e.g. plugins/).
             if let Some(sp) = subpath {
                 let prefix = if sp.ends_with('/') {
                     sp.to_string()
@@ -271,6 +272,8 @@ pub(crate) async fn list_github_skills_inner(
                 if !entry_path.starts_with(&prefix) {
                     return None;
                 }
+            } else if entry_path.starts_with("plugins/") {
+                return None;
             }
 
             Some(entry_path.to_string())
@@ -1103,6 +1106,27 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert!(filtered.contains(&&"skills/analytics/SKILL.md"));
         assert!(filtered.contains(&&"skills/reporting/SKILL.md"));
+    }
+
+    #[test]
+    fn test_plugins_dir_excluded_without_subpath() {
+        // When no subpath is specified, paths under plugins/ should be excluded
+        // to avoid picking up plugin-packaged copies of skills.
+        let paths = vec![
+            "analytics/SKILL.md",
+            "plugins/skill-builder/skills/building-skills/SKILL.md",
+            "plugins/skill-builder-practices/skills/skill-builder-practices/SKILL.md",
+            "skill-builder-practices/SKILL.md",
+        ];
+
+        let filtered: Vec<&&str> = paths
+            .iter()
+            .filter(|p| !p.starts_with("plugins/"))
+            .collect();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.contains(&&"analytics/SKILL.md"));
+        assert!(filtered.contains(&&"skill-builder-practices/SKILL.md"));
     }
 
     #[test]
