@@ -74,14 +74,30 @@ const TERMINAL_STATUSES = new Set(["completed", "error", "shutdown"]);
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract accumulated assistant text content from agent store messages. */
+/** Extract accumulated assistant text content from agent store messages.
+ * Includes text blocks and AskUserQuestion inputs so the evaluator can see
+ * what clarification questions the agent asked. */
 function extractAssistantText(agentId: string): string {
   const run = useAgentStore.getState().runs[agentId];
   if (!run) return "";
   return run.messages
-    .filter((m) => m.type === "assistant" && m.content)
-    .map((m) => m.content!)
-    .join("");
+    .filter((m) => m.type === "assistant")
+    .map((m) => {
+      const textContent = m.content ?? "";
+      // Capture AskUserQuestion inputs so the evaluator sees what was asked
+      const apiBlocks = (
+        (m.raw?.message as Record<string, unknown> | undefined)?.content
+      ) as Array<{ type: string; name?: string; input?: Record<string, unknown> }> | undefined;
+      const questions = Array.isArray(apiBlocks)
+        ? apiBlocks
+            .filter((b) => b.type === "tool_use" && b.name === "AskUserQuestion")
+            .map((b) => (typeof b.input?.question === "string" ? b.input.question : ""))
+            .filter(Boolean)
+        : [];
+      return [textContent, ...questions].filter(Boolean).join("\n");
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 /** Build the evaluator prompt from both plans. */
@@ -626,7 +642,7 @@ export default function TestPage() {
           testModel,
           prepared.with_skill_cwd,
           [],
-          1,
+          15,
           undefined,
           skillName,
           "test-with",
@@ -639,7 +655,7 @@ export default function TestPage() {
           testModel,
           prepared.baseline_cwd,
           [],
-          1,
+          15,
           undefined,
           "__test_baseline__",
           "test-without",
