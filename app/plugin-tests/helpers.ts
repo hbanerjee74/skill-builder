@@ -46,8 +46,7 @@ export function runClaude(
   timeoutMs: number,
   cwd: string
 ): string {
-  // Unset CLAUDECODE so Claude doesn't detect it's inside a Claude Code session
-  const env = { ...process.env, CLAUDECODE: undefined };
+  const env = { ...process.env };
 
   const budgetArgs =
     budgetUsd != null ? ["--max-budget-usd", budgetUsd] : [];
