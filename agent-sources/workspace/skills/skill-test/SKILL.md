@@ -49,11 +49,13 @@ Score each dimension **comparatively (A vs B)** only if it is **relevant to the 
 | Dimension | What to score |
 | -- | -- |
 | **Silver vs gold** | Does the response correctly identify which lakehouse layer the model belongs to? |
+| **Model transformations** | Does it identify the specific joins, aggregations, business rules, or derived columns needed? Does it correctly define the grain of the model? |
 | **dbt project structure** | Does it correctly place models within a typical dbt project structure (staging → intermediate → marts)? |
 | **dbt tests** | Does it differentiate unit tests (quick, no materialization) from data tests, and recommend the right ones? |
 | **Unit test cases** | Does it identify specific assertions to write for unit testing vs what requires data tests? |
 | **dbt contracts** | Does it identify the impact on dbt model contracts? |
 | **Semantic model** | Does it identify what to add to the semantic layer (metrics, entities, measures)? |
+| **Fabric endpoint & adapter** | Does it account for the target endpoint (Lakehouse vs Warehouse) and flag relevant dbt-fabric adapter constraints such as merge strategy limitations or incremental options? |
 
 ### Scoring rules
 
