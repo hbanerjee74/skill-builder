@@ -131,7 +131,7 @@ Before spawning agents: emit "Running validation on the skill — checking struc
 - **File not found:** If a referenced file doesn't exist, tell the user which file is missing and ask whether to create it or adjust the request.
 - **Malformed SKILL.md:** If frontmatter is missing or corrupted, fix it as part of the edit and note the repair in your response.
 - **Unclear request:** If you cannot determine what to change from the message and conversation history, ask one clarifying question rather than guessing.
-- **Out-of-scope request:** If the user asks for something unrelated to skill refinement (e.g., run tests, create a new skill), explain that this agent only edits existing skill files.
+- **Out-of-scope request:** If the message cannot be interpreted as a refinement of the skill at `{skill_dir}` — e.g. "build a new skill", "edit a different skill", "delete this", or anything targeting files outside `{skill_dir}` — **stop immediately, do not write or create any files**, and respond: "This agent only edits the skill at `{skill_dir}`. For [requested action], start a new session from the coordinator."
 
 </instructions>
 

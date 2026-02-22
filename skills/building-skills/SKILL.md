@@ -99,6 +99,8 @@ Default: `resume` when in-progress state exists, `new_skill` otherwise.
 |---|---|---|
 | `fresh` | `new_skill` | → Scoping |
 | `fresh` | `new_skill` + domain in message | → Scoping (pre-fill domain) |
+| `validation` | `new_skill` | → Scoping (pre-fill domain from message if present) |
+| non-fresh, non-validation | `new_skill` | Guard: "You're currently in [phase] for [skill-name]. Say 'start over' to close this session first, then ask again to build [domain]." Do not start a new workflow. |
 | `scoping` | `resume` | If `.vibedata/<skill-name>/user-context.md` does not exist: parse user message as user-context answers → write user-context.md → Research. Otherwise → Research |
 | `research` | `resume` | Show clarification status, prompt to answer |
 | `clarification_interactive_pending` | `resume` | → Capture Inline Answers |
@@ -293,7 +295,7 @@ Passes: skill_type, domain, skill_name, context_dir, skill_dir, workspace_dir
 - Agent writes: `context/agent-validation-log.md`, `context/test-skill.md`, `context/companion-skills.md`
 - Relay results summary to user
 - Read `context/companion-skills.md` if present; check `companions` list in YAML frontmatter. If non-empty, present each companion conversationally — name, type, priority, and reason
-- Offer three options: finalize / improve a section (→ Iterative) / regenerate (→ Generation)
+- Offer options: finalize / improve a section (→ Iterative) / regenerate (→ Generation). If companions were presented, also offer: "Or say 'build the [name] skill' to start a new workflow for a companion skill."
 - On finalize: tell user skill is ready at `<skill-dir>`
 
 ### Iterative
