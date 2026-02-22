@@ -60,6 +60,9 @@ const testRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/test",
   component: TestPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    skill: typeof search.skill === "string" ? search.skill : undefined,
+  }),
 });
 
 const routeTree = rootRoute.addChildren([

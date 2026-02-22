@@ -1,5 +1,6 @@
 import {
   Download,
+  FlaskConical,
   Lock,
   MessageSquare,
   MoreHorizontal,
@@ -26,6 +27,7 @@ import {
   isWorkflowComplete,
   parseStepProgress,
 } from "@/components/skill-card"
+import { SkillSourceBadge } from "@/components/skill-source-badge"
 import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -39,6 +41,7 @@ interface SkillListRowProps {
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
+  onTest?: (skill: SkillSummary) => void
   marketplaceConfigured?: boolean
 }
 
@@ -51,8 +54,9 @@ export default function SkillListRow({
   onEdit,
   onEditWorkflow,
   onRefine,
+  onTest,
 }: SkillListRowProps) {
-  const isMarketplace = skill.source === 'marketplace'
+  const isMarketplace = skill.skill_source === 'marketplace'
   const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
   const canDownload = isMarketplace || isWorkflowComplete(skill)
 
@@ -86,9 +90,10 @@ export default function SkillListRow({
         {skill.domain ?? ""}
       </span>
 
-      {/* Col 3: Type (plain text) */}
-      <span className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap">
+      {/* Col 3: Type + Source (plain text) */}
+      <span className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
         {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+        <SkillSourceBadge skillSource={skill.skill_source} />
       </span>
 
       {/* Col 4: Tags (2fr — wide, plain text, comma-separated) */}
@@ -110,7 +115,7 @@ export default function SkillListRow({
       {/* Col 6: Actions (right-aligned) */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
-        {!isMarketplace && (
+        {skill.skill_source === 'skill-builder' && (
           <IconAction
             icon={<Pencil className="size-3" />}
             label="Edit workflow"
@@ -126,6 +131,12 @@ export default function SkillListRow({
             onClick={() => onRefine(skill)}
           />
         )}
+        <IconAction
+          icon={<FlaskConical className="size-3" />}
+          label="Test skill"
+          tooltip="Test"
+          onClick={() => onTest?.(skill)}
+        />
         {canDownload && onDownload && (
           <IconAction
             icon={<Download className="size-3" />}
@@ -142,7 +153,7 @@ export default function SkillListRow({
           onClick={() => onDelete(skill)}
         />
 
-        {!isMarketplace && (
+        {skill.skill_source === 'skill-builder' && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button

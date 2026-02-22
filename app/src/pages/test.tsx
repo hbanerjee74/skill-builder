@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Square } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -265,6 +265,7 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
 
 export default function TestPage() {
   const navigate = useNavigate();
+  const { skill: skillParam } = useSearch({ from: "/test" });
 
   // --- Skills list ---
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -318,6 +319,19 @@ export default function TestPage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Auto-select skill from search param
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!skillParam || skills.length === 0) return;
+    const match = skills.find((s) => s.name === skillParam);
+    if (match) {
+      console.log("[test] pre-selected skill from search param: %s", skillParam);
+      setState((prev) => ({ ...prev, selectedSkill: match }));
+    }
+  }, [skillParam, skills]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
