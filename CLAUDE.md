@@ -85,7 +85,7 @@ Determine what you changed, then pick the right runner:
 
 **Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:plugin:structural test:plugin:agents` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
-**Unsure?** `app/tests/run.sh` runs everything. `./scripts/test-plugin.sh` runs the full E2E workflow (~$5).
+**Unsure?** `app/tests/run.sh` runs everything. `./tests/run.sh plugin workflow` runs the full E2E workflow (~$5).
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 

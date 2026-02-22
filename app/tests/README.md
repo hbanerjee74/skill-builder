@@ -15,7 +15,7 @@ cd app
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
 ./tests/run.sh plugin          # Plugin tests (Vitest — structural + LLM)
-./tests/run.sh plugin t5       # Full E2E workflow (opt-in, ~$5 / 45min)
+./tests/run.sh plugin workflow # Full E2E workflow (opt-in, ~$5 / 45min)
 ./tests/run.sh eval            # Eval harness tests
 
 # Plugin: run individual suites via npm (from app/)
@@ -30,7 +30,7 @@ npx vitest run --config vitest.config.plugin.ts -t "agent exists: answer-evaluat
 npx vitest run --config vitest.config.plugin.ts -t "detects: clarification"
 
 # Plugin: full E2E
-FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
+FOREGROUND=1 ./tests/run.sh plugin workflow   # Workflow test with live Claude output
 
 # E2E: run by feature area
 ./tests/run.sh e2e --tag @dashboard
@@ -87,7 +87,7 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 ### Level 4: Plugin Tests
 
-CLI plugin tests in Vitest. Each `it()` can be run independently. LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set. The full E2E workflow (`t5`) is opt-in via shell script.
+CLI plugin tests in Vitest. Each `it()` can be run independently. LLM tests are skipped automatically when `ANTHROPIC_API_KEY` is not set. The full E2E workflow (`workflow`) is opt-in via shell script.
 
 | Suite | What | Cost | npm script |
 |---|---|---|---|
@@ -95,12 +95,12 @@ CLI plugin tests in Vitest. Each `it()` can be run independently. LLM tests are 
 | loading | Claude loads plugin, responds to queries | ~$0.30 | `test:plugin:loading` |
 | modes | Coordinator identifies all phases, dispatches intents | ~$0.40 | `test:plugin:modes` |
 | agents | Individual agents produce expected output | ~$0.50 | `test:plugin:agents` |
-| full E2E | Scoping through validation, asserts all artifacts | ~$5.00 | `./scripts/test-plugin.sh` |
+| workflow | Scoping through validation, asserts all artifacts | ~$5.00 | `test:plugin:workflow` |
 
 ```bash
 ./tests/run.sh plugin              # All Vitest plugin tests
-./tests/run.sh plugin t5           # Full E2E (explicit opt-in, ~$5)
-FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
+./tests/run.sh plugin workflow     # Full E2E (explicit opt-in, ~$5)
+FOREGROUND=1 ./tests/run.sh plugin workflow   # Workflow test with live Claude output
 
 # From app/ directly:
 npm run test:plugin:structural     # Free structural checks only

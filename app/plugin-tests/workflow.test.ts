@@ -4,11 +4,11 @@ import path from "path";
 import { HAS_API_KEY, PLUGIN_DIR, makeTempDir, runClaude } from "./helpers";
 
 const SKILL_NAME = "pet-store-analytics";
-const BUDGET = process.env.MAX_BUDGET_T5 ?? "5.00";
+const BUDGET = process.env.MAX_BUDGET_WORKFLOW ?? "5.00";
 // 45 minutes — matches the bash harness timeout
 const TIMEOUT_MS = 45 * 60 * 1000;
 
-describe.skipIf(!HAS_API_KEY)("t5: full E2E workflow", () => {
+describe.skipIf(!HAS_API_KEY)("plugin::workflow", () => {
   let workspace: string;
   let skillDir: string;
   let contextDir: string;

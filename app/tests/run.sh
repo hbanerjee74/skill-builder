@@ -38,9 +38,9 @@ while [[ $# -gt 0 ]]; do
     plugin)
       LEVEL="plugin"
       shift
-      # Allow explicit t5 opt-in: ./tests/run.sh plugin t5
-      if [[ "${1:-}" == "t5" ]]; then
-        RUN_T5=true
+      # Allow explicit workflow opt-in: ./tests/run.sh plugin workflow
+      if [[ "${1:-}" == "workflow" ]]; then
+        RUN_WORKFLOW=true
         shift
       fi
       ;;
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
       echo "  unit          Pure logic: stores, utils, hooks, Rust, sidecar"
       echo "  integration   Component rendering with mocked APIs"
       echo "  e2e           Full browser tests (Playwright)"
-      echo "  plugin        Plugin tests (Vitest); add 't5' for full E2E (~\$5)"
+      echo "  plugin        Plugin tests (Vitest); add 'workflow' for full E2E (~\$5)"
       echo "  eval          Eval harness tests"
       echo "  all           Run all levels (default)"
       echo ""
@@ -71,8 +71,8 @@ while [[ $# -gt 0 ]]; do
       echo "  ./tests/run.sh                           # Run everything"
       echo "  ./tests/run.sh unit                      # Unit tests only"
       echo "  ./tests/run.sh plugin                    # Plugin tests (Vitest)"
-      echo "  ./tests/run.sh plugin t5                 # Full E2E workflow (opt-in, ~\$5)"
-      echo "  FOREGROUND=1 ./tests/run.sh plugin t5    # T5 with live Claude output"
+      echo "  ./tests/run.sh plugin workflow                 # Full E2E workflow (opt-in, ~\$5)"
+      echo "  FOREGROUND=1 ./tests/run.sh plugin workflow    # Workflow test with live Claude output"
       echo "  ./tests/run.sh e2e --tag @dashboard      # Dashboard E2E tests"
       exit 0
       ;;
@@ -174,17 +174,12 @@ run_plugin() {
     fail "Plugin tests"
   fi
 
-  if [[ "$RUN_T5" == "true" ]]; then
-    header "Plugin Tests: Full E2E Workflow"
-    PLUGIN_SCRIPT="$APP_DIR/../scripts/test-plugin.sh"
-    if [[ ! -x "$PLUGIN_SCRIPT" ]]; then
-      fail "Plugin T5 (scripts/test-plugin.sh not found)"
-      return
-    fi
-    if ("$PLUGIN_SCRIPT"); then
-      pass "Plugin T5 (full E2E)"
+  if [[ "$RUN_WORKFLOW" == "true" ]]; then
+    header "Plugin Tests: Full E2E Workflow (Vitest)"
+    if (cd "$APP_DIR" && npm run test:plugin:workflow --silent); then
+      pass "Plugin workflow (full E2E)"
     else
-      fail "Plugin T5 (full E2E)"
+      fail "Plugin workflow (full E2E)"
     fi
   fi
 }
