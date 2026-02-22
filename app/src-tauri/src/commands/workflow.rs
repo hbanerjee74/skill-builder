@@ -13,18 +13,6 @@ use crate::types::{
 
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
 
-/// Resolve a model shorthand ("sonnet", "haiku", "opus") to a full model ID.
-/// Uses version-level aliases (no date suffix) so this never needs updating for new snapshots.
-/// If the input is already a full ID, pass it through unchanged.
-pub fn resolve_model_id(shorthand: &str) -> String {
-    match shorthand {
-        "sonnet" => "claude-sonnet-4-6".to_string(),
-        "haiku" => "claude-haiku-4-5".to_string(),
-        "opus" => "claude-opus-4-6".to_string(),
-        other => other.to_string(), // passthrough for full IDs
-    }
-}
-
 fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
@@ -704,14 +692,6 @@ pub fn build_betas(thinking_budget: Option<u32>, model: &str) -> Option<Vec<Stri
 }
 
 /// Return the default model for a given step (from agent front matter).
-/// Step 4 (reasoning) uses opus; all other agent steps use sonnet.
-fn default_model_for_step(step_id: u32) -> &'static str {
-    match step_id {
-        4 => "opus",
-        _ => "sonnet",
-    }
-}
-
 fn make_agent_id(skill_name: &str, label: &str) -> String {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -749,6 +729,7 @@ fn validate_decisions_exist_inner(
 struct WorkflowSettings {
     skills_path: String,
     api_key: String,
+    preferred_model: String,
     extended_thinking: bool,
     skill_type: String,
     author_login: Option<String>,
@@ -780,6 +761,8 @@ fn read_workflow_settings(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+    let preferred_model = settings.preferred_model
+        .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
     let extended_thinking = settings.extended_thinking;
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
@@ -810,6 +793,7 @@ fn read_workflow_settings(
     Ok(WorkflowSettings {
         skills_path,
         api_key,
+        preferred_model,
         extended_thinking,
         skill_type,
         author_login,
@@ -881,19 +865,16 @@ async fn run_workflow_step_inner(
     let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
 
-    // Use the agent front-matter default model for this step.
-    let model = resolve_model_id(default_model_for_step(step_id));
-
     let config = SidecarConfig {
         prompt,
-        model: None,
+        model: Some(settings.preferred_model.clone()),
         api_key: settings.api_key.clone(),
         cwd: workspace_path.to_string(),
         allowed_tools: Some(step.allowed_tools),
         max_turns: Some(step.max_turns),
         permission_mode: Some("bypassPermissions".to_string()),
         session_id: None,
-        betas: build_betas(thinking_budget, &model),
+        betas: build_betas(thinking_budget, &settings.preferred_model),
         max_thinking_tokens: thinking_budget,
         path_to_claude_code_executable: None,
         agent_name: Some(agent_name),
@@ -1305,7 +1286,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, industry, function_role, intake_json) = {
+    let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -1323,7 +1304,8 @@ pub async fn run_answer_evaluator(
             .ok()
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
-        (key, sp, settings.industry, settings.function_role, ij)
+        let model = settings.preferred_model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+        (key, sp, settings.industry, settings.function_role, ij, model)
     };
 
     // Write user-context.md so the agent can read it (same as workflow steps)
@@ -1365,7 +1347,7 @@ pub async fn run_answer_evaluator(
 
     let config = SidecarConfig {
         prompt,
-        model: None, // haiku comes from agent frontmatter
+        model: Some(preferred_model),
         api_key,
         cwd: workspace_path.clone(),
         allowed_tools: Some(vec!["Read".to_string(), "Write".to_string()]),
@@ -1761,15 +1743,6 @@ mod tests {
         assert!(files.is_empty());
         let files = get_step_output_files(99);
         assert!(files.is_empty());
-    }
-
-    #[test]
-    fn test_resolve_model_id() {
-        assert_eq!(resolve_model_id("sonnet"), "claude-sonnet-4-6");
-        assert_eq!(resolve_model_id("haiku"), "claude-haiku-4-5");
-        assert_eq!(resolve_model_id("opus"), "claude-opus-4-6");
-        // Full IDs pass through unchanged
-        assert_eq!(resolve_model_id("claude-sonnet-4-6"), "claude-sonnet-4-6");
     }
 
     #[test]
@@ -2396,14 +2369,6 @@ mod tests {
                 step_id, expected_turns, config.max_turns
             );
         }
-    }
-
-    #[test]
-    fn test_resolve_model_id_sonnet_returns_full_id() {
-        // The sonnet shorthand is used for debug mode model override
-        let sonnet_id = resolve_model_id("sonnet");
-        assert_eq!(sonnet_id, "claude-sonnet-4-6");
-        assert!(sonnet_id.contains("sonnet"), "Sonnet model ID should contain 'sonnet'");
     }
 
     #[test]
