@@ -325,13 +325,11 @@ pub(crate) async fn list_github_skills_inner(
         );
 
         // Filter out skills missing required front matter fields — they must not appear in the UI
-        let name_present = fm_name.as_deref().map_or(false, |s| !s.is_empty());
-        let description_present = fm_description.as_deref().map_or(false, |s| !s.is_empty());
-        let domain_present = fm_domain.as_deref().map_or(false, |s| !s.is_empty());
-        if !name_present || !description_present || !domain_present {
+        let has_value = |opt: &Option<String>| opt.as_deref().is_some_and(|s| !s.is_empty());
+        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
             log::warn!(
-                "list_github_skills: skipping '{}' — missing required front matter fields (name={} description={} domain={})",
-                skill_md_path, name_present, description_present, domain_present
+                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
+                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
             );
             continue;
         }
@@ -762,19 +760,18 @@ pub(crate) async fn import_single_skill(
     let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
     // Log absent optional fields at info level
-    let name_for_log = &skill_name;
-    for (field, absent) in &[
+    for (field, absent) in [
         ("version", fm.version.is_none()),
         ("model", fm.model.is_none()),
         ("argument-hint", fm.argument_hint.is_none()),
         ("user-invocable", fm.user_invocable.is_none()),
         ("disable-model-invocation", fm.disable_model_invocation.is_none()),
     ] {
-        if *absent {
+        if absent {
             log::info!(
-                "import_marketplace_skill: optional field '{}' absent for skill '{}'",
+                "import_single_skill: optional field '{}' absent for skill '{}'",
                 field,
-                name_for_log
+                skill_name
             );
         }
     }
@@ -1163,37 +1160,21 @@ mod tests {
     fn test_required_frontmatter_filtering_logic() {
         // Simulate the filtering logic applied in list_github_skills_inner:
         // skills missing name, description, or domain must be filtered out.
-        struct SkillCandidate {
-            name: Option<&'static str>,
-            description: Option<&'static str>,
-            domain: Option<&'static str>,
-        }
+        let has = |opt: Option<&str>| opt.is_some_and(|s| !s.is_empty());
 
-        let candidates = vec![
-            // complete — should be included
-            SkillCandidate { name: Some("analytics"), description: Some("Desc"), domain: Some("data") },
-            // missing name — should be excluded
-            SkillCandidate { name: None, description: Some("Desc"), domain: Some("data") },
-            // missing description — should be excluded
-            SkillCandidate { name: Some("reporting"), description: None, domain: Some("data") },
-            // missing domain — should be excluded
-            SkillCandidate { name: Some("research"), description: Some("Desc"), domain: None },
-            // missing all — should be excluded
-            SkillCandidate { name: None, description: None, domain: None },
+        // (name, description, domain) -> should_include
+        let cases: Vec<(Option<&str>, Option<&str>, Option<&str>, bool)> = vec![
+            (Some("analytics"), Some("Desc"), Some("data"), true),
+            (None,              Some("Desc"), Some("data"), false),
+            (Some("reporting"), None,         Some("data"), false),
+            (Some("research"),  Some("Desc"), None,         false),
+            (None,              None,         None,         false),
         ];
 
-        let included: Vec<_> = candidates
-            .iter()
-            .filter(|c| {
-                let name_ok = c.name.map_or(false, |s| !s.is_empty());
-                let desc_ok = c.description.map_or(false, |s| !s.is_empty());
-                let domain_ok = c.domain.map_or(false, |s| !s.is_empty());
-                name_ok && desc_ok && domain_ok
-            })
-            .collect();
-
-        assert_eq!(included.len(), 1);
-        assert_eq!(included[0].name, Some("analytics"));
+        for (name, desc, domain, expected) in &cases {
+            let result = has(*name) && has(*desc) && has(*domain);
+            assert_eq!(result, *expected, "name={:?} desc={:?} domain={:?}", name, desc, domain);
+        }
     }
 
     #[test]
