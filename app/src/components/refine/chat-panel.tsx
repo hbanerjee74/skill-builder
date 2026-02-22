@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
@@ -13,6 +14,16 @@ interface ChatPanelProps {
 export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatPanelProps) {
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
+  const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
+  const setPendingInitialMessage = useRefineStore((s) => s.setPendingInitialMessage);
+
+  // Consume pending message once
+  const prefilledValue = pendingInitialMessage ?? undefined;
+  useEffect(() => {
+    if (pendingInitialMessage) {
+      setPendingInitialMessage(null);
+    }
+  }, [pendingInitialMessage, setPendingInitialMessage]);
 
   if (!hasSkill) {
     return (
@@ -34,6 +45,7 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
         onSend={onSend}
         isRunning={isRunning || sessionExhausted}
         availableFiles={availableFiles}
+        prefilledValue={prefilledValue}
       />
     </div>
   );

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Square } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
+import { useRefineStore } from "@/stores/refine-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
@@ -33,6 +35,7 @@ interface TestState {
   prompt: string;
   testId: string | null;
   baselineCwd: string | null;
+  withSkillCwd: string | null;
   transcriptLogDir: string | null;
   withAgentId: string | null;
   withoutAgentId: string | null;
@@ -52,6 +55,7 @@ const INITIAL_STATE: TestState = {
   prompt: "",
   testId: null,
   baselineCwd: null,
+  withSkillCwd: null,
   transcriptLogDir: null,
   withAgentId: null,
   withoutAgentId: null,
@@ -88,9 +92,7 @@ function buildEvalPrompt(
   withPlanText: string,
   withoutPlanText: string,
 ): string {
-  return `You are evaluating two plans produced by a coding agent for the same task.
-
-Task prompt:
+  return `Task prompt:
 """
 ${userPrompt}
 """
@@ -105,10 +107,7 @@ Plan B (no skill loaded):
 ${withoutPlanText}
 """
 
-Compare the two plans. For each observation, write a single concise sentence.
-Prefix with \u2191 if the skill improved the plan, \u2193 if there is a gap or regression.
-
-Output ONLY the bullet list, one per line, no other text.`;
+Use the Evaluation Rubric from your context to compare the two plans. Output ONLY bullet points with \u2191 or \u2193 prefixes, one per line.`;
 }
 
 type EvalDirection = "up" | "down" | null;
@@ -209,6 +208,8 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
 // ---------------------------------------------------------------------------
 
 export default function TestPage() {
+  const navigate = useNavigate();
+
   // --- Skills list ---
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(true);
@@ -599,6 +600,7 @@ export default function TestPage() {
         ...prev,
         testId: prepared.test_id,
         baselineCwd: prepared.baseline_cwd,
+        withSkillCwd: prepared.with_skill_cwd,
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 
@@ -612,7 +614,7 @@ export default function TestPage() {
           withId,
           s.prompt,
           "haiku",
-          workspacePath,
+          prepared.with_skill_cwd,
           [],
           1,
           undefined,
@@ -660,6 +662,16 @@ export default function TestPage() {
     .split("\n")
     .map(parseEvalLine)
     .filter((l) => l.text.length > 0);
+
+  const needsRefinement = state.phase === "done" && evalLines.some((l) => l.direction === "down");
+
+  const handleRefine = useCallback(() => {
+    if (!state.selectedSkill) return;
+    const downLines = evalLines.filter((l) => l.direction === "down");
+    const recommendation = `The skill evaluation identified these gaps based on the dbt rubric:\n\n${downLines.map((l) => `• ${l.text}`).join("\n")}\n\nPlease refine the skill to address these gaps.`;
+    useRefineStore.getState().setPendingInitialMessage(recommendation);
+    navigate({ to: "/refine", search: { skill: state.selectedSkill.name } });
+  }, [evalLines, state.selectedSkill, navigate]);
 
   // ---------------------------------------------------------------------------
   // Status bar config
@@ -795,6 +807,11 @@ export default function TestPage() {
             <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </span>
+            {needsRefinement && (
+              <Button size="sm" variant="outline" className="ml-auto h-6 text-xs" onClick={handleRefine}>
+                Refine
+              </Button>
+            )}
           </div>
           <div
             ref={evalScrollRef}

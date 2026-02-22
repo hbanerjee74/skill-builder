@@ -22,10 +22,17 @@ interface ChatInputBarProps {
   onSend: (text: string, targetFiles?: string[], command?: RefineCommand) => void;
   isRunning: boolean;
   availableFiles: string[];
+  prefilledValue?: string;
 }
 
-export function ChatInputBar({ onSend, isRunning, availableFiles }: ChatInputBarProps) {
+export function ChatInputBar({ onSend, isRunning, availableFiles, prefilledValue }: ChatInputBarProps) {
   const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (prefilledValue) {
+      setText(prefilledValue);
+    }
+  }, [prefilledValue]);
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const [activeCommand, setActiveCommand] = useState<RefineCommand | undefined>();
   const [showFilePicker, setShowFilePicker] = useState(false);

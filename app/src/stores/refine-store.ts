@@ -43,6 +43,10 @@ interface RefineState {
   sessionId: string | null;
   sessionExhausted: boolean;
 
+  // Pending initial message (from Test page -> Refine page navigation)
+  pendingInitialMessage: string | null;
+  setPendingInitialMessage: (msg: string | null) => void;
+
   // Actions
   setRefinableSkills: (skills: SkillSummary[]) => void;
   setLoadingSkills: (v: boolean) => void;
@@ -72,6 +76,7 @@ const SESSION_DEFAULTS = {
   baselineFiles: [] as SkillFile[],
   skillFiles: [] as SkillFile[],
   activeFileTab: "SKILL.md",
+  pendingInitialMessage: null as string | null,
 } as const;
 
 export const useRefineStore = create<RefineState>((set, get) => ({
@@ -83,6 +88,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   ...SESSION_DEFAULTS,
 
   // Actions
+  setPendingInitialMessage: (msg) => set({ pendingInitialMessage: msg }),
   setRefinableSkills: (skills) => set({ refinableSkills: skills }),
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
