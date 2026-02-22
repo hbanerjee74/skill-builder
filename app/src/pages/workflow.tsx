@@ -664,6 +664,26 @@ export default function WorkflowPage() {
     }
   };
 
+  const runGateEvaluation = async () => {
+    if (!workspacePath) return;
+    console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
+    setGateLoading(true);
+
+    try {
+      const agentId = await runAnswerEvaluator(skillName, workspacePath);
+      console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
+      gateAgentIdRef.current = agentId;
+      agentStartRun(agentId, "haiku");
+      setActiveAgent(agentId);
+    } catch (err) {
+      console.error("[workflow] Gate evaluation failed to start:", err);
+      setGateLoading(false);
+      // Fail-open: proceed normally
+      updateStepStatus(currentStep, "completed");
+      advanceToNextStep();
+    }
+  };
+
   const runGateOrAdvance = () => {
     // Gate 1: after step 1, evaluate answers before advancing to research
     if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
@@ -700,26 +720,6 @@ export default function WorkflowPage() {
     }
 
     runGateOrAdvance();
-  };
-
-  const runGateEvaluation = async () => {
-    if (!workspacePath) return;
-    console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
-    setGateLoading(true);
-
-    try {
-      const agentId = await runAnswerEvaluator(skillName, workspacePath);
-      console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
-      gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, "haiku");
-      setActiveAgent(agentId);
-    } catch (err) {
-      console.error("[workflow] Gate evaluation failed to start:", err);
-      setGateLoading(false);
-      // Fail-open: proceed normally
-      updateStepStatus(currentStep, "completed");
-      advanceToNextStep();
-    }
   };
 
   const finishGateEvaluation = async () => {
@@ -892,18 +892,21 @@ export default function WorkflowPage() {
       .finally(() => setLoadingReview(false));
   };
 
-  // Save editor content to skills path (required — no workspace fallback)
-  const handleSave = async () => {
+  // Save editor content to skills path (required — no workspace fallback).
+  // Returns true on success, false if the write failed.
+  const handleSave = async (): Promise<boolean> => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config || !skillsPath) return;
+    if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
     setIsSaving(true);
     try {
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
       toast.success("Saved");
+      return true;
     } catch (err) {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+      return false;
     } finally {
       setIsSaving(false);
     }
@@ -1290,14 +1293,15 @@ export default function WorkflowPage() {
               </Button>
               <Button variant="outline" onClick={() => {
                 setShowUnsavedDialog(false);
+                setEditorDirty(false);
                 runGateOrAdvance();
               }}>
                 Discard & Continue
               </Button>
               <Button onClick={async () => {
                 setShowUnsavedDialog(false);
-                await handleSave();
-                runGateOrAdvance();
+                const saved = await handleSave();
+                if (saved) runGateOrAdvance();
               }}>
                 Save & Continue
               </Button>
