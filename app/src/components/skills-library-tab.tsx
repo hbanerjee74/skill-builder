@@ -54,6 +54,7 @@ export function SkillsLibraryTab() {
       const result = await invoke<SkillSummary[]>("list_skills", {
         workspacePath,
       })
+      console.log("[skills-library] loaded %d skills", result.length)
       setSkills(result)
     } catch (err) {
       console.error("[skills-library] Failed to load skills:", err)

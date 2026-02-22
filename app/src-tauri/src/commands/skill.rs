@@ -31,6 +31,11 @@ fn list_skills_inner(
     // Query the skills master table
     let master_skills = crate::db::list_all_skills(conn)?;
 
+    log::debug!(
+        "[list_skills_inner] {} skills in master table",
+        master_skills.len()
+    );
+
     // Also load workflow_runs for skill-builder skills (keyed by skill_name)
     let runs = crate::db::list_all_workflow_runs(conn)?;
     let runs_map: std::collections::HashMap<String, crate::types::WorkflowRunRow> = runs
