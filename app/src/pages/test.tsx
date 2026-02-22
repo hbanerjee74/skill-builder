@@ -132,10 +132,15 @@ interface EvalLine {
   text: string;
 }
 
-/** Parse an evaluator line into direction and text. */
+/** Parse an evaluator line into direction and text.
+ * Strips leading markdown bullet prefixes (-, *, •) before detecting direction. */
 function parseEvalLine(line: string): EvalLine {
   const trimmed = line.trim();
   if (!trimmed) return { direction: null, text: "" };
+  // Strip optional markdown bullet (-, *, •) so "- ↑ text" parses correctly
+  const stripped = trimmed.replace(/^[-*•]\s*/, "");
+  if (stripped.startsWith("\u2191")) return { direction: "up", text: stripped.slice(1).trim() };
+  if (stripped.startsWith("\u2193")) return { direction: "down", text: stripped.slice(1).trim() };
   if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
   if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
@@ -153,26 +158,17 @@ function evalDirectionIcon(direction: EvalDirection): string {
 /** Return the color class for an eval direction's icon. */
 function evalIconColor(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "text-emerald-500";
-    case "down": return "text-red-500";
+    case "up": return "text-[var(--color-seafoam)]";
+    case "down": return "text-destructive";
     default: return "text-muted-foreground";
-  }
-}
-
-/** Return the color class for an eval direction's text. */
-function evalTextColor(direction: EvalDirection): string {
-  switch (direction) {
-    case "up": return "text-emerald-300";
-    case "down": return "text-red-300";
-    default: return "text-muted-foreground/70";
   }
 }
 
 /** Return the row background class for an eval direction. */
 function evalRowBg(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "bg-emerald-500/5";
-    case "down": return "bg-red-500/5";
+    case "up": return "bg-[var(--color-seafoam)]/5";
+    case "down": return "bg-destructive/5";
     default: return "";
   }
 }
@@ -737,12 +733,6 @@ export default function TestPage() {
             disabled={isRunning}
             onSelect={handleSelectSkill}
           />
-          <Badge
-            variant="outline"
-            className="border-border text-muted-foreground text-[10px] uppercase tracking-wider"
-          >
-            Plan Mode
-          </Badge>
         </div>
         <div className="flex gap-2">
           <Textarea
@@ -866,7 +856,7 @@ export default function TestPage() {
                     <span className={cn("mt-0.5 shrink-0 text-xs font-bold", evalIconColor(line.direction))}>
                       {evalDirectionIcon(line.direction)}
                     </span>
-                    <span className={cn("font-mono text-xs leading-relaxed", evalTextColor(line.direction))}>
+                    <span className="font-mono text-xs leading-relaxed text-foreground">
                       {line.text}
                     </span>
                   </div>
