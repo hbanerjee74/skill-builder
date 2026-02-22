@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from "react"
+import { useNavigate } from "@tanstack/react-router"
+import { invoke } from "@tauri-apps/api/core"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
 import { Upload, Package, Github } from "lucide-react"
@@ -11,30 +13,63 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import ImportedSkillCard from "@/components/imported-skill-card"
-import SkillPreviewDialog from "@/components/skill-preview-dialog"
+import SkillCard from "@/components/skill-card"
+import DeleteSkillDialog from "@/components/delete-skill-dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
-import type { ImportedSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
+import { useWorkflowStore } from "@/stores/workflow-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
+import type { SkillSummary, AppSettings } from "@/lib/types"
 
 export function SkillsLibraryTab() {
-  const {
-    skills,
-    isLoading,
-    fetchSkills,
-    uploadSkill,
-    toggleActive,
-    deleteSkill,
-  } = useImportedSkillsStore()
+  const [skills, setSkills] = useState<SkillSummary[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [workspacePath, setWorkspacePath] = useState("")
+  const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
+  const [showGitHubImport, setShowGitHubImport] = useState(false)
+  const navigate = useNavigate()
 
   const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
-  const [previewSkillName, setPreviewSkillName] = useState<string | null>(null)
-  const [showGitHubImport, setShowGitHubImport] = useState(false)
+
+  // Still need upload from imported-skills store for .skill/.zip imports
+  const { uploadSkill } = useImportedSkillsStore()
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const settings = await invoke<AppSettings>("get_settings")
+      setWorkspacePath(settings.workspace_path || "")
+    } catch {
+      // Settings may not exist yet
+    }
+  }, [])
+
+  const loadSkills = useCallback(async () => {
+    if (!workspacePath) {
+      setSkills([])
+      setIsLoading(false)
+      return
+    }
+    setIsLoading(true)
+    try {
+      const result = await invoke<SkillSummary[]>("list_skills", {
+        workspacePath,
+      })
+      setSkills(result)
+    } catch (err) {
+      console.error("[skills-library] Failed to load skills:", err)
+      setSkills([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [workspacePath])
 
   useEffect(() => {
-    fetchSkills()
-  }, [fetchSkills])
+    loadSettings()
+  }, [loadSettings])
+
+  useEffect(() => {
+    loadSkills()
+  }, [loadSkills])
 
   const handleUpload = useCallback(async () => {
     const filePath = await open({
@@ -47,6 +82,7 @@ export function SkillsLibraryTab() {
     try {
       const skill = await uploadSkill(filePath)
       toast.success(`Imported "${skill.skill_name}"`, { id: toastId })
+      loadSkills()
     } catch (err) {
       console.error("[skills-library] upload failed:", err)
       const message = err instanceof Error ? err.message : String(err)
@@ -64,53 +100,20 @@ export function SkillsLibraryTab() {
         )
       }
     }
-  }, [uploadSkill])
+  }, [uploadSkill, loadSkills])
 
-  const handleToggleActive = useCallback(
-    async (skillName: string, active: boolean) => {
-      try {
-        await toggleActive(skillName, active)
-        toast.success(
-          active ? `"${skillName}" activated` : `"${skillName}" deactivated`,
-          { duration: 1500 }
-        )
-      } catch (err) {
-        console.error("[skills-library] toggle active failed:", err)
-        toast.error(
-          `Failed to toggle: ${err instanceof Error ? err.message : String(err)}`,
-          { duration: Infinity }
-        )
-      }
-    },
-    [toggleActive]
-  )
+  const handleContinue = useCallback((skill: SkillSummary) => {
+    if (skill.skill_source === 'marketplace') {
+      navigate({ to: "/refine", search: { skill: skill.name } })
+      return
+    }
+    useWorkflowStore.getState().setReviewMode(true)
+    navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
+  }, [navigate])
 
-  const handleDelete = useCallback(
-    async (skill: ImportedSkill) => {
-      const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
-      try {
-        await deleteSkill(skill.skill_name)
-        toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
-      } catch (err) {
-        console.error("[skills-library] delete failed:", err)
-        toast.error(
-          `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
-          { id: toastId, duration: Infinity }
-        )
-      }
-    },
-    [deleteSkill]
-  )
-
-  const displayedSkills = skills.filter((s) => s.skill_type === "skill-builder")
-
-  const previewSkill = previewSkillName
-    ? displayedSkills.find((s) => s.skill_name === previewSkillName) ?? null
-    : null
-
-  const handlePreview = useCallback((skill: ImportedSkill) => {
-    setPreviewSkillName(skill.skill_name)
-  }, [])
+  const handleRefine = useCallback((skill: SkillSummary) => {
+    navigate({ to: "/refine", search: { skill: skill.name } })
+  }, [navigate])
 
   return (
     <div className="space-y-6">
@@ -120,7 +123,7 @@ export function SkillsLibraryTab() {
           className="w-36"
           onClick={() => setShowGitHubImport(true)}
           disabled={!marketplaceUrl}
-          title={!marketplaceUrl ? "Configure marketplace URL in Settings → GitHub" : undefined}
+          title={!marketplaceUrl ? "Configure marketplace URL in Settings \u2192 GitHub" : undefined}
         >
           <Github className="size-4" />
           Marketplace
@@ -146,13 +149,13 @@ export function SkillsLibraryTab() {
             </Card>
           ))}
         </div>
-      ) : displayedSkills.length === 0 ? (
+      ) : skills.length === 0 ? (
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
               <Package className="size-6 text-muted-foreground" />
             </div>
-            <CardTitle>No imported skills</CardTitle>
+            <CardTitle>No skills yet</CardTitle>
             <CardDescription>
               Upload a .skill package or browse the marketplace to add skills to your library.
             </CardDescription>
@@ -160,30 +163,32 @@ export function SkillsLibraryTab() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {displayedSkills.map((skill) => (
-            <ImportedSkillCard
-              key={skill.skill_id}
+          {skills.map((skill) => (
+            <SkillCard
+              key={skill.name}
               skill={skill}
-              onToggleActive={handleToggleActive}
-              onDelete={handleDelete}
-              onPreview={handlePreview}
+              onContinue={handleContinue}
+              onDelete={setDeleteTarget}
+              onRefine={handleRefine}
             />
           ))}
         </div>
       )}
 
-      <SkillPreviewDialog
-        skill={previewSkill}
-        open={previewSkill !== null}
+      <DeleteSkillDialog
+        skill={deleteTarget}
+        workspacePath={workspacePath}
+        open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setPreviewSkillName(null)
+          if (!open) setDeleteTarget(null)
         }}
+        onDeleted={loadSkills}
       />
 
       <GitHubImportDialog
         open={showGitHubImport}
         onOpenChange={setShowGitHubImport}
-        onImported={fetchSkills}
+        onImported={loadSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
         typeFilter={["skill-builder"]}
