@@ -598,9 +598,11 @@ export default function TestPage() {
     }));
     setElapsed(0);
 
+    let preparedTestId: string | undefined;
     try {
       const workspacePath = await getWorkspacePath();
       const prepared = await prepareSkillTest(workspacePath, skillName);
+      preparedTestId = prepared.test_id;
 
       setState((prev) => ({
         ...prev,
@@ -626,7 +628,7 @@ export default function TestPage() {
           skillName,
           "test-with",
           "test-plan-with",
-          undefined,
+          prepared.transcript_log_dir,
         ),
         startAgent(
           withoutId,
@@ -645,8 +647,7 @@ export default function TestPage() {
     } catch (err) {
       console.error("[test] Failed to start test:", err);
       // Clean up temp dir if it was created before the failure
-      const currentTestId = stateRef.current.testId;
-      if (currentTestId) cleanup(currentTestId);
+      if (preparedTestId) cleanup(preparedTestId);
       setState((prev) => ({
         ...prev,
         phase: "error",

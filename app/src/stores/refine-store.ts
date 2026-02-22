@@ -93,7 +93,7 @@ export const useRefineStore = create<RefineState>((set, get) => ({
   setLoadingSkills: (v) => set({ isLoadingSkills: v }),
 
   selectSkill: (skill) =>
-    set({ selectedSkill: skill, ...SESSION_DEFAULTS }),
+    set((state) => ({ selectedSkill: skill, ...SESSION_DEFAULTS, pendingInitialMessage: state.pendingInitialMessage })),
 
   setSkillFiles: (files) => set({ skillFiles: files, isLoadingFiles: false }),
   setLoadingFiles: (v) => set({ isLoadingFiles: v }),
