@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
+use crate::db::{self, Db};
 
 #[derive(serde::Serialize)]
 pub struct PrepareResult {
@@ -69,6 +70,7 @@ pub fn prepare_skill_test(
     app: tauri::AppHandle,
     workspace_path: String,
     skill_name: String,
+    db: tauri::State<'_, Db>,
 ) -> Result<PrepareResult, String> {
     log::info!(
         "[prepare_skill_test] skill={} workspace_path={}",
@@ -78,6 +80,13 @@ pub fn prepare_skill_test(
 
     validate_skill_name(&skill_name)?;
 
+    // Resolve skills_path from DB (falls back to workspace_path if not configured)
+    let skills_path = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let settings = db::read_settings(&conn)?;
+        settings.skills_path.unwrap_or_else(|| workspace_path.clone())
+    };
+
     let test_id = uuid::Uuid::new_v4().to_string();
     let tmp_parent = std::env::temp_dir().join(format!("skill-builder-test-{}", test_id));
 
@@ -86,7 +95,7 @@ pub fn prepare_skill_test(
     let skill_test_body =
         read_skill_body(&bundled_skills_dir.join("skill-test").join("SKILL.md"), "skill-test")?;
     let user_skill_body = read_skill_body(
-        &Path::new(&workspace_path).join(&skill_name).join("SKILL.md"),
+        &Path::new(&skills_path).join(&skill_name).join("SKILL.md"),
         &format!("skill '{}'", skill_name),
     )?;
 
@@ -108,7 +117,7 @@ pub fn prepare_skill_test(
         "with-skill",
     )?;
 
-    let transcript_log_dir = Path::new(&workspace_path)
+    let transcript_log_dir = Path::new(&skills_path)
         .join(&skill_name)
         .join("logs")
         .to_string_lossy()
