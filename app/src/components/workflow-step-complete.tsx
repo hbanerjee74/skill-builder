@@ -104,15 +104,9 @@ export function WorkflowStepComplete({
     }
 
     getStepAgentRuns(skillName, stepId)
-      .then((runs) => {
-        console.log(
-          `[WorkflowStepComplete] agentRuns from DB (skill=${skillName}, step=${stepId}, reviewMode=${reviewMode}):`,
-          runs.map((r) => ({ agent_id: r.agent_id, total_cost: r.total_cost, status: r.status })),
-        );
-        setAgentRuns(runs);
-      })
+      .then((runs) => setAgentRuns(runs))
       .catch((err) => console.error("Failed to load agent stats:", err));
-  }, [skillName, stepId, reviewMode]);
+  }, [skillName, stepId]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -170,9 +164,6 @@ export function WorkflowStepComplete({
     ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
     : undefined;
   const displayCost = reviewMode ? dbCost : cost;
-  console.log(
-    `[WorkflowStepComplete] cost: prop=${cost}, dbCost=${dbCost}, displayCost=${displayCost}, reviewMode=${reviewMode}`,
-  );
 
   // Show file contents when available (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
@@ -225,11 +216,12 @@ export function WorkflowStepComplete({
                       <FileText className="size-3.5 shrink-0" />
                       {file}
                     </p>
-                    {notFound ? (
+                    {notFound && (
                       <p className="text-sm text-muted-foreground italic">
                         File not found
                       </p>
-                    ) : content ? (
+                    )}
+                    {!notFound && content && (
                       <div className="rounded-md border">
                         <div className="markdown-body compact max-w-none p-4">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -237,7 +229,7 @@ export function WorkflowStepComplete({
                           </ReactMarkdown>
                         </div>
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 );
               })}
