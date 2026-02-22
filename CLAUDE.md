@@ -37,7 +37,8 @@ cd app/src-tauri && cargo test           # Rust tests
 cd app && npm run test:plugin            # Plugin tests: structural + LLM (Vitest)
 cd app && npm run test:plugin:structural # Structural checks only (free, no API key)
 cd app && npm run test:plugin:workflow    # Full E2E workflow test (~$5)
-# LLM plugin tests require ANTHROPIC_API_KEY or FORCE_PLUGIN_TESTS=1 (for OAuth auth)
+# LLM plugin tests MUST be run from a regular terminal (not inside a Claude Code session).
+# Auth: set ANTHROPIC_API_KEY, or set FORCE_PLUGIN_TESTS=1 for OAuth users (no API key).
 # Budget caps: MAX_BUDGET_LOADING/MODES/AGENTS (default $0.25), MAX_BUDGET_WORKFLOW (default $5)
 claude --plugin-dir .                    # Load plugin locally
 

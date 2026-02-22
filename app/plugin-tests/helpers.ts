@@ -46,7 +46,10 @@ export function runClaude(
   timeoutMs: number,
   cwd: string
 ): string {
-  const env = { ...process.env };
+  // Unset CLAUDECODE to bypass the "nested session" check in the Claude CLI.
+  // These tests must be run from a regular terminal (not inside Claude Code).
+  // For OAuth users without ANTHROPIC_API_KEY, set FORCE_PLUGIN_TESTS=1 first.
+  const env = { ...process.env, CLAUDECODE: undefined };
 
   const budgetArgs =
     budgetUsd != null ? ["--max-budget-usd", budgetUsd] : [];
