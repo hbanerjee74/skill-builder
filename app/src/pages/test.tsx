@@ -715,6 +715,12 @@ export default function TestPage() {
 
   const isRunning = state.phase === "running" || state.phase === "evaluating";
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
+  const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
+  const modelLabel = {
+    "claude-haiku-4-5-20251001": "haiku",
+    "claude-sonnet-4-6": "sonnet",
+    "claude-opus-4-6": "opus",
+  }[activeModel] ?? activeModel;
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
@@ -930,6 +936,8 @@ export default function TestPage() {
         )}
         <span className="text-muted-foreground/20">&middot;</span>
         <span className="text-[10.5px] text-muted-foreground/60">plan mode</span>
+        <span className="text-muted-foreground/20">&middot;</span>
+        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>

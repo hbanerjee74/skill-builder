@@ -421,6 +421,38 @@ export default function SettingsPage() {
           <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
+                <CardTitle>Model</CardTitle>
+                <CardDescription>
+                  The Claude model used for all agents — skill building, refining, and testing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-1 rounded-md bg-muted p-1">
+                  {([
+                    { value: "claude-haiku-4-5-20251001", label: "Haiku", description: "Fastest · lowest cost" },
+                    { value: "claude-sonnet-4-6", label: "Sonnet", description: "Balanced · default" },
+                    { value: "claude-opus-4-6", label: "Opus", description: "Most capable · highest cost" },
+                  ] as const).map(({ value, label, description }) => (
+                    <button
+                      key={value}
+                      onClick={() => { setPreferredModel(value); autoSave({ preferredModel: value }); }}
+                      className={cn(
+                        "flex flex-1 flex-col items-center rounded-sm px-3 py-2 text-sm font-medium transition-colors",
+                        preferredModel === value
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {label}
+                      <span className="text-[10px] font-normal opacity-60">{description}</span>
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
                 <CardTitle>Agent Features</CardTitle>
                 <CardDescription>
                   Configure agent capabilities for skill building.
