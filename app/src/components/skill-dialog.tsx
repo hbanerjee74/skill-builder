@@ -123,15 +123,17 @@ const SHORTHAND_TO_MODEL: Record<string, string> = {
   opus: "claude-opus-4-6",
 }
 
+const DEFAULT_MODEL = FALLBACK_MODEL_OPTIONS[0].id // claude-haiku-4-5
+
 function normalizeModelValue(raw: string | null | undefined): string {
-  if (!raw) return "inherit"
+  if (!raw) return DEFAULT_MODEL
   return SHORTHAND_TO_MODEL[raw] ?? raw
 }
 
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels, preferredModel } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -168,7 +170,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [claudeMistakes, setClaudeMistakes] = useState("")
   // Step 4 behaviour fields
   const [version, setVersion] = useState("1.0.0")
-  const [model, setModel] = useState("inherit")
+  const [model, setModel] = useState(DEFAULT_MODEL)
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -229,7 +231,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setUniqueSetup("")
     setClaudeMistakes("")
     setVersion("1.0.0")
-    setModel("inherit")
+    setModel(DEFAULT_MODEL)
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
@@ -486,7 +488,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           }),
           description.trim() || null,
           version.trim() || null,
-          model !== "inherit" ? model : null,
+          model || null,
           argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -508,7 +510,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           }),
           description: description.trim() || null,
           version: version.trim() || null,
-          model: model !== "inherit" ? model : null,
+          model: model || null,
           argumentHint: argumentHint.trim() || null,
           userInvocable,
           disableModelInvocation,
@@ -851,15 +853,12 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="inherit">
-                      {preferredModel ? `Inherit — ${preferredModel}` : "Inherit (workspace default)"}
-                    </option>
                     {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
                       <option key={m.id} value={m.id}>{m.displayName}</option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    Per-skill model override — leave on Inherit to use the workspace default
+                    Model this skill is designed and tested for
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
