@@ -23,7 +23,7 @@ Read `{workspace_dir}/user-context.md` if it exists. Include its full content in
 
 ## Step 1: Run the research skill as a sub-agent
 
-Call Task immediately — do not output any text before the tool call. Spawn a Task sub-agent with this prompt:
+Spawn a Task sub-agent with this prompt:
 
 ---
 Use the research skill to research dimensions and produce clarifications for:
