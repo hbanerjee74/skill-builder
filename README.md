@@ -22,7 +22,7 @@ Available as a **Claude Code plugin** (CLI) and a **Tauri desktop app** (GUI). B
 claude --plugin-dir /path/to/skill-builder
 
 # Then trigger the workflow
-/skill-builder:generate-skill
+/skill-builder:building-skills
 ```
 
 **Manual testing (development):**
@@ -32,7 +32,7 @@ claude --plugin-dir /path/to/skill-builder
 claude --plugin-dir .
 
 # Inside the session, run:
-/skill-builder:generate-skill
+/skill-builder:building-skills
 ```
 
 ### Desktop App
@@ -77,10 +77,10 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 
 ```
 skill-builder/
-├── agents/                  # 26 agent prompts (shared by both frontends)
+├── agents/                  # Agent prompts (shared by both frontends)
 ├── agent-sources/
 │   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: packaged as references)
-├── skills/generate-skill/
+├── skills/building-skills/
 │   ├── SKILL.md             # Plugin coordinator (self-contained entry point)
 │   └── references/          # Agent instructions packaged by scripts/build-plugin-skill.sh
 ├── app/                     # Desktop application
@@ -103,10 +103,17 @@ npm test                     # Frontend unit tests (Vitest)
 cd src-tauri && cargo test   # Rust tests
 npm run test:e2e             # E2E tests (Playwright)
 
-# Plugin
-./scripts/validate.sh        # Structural validation
-./scripts/test-plugin.sh     # Full test harness (T1-T5)
+# Plugin — structural validation (free, no API key needed)
+./scripts/validate.sh
+
+# Plugin — full test harness (T1–T5, requires API key)
+./scripts/test-plugin.sh                        # All tiers
+./scripts/test-plugin.sh t1 t2 t3              # Coordinator changes
+./scripts/test-plugin.sh --tag @agents          # Agent changes
+FOREGROUND=1 ./scripts/test-plugin.sh t5       # T5 with live output
 ```
+
+See [`scripts/README.md`](scripts/README.md) for the full guide: tier descriptions, cost estimates, environment variables, and how to debug a stuck T5 run.
 
 ## Contributing
 
