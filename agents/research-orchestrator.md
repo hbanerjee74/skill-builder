@@ -70,26 +70,10 @@ Suggested action: {what the user should do — narrow the domain, choose a diffe
 
 Do not return the file contents. Do not list the questions.
 
-## Step 4: Return summary
+## Step 4: Return
 
-Return only this — do not return the file contents or the questions:
+Return one sentence only:
 
 ```
-Research complete for {domain}.
-
-Dimensions ({n} evaluated, {m} selected):
-| Dimension | Score | Rationale |
-|---|---|---|
-| {slug} | {score}/5 | {one-sentence reason from the research plan} |
-[one row per selected dimension, then:]
-| {slug} | {score}/5 | {drop reason} — not selected |
-[one row per dropped dimension]
-
-Clarifications: {question_count} questions across {sections} sections ({duplicates_removed} duplicates removed across dimensions).
-
-Required questions ({n}):
-- {Q-id}: {3–5 word reason} (e.g. "drives entity grain design", "gates revenue recognition logic")
-[one line per required question]
+Research complete: {n} dimensions selected, {question_count} clarification questions written.
 ```
-
-Keep each reason to 3–5 words — a label for what the answer unlocks, not a full explanation.
