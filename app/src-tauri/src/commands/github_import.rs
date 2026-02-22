@@ -752,6 +752,28 @@ pub(crate) async fn import_single_skill(
 
     super::imported_skills::validate_skill_name(&skill_name)?;
 
+    // Validate required frontmatter fields
+    let missing_required: Vec<&str> = [
+        ("description", fm.description.is_none()),
+        ("domain", fm.domain.is_none()),
+        ("skill_type", fm.skill_type.is_none()),
+    ]
+    .iter()
+    .filter(|(_, missing)| *missing)
+    .map(|(f, _)| *f)
+    .collect();
+    if !missing_required.is_empty() {
+        log::error!(
+            "[import_single_skill] '{}' missing required frontmatter fields: {}",
+            skill_name,
+            missing_required.join(", ")
+        );
+        return Err(format!(
+            "missing_mandatory_fields:{}",
+            missing_required.join(",")
+        ));
+    }
+
     // Check if skill directory already exists on disk
     let dest_dir = skills_dir.join(&skill_name);
     if dest_dir.exists() {
