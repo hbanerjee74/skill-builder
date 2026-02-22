@@ -35,7 +35,6 @@ interface TestState {
   prompt: string;
   testId: string | null;
   baselineCwd: string | null;
-  withSkillCwd: string | null;
   transcriptLogDir: string | null;
   withAgentId: string | null;
   withoutAgentId: string | null;
@@ -55,7 +54,6 @@ const INITIAL_STATE: TestState = {
   prompt: "",
   testId: null,
   baselineCwd: null,
-  withSkillCwd: null,
   transcriptLogDir: null,
   withAgentId: null,
   withoutAgentId: null,
@@ -128,32 +126,40 @@ function parseEvalLine(line: string): EvalLine {
 
 /** Return the arrow/bullet character for an eval direction. */
 function evalDirectionIcon(direction: EvalDirection): string {
-  if (direction === "up") return "\u2191";
-  if (direction === "down") return "\u2193";
-  return "\u2022";
+  switch (direction) {
+    case "up": return "\u2191";
+    case "down": return "\u2193";
+    default: return "\u2022";
+  }
 }
 
 /** Return the color class for an eval direction's icon. */
 function evalIconColor(direction: EvalDirection): string {
-  if (direction === "up") return "text-green-400";
-  if (direction === "down") return "text-red-400";
-  return "text-muted-foreground";
+  switch (direction) {
+    case "up": return "text-green-400";
+    case "down": return "text-red-400";
+    default: return "text-muted-foreground";
+  }
 }
 
 /** Return the color class for an eval direction's text. */
 function evalTextColor(direction: EvalDirection): string {
-  if (direction === "up") return "text-muted-foreground";
-  if (direction === "down") return "text-muted-foreground/70";
-  return "text-muted-foreground/60";
+  switch (direction) {
+    case "up": return "text-muted-foreground";
+    case "down": return "text-muted-foreground/70";
+    default: return "text-muted-foreground/60";
+  }
 }
 
 /** Return the evaluator placeholder message based on phase. */
 function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
-  if (phase === "idle") return "Evaluation will appear after both plans complete";
-  if (phase === "running") return "Waiting for both plans to finish...";
-  if (phase === "evaluating") return "Evaluating differences...";
-  if (phase === "error") return errorMessage ?? "An error occurred";
-  return "No evaluation results";
+  switch (phase) {
+    case "idle": return "Evaluation will appear after both plans complete";
+    case "running": return "Waiting for both plans to finish...";
+    case "evaluating": return "Evaluating differences...";
+    case "error": return errorMessage ?? "An error occurred";
+    default: return "No evaluation results";
+  }
 }
 
 /** Auto-scroll a container to the bottom. */
@@ -600,7 +606,6 @@ export default function TestPage() {
         ...prev,
         testId: prepared.test_id,
         baselineCwd: prepared.baseline_cwd,
-        withSkillCwd: prepared.with_skill_cwd,
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 

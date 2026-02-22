@@ -15,15 +15,13 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
-  const setPendingInitialMessage = useRefineStore((s) => s.setPendingInitialMessage);
 
-  // Consume pending message once
-  const prefilledValue = pendingInitialMessage ?? undefined;
+  // Consume pending message once, then clear it from the store
   useEffect(() => {
     if (pendingInitialMessage) {
-      setPendingInitialMessage(null);
+      useRefineStore.getState().setPendingInitialMessage(null);
     }
-  }, [pendingInitialMessage, setPendingInitialMessage]);
+  }, [pendingInitialMessage]);
 
   if (!hasSkill) {
     return (
@@ -45,7 +43,7 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
         onSend={onSend}
         isRunning={isRunning || sessionExhausted}
         availableFiles={availableFiles}
-        prefilledValue={prefilledValue}
+        prefilledValue={pendingInitialMessage ?? undefined}
       />
     </div>
   );
