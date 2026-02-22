@@ -104,9 +104,15 @@ export function WorkflowStepComplete({
     }
 
     getStepAgentRuns(skillName, stepId)
-      .then((runs) => setAgentRuns(runs))
+      .then((runs) => {
+        console.log(
+          `[WorkflowStepComplete] agentRuns from DB (skill=${skillName}, step=${stepId}, reviewMode=${reviewMode}):`,
+          runs.map((r) => ({ agent_id: r.agent_id, total_cost: r.total_cost, status: r.status })),
+        );
+        setAgentRuns(runs);
+      })
       .catch((err) => console.error("Failed to load agent stats:", err));
-  }, [skillName, stepId]);
+  }, [skillName, stepId, reviewMode]);
 
   // Always load file contents when skillName is available (both review and non-review mode)
   useEffect(() => {
@@ -157,12 +163,16 @@ export function WorkflowStepComplete({
 
   const hasFileContents = fileContents.size > 0;
 
-  // Cost from DB (sum across all agents that ran for this step). Falls back to
-  // the prop for the brief window before the async DB write completes.
+  // In review mode (history): derive cost from DB-loaded agentRuns — DB is source of truth.
+  // In live mode (just completed): use the cost prop from Zustand — the DB write is still
+  // in-flight and may return stale data (e.g. a previous session's run with total_cost=0).
   const dbCost = agentRuns.length > 0
     ? agentRuns.reduce((sum, r) => sum + r.total_cost, 0)
     : undefined;
-  const displayCost = dbCost ?? cost;
+  const displayCost = reviewMode ? dbCost : cost;
+  console.log(
+    `[WorkflowStepComplete] cost: prop=${cost}, dbCost=${dbCost}, displayCost=${displayCost}, reviewMode=${reviewMode}`,
+  );
 
   // Show file contents when available (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
