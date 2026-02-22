@@ -427,26 +427,17 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center gap-1 rounded-md bg-muted p-1">
-                  {([
-                    { value: "claude-haiku-4-5-20251001", label: "Haiku", description: "Fastest · lowest cost" },
-                    { value: "claude-sonnet-4-6", label: "Sonnet", description: "Balanced · default" },
-                    { value: "claude-opus-4-6", label: "Opus", description: "Most capable · highest cost" },
-                  ] as const).map(({ value, label, description }) => (
-                    <button
-                      key={value}
-                      onClick={() => { setPreferredModel(value); autoSave({ preferredModel: value }); }}
-                      className={cn(
-                        "flex flex-1 flex-col items-center rounded-sm px-3 py-2 text-sm font-medium transition-colors",
-                        preferredModel === value
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {label}
-                      <span className="text-[10px] font-normal opacity-60">{description}</span>
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <select
+                    value={preferredModel}
+                    onChange={(e) => { setPreferredModel(e.target.value); autoSave({ preferredModel: e.target.value }); }}
+                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="claude-haiku-4-5-20251001">Haiku — fastest, lowest cost</option>
+                    <option value="claude-sonnet-4-6">Sonnet — balanced (default)</option>
+                    <option value="claude-opus-4-6">Opus — most capable</option>
+                    <option value="claude-opus-4-6-1m">Opus (1M context) — extended context window</option>
+                  </select>
                 </div>
               </CardContent>
             </Card>

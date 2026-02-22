@@ -720,6 +720,7 @@ export default function TestPage() {
     "claude-haiku-4-5-20251001": "haiku",
     "claude-sonnet-4-6": "sonnet",
     "claude-opus-4-6": "opus",
+    "claude-opus-4-6-1m": "opus 1m",
   }[activeModel] ?? activeModel;
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);

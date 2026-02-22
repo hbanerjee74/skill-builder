@@ -19,7 +19,11 @@ export function buildQueryOptions(
 
   // When model is set, always pass it — whether it's the sole identifier
   // (model-only) or overriding the agent's front-matter model (both).
-  const modelField = config.model ? { model: config.model } : {};
+  // "claude-opus-4-6-1m" is a UI sentinel for Opus with 1M context; strip
+  // the suffix so the API receives a valid model ID. The 1M context beta
+  // will be wired here once the API mechanism is confirmed.
+  const resolvedModel = config.model?.replace(/-1m$/, "") ?? config.model;
+  const modelField = resolvedModel ? { model: resolvedModel } : {};
 
   // Pass the API key through the SDK's env option instead of mutating
   // process.env, which avoids races on concurrent requests.
