@@ -126,3 +126,19 @@ After both passes complete, if `notifications.len() > 0` OR `discovered_skills.l
 - Dashboard does NOT mount until user acknowledges all notifications and resolves all discoveries
 
 Today, notifications are returned to the frontend and shown as 5-second toasts that disappear. After this change, they block the dashboard via a modal ACK dialog.
+
+---
+
+## Library UI: Skill Source Indicator
+
+Every skill in the library shows an icon indicating its `skill_source`. Displayed on skill cards and skill list rows alongside the existing `SkillTypeBadge` (domain/source/platform).
+
+| `skill_source` | Icon | Label | Color |
+|----------------|------|-------|-------|
+| `skill-builder` | `Hammer` | Built | muted (default — most common, shouldn't be visually loud) |
+| `marketplace` | `Store` | Marketplace | blue |
+| `upload` | `Upload` | Uploaded | amber |
+
+Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing `SkillTypeBadge` pattern in `skill-picker.tsx`.
+
+Placement: next to the skill name or in the metadata row on cards and list rows. Visible in the skills library tab, dashboard skill cards, and the test tab skill picker.
