@@ -2464,6 +2464,189 @@ mod tests {
         assert!(get_workflow_steps(&conn, "test-skill").unwrap().is_empty());
     }
 
+    // --- Skills Master CRUD tests ---
+
+    #[test]
+    fn test_upsert_skill_insert_and_return_id() {
+        let conn = create_test_db();
+        let id = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        assert!(id > 0);
+
+        // Verify the row exists
+        let skill = get_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(skill.name, "my-skill");
+        assert_eq!(skill.skill_source, "skill-builder");
+        assert_eq!(skill.domain.as_deref(), Some("sales"));
+        assert_eq!(skill.skill_type.as_deref(), Some("domain"));
+    }
+
+    #[test]
+    fn test_upsert_skill_update_on_conflict() {
+        let conn = create_test_db();
+        let id1 = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        // Upsert same name — should update domain/skill_type, keep same id
+        let id2 = upsert_skill(&conn, "my-skill", "skill-builder", "analytics", "platform").unwrap();
+        assert_eq!(id1, id2);
+
+        let skill = get_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(skill.domain.as_deref(), Some("analytics"));
+        assert_eq!(skill.skill_type.as_deref(), Some("platform"));
+    }
+
+    #[test]
+    fn test_list_all_skills_empty() {
+        let conn = create_test_db();
+        let skills = list_all_skills(&conn).unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_list_all_skills_returns_ordered_by_name() {
+        let conn = create_test_db();
+        upsert_skill(&conn, "gamma", "marketplace", "domain-c", "source").unwrap();
+        upsert_skill(&conn, "alpha", "skill-builder", "domain-a", "domain").unwrap();
+        upsert_skill(&conn, "beta", "upload", "domain-b", "platform").unwrap();
+
+        let skills = list_all_skills(&conn).unwrap();
+        assert_eq!(skills.len(), 3);
+        assert_eq!(skills[0].name, "alpha");
+        assert_eq!(skills[0].skill_source, "skill-builder");
+        assert_eq!(skills[1].name, "beta");
+        assert_eq!(skills[1].skill_source, "upload");
+        assert_eq!(skills[2].name, "gamma");
+        assert_eq!(skills[2].skill_source, "marketplace");
+    }
+
+    #[test]
+    fn test_delete_skill_removes_from_master() {
+        let conn = create_test_db();
+        upsert_skill(&conn, "to-delete", "marketplace", "sales", "domain").unwrap();
+        assert!(get_skill_by_name(&conn, "to-delete").unwrap().is_some());
+
+        delete_skill(&conn, "to-delete").unwrap();
+        assert!(get_skill_by_name(&conn, "to-delete").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_delete_skill_nonexistent_is_ok() {
+        let conn = create_test_db();
+        // Should not error when skill doesn't exist
+        delete_skill(&conn, "nonexistent").unwrap();
+    }
+
+    #[test]
+    fn test_get_skill_by_name_not_found() {
+        let conn = create_test_db();
+        let result = get_skill_by_name(&conn, "nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_save_marketplace_skill_creates_master_row_only() {
+        let conn = create_test_db();
+        save_marketplace_skill(&conn, "mkt-skill", "sales", "platform").unwrap();
+
+        // Skills master row should exist with source=marketplace
+        let skill = get_skill_by_name(&conn, "mkt-skill").unwrap().unwrap();
+        assert_eq!(skill.skill_source, "marketplace");
+        assert_eq!(skill.domain.as_deref(), Some("sales"));
+
+        // No workflow_runs row should be created
+        let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+        assert!(run.is_none());
+    }
+
+    #[test]
+    fn test_save_workflow_run_creates_skills_master_row() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+
+        // save_workflow_run calls upsert_skill internally
+        let skill = get_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(skill.skill_source, "skill-builder");
+        assert_eq!(skill.domain.as_deref(), Some("analytics"));
+    }
+
+    #[test]
+    fn test_delete_workflow_run_also_deletes_from_skills_master() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+        assert!(get_skill_by_name(&conn, "my-skill").unwrap().is_some());
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        // Both workflow_runs and skills master should be cleaned
+        assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
+        assert!(get_skill_by_name(&conn, "my-skill").unwrap().is_none());
+    }
+
+    // --- Skills Backfill Migration tests ---
+
+    #[test]
+    fn test_backfill_migration_populates_skills_from_workflow_runs() {
+        // Simulate pre-migration state: workflow_runs exist but skills table is empty
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+
+        // Insert workflow_runs rows BEFORE running skills migration
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
+             VALUES ('created-skill', 'sales', 3, 'in_progress', 'domain', 'created')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
+             VALUES ('mkt-skill', 'analytics', 5, 'completed', 'platform', 'marketplace')",
+            [],
+        ).unwrap();
+
+        // Run the skills table + backfill migrations
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+
+        // Verify skills master was populated
+        let skills = list_all_skills(&conn).unwrap();
+        assert_eq!(skills.len(), 2);
+
+        let created = get_skill_by_name(&conn, "created-skill").unwrap().unwrap();
+        assert_eq!(created.skill_source, "skill-builder");
+
+        let mkt = get_skill_by_name(&conn, "mkt-skill").unwrap().unwrap();
+        assert_eq!(mkt.skill_source, "marketplace");
+
+        // Marketplace row should be removed from workflow_runs
+        let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+        assert!(run.is_none(), "marketplace rows should be removed from workflow_runs");
+
+        // Created skill should still have a workflow_runs row
+        let run = get_workflow_run(&conn, "created-skill").unwrap();
+        assert!(run.is_some());
+
+        // workflow_runs should have skill_id FK populated
+        let skill_id: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM workflow_runs WHERE skill_name = 'created-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert!(skill_id.is_some());
+        assert_eq!(skill_id.unwrap(), created.id);
+    }
+
     // --- Skill Tags tests ---
 
     #[test]
