@@ -110,6 +110,13 @@ export default function RefinePage() {
       releaseSkillResources(store.selectedSkill.name, "navigation");
     }
 
+    // Clear session state so that returning to this page always creates a
+    // fresh session. Without this, the stale sessionId remains in the store
+    // and the auto-select guard skips session creation, causing send_refine_message
+    // to fail on the dead session.
+    store.clearSession();
+    autoSelectedRef.current = null;
+
     proceed?.();
   }, [proceed]);
 
@@ -144,7 +151,10 @@ export default function RefinePage() {
       console.log("[refine] selectSkill: %s", skill.name);
       const store = useRefineStore.getState();
 
-      if (store.selectedSkill?.name === skill.name) return;
+      // Skip re-selection only when the same skill is already active with a live session.
+      // After navigation away, clearSession() nulls sessionId, so we fall through
+      // and create a fresh session even for the same skill.
+      if (store.selectedSkill?.name === skill.name && store.sessionId) return;
 
       // Release lock on previous skill (if any) before acquiring new lock
       const prevSkill = store.selectedSkill;
