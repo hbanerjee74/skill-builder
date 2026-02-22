@@ -326,10 +326,10 @@ pub(crate) async fn list_github_skills_inner(
         );
 
         // Filter out skills missing required front matter fields — they must not appear in the UI
-        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
+        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) || !has_value(&fm_type) {
             log::warn!(
-                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
-                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
+                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={} skill_type={})",
+                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain), has_value(&fm_type)
             );
             continue;
         }
@@ -1157,13 +1157,27 @@ mod tests {
         // the production parsing or predicate are caught here.
         let parse = super::super::imported_skills::parse_frontmatter_full;
 
-        // Complete, valid frontmatter — all three required fields must be present.
+        // Complete, valid frontmatter — all four required fields present.
+        // Note: the YAML key for skill_type is "type:" per the parser.
         let complete = parse(
-            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
+            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\ntype: domain\n---\n# Body",
         );
         assert_eq!(complete.name.as_deref(), Some("analytics"));
         assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
         assert_eq!(complete.domain.as_deref(), Some("data"));
+        assert_eq!(complete.skill_type.as_deref(), Some("domain"));
+
+        // Missing skill_type (no "type:" key) — must be treated as a missing required field.
+        let missing_skill_type = parse(
+            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
+        );
+        assert!(missing_skill_type.skill_type.is_none(), "absent skill_type must be None");
+
+        // Whitespace-only type — trim_opt must convert to None.
+        let whitespace_skill_type = parse(
+            "---\nname: analytics\ndescription: Desc\ndomain: data\ntype:   \n---\n",
+        );
+        assert!(whitespace_skill_type.skill_type.is_none(), "whitespace-only skill_type must be None");
 
         // Whitespace-only values: trim_opt converts these to None, so the skill
         // should be treated as missing the field.
