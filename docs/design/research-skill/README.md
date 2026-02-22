@@ -76,6 +76,8 @@ After writing, the orchestrator checks whether `clarifications.md` contains `sco
 
 Output file formats are defined in [`../agent-specs/canonical-format.md`](../agent-specs/canonical-format.md).
 
+The dimension catalog, per-type template mappings, focus line tailoring, and design guidelines are in [`dimensions.md`](dimensions.md).
+
 ---
 
 ## Customization Model
