@@ -1,8 +1,17 @@
 ---
 name: skill-test
-description: Test context and evaluation rubric for dbt lakehouse planning skill tests
+description: >
+  Provides test context and evaluation rubric for dbt lakehouse planning skill tests.
+  Use when running a skill test — both plan agents receive analytics engineer framing
+  via the Test Context section, and the evaluator agent uses the Evaluation Rubric to
+  score Plan A (with skill) vs Plan B (no skill) comparatively by dbt dimension.
 domain: Skill Builder
 type: skill-builder
+version: 1.0.0
+model: sonnet
+argument-hint: ""
+user-invocable: false
+disable-model-invocation: false
 ---
 
 ## Test Context
