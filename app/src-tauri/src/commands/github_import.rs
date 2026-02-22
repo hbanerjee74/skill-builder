@@ -326,10 +326,22 @@ pub(crate) async fn list_github_skills_inner(
         );
 
         // Filter out skills missing required front matter fields — they must not appear in the UI
-        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) || !has_value(&fm_type) {
+        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
             log::warn!(
-                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={} skill_type={})",
-                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain), has_value(&fm_type)
+                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
+                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
+            );
+            continue;
+        }
+
+        // Only skills with a valid Skill Library skill_type are shown in the UI.
+        // skill-builder skills go to Settings→Skills; unknown values are excluded.
+        const VALID_SKILL_LIBRARY_TYPES: &[&str] = &["domain", "platform", "source", "data-engineering"];
+        let type_value = fm_type.as_deref().unwrap_or("");
+        if !VALID_SKILL_LIBRARY_TYPES.contains(&type_value) {
+            log::warn!(
+                "list_github_skills: skipping '{}' — skill_type {:?} is not a valid Skill Library type (expected one of: domain, platform, source, data-engineering)",
+                skill_md_path, fm_type.as_deref().unwrap_or("<absent>")
             );
             continue;
         }
@@ -1201,6 +1213,58 @@ mod tests {
         assert!(empty.name.is_none());
         assert!(empty.description.is_none());
         assert!(empty.domain.is_none());
+    }
+
+    #[test]
+    fn test_skill_type_library_filter() {
+        // Verify the allowlist predicate used in list_github_skills_inner.
+        const VALID_SKILL_LIBRARY_TYPES: &[&str] =
+            &["domain", "platform", "source", "data-engineering"];
+
+        let parse = super::super::imported_skills::parse_frontmatter_full;
+
+        // skill_type: domain — must be included
+        let fm_domain = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: domain\n---\n",
+        );
+        assert_eq!(fm_domain.skill_type.as_deref(), Some("domain"));
+        assert!(
+            VALID_SKILL_LIBRARY_TYPES.contains(&fm_domain.skill_type.as_deref().unwrap_or("")),
+            "domain should be a valid Skill Library type"
+        );
+
+        // skill_type: skill-builder — must be excluded (wrong routing, goes to Settings)
+        let fm_skill_builder = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: skill-builder\n---\n",
+        );
+        assert_eq!(fm_skill_builder.skill_type.as_deref(), Some("skill-builder"));
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_skill_builder.skill_type.as_deref().unwrap_or("")),
+            "skill-builder should NOT be a valid Skill Library type"
+        );
+
+        // skill_type: unknown-type — must be excluded (unrecognised value)
+        let fm_unknown = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: unknown-type\n---\n",
+        );
+        assert_eq!(fm_unknown.skill_type.as_deref(), Some("unknown-type"));
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_unknown.skill_type.as_deref().unwrap_or("")),
+            "unknown-type should NOT be a valid Skill Library type"
+        );
+
+        // missing skill_type — must be excluded
+        let fm_missing = parse(
+            "---\nname: my-skill\ndescription: Desc\ndomain: data\n---\n",
+        );
+        assert!(fm_missing.skill_type.is_none(), "absent skill_type must be None");
+        assert!(
+            !VALID_SKILL_LIBRARY_TYPES
+                .contains(&fm_missing.skill_type.as_deref().unwrap_or("")),
+            "absent skill_type should NOT pass the Skill Library filter"
+        );
     }
 
     #[test]
