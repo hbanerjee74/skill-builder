@@ -664,21 +664,7 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleReviewContinue = async () => {
-    // Save the editor content to skills path (required — no workspace fallback)
-    const config = HUMAN_REVIEW_STEPS[currentStep];
-    const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
-    if (config && reviewContent !== null && skillsPath && filename) {
-      try {
-        const content = editorDirty ? editorContent : (reviewContent ?? "");
-        await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
-        setReviewContent(content);
-      } catch (err) {
-        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
-        return;
-      }
-    }
-
+  const runGateOrAdvance = () => {
     // Gate 1: after step 1, evaluate answers before advancing to research
     if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
       setGateContext("clarifications");
@@ -696,6 +682,24 @@ export default function WorkflowPage() {
     // All other review steps: advance normally
     updateStepStatus(currentStep, "completed");
     advanceToNextStep();
+  };
+
+  const handleReviewContinue = async () => {
+    // Save the editor content to skills path (required — no workspace fallback)
+    const config = HUMAN_REVIEW_STEPS[currentStep];
+    const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
+    if (config && reviewContent !== null && skillsPath && filename) {
+      try {
+        const content = editorDirty ? editorContent : (reviewContent ?? "");
+        await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
+        setReviewContent(content);
+      } catch (err) {
+        toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+    }
+
+    runGateOrAdvance();
   };
 
   const runGateEvaluation = async () => {
@@ -867,12 +871,6 @@ export default function WorkflowPage() {
     resetToStep(stepId);
     autoStartAfterReset(stepId);
     toast.success(`Reset step ${stepId + 1}`);
-  };
-
-  /** Advance without writing — used after handleSave() already persisted. */
-  const handleAdvanceStep = () => {
-    updateStepStatus(currentStep, "completed");
-    advanceToNextStep();
   };
 
   // Reload the file content (after user edits externally).
@@ -1292,14 +1290,14 @@ export default function WorkflowPage() {
               </Button>
               <Button variant="outline" onClick={() => {
                 setShowUnsavedDialog(false);
-                handleAdvanceStep();
+                runGateOrAdvance();
               }}>
                 Discard & Continue
               </Button>
               <Button onClick={async () => {
                 setShowUnsavedDialog(false);
                 await handleSave();
-                handleAdvanceStep();
+                runGateOrAdvance();
               }}>
                 Save & Continue
               </Button>
