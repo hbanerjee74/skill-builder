@@ -117,7 +117,7 @@ pub fn prepare_skill_test(
         "with-skill",
     )?;
 
-    let transcript_log_dir = Path::new(&skills_path)
+    let transcript_log_dir = Path::new(&workspace_path)
         .join(&skill_name)
         .join("logs")
         .to_string_lossy()
