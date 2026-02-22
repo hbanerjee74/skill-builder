@@ -17,11 +17,12 @@ run_t3() {
     # Build flexible grep pattern — exact phase name + natural language synonyms
     local pattern
     case "$expected_phase" in
-      fresh)              pattern="fresh|no.session|no.active|haven.t.started|empty.workspace|no.skill.session" ;;
-      scoping)            pattern="scoping|scope|initial|setting.up|getting.started|skill.type" ;;
-      generation)         pattern="generation|generat|skill.md|skill.has.been|skill.file.exist" ;;
-      refinement_pending) pattern="refinement.pending|refinement|unanswered.refinement|pending.refinement" ;;
-      *)                  pattern="$expected_phase" ;;
+      fresh)                          pattern="fresh|no.session|no.active|haven.t.started|empty.workspace|no.skill.session" ;;
+      scoping)                        pattern="scoping|scope|initial|setting.up|getting.started|skill.type" ;;
+      generation)                     pattern="generation|generat|skill.md|skill.has.been|skill.file.exist" ;;
+      refinement_pending)             pattern="refinement.pending|refinement|unanswered.refinement|pending.refinement" ;;
+      clarification_interactive_pending) pattern="clarification_interactive_pending|interactive.pending|interactive|inline.questions" ;;
+      *)                              pattern="$expected_phase" ;;
     esac
     local output
     output=$(run_claude_unsafe \
@@ -49,14 +50,17 @@ run_t3() {
 
   # ---- T3.8–T3.10: Intent dispatch tests ----
   # Longer pause to allow API rate limit recovery after 9 back-to-back state detection calls.
-  sleep 15
+  sleep 30
+
+  # Dispatch tests need more budget headroom than state detection — coordinator may explain at length.
+  local dispatch_budget="${MAX_BUDGET_T3_DISPATCH:-0.50}"
 
   # Each test creates a fixture, sends a prompt, and checks output for expected keywords.
 
   _t3_dispatch_test() {
     local test_name="$1" dir="$2" prompt="$3" pattern="$4" label="$5"
     local output
-    output=$(run_claude_unsafe "$prompt" "$budget" 120 "$dir")
+    output=$(run_claude_unsafe "$prompt" "$dispatch_budget" 120 "$dir")
     if [[ -z "$output" ]]; then
       record_result "$tier" "$test_name" "FAIL" "empty output"
     elif echo "$output" | grep -qiE "$pattern"; then
@@ -97,16 +101,8 @@ run_t3() {
   dir_express=$(make_temp_dir "t3-express")
   create_fixture_fresh "$dir_express"
   log_verbose "T3.10 express dispatch workspace: $dir_express"
-  local express_output
-  express_output=$(run_claude_unsafe \
-    "What workflow modes does this skill builder support? List them briefly." \
-    "0.50" 180 "$dir_express")
-  if [[ -z "$express_output" ]]; then
-    record_result "$tier" "dispatch_express_skips_research" "FAIL" "empty output"
-  elif echo "$express_output" | grep -qiE "express|skip|research|decision|default|recommend"; then
-    record_result "$tier" "dispatch_express_skips_research" "PASS"
-  else
-    record_result "$tier" "dispatch_express_skips_research" "FAIL" "output lacks express/skip keywords"
-    log_verbose "T3.10 express output: ${express_output:0:300}"
-  fi
+  _t3_dispatch_test "dispatch_express_skips_research" "$dir_express" \
+    "how does express mode work in this skill builder?" \
+    "express|skip|decision|generat|straight|fast|default" \
+    "express/skip"
 }

@@ -19,7 +19,9 @@ _write_session_json() {
   "mode": "guided",
   "research_dimensions_used": ["entities", "metrics"],
   "clarification_status": { "total_questions": 6, "answered": 0 },
-  "auto_filled": false
+  "auto_filled": false,
+  "interactive_questions_asked": [],
+  "interactive_questions_answered": false
 }
 EOF
 }
