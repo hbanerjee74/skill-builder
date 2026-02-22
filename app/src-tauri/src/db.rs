@@ -1,6 +1,6 @@
 use crate::types::{
-    AgentRunRecord, AppSettings, ImportedSkill, UsageByModel, UsageByStep, UsageSummary,
-    WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
+    AgentRunRecord, AppSettings, ImportedSkill, SkillMasterRow, UsageByModel, UsageByStep,
+    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
 };
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -45,6 +45,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (15, run_imported_skills_extended_migration),
         (16, run_workflow_runs_extended_migration),
         (17, run_cleanup_stale_running_rows_migration),
+        (18, run_skills_table_migration),
+        (19, run_skills_backfill_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -459,6 +461,71 @@ fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<(), rusqlit
             conn.execute_batch(&format!("ALTER TABLE workflow_runs ADD COLUMN {} {};", col, def))?;
         }
     }
+    Ok(())
+}
+
+/// Migration 17: Create the `skills` master table — the single catalog backing
+/// the skills library, test tab, and reconciliation.
+fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS skills (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            domain       TEXT,
+            skill_type   TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+    log::info!("migration 17: created skills table");
+    Ok(())
+}
+
+/// Migration 18: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
+/// and remove marketplace rows from `workflow_runs` (now in skills master only).
+fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Step 1: Backfill skills from workflow_runs
+    let backfilled: usize = conn.execute(
+        "INSERT OR IGNORE INTO skills (name, skill_source, domain, skill_type, created_at, updated_at)
+         SELECT skill_name,
+           CASE WHEN source = 'marketplace' THEN 'marketplace' ELSE 'skill-builder' END,
+           domain, skill_type, created_at, updated_at
+         FROM workflow_runs",
+        [],
+    )?;
+
+    // Step 2: Add FK column (check PRAGMA table_info first for idempotency)
+    let has_skill_id = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "skill_id").unwrap_or(false));
+    if !has_skill_id {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // Step 3: Backfill FK
+    conn.execute(
+        "UPDATE workflow_runs SET skill_id = (SELECT id FROM skills WHERE skills.name = workflow_runs.skill_name)",
+        [],
+    )?;
+
+    // Step 4: Remove marketplace rows from workflow_runs (now in skills master only)
+    conn.execute(
+        "DELETE FROM workflow_steps WHERE skill_name IN (SELECT skill_name FROM workflow_runs WHERE source = 'marketplace')",
+        [],
+    ).ok(); // marketplace skills may not have step rows — ignore errors
+    let removed: usize = conn.execute(
+        "DELETE FROM workflow_runs WHERE source = 'marketplace'",
+        [],
+    )?;
+
+    log::info!(
+        "migration 18: backfilled {} skills, removed {} marketplace workflow_runs",
+        backfilled, removed
+    );
     Ok(())
 }
 
@@ -1018,6 +1085,105 @@ pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), S
     Ok(())
 }
 
+// --- Skills Master ---
+
+/// Upsert a row in the `skills` master table. Used by `save_workflow_run` (skill-builder)
+/// and marketplace import. Returns the skill id.
+pub fn upsert_skill(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    domain: &str,
+    skill_type: &str,
+) -> Result<i64, String> {
+    log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(name) DO UPDATE SET
+             domain = ?3, skill_type = ?4, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, domain, skill_type],
+    )
+    .map_err(|e| e.to_string())?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// List all skills from the master table, ordered by name.
+pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at
+             FROM skills ORDER BY name",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SkillMasterRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                skill_source: row.get(2)?,
+                domain: row.get(3)?,
+                skill_type: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let result: Vec<SkillMasterRow> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    log::debug!("list_all_skills: returning {} skills", result.len());
+    Ok(result)
+}
+
+/// Delete a skill from the master table by name.
+pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
+    log::info!("delete_skill: name={}", name);
+    conn.execute("DELETE FROM skills WHERE name = ?1", rusqlite::params![name])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Look up a skill by name in the master table.
+pub fn get_skill_by_name(
+    conn: &Connection,
+    name: &str,
+) -> Result<Option<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at
+             FROM skills WHERE name = ?1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let result = stmt.query_row(rusqlite::params![name], |row| {
+        Ok(SkillMasterRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            skill_source: row.get(2)?,
+            domain: row.get(3)?,
+            skill_type: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    });
+
+    match result {
+        Ok(row) => Ok(Some(row)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 // --- Workflow Run ---
 
 pub fn save_workflow_run(
@@ -1028,31 +1194,29 @@ pub fn save_workflow_run(
     status: &str,
     skill_type: &str,
 ) -> Result<(), String> {
+    // Ensure the skills master row exists (skill-builder source)
+    let skill_id = upsert_skill(conn, skill_name, "skill-builder", domain, skill_type)?;
     conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
+        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, skill_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now') || 'Z')
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, domain, current_step, status, skill_type],
+             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, skill_id = ?6, updated_at = datetime('now') || 'Z'",
+        rusqlite::params![skill_name, domain, current_step, status, skill_type, skill_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn save_marketplace_skill_run(
+/// Insert a marketplace skill into the skills master table only. No workflow_runs row.
+/// Replaces `save_marketplace_skill_run` — marketplace skills no longer get workflow_runs rows.
+pub fn save_marketplace_skill(
     conn: &Connection,
     skill_name: &str,
     domain: &str,
     skill_type: &str,
 ) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source, updated_at)
-         VALUES (?1, ?2, 5, 'completed', ?3, 'marketplace', datetime('now') || 'Z')
-         ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = 5, status = 'completed', skill_type = ?3, source = 'marketplace', updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, domain, skill_type],
-    )
-    .map_err(|e| e.to_string())?;
+    log::info!("save_marketplace_skill: name={}", skill_name);
+    upsert_skill(conn, skill_name, "marketplace", domain, skill_type)?;
     Ok(())
 }
 
@@ -1261,6 +1425,8 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
+    // Also delete from skills master table
+    delete_skill(conn, skill_name)?;
     Ok(())
 }
 
@@ -2026,6 +2192,8 @@ mod tests {
         run_source_migration(&conn).unwrap();
         run_imported_skills_extended_migration(&conn).unwrap();
         run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
         conn
     }
 
@@ -2358,6 +2526,8 @@ mod tests {
         run_intake_migration(&conn).unwrap();
         run_source_migration(&conn).unwrap();
         run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();
