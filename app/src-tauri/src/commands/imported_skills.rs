@@ -1773,6 +1773,32 @@ type: platform
     }
 
     #[test]
+    fn test_seed_bundled_skills_stores_skill_type() {
+        // Regression test for VD-858: skill_type was omitted from upsert_bundled_skill INSERT,
+        // causing bundled skills to land with skill_type = NULL and never appear in Settings → Skills.
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let skill_src = bundled_dir.path().join("research");
+        fs::create_dir_all(&skill_src).unwrap();
+        fs::write(
+            skill_src.join("SKILL.md"),
+            "---\nname: research\ndescription: Research skill\ndomain: Skill Builder\ntype: skill-builder\n---\n# Research",
+        ).unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        let skill = crate::db::get_imported_skill(&conn, "research").unwrap().unwrap();
+        assert_eq!(
+            skill.skill_type.as_deref(),
+            Some("skill-builder"),
+            "skill_type must be stored so Settings → Skills can find bundled skills"
+        );
+    }
+
+    #[test]
     fn test_seed_bundled_skills_preserves_is_active() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
