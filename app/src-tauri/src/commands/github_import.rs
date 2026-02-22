@@ -747,7 +747,49 @@ pub(crate) async fn import_single_skill(
 
     let fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
 
-    let skill_name = fm.name.unwrap_or_else(|| dir_name.to_string());
+    // Validate required frontmatter fields — reject skill if any are missing
+    let missing_required: Vec<&str> = [
+        ("name", fm.name.is_none()),
+        ("description", fm.description.is_none()),
+        ("domain", fm.domain.is_none()),
+    ]
+    .iter()
+    .filter(|(_, missing)| *missing)
+    .map(|(f, _)| *f)
+    .collect();
+    if !missing_required.is_empty() {
+        for field in &missing_required {
+            log::error!(
+                "import_marketplace_skill: required field '{}' missing for skill at '{}'",
+                field,
+                skill_path
+            );
+        }
+        return Err(format!(
+            "missing_mandatory_fields:{}",
+            missing_required.join(",")
+        ));
+    }
+
+    let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
+
+    // Log absent optional fields at info level
+    let name_for_log = &skill_name;
+    for (field, absent) in &[
+        ("version", fm.version.is_none()),
+        ("model", fm.model.is_none()),
+        ("argument-hint", fm.argument_hint.is_none()),
+        ("user-invocable", fm.user_invocable.is_none()),
+        ("disable-model-invocation", fm.disable_model_invocation.is_none()),
+    ] {
+        if *absent {
+            log::info!(
+                "import_marketplace_skill: optional field '{}' absent for skill '{}'",
+                field,
+                name_for_log
+            );
+        }
+    }
 
     if skill_name.is_empty() {
         return Err("Could not determine skill name".to_string());
