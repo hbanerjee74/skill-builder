@@ -3,7 +3,7 @@ import { RefreshCw, SendHorizontal, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import type { RefineCommand } from "@/stores/refine-store";
+import { useRefineStore, type RefineCommand } from "@/stores/refine-store";
 
 const COMMANDS: { value: RefineCommand; label: string; icon: typeof RefreshCw }[] = [
   { value: "rewrite", label: "Rewrite skill", icon: RefreshCw },
@@ -36,10 +36,14 @@ export function ChatInputBar({ onSend, isRunning, availableFiles, prefilledValue
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Populate text from prefilled value (e.g. navigating from Test page)
+  // Populate text from prefilled value (e.g. navigating from Test page).
+  // Clear from the store here — after this component mounts — so the message
+  // isn't consumed before ChatInputBar is mounted (the hasSkill guard in
+  // ChatPanel would otherwise clear it before the input ever renders).
   useEffect(() => {
     if (prefilledValue) {
       setText(prefilledValue);
+      useRefineStore.getState().setPendingInitialMessage(null);
     }
   }, [prefilledValue]);
 

@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useRefineStore } from "@/stores/refine-store";
 import type { RefineCommand } from "@/stores/refine-store";
 import { ChatMessageList } from "./chat-message-list";
@@ -15,13 +14,6 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles }: ChatP
   const messages = useRefineStore((s) => s.messages);
   const sessionExhausted = useRefineStore((s) => s.sessionExhausted);
   const pendingInitialMessage = useRefineStore((s) => s.pendingInitialMessage);
-
-  // Consume pending message once, then clear it from the store
-  useEffect(() => {
-    if (pendingInitialMessage) {
-      useRefineStore.getState().setPendingInitialMessage(null);
-    }
-  }, [pendingInitialMessage]);
 
   if (!hasSkill) {
     return (
