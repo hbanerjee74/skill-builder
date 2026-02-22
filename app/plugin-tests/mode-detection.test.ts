@@ -118,7 +118,7 @@ describe.skipIf(!HAS_API_KEY)(
   () => {
     beforeAll(async () => {
       await new Promise((resolve) => setTimeout(resolve, 15_000));
-    });
+    }, 20_000);
 
     it("new_skill intent enters scoping", { timeout: 135_000 }, () => {
       const dir = makeTempDir("modes-new-skill");

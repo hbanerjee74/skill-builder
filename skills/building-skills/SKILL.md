@@ -309,7 +309,7 @@ Passes: skill_dir, context_dir, workspace_dir, skill_type,
 - After agent returns: ask user to review changes, offer further iterations or validation
 
 **Targeted edit path (`targeted_edit` intent):**
-1. Glob `<skill_dir>/references/*.md` to find the reference file whose name best matches the section named in the user message. Append `@<filename>` to the user message passed to refine-skill so edits are constrained to that file.
+1. Glob `<skill_dir>/references/*.md` to find the reference file whose name best matches the section named in the user message. Append `@<filename>` to the user message passed to refine-skill so edits are constrained to that file. If no reference file closely matches, omit the `@` annotation and pass the user message as-is.
 2. After refine-skill returns, automatically spawn validate-skill.
 3. Append to `session.json.iterative_history`:
    ```json

@@ -56,7 +56,7 @@ B. <option>
 Return: path to clarifications.md and question count.`;
 
     runClaude(prompt, BUDGET, 180_000, researchDir);
-  });
+  }, 200_000);
 
   it("creates clarifications.md", { timeout: 200_000 }, () => {
     const p = path.join(researchDir, SKILL_NAME, "context", "clarifications.md");
@@ -116,7 +116,7 @@ The JSON must contain exactly these fields:
 Return: the evaluation JSON contents.`;
 
     runClaude(prompt, BUDGET, 120_000, evalDir);
-  });
+  }, 135_000);
 
   it("creates answer-evaluation.json", { timeout: 135_000 }, () => {
     const p = path.join(evalDir, ".vibedata", SKILL_NAME, "answer-evaluation.json");
@@ -198,7 +198,7 @@ Each decision must follow this format:
 Return: path to decisions.md and a one-line summary of key decisions.`;
 
     runClaude(prompt, BUDGET, 120_000, decisionsDir);
-  });
+  }, 270_000);
 
   it("creates decisions.md", { timeout: 260_000 }, () => {
     if (!fs.existsSync(answerEvalPath)) return;
