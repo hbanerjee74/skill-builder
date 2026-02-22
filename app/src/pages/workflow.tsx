@@ -900,7 +900,7 @@ export default function WorkflowPage() {
 
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
-  const handleSave = useCallback(async (): Promise<boolean> => {
+  const handleSave = useCallback(async (silent = false): Promise<boolean> => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
@@ -909,7 +909,7 @@ export default function WorkflowPage() {
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
       setEditorDirty(false);
-      toast.success("Saved");
+      if (!silent) toast.success("Saved");
       return true;
     } catch (err) {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
@@ -925,7 +925,7 @@ export default function WorkflowPage() {
     if (!isHumanReviewStep || !editorDirty) return;
 
     const timer = setTimeout(() => {
-      handleSave();
+      handleSave(true);
     }, 1500);
 
     return () => clearTimeout(timer);
@@ -1059,7 +1059,7 @@ export default function WorkflowPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={!hasUnsavedChanges || isSaving}
               >
                 {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
