@@ -27,7 +27,7 @@ Use the research skill to research dimensions and produce clarifications for:
 - skill_type: {skill_type}
 - domain: {domain}
 
-## Step 2: Write output files
+## Step 2: Write output files — do this first, before anything else
 
 The skill returns inline text with two clearly delimited sections:
 
@@ -38,10 +38,46 @@ The skill returns inline text with two clearly delimited sections:
 {complete clarifications.md content including YAML frontmatter}
 ```
 
-Extract each section and write to disk:
-1. Write the RESEARCH PLAN section to `{context_dir}/research-plan.md`
-2. Write the CLARIFICATIONS section (the full clarifications.md content) to `{context_dir}/clarifications.md`
+**As soon as the skill returns, your first and only actions are these two Write calls. Do not produce any text output. Do not analyze or summarize. Just write.**
+
+1. Extract the RESEARCH PLAN section (everything between `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===`) and write it to `{context_dir}/research-plan.md`
+2. Extract the CLARIFICATIONS section (everything after `=== CLARIFICATIONS ===`) and write it to `{context_dir}/clarifications.md`
 
 Write exactly what the skill returned — do not modify the content.
 
-After writing, check whether `clarifications.md` contains `scope_recommendation: true` in its YAML frontmatter. If so, stop and report to the user: the domain scope is too broad or not applicable for skill generation. Do not return normally — surface this condition explicitly.
+After writing, verify both files exist by reading the first 5 lines of each. If either file is missing or empty, retry the Write call once before continuing.
+
+## Step 3: Check scope recommendation
+
+Read the YAML frontmatter of `{context_dir}/clarifications.md`. If `scope_recommendation: true`, stop and return this summary:
+
+```
+Scope issue: {domain} is not suitable for a {skill_type} skill.
+Reason: {one sentence from the clarifications.md explaining why — e.g. "domain is not data-related" or "scope too broad for a single skill"}
+Suggested action: {what the user should do — narrow the domain, choose a different skill type, or split into multiple skills}
+```
+
+Do not return the file contents. Do not list the questions.
+
+## Step 4: Return summary
+
+Return only this — do not return the file contents or the questions:
+
+```
+Research complete for {domain}.
+
+Dimensions ({n} evaluated, {m} selected):
+| Dimension | Score | Rationale |
+|---|---|---|
+| {slug} | {score}/5 | {one-sentence reason from the research plan} |
+[one row per selected dimension, then:]
+| {slug} | {score}/5 | {drop reason} — not selected |
+[one row per dropped dimension]
+
+Clarifications: {question_count} questions across {sections} sections ({duplicates_removed} duplicates removed across dimensions).
+
+Required questions ({n}): {Q-ids}
+{For each required question: one sentence on why it is required — what design decision it gates that Claude cannot infer without an explicit answer}
+```
+
+The required question rationale should be drawn from the `**Recommendation:**` text in `clarifications.md` — one sentence per question explaining the consequence of getting it wrong, not a restatement of the question itself.
