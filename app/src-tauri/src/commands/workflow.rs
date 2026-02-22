@@ -13,6 +13,15 @@ use crate::types::{
 
 const FULL_TOOLS: &[&str] = &["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"];
 
+pub fn resolve_model_id(shorthand: &str) -> String {
+    match shorthand {
+        "sonnet" => "claude-sonnet-4-6".to_string(),
+        "haiku"  => "claude-haiku-4-5".to_string(),
+        "opus"   => "claude-opus-4-6".to_string(),
+        other    => other.to_string(),
+    }
+}
+
 fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
     match step_id {
         0 => Ok(StepConfig {
@@ -761,8 +770,9 @@ fn read_workflow_settings(
         .ok_or_else(|| "Skills path not configured. Please set it in Settings before running workflow steps.".to_string())?;
     let api_key = settings.anthropic_api_key
         .ok_or_else(|| "Anthropic API key not configured".to_string())?;
-    let preferred_model = settings.preferred_model
-        .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+    let preferred_model = resolve_model_id(
+        settings.preferred_model.as_deref().unwrap_or("sonnet")
+    );
     let extended_thinking = settings.extended_thinking;
     let max_dimensions = settings.max_dimensions;
     let industry = settings.industry;
@@ -1306,7 +1316,7 @@ pub async fn run_answer_evaluator(
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
         // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
-        let model = "claude-haiku-4-5".to_string();
+        let model = resolve_model_id("haiku");
         (key, sp, settings.industry, settings.function_role, ij, model)
     };
 

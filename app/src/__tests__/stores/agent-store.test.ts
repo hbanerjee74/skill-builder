@@ -589,13 +589,15 @@ describe("context helper functions", () => {
 });
 
 describe("formatModelName", () => {
-  it("maps full model IDs to friendly names", () => {
-    expect(formatModelName("claude-sonnet-4-5-20250929")).toBe("Sonnet");
-    expect(formatModelName("claude-haiku-4-5-20251001")).toBe("Haiku");
-    expect(formatModelName("claude-opus-4-6")).toBe("Opus");
+  it("maps full model IDs to friendly names with version", () => {
+    expect(formatModelName("claude-sonnet-4-5-20250929")).toBe("Sonnet 4.5");
+    expect(formatModelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(formatModelName("claude-opus-4-6")).toBe("Opus 4.6");
+    expect(formatModelName("claude-sonnet-4-6")).toBe("Sonnet 4.6");
+    expect(formatModelName("claude-haiku-4-5")).toBe("Haiku 4.5");
   });
 
-  it("maps shorthand names to friendly names", () => {
+  it("maps shorthand names to friendly names without version", () => {
     expect(formatModelName("sonnet")).toBe("Sonnet");
     expect(formatModelName("haiku")).toBe("Haiku");
     expect(formatModelName("opus")).toBe("Opus");

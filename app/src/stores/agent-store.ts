@@ -36,12 +36,20 @@ export function flushMessageBuffer() {
   _flushMessageBuffer();
 }
 
-/** Map model IDs and shorthands to human-readable display names. */
+/** Map model IDs and shorthands to human-readable display names with version. */
 export function formatModelName(model: string): string {
   const lower = model.toLowerCase();
-  if (lower.includes("opus")) return "Opus";
-  if (lower.includes("sonnet")) return "Sonnet";
-  if (lower.includes("haiku")) return "Haiku";
+  const families: [string, string][] = [
+    ["opus", "Opus"],
+    ["sonnet", "Sonnet"],
+    ["haiku", "Haiku"],
+  ];
+  for (const [key, label] of families) {
+    if (lower.includes(key)) {
+      const match = lower.match(new RegExp(`${key}-(\\d+)-(\\d+)`));
+      return match ? `${label} ${match[1]}.${match[2]}` : label;
+    }
+  }
   // Already a readable name or unknown — capitalize first letter
   if (model.length > 0) return model.charAt(0).toUpperCase() + model.slice(1);
   return model;

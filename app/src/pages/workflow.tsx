@@ -57,6 +57,7 @@ import {
   type PerQuestionVerdict,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
+import { resolveModelId } from "@/lib/models";
 
 // --- Step config ---
 
@@ -645,7 +646,12 @@ export default function WorkflowPage() {
         domain,
         workspacePath,
       );
-      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
+      agentStartRun(
+        agentId,
+        resolveModelId(
+          useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
+        )
+      );
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -679,7 +685,7 @@ export default function WorkflowPage() {
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, "haiku");
+      agentStartRun(agentId, resolveModelId("haiku"));
       setActiveAgent(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
@@ -900,7 +906,7 @@ export default function WorkflowPage() {
 
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
-  const handleSave = async (): Promise<boolean> => {
+  const handleSave = useCallback(async (silent = false): Promise<boolean> => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
@@ -908,7 +914,8 @@ export default function WorkflowPage() {
     try {
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
-      toast.success("Saved");
+      setEditorDirty(false);
+      if (!silent) toast.success("Saved");
       return true;
     } catch (err) {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
@@ -916,7 +923,19 @@ export default function WorkflowPage() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [currentStep, skillsPath, editorContent, skillName]);
+
+  // Debounce autosave — fires 1500ms after the last edit on a human review step.
+  // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
+  useEffect(() => {
+    if (!isHumanReviewStep || !editorDirty) return;
+
+    const timer = setTimeout(() => {
+      handleSave(true);
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [editorContent, editorDirty, isHumanReviewStep, handleSave]);
 
   const currentStepDef = steps[currentStep];
 
@@ -1046,7 +1065,7 @@ export default function WorkflowPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={!hasUnsavedChanges || isSaving}
               >
                 {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}

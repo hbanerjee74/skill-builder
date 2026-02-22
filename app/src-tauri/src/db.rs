@@ -44,6 +44,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (14, run_source_migration),
         (15, run_imported_skills_extended_migration),
         (16, run_workflow_runs_extended_migration),
+        (17, run_cleanup_stale_running_rows_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -425,6 +426,15 @@ fn run_imported_skills_extended_migration(conn: &Connection) -> Result<(), rusql
         )?;
     }
     Ok(())
+}
+
+/// Migration 17: Clean up stale running rows left by crashed sessions.
+fn run_cleanup_stale_running_rows_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "UPDATE agent_runs
+         SET status = 'shutdown', completed_at = datetime('now') || 'Z'
+         WHERE status = 'running';"
+    )
 }
 
 /// Migration 16: Add extended metadata columns to workflow_runs.
