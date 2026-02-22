@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::commands::imported_skills::validate_skill_name;
 
@@ -43,7 +43,7 @@ fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> R
 }
 
 /// Read a SKILL.md file and return its body with frontmatter stripped.
-fn read_skill_body(path: &PathBuf, label: &str) -> Result<String, String> {
+fn read_skill_body(path: &Path, label: &str) -> Result<String, String> {
     let raw = std::fs::read_to_string(path).map_err(|e| {
         log::error!(
             "[prepare_skill_test] Failed to read {} SKILL.md at {:?}: {}",

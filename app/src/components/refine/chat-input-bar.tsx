@@ -27,12 +27,6 @@ interface ChatInputBarProps {
 
 export function ChatInputBar({ onSend, isRunning, availableFiles, prefilledValue }: ChatInputBarProps) {
   const [text, setText] = useState("");
-
-  useEffect(() => {
-    if (prefilledValue) {
-      setText(prefilledValue);
-    }
-  }, [prefilledValue]);
   const [targetFiles, setTargetFiles] = useState<string[]>([]);
   const [activeCommand, setActiveCommand] = useState<RefineCommand | undefined>();
   const [showFilePicker, setShowFilePicker] = useState(false);
@@ -41,6 +35,13 @@ export function ChatInputBar({ onSend, isRunning, availableFiles, prefilledValue
   const pickerValueRef = useRef("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Populate text from prefilled value (e.g. navigating from Test page)
+  useEffect(() => {
+    if (prefilledValue) {
+      setText(prefilledValue);
+    }
+  }, [prefilledValue]);
 
   // Keep ref in sync with state for synchronous reads in event handlers
   useEffect(() => {
