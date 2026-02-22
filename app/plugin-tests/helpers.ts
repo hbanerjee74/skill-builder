@@ -45,7 +45,7 @@ export function runClaude(
   budgetUsd: string | null,
   timeoutMs: number,
   cwd: string
-): string | null {
+): string {
   // Unset CLAUDECODE so Claude doesn't detect it's inside a Claude Code session
   const env = { ...process.env, CLAUDECODE: undefined };
 
@@ -70,8 +70,15 @@ export function runClaude(
     }
   );
 
-  if (result.error || result.status !== 0) {
-    return null;
+  if (result.error) {
+    throw new Error(
+      `runClaude: process error: ${result.error.message}\nstderr: ${result.stderr ?? ""}`
+    );
+  }
+  if (result.status !== 0) {
+    throw new Error(
+      `runClaude: exited with status ${result.status}\nstdout: ${result.stdout ?? ""}\nstderr: ${result.stderr ?? ""}`
+    );
   }
   return (result.stdout ?? "").trim();
 }
