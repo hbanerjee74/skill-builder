@@ -900,7 +900,7 @@ export default function WorkflowPage() {
 
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
-  const handleSave = async (): Promise<boolean> => {
+  const handleSave = useCallback(async (): Promise<boolean> => {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
@@ -908,6 +908,7 @@ export default function WorkflowPage() {
     try {
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
       setReviewContent(editorContent);
+      setEditorDirty(false);
       toast.success("Saved");
       return true;
     } catch (err) {
@@ -916,7 +917,7 @@ export default function WorkflowPage() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [currentStep, skillsPath, editorContent, skillName]);
 
   // Debounce autosave — fires 1500ms after the last edit on a human review step.
   // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
@@ -928,8 +929,7 @@ export default function WorkflowPage() {
     }, 1500);
 
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorContent, editorDirty, isHumanReviewStep]);
+  }, [editorContent, editorDirty, isHumanReviewStep, handleSave]);
 
   const currentStepDef = steps[currentStep];
 

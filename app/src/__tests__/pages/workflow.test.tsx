@@ -1376,6 +1376,10 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
     useSettingsStore.getState().reset();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   function setupHumanReviewStep(content: string) {
     vi.mocked(readFile).mockImplementation((path: string) => {
       if (path === "/test/skills/test-skill/context/clarifications.md") {
