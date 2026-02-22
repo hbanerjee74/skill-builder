@@ -90,20 +90,11 @@ Determine what you changed, then pick the right runner:
 
 **Unsure?** `app/tests/run.sh` runs everything. `./tests/run.sh plugin workflow` runs the full E2E workflow (~$5).
 
-### Costly tests — always ask first
+### Plugin test policy
 
-Before running (or proposing to run) any test that makes real API calls, state the estimated cost and get explicit acknowledgment from the user.
+**Only `test:plugin:structural` may be run by Claude** — it makes no API calls and is free.
 
-| Command | Est. cost | Notes |
-|---|---|---|
-| `npm run test:plugin:loading` | ~$0.50 | Plugin-load LLM tests |
-| `npm run test:plugin:modes` | ~$4–6 | Mode detection + intent dispatch (agent-spawning tests use $1.50 cap each) |
-| `npm run test:plugin:agents` | ~$2–5 | Agent smoke tests |
-| `npm run test:plugin:workflow` | ~$5 | Full E2E workflow |
-| `npm run test:plugin` | ~$10–15 | All plugin LLM tiers combined |
-| `eval-skill-quality.sh` | varies | Check `--help` for mode-specific cost |
-
-Free (no API calls): `test:plugin:structural`, all unit/integration/e2e app tests, `cargo test`.
+All other plugin tests (`test:plugin:loading`, `test:plugin:modes`, `test:plugin:agents`, `test:plugin:workflow`, `test:plugin`, `eval-skill-quality.sh`) make real API calls and cost real money. **Do not run them. Do not propose running them. Tell the user to run them manually.**
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 
