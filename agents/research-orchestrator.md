@@ -76,8 +76,9 @@ Dimensions ({n} evaluated, {m} selected):
 
 Clarifications: {question_count} questions across {sections} sections ({duplicates_removed} duplicates removed across dimensions).
 
-Required questions ({n}): {Q-ids}
-{For each required question: one sentence on why it is required — what design decision it gates that Claude cannot infer without an explicit answer}
+Required questions ({n}):
+- {Q-id}: {3–5 word reason} (e.g. "drives entity grain design", "gates revenue recognition logic")
+[one line per required question]
 ```
 
-The required question rationale should be drawn from the `**Recommendation:**` text in `clarifications.md` — one sentence per question explaining the consequence of getting it wrong, not a restatement of the question itself.
+Keep each reason to 3–5 words — a label for what the answer unlocks, not a full explanation.
