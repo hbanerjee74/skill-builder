@@ -718,7 +718,7 @@ export default function TestPage() {
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
-  const needsRefinement = state.phase === "done" && evalLines.some((l) => l.direction === "down");
+  const needsRefinement = state.phase === "done" && (evalRecommendations.length > 0 || evalLines.some((l) => l.direction === "down"));
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
@@ -857,11 +857,6 @@ export default function TestPage() {
             <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </span>
-            {needsRefinement && (
-              <Button size="sm" variant="outline" className="ml-auto h-6 text-xs" onClick={handleRefine}>
-                Refine
-              </Button>
-            )}
           </div>
           <div
             ref={evalScrollRef}
@@ -892,9 +887,16 @@ export default function TestPage() {
 
                 {evalRecommendations && (
                   <div className="rounded-md border border-[var(--color-pacific)]/20 bg-[var(--color-pacific)]/5 p-3">
-                    <p className="mb-2 text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
-                      Recommendations
-                    </p>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
+                        Recommendations
+                      </p>
+                      {needsRefinement && (
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleRefine}>
+                          Refine skill
+                        </Button>
+                      )}
+                    </div>
                     <pre className="whitespace-pre-wrap font-mono text-xs leading-relaxed text-foreground">
                       {evalRecommendations}
                     </pre>
