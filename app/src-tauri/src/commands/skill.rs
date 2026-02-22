@@ -837,15 +837,15 @@ pub async fn generate_suggestions(
     let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
         match *f {
             "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
-            "scope" => Some("\"scope\": \"<1 sentence scope>\"".to_string()),
-            "audience" => Some("\"audience\": \"<1 sentence target audience>\"".to_string()),
-            "challenges" => Some("\"challenges\": \"<1 sentence key challenges>\"".to_string()),
+            "scope" => Some("\"scope\": \"<short phrase, e.g. Focus on revenue analytics and reporting>\"".to_string()),
+            "audience" => Some("\"audience\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Senior data engineers\\n• Analytics leads owning pipeline architecture>\"".to_string()),
+            "challenges" => Some("\"challenges\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Late-arriving dimensions\\n• Schema drift across environments>\"".to_string()),
             "unique_setup" => Some(format!(
-                "\"unique_setup\": \"<1 sentence: what might make a typical {} setup for {} different from standard implementations?>\"",
+                "\"unique_setup\": \"<2-3 short bullet points starting with • on separate lines describing what makes a typical {} setup for {} different from standard implementations>\"",
                 skill_type, readable_name
             )),
             "claude_mistakes" => Some(format!(
-                "\"claude_mistakes\": \"<1 sentence: what does Claude typically get wrong when working with {} in the {} domain?>\"",
+                "\"claude_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what Claude gets wrong when working with {} in the {} domain>\"",
                 readable_name, skill_type
             )),
             _ => None,
