@@ -116,10 +116,22 @@ const FALLBACK_MODEL_OPTIONS = [
   { id: "claude-opus-4-6", displayName: "Opus — most capable" },
 ]
 
+// Map old shorthand values stored in DB to real model IDs.
+const SHORTHAND_TO_MODEL: Record<string, string> = {
+  haiku: "claude-haiku-4-5",
+  sonnet: "claude-sonnet-4-6",
+  opus: "claude-opus-4-6",
+}
+
+function normalizeModelValue(raw: string | null | undefined): string {
+  if (!raw) return "inherit"
+  return SHORTHAND_TO_MODEL[raw] ?? raw
+}
+
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels, preferredModel } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -262,7 +274,7 @@ export default function SkillDialog(props: SkillDialogProps) {
       setUniqueSetup(intake.unique_setup)
       setClaudeMistakes(intake.claude_mistakes)
       setVersion(editSkill.version || "1.0.0")
-      setModel(editSkill.model || "inherit")
+      setModel(normalizeModelValue(editSkill.model))
       setArgumentHint(editSkill.argumentHint || "")
       setUserInvocable(editSkill.userInvocable ?? true)
       setDisableModelInvocation(editSkill.disableModelInvocation ?? false)
@@ -839,13 +851,15 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <option value="inherit">Inherit (use workspace default)</option>
+                    <option value="inherit">
+                      {preferredModel ? `Inherit — ${preferredModel}` : "Inherit (workspace default)"}
+                    </option>
                     {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
                       <option key={m.id} value={m.id}>{m.displayName}</option>
                     ))}
                   </select>
                   <p className="text-xs text-muted-foreground">
-                    Model preference for this skill (inherit uses the workspace default)
+                    Per-skill model override — leave on Inherit to use the workspace default
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
