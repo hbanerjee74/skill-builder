@@ -1,5 +1,10 @@
 import { create } from "zustand";
 
+export interface ModelInfo {
+  id: string;
+  displayName: string;
+}
+
 interface SettingsState {
   anthropicApiKey: string | null;
   workspacePath: string | null;
@@ -17,6 +22,7 @@ interface SettingsState {
   functionRole: string | null;
   dashboardViewMode: string | null;
   isConfigured: boolean;
+  availableModels: ModelInfo[];
   setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
   reset: () => void;
 }
@@ -38,6 +44,7 @@ const initialState = {
   functionRole: null,
   dashboardViewMode: null,
   isConfigured: false,
+  availableModels: [] as ModelInfo[],
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({
