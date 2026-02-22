@@ -1,23 +1,35 @@
 # Skill Builder Test Guide
 
-Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into four logical levels plus a self-test suite.
+Unified test documentation for the Skill Builder desktop app. Tests span four runtimes (Vitest, Playwright, cargo, sidecar Vitest) organized into five logical levels plus a self-test suite.
 
 ## Quick Start
 
 ```bash
 cd app
 
-# Run everything (all levels)
+# Run everything (all levels; plugin runs T1-T4 by default)
 ./tests/run.sh
 
 # Run a single level
 ./tests/run.sh unit            # Pure logic: stores, utils, hooks, Rust, sidecar
 ./tests/run.sh integration     # Component rendering with mocked APIs
 ./tests/run.sh e2e             # Full browser tests (Playwright)
-./tests/run.sh plugin          # CLI plugin tests (structural + smoke)
+./tests/run.sh plugin          # Plugin T1-T4 (structural + smoke, excludes expensive T5)
 ./tests/run.sh eval            # Eval harness tests
 
-# Run E2E tests by feature area
+# Plugin: run specific tiers
+./tests/run.sh plugin t1                 # Structural only (free, no API key)
+./tests/run.sh plugin t1 t2 t3           # Coordinator changes
+./tests/run.sh plugin t4                 # Agent smoke tests
+./tests/run.sh plugin t5                 # Full E2E workflow (opt-in, ~$5 / 45min)
+FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live Claude output
+
+# Plugin: run by tag
+./tests/run.sh plugin --tag @agents
+./tests/run.sh plugin --tag @coordinator
+./tests/run.sh plugin --tag @structure
+
+# E2E: run by feature area
 ./tests/run.sh e2e --tag @dashboard
 ./tests/run.sh e2e --tag @settings
 ./tests/run.sh e2e --tag @workflow
@@ -25,11 +37,6 @@ cd app
 ./tests/run.sh e2e --tag @navigation
 ./tests/run.sh e2e --tag @skills
 ./tests/run.sh e2e --tag @usage
-
-# Run plugin tests by tag
-./tests/run.sh plugin --tag @agents
-./tests/run.sh plugin --tag @coordinator
-./tests/run.sh plugin --tag @structure
 
 # Validate the harness and manifest themselves
 ./tests/harness-test.sh        # Harness arg parsing + error handling (21 tests)
@@ -77,11 +84,23 @@ Full browser tests via Playwright. The app runs with `TAURI_E2E=true`, which swa
 
 ### Level 4: Plugin Tests
 
-CLI plugin structural validation and agent smoke tests. Uses the 5-tier harness at `scripts/test-plugin.sh`.
+CLI plugin tests. T1-T4 run by default; T5 (full E2E, ~$5) is opt-in.
 
-| Runtime | Command | Location |
-|---|---|---|
-| Bash + Claude | `./tests/run.sh plugin` | `scripts/plugin-tests/t1-*.sh` through `t5-*.sh` |
+| Tier | What | Cost | Command |
+|---|---|---|---|
+| T1 | Structural validation — plugin manifest, agent files, coordinator content | Free | `./tests/run.sh plugin t1` |
+| T2 | Plugin loading — Claude loads plugin, responds to queries | ~$0.30 | `./tests/run.sh plugin t2` |
+| T3 | State detection + intent dispatch — coordinator identifies phases, dispatches intents | ~$0.40 | `./tests/run.sh plugin t3` |
+| T4 | Agent smoke tests — individual agents produce expected output | ~$0.50 | `./tests/run.sh plugin t4` |
+| T5 | Full E2E workflow — scoping through validation, asserts all artifacts | ~$5.00 | `./tests/run.sh plugin t5` |
+
+```bash
+./tests/run.sh plugin              # T1-T4 (default)
+./tests/run.sh plugin t1           # Free structural checks only
+./tests/run.sh plugin t1 t2 t3     # After coordinator changes
+./tests/run.sh plugin t5           # Full E2E (explicit opt-in)
+FOREGROUND=1 ./tests/run.sh plugin t5   # T5 with live output — see where it's stuck
+```
 
 ### Level 5: Eval Harness Tests
 
