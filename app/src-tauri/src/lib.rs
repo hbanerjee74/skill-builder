@@ -194,6 +194,7 @@ pub fn run() {
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
             commands::workspace::resolve_orphan,
+            commands::workspace::resolve_discovery,
             commands::workspace::create_workflow_session,
             commands::workspace::end_workflow_session,
             commands::imported_skills::upload_skill,

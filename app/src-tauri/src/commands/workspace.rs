@@ -238,6 +238,63 @@ pub fn resolve_orphan(
     crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
+// --- Discovery Resolution ---
+
+#[tauri::command]
+pub fn resolve_discovery(
+    skill_name: String,
+    action: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("[resolve_discovery] skill={} action={}", skill_name, action);
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[resolve_discovery] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = crate::db::read_settings(&conn)?;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path = settings.workspace_path
+        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
+    match action.as_str() {
+        "add-skill-builder" => {
+            // Add as skill-builder with workflow_runs at step 5
+            crate::db::save_workflow_run(
+                &conn, &skill_name, "unknown", 5, "completed", "domain",
+            )?;
+            // Create workspace marker
+            let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
+            let _ = std::fs::create_dir_all(&workspace_dir);
+            log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
+            Ok(())
+        }
+        "add-upload" => {
+            // Add as upload, clear context folder
+            crate::db::upsert_skill(&conn, &skill_name, "upload", "unknown", "domain")?;
+            // Clear context folder
+            let context_dir = std::path::Path::new(&skills_path).join(&skill_name).join("context");
+            if context_dir.exists() {
+                let _ = std::fs::remove_dir_all(&context_dir);
+                log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
+            }
+            log::info!("[resolve_discovery] '{}': added as upload", skill_name);
+            Ok(())
+        }
+        "remove" => {
+            // Delete from disk
+            let skill_dir = std::path::Path::new(&skills_path).join(&skill_name);
+            if skill_dir.exists() {
+                std::fs::remove_dir_all(&skill_dir)
+                    .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
+            }
+            log::info!("[resolve_discovery] '{}': removed from disk", skill_name);
+            Ok(())
+        }
+        _ => Err(format!("Invalid discovery action: '{}'. Expected 'add-skill-builder', 'add-upload', or 'remove'.", action)),
+    }
+}
+
 // --- Workflow Sessions ---
 
 #[tauri::command]

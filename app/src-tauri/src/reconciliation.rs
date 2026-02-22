@@ -1,6 +1,7 @@
 use crate::cleanup::cleanup_future_steps;
 use crate::fs_validation::{detect_furthest_step, has_skill_output};
 use crate::types::{DiscoveredSkill, ReconciliationResult};
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Core reconciliation logic. Compares DB state with filesystem state and resolves
@@ -8,7 +9,7 @@ use std::path::Path;
 ///
 /// Design principles:
 /// - The skills master table is the driver (not workflow_runs).
-/// - Two passes: (1) DB-driven — branch on skill_source, (2) disk discovery stub (VD-874).
+/// - Two passes: (1) DB-driven — branch on skill_source, (2) disk discovery (scenarios 9a/9b/9c).
 /// - `workspace/skill-name/` is transient scratch space. If missing for a
 ///   skill-builder skill, recreate it.
 /// - Marketplace skills live in `skills_path` — if SKILL.md is gone, delete from master.
@@ -80,8 +81,70 @@ pub fn reconcile_on_startup(
         }
     }
 
-    // ── Pass 2 (disk discovery) is implemented in VD-874 ──
-    let discovered_skills: Vec<DiscoveredSkill> = Vec::new();
+    // ── Pass 2: Discover skills on disk not in master ──
+    let master_names: HashSet<String> = all_skills.iter().map(|s| s.name.clone()).collect();
+    let mut discovered_skills = Vec::new();
+    let skills_dir = Path::new(skills_path);
+    if skills_dir.exists() {
+        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') { continue; } // skip dotfiles
+
+            // Already in master? Skip.
+            if master_names.contains(&name) { continue; }
+
+            let skill_md = path.join("SKILL.md");
+            log::debug!("[reconcile] '{}': discovered on disk, not in master", name);
+
+            if !skill_md.exists() {
+                // Scenario 9a: folder with no SKILL.md -> auto-delete, notify
+                log::info!("[reconcile] '{}': removing — no SKILL.md found", name);
+                if let Err(e) = std::fs::remove_dir_all(&path) {
+                    log::error!("[reconcile] '{}': failed to remove: {}", name, e);
+                }
+                notifications.push(format!("'{}' removed — no SKILL.md found on disk", name));
+            } else {
+                // Has SKILL.md — check context artifacts
+                let workspace_marker = Path::new(workspace_path).join(&name);
+                // Create a temporary workspace marker for detect_furthest_step (it requires one)
+                let created_marker = if !workspace_marker.exists() {
+                    std::fs::create_dir_all(&workspace_marker).ok();
+                    true
+                } else {
+                    false
+                };
+
+                let detected = detect_furthest_step(workspace_path, &name, skills_path);
+
+                // Clean up temp marker if we created it
+                if created_marker {
+                    let _ = std::fs::remove_dir_all(&workspace_marker);
+                }
+
+                let detected_step = detected.map(|s| s as i32).unwrap_or(-1);
+
+                if detected == Some(5) {
+                    // Scenario 9b: all artifacts -> user choice
+                    log::info!("[reconcile] '{}': full artifacts found (step 5), prompting user", name);
+                    discovered_skills.push(DiscoveredSkill {
+                        name: name.clone(),
+                        detected_step: 5,
+                        scenario: "9b".to_string(),
+                    });
+                } else {
+                    // Scenario 9c: SKILL.md + partial/no context -> user choice
+                    log::info!("[reconcile] '{}': partial artifacts (step {}), prompting user", name, detected_step);
+                    discovered_skills.push(DiscoveredSkill {
+                        name: name.clone(),
+                        detected_step,
+                        scenario: "9c".to_string(),
+                    });
+                }
+            }
+        }
+    }
 
     log::info!(
         "[reconcile_on_startup] done: {} auto-cleaned, {} notifications, {} discovered",
@@ -998,7 +1061,7 @@ mod tests {
 
         let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
 
-        // No auto-cleaning, no disk-only discovery (Pass 2 is stubbed)
+        // No auto-cleaning, no disk-only discovery (all skills_path dirs are in master)
         assert_eq!(result.auto_cleaned, 0);
         assert!(result.notifications.is_empty());
         assert!(result.orphans.is_empty());
@@ -1778,6 +1841,160 @@ mod tests {
     // LOW PRIORITY — defensive, locking down current behavior
     // =========================================================================
 
+    // =========================================================================
+    // Pass 2: Disk discovery (VD-874)
+    // =========================================================================
+
+    #[test]
+    fn test_pass2_scenario_9a_no_skill_md_auto_deletes() {
+        // Folder in skills_path with no SKILL.md → auto-deleted, notification
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create a directory in skills_path with no SKILL.md
+        let orphan_dir = skills_tmp.path().join("orphan-folder");
+        std::fs::create_dir_all(orphan_dir.join("context")).unwrap();
+        std::fs::write(orphan_dir.join("context").join("notes.md"), "# Notes").unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        // Should be auto-deleted with a notification
+        assert!(!skills_tmp.path().join("orphan-folder").exists(), "folder should be deleted");
+        assert_eq!(result.notifications.len(), 1);
+        assert!(result.notifications[0].contains("orphan-folder"));
+        assert!(result.notifications[0].contains("removed"));
+        assert!(result.notifications[0].contains("no SKILL.md"));
+        // Should NOT appear in discovered_skills (auto-handled)
+        assert!(result.discovered_skills.is_empty());
+    }
+
+    #[test]
+    fn test_pass2_scenario_9b_all_artifacts_discovered() {
+        // SKILL.md + all context artifacts → appears in discovered_skills with scenario "9b"
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create full artifacts in skills_path (not in master)
+        create_step_output(skills_tmp.path(), "complete-skill", 0);
+        create_step_output(skills_tmp.path(), "complete-skill", 4);
+        create_step_output(skills_tmp.path(), "complete-skill", 5);
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].name, "complete-skill");
+        assert_eq!(result.discovered_skills[0].detected_step, 5);
+        assert_eq!(result.discovered_skills[0].scenario, "9b");
+        // Should NOT have a notification (user must decide)
+        assert!(result.notifications.is_empty());
+    }
+
+    #[test]
+    fn test_pass2_scenario_9c_partial_artifacts_discovered() {
+        // SKILL.md + partial context → appears in discovered_skills with scenario "9c"
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create SKILL.md only (no context artifacts for step 0/4)
+        let skill_dir = skills_tmp.path().join("partial-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Partial skill").unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].name, "partial-skill");
+        assert_eq!(result.discovered_skills[0].scenario, "9c");
+        // detected_step should be -1 (no complete steps detected since step 0 is missing)
+        assert_eq!(result.discovered_skills[0].detected_step, -1);
+        // No notifications — user must decide
+        assert!(result.notifications.is_empty());
+    }
+
+    #[test]
+    fn test_pass2_skips_skills_already_in_master() {
+        // Skill in master + on disk → not in discovered_skills
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Add skill to master and create it on disk
+        crate::db::save_workflow_run(&conn, "known-skill", "test", 5, "completed", "domain")
+            .unwrap();
+        create_skill_dir(tmp.path(), "known-skill", "test");
+        create_step_output(skills_tmp.path(), "known-skill", 0);
+        create_step_output(skills_tmp.path(), "known-skill", 4);
+        create_step_output(skills_tmp.path(), "known-skill", 5);
+
+        // Also create an unknown skill on disk
+        let unknown_dir = skills_tmp.path().join("unknown-skill");
+        std::fs::create_dir_all(&unknown_dir).unwrap();
+        std::fs::write(unknown_dir.join("SKILL.md"), "# Unknown").unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        // Only the unknown skill should be discovered
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].name, "unknown-skill");
+    }
+
+    #[test]
+    fn test_pass2_skips_dotfiles() {
+        // .hidden dir → not discovered
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create dotfile directories in skills_path
+        std::fs::create_dir_all(skills_tmp.path().join(".hidden")).unwrap();
+        std::fs::create_dir_all(skills_tmp.path().join(".git")).unwrap();
+        std::fs::write(
+            skills_tmp.path().join(".hidden").join("SKILL.md"),
+            "# Hidden",
+        ).unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        assert!(result.discovered_skills.is_empty());
+        assert!(result.notifications.is_empty());
+    }
+
+    #[test]
+    fn test_pass2_scenario_9c_with_some_context() {
+        // SKILL.md + step 0 context (partial — no step 4 or 5 context) → scenario "9c"
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().to_str().unwrap();
+        let skills_path = skills_tmp.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Create step 0 output + SKILL.md but no step 4
+        create_step_output(skills_tmp.path(), "some-context-skill", 0);
+        let skill_dir = skills_tmp.path().join("some-context-skill");
+        std::fs::write(skill_dir.join("SKILL.md"), "# Some context skill").unwrap();
+
+        let result = reconcile_on_startup(&conn, workspace, skills_path).unwrap();
+
+        assert_eq!(result.discovered_skills.len(), 1);
+        assert_eq!(result.discovered_skills[0].name, "some-context-skill");
+        assert_eq!(result.discovered_skills[0].scenario, "9c");
+        // Step 0 is detected, but step 4 is missing so detect_furthest_step returns Some(0)
+        assert_eq!(result.discovered_skills[0].detected_step, 0);
+    }
+
     #[test]
     fn test_reconcile_no_disk_dirs_adopted_without_master_row() {
         // With the new skills-master driver, disk-only dirs (not in master) are not
@@ -1801,7 +2018,7 @@ mod tests {
 
         // No skills in master → no notifications
         assert!(result.notifications.is_empty());
-        assert!(result.discovered_skills.is_empty()); // Pass 2 stubbed
+        assert!(result.discovered_skills.is_empty()); // disk-only-skill is in workspace, not skills_path
         assert!(crate::db::get_workflow_run(&conn, "disk-only-skill").unwrap().is_none());
         assert!(crate::db::get_workflow_run(&conn, ".git").unwrap().is_none());
     }
