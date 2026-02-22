@@ -122,10 +122,13 @@ Plan B (no skill loaded):
 ${withoutPlanText}
 """
 
-Use the Evaluation Rubric from your context to compare the two plans. Output ONLY bullet points with \u2191 or \u2193 prefixes, one per line.`;
+Use the Evaluation Rubric from your context to compare the two plans. Output ONLY bullet points, one per line, using:
+- \u2191 if Plan A (with skill) is meaningfully better on this dimension
+- \u2193 if Plan B (no skill) is meaningfully better on this dimension
+- \u2192 if both plans are similar, weak, or neither is clearly better`;
 }
 
-type EvalDirection = "up" | "down" | null;
+type EvalDirection = "up" | "down" | "neutral" | null;
 
 interface EvalLine {
   direction: EvalDirection;
@@ -141,16 +144,19 @@ function parseEvalLine(line: string): EvalLine {
   const stripped = trimmed.replace(/^[-*•]\s*/, "");
   if (stripped.startsWith("\u2191")) return { direction: "up", text: stripped.slice(1).trim() };
   if (stripped.startsWith("\u2193")) return { direction: "down", text: stripped.slice(1).trim() };
+  if (stripped.startsWith("\u2192")) return { direction: "neutral", text: stripped.slice(1).trim() };
   if (trimmed.startsWith("\u2191")) return { direction: "up", text: trimmed.slice(1).trim() };
   if (trimmed.startsWith("\u2193")) return { direction: "down", text: trimmed.slice(1).trim() };
+  if (trimmed.startsWith("\u2192")) return { direction: "neutral", text: trimmed.slice(1).trim() };
   return { direction: null, text: trimmed };
 }
 
-/** Return the arrow/bullet character for an eval direction. */
+/** Return the arrow character for an eval direction. */
 function evalDirectionIcon(direction: EvalDirection): string {
   switch (direction) {
     case "up": return "\u2191";
     case "down": return "\u2193";
+    case "neutral": return "\u2192";
     default: return "\u2022";
   }
 }
@@ -160,7 +166,8 @@ function evalIconColor(direction: EvalDirection): string {
   switch (direction) {
     case "up": return "text-[var(--color-seafoam)]";
     case "down": return "text-destructive";
-    default: return "text-muted-foreground";
+    case "neutral": return "text-muted-foreground";
+    default: return "text-muted-foreground/50";
   }
 }
 
