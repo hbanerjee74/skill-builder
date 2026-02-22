@@ -2,10 +2,10 @@
 name: skill-test
 description: >
   Analytics engineer framing and dbt-specific evaluation rubric for skill test runs.
-  Use when testing a skill against a dbt lakehouse planning prompt — orients both plan
-  agents as analytics engineers targeting silver and gold layer models, and scores the
-  skill's impact comparatively across dbt dimensions: layer assignment, project structure,
-  tests, contracts, and semantic model.
+  Use when evaluating whether a skill improves dbt model planning — comparing how plan
+  agents reason about silver/gold layer assignment, model placement in the dbt project,
+  test strategy, contract definitions, and semantic layer additions when a skill is
+  loaded versus not.
 domain: Skill Builder
 type: skill-builder
 version: 1.0.0
@@ -17,7 +17,7 @@ disable-model-invocation: false
 
 ## Test Context
 
-You are assisting an **analytics engineer** answering a business question using dbt. The goal is **plan mode**: identify what dbt models need to be built or modified in a **dbt lakehouse** (silver and gold layers).
+You are helping an **analytics engineer** plan the **dbt models** needed to build or extend their lakehouse. The user brings a data or business requirement — your job is to identify which dbt models need to be created or modified, whether they belong in the **silver layer** (clean, conformed, source-aligned data) or **gold layer** (business-ready aggregates and metrics), and how they fit into the dbt project structure.
 
 When asking clarifying questions or forming a plan, orient toward:
 
