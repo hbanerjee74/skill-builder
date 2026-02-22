@@ -86,6 +86,14 @@ stale=0
 generate_file "$REFS_DIR/workspace-context.md" "$(cat "$SOURCE")" || stale=$((stale + 1))
 check_directory "$BUNDLED_PRACTICES" "$REFS_DIR/skill-builder-practices" "skill-builder-practices" || stale=$((stale + 1))
 
+# Copy each skill from agent-sources/workspace/skills/ as a standalone plugin skill in skills/
+SKILLS_SOURCE="$ROOT_DIR/agent-sources/workspace/skills"
+for skill_src in "$SKILLS_SOURCE"/*/; do
+    skill_name=$(basename "$skill_src")
+    skill_dest="$ROOT_DIR/skills/$skill_name"
+    check_directory "$skill_src" "$skill_dest" "$skill_name" || stale=$((stale + 1))
+done
+
 if $CHECK_MODE; then
     if [[ $stale -gt 0 ]]; then
         echo "ERROR: $stale reference(s) are stale. Run: scripts/build-plugin-skill.sh"
@@ -96,4 +104,5 @@ if $CHECK_MODE; then
     fi
 else
     echo "Done — workspace-context.md + skill-builder-practices/ in skills/building-skills/references/"
+    echo "      + research/, validate-skill/, skill-builder-practices/ in skills/"
 fi

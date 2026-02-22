@@ -295,19 +295,27 @@ jobs:
           }
           JSON
 
-      - name: Push to skills marketplace repo
+      - name: Open PR on skills marketplace repo
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
         working-directory: skills-repo
         run: |
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
           git diff --quiet && git diff --cached --quiet && echo "No changes to publish" && exit 0
+          BRANCH="release/v${VERSION}"
+          git checkout -b "$BRANCH"
           git add .
           git commit -m "Release v${VERSION}: update skill-builder plugins"
-          git push origin HEAD:master
-          echo "Published to hbanerjee74/skills master"
+          git push origin "$BRANCH"
+          gh pr create \
+            --repo hbanerjee74/skills \
+            --title "Release v${VERSION}: skill-builder plugins" \
+            --body "Automated plugin update from skill-builder v${VERSION} release." \
+            --base master \
+            --head "$BRANCH"
 
   release:
     runs-on: ubuntu-latest

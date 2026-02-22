@@ -293,6 +293,23 @@ else
   fail "agent-sources/workspace/skills/validate-skill/SKILL.md not found"
 fi
 
+# ---------- Built plugin skill dirs ----------
+echo ""
+echo "=== Built Plugin Skills ==="
+BUNDLED_SKILLS_SRC="$PLUGIN_DIR/agent-sources/workspace/skills"
+if [ -d "$BUNDLED_SKILLS_SRC" ]; then
+  for skill_src in "$BUNDLED_SKILLS_SRC"/*/; do
+    skill_name=$(basename "$skill_src")
+    if [ -d "$PLUGIN_DIR/skills/$skill_name" ] && [ -f "$PLUGIN_DIR/skills/$skill_name/SKILL.md" ]; then
+      pass "skills/$skill_name/ exists (built from agent-sources)"
+    else
+      fail "skills/$skill_name/ missing — run: scripts/build-plugin-skill.sh"
+    fi
+  done
+else
+  warn "agent-sources/workspace/skills/ not found — skipping built skills check"
+fi
+
 # ---------- Summary ----------
 echo ""
 echo "=============================="
