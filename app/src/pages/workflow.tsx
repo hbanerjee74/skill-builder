@@ -57,6 +57,7 @@ import {
   type PerQuestionVerdict,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
+import { resolveModelId } from "@/lib/models";
 
 // --- Step config ---
 
@@ -645,7 +646,12 @@ export default function WorkflowPage() {
         domain,
         workspacePath,
       );
-      agentStartRun(agentId, stepConfig?.model ?? "sonnet");
+      agentStartRun(
+        agentId,
+        resolveModelId(
+          useSettingsStore.getState().preferredModel ?? stepConfig?.model ?? "sonnet"
+        )
+      );
     } catch (err) {
       updateStepStatus(currentStep, "error");
       setRunning(false);
@@ -679,7 +685,7 @@ export default function WorkflowPage() {
       const agentId = await runAnswerEvaluator(skillName, workspacePath);
       console.log(`[workflow] Gate evaluator started: agentId=${agentId}`);
       gateAgentIdRef.current = agentId;
-      agentStartRun(agentId, "haiku");
+      agentStartRun(agentId, resolveModelId("haiku"));
       setActiveAgent(agentId);
     } catch (err) {
       console.error("[workflow] Gate evaluation failed to start:", err);
