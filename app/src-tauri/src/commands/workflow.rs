@@ -1316,7 +1316,7 @@ pub async fn run_answer_evaluator(
             .flatten();
         let ij = run_row.as_ref().and_then(|r| r.intake_json.clone());
         // Answer evaluator is a lightweight gate — always use Haiku for cost efficiency.
-        let model = "claude-haiku-4-5".to_string();
+        let model = resolve_model_id("haiku");
         (key, sp, settings.industry, settings.function_role, ij, model)
     };
 
