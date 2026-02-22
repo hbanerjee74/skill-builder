@@ -17,9 +17,9 @@ pub fn list_skills(
     list_skills_inner(&workspace_path, &conn)
 }
 
-/// DB-primary skill listing. After reconciliation runs at startup, the DB is the
-/// single source of truth. This function queries all `workflow_runs` from the DB,
-/// batch-fetches tags, and builds a `SkillSummary` list. No filesystem scanning.
+/// Unified skill listing driven by the `skills` master table.
+/// For skill-builder skills, LEFT JOINs to `workflow_runs` for step state.
+/// For marketplace/upload skills, they're always "completed" with no workflow_runs.
 ///
 /// The `_workspace_path` parameter is retained for backward compatibility with the
 /// Tauri command signature (the frontend still passes it), but is not used for
@@ -28,41 +28,78 @@ fn list_skills_inner(
     _workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
-    // Query all workflow runs from the DB
+    // Query the skills master table
+    let master_skills = crate::db::list_all_skills(conn)?;
+
+    // Also load workflow_runs for skill-builder skills (keyed by skill_name)
     let runs = crate::db::list_all_workflow_runs(conn)?;
+    let runs_map: std::collections::HashMap<String, crate::types::WorkflowRunRow> = runs
+        .into_iter()
+        .map(|r| (r.skill_name.clone(), r))
+        .collect();
 
     // Batch-fetch tags for all skills
-    let names: Vec<String> = runs.iter().map(|r| r.skill_name.clone()).collect();
+    let names: Vec<String> = master_skills.iter().map(|s| s.name.clone()).collect();
     let tags_map = crate::db::get_tags_for_skills(conn, &names)?;
 
-    // Build SkillSummary list from DB data
-    let mut skills: Vec<SkillSummary> = runs
+    // Build SkillSummary list from master + optional workflow_runs
+    let mut skills: Vec<SkillSummary> = master_skills
         .into_iter()
-        .map(|run| {
+        .map(|master| {
             let tags = tags_map
-                .get(&run.skill_name)
+                .get(&master.name)
                 .cloned()
                 .unwrap_or_default();
 
+            if master.skill_source == "skill-builder" {
+                // For skill-builder: use workflow_runs data if available
+                if let Some(run) = runs_map.get(&master.name) {
+                    return SkillSummary {
+                        name: run.skill_name.clone(),
+                        domain: Some(run.domain.clone()),
+                        current_step: Some(format!("Step {}", run.current_step)),
+                        status: Some(run.status.clone()),
+                        last_modified: Some(run.updated_at.clone()),
+                        tags,
+                        skill_type: Some(run.skill_type.clone()),
+                        author_login: run.author_login.clone(),
+                        author_avatar: run.author_avatar.clone(),
+                        display_name: run.display_name.clone(),
+                        intake_json: run.intake_json.clone(),
+                        source: Some(run.source.clone()),
+                        skill_source: Some(master.skill_source.clone()),
+                        description: run.description.clone(),
+                        version: run.version.clone(),
+                        model: run.model.clone(),
+                        argument_hint: run.argument_hint.clone(),
+                        user_invocable: run.user_invocable,
+                        disable_model_invocation: run.disable_model_invocation,
+                    };
+                }
+            }
+
+            // For marketplace/upload skills (or skill-builder with no workflow_runs row):
+            // show as completed with master data
             SkillSummary {
-                name: run.skill_name,
-                domain: Some(run.domain),
-                current_step: Some(format!("Step {}", run.current_step)),
-                status: Some(run.status),
-                last_modified: Some(run.updated_at),
+                name: master.name.clone(),
+                domain: master.domain.clone(),
+                current_step: Some("Step 5".to_string()),
+                status: Some("completed".to_string()),
+                last_modified: Some(master.updated_at.clone()),
                 tags,
-                skill_type: Some(run.skill_type),
-                author_login: run.author_login,
-                author_avatar: run.author_avatar,
-                display_name: run.display_name,
-                intake_json: run.intake_json,
-                source: Some(run.source),
-                description: run.description,
-                version: run.version,
-                model: run.model,
-                argument_hint: run.argument_hint,
-                user_invocable: run.user_invocable,
-                disable_model_invocation: run.disable_model_invocation,
+                skill_type: master.skill_type.clone(),
+                author_login: None,
+                author_avatar: None,
+                display_name: None,
+                intake_json: None,
+                source: Some(master.skill_source.clone()),
+                skill_source: Some(master.skill_source.clone()),
+                description: None,
+                version: None,
+                model: None,
+                argument_hint: None,
+                user_invocable: None,
+                disable_model_invocation: None,
             }
         })
         .collect();
@@ -637,15 +674,22 @@ fn rename_skill_inner(
     conn: &mut rusqlite::Connection,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    // Check new name doesn't already exist
-    let exists: bool = conn
+    // Check new name doesn't already exist in workflow_runs or skills master
+    let exists_wr: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM workflow_runs WHERE skill_name = ?1",
             rusqlite::params![new_name],
             |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if exists {
+    let exists_master: bool = conn
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM skills WHERE name = ?1",
+            rusqlite::params![new_name],
+            |row| row.get(0),
+        )
+        .unwrap_or(false);
+    if exists_wr || exists_master {
         log::error!("[rename_skill] Skill '{}' already exists", new_name);
         return Err(format!("Skill '{}' already exists", new_name));
     }
@@ -686,6 +730,12 @@ fn rename_skill_inner(
                 rusqlite::params![old_name, new_name],
             ).map_err(&tx_err)?;
         }
+
+        // Also rename in skills master table
+        tx.execute(
+            "UPDATE skills SET name = ?2, updated_at = datetime('now') WHERE name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
 
         tx.commit().map_err(&tx_err)?;
     }

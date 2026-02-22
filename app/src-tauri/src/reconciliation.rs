@@ -505,15 +505,16 @@ mod tests {
 
     #[test]
     fn test_marketplace_skill_preserved_with_no_workspace_dir() {
-        // Marketplace skills have no workspace dir — previously this triggered
-        // auto-clean (scenario 4). Now they must be left untouched.
+        // Marketplace skills live only in the skills master table (not workflow_runs).
+        // Reconciliation loops over workflow_runs, so marketplace skills are invisible
+        // to it — they must be left untouched in the master.
         let tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         let conn = create_test_db();
 
-        crate::db::save_marketplace_skill_run(&conn, "my-skill", "sales", "platform").unwrap();
+        crate::db::save_marketplace_skill(&conn, "my-skill", "sales", "platform").unwrap();
 
         // No workspace dir, no skills_path output — simulates the normal state
         // for a marketplace-imported skill.
@@ -523,11 +524,12 @@ mod tests {
         assert_eq!(result.auto_cleaned, 0);
         assert!(result.notifications.is_empty());
 
-        // DB record must still exist unchanged
-        let run = crate::db::get_workflow_run(&conn, "my-skill").unwrap().unwrap();
-        assert_eq!(run.source, "marketplace");
-        assert_eq!(run.current_step, 5);
-        assert_eq!(run.status, "completed");
+        // Skills master record must still exist unchanged
+        let master = crate::db::get_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        assert_eq!(master.skill_source, "marketplace");
+
+        // No workflow_runs row should exist for marketplace skills
+        assert!(crate::db::get_workflow_run(&conn, "my-skill").unwrap().is_none());
     }
 
     // --- Missing workspace dir is recreated, not treated as stale ---
