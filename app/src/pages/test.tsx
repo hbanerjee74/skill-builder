@@ -153,8 +153,8 @@ function evalDirectionIcon(direction: EvalDirection): string {
 /** Return the color class for an eval direction's icon. */
 function evalIconColor(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "text-green-400";
-    case "down": return "text-red-400";
+    case "up": return "text-emerald-500";
+    case "down": return "text-red-500";
     default: return "text-muted-foreground";
   }
 }
@@ -162,9 +162,18 @@ function evalIconColor(direction: EvalDirection): string {
 /** Return the color class for an eval direction's text. */
 function evalTextColor(direction: EvalDirection): string {
   switch (direction) {
-    case "up": return "text-muted-foreground";
-    case "down": return "text-muted-foreground/70";
-    default: return "text-muted-foreground/60";
+    case "up": return "text-emerald-300";
+    case "down": return "text-red-300";
+    default: return "text-muted-foreground/70";
+  }
+}
+
+/** Return the row background class for an eval direction. */
+function evalRowBg(direction: EvalDirection): string {
+  switch (direction) {
+    case "up": return "bg-emerald-500/5";
+    case "down": return "bg-red-500/5";
+    default: return "";
   }
 }
 
@@ -848,15 +857,16 @@ export default function TestPage() {
                   <div
                     key={i}
                     className={cn(
-                      "flex items-start gap-2.5 border-b border-border/40 py-1.5 last:border-0",
+                      "flex items-start gap-2.5 rounded border-b border-border/40 px-1 py-1.5 last:border-0",
                       "animate-in fade-in-0 slide-in-from-bottom-1",
+                      evalRowBg(line.direction),
                     )}
                     style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}
                   >
-                    <span className={cn("mt-0.5 shrink-0 text-xs font-semibold", evalIconColor(line.direction))}>
+                    <span className={cn("mt-0.5 shrink-0 text-xs font-bold", evalIconColor(line.direction))}>
                       {evalDirectionIcon(line.direction)}
                     </span>
-                    <span className={cn("text-xs leading-relaxed", evalTextColor(line.direction))}>
+                    <span className={cn("font-mono text-xs leading-relaxed", evalTextColor(line.direction))}>
                       {line.text}
                     </span>
                   </div>
