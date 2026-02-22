@@ -22,7 +22,7 @@ Available as a **Claude Code plugin** (CLI) and a **Tauri desktop app** (GUI). B
 claude --plugin-dir /path/to/skill-builder
 
 # Then trigger the workflow
-/skill-builder:generate-skill
+/skill-builder:building-skills
 ```
 
 **Manual testing (development):**
@@ -32,7 +32,7 @@ claude --plugin-dir /path/to/skill-builder
 claude --plugin-dir .
 
 # Inside the session, run:
-/skill-builder:generate-skill
+/skill-builder:building-skills
 ```
 
 ### Desktop App
@@ -77,10 +77,10 @@ Completed skills are version-controlled locally (auto-commits via git2) and can 
 
 ```
 skill-builder/
-├── agents/                  # 26 agent prompts (shared by both frontends)
+├── agents/                  # Agent prompts (shared by both frontends)
 ├── agent-sources/
 │   └── workspace/CLAUDE.md  # Agent instructions (app: auto-loaded; plugin: packaged as references)
-├── skills/generate-skill/
+├── skills/building-skills/
 │   ├── SKILL.md             # Plugin coordinator (self-contained entry point)
 │   └── references/          # Agent instructions packaged by scripts/build-plugin-skill.sh
 ├── app/                     # Desktop application
@@ -103,10 +103,17 @@ npm test                     # Frontend unit tests (Vitest)
 cd src-tauri && cargo test   # Rust tests
 npm run test:e2e             # E2E tests (Playwright)
 
-# Plugin
-./scripts/validate.sh        # Structural validation
-./scripts/test-plugin.sh     # Full test harness (T1-T5)
+# Plugin — structural validation (free, no API key needed)
+./scripts/validate.sh
+
+# Plugin — LLM tests (requires API key)
+cd app && npm run test:plugin                    # All plugin tests (structural + LLM)
+cd app && npm run test:plugin:structural         # Structural only (free)
+cd app && npm run test:plugin:workflow           # Full E2E workflow (~$5)
+FOREGROUND=1 ./tests/run.sh plugin workflow     # Workflow with live Claude output
 ```
+
+See [`scripts/README.md`](scripts/README.md) for the full guide and [`app/tests/README.md`](app/tests/README.md) for all test levels.
 
 ## Contributing
 
