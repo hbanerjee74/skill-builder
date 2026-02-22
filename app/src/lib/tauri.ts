@@ -230,6 +230,9 @@ export const reconcileStartup = () =>
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
 
+export const resolveDiscovery = (skillName: string, action: string) =>
+  invoke<void>("resolve_discovery", { skillName, action });
+
 // --- Feedback ---
 
 interface CreateGithubIssueRequest {
