@@ -515,3 +515,55 @@ Written by `answer-evaluator`. Runs at two gates: after Step 2 (Q-level answers)
 - `answered_count + empty_count + vague_count == total_count` (where `answered_count` includes both `clear` and `needs_refinement`)
 - `verdict` logic: `sufficient` when all answered, `insufficient` when none answered, `mixed` otherwise
 - Output must be valid JSON with no markdown fences or extra text
+
+---
+
+# Canonical `logs/{step}-{timestamp}.jsonl` Format
+
+Written by the Rust sidecar layer (`sidecar_pool.rs`) for every agent run. Stored at `{workspace}/{skill-name}/logs/`. Not read by agents — used for debugging and observability.
+
+## Filename
+
+```
+{step-label}-{timestamp}.jsonl
+```
+
+- `step-label` — derived from the agent ID (e.g. `step0`, `step2`, `step4`, `step5`)
+- `timestamp` — local time in `YYYY-MM-DDTHH-MM-SS` format
+
+## Format
+
+One JSON object per line (JSONL). The file is **not** valid JSON as a whole.
+
+**Line 1** — request config (written before the agent runs):
+
+```json
+{
+  "prompt": "The domain is: ...",
+  "model": "claude-sonnet-4-5-20250929",
+  "apiKey": "[REDACTED]",
+  "cwd": "/Users/alice/.vibedata",
+  "allowedTools": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", "Task", "Skill"],
+  "maxTurns": 50,
+  "permissionMode": "bypassPermissions",
+  "sessionId": null,
+  "agentName": "research-orchestrator"
+}
+```
+
+`apiKey` is always redacted. All other fields are included as sent to the SDK.
+
+**Lines 2+** — raw SDK stdout events, one per line. Each line is a JSON object emitted by the `@anthropic-ai/claude-agent-sdk`. Common event shapes:
+
+```json
+{ "type": "assistant", "message": { "content": [...] } }
+{ "type": "tool_use", "name": "Read", "input": { "file_path": "..." } }
+{ "type": "tool_result", "content": "..." }
+{ "type": "result", "subtype": "success", "total_cost": 0.042 }
+```
+
+## Rules
+
+- Line 1 is always the config object; agent output begins at line 2.
+- The file is created before the agent runs; if the agent fails to start, line 1 may be the only content.
+- Transcripts are non-fatal: if the log file cannot be created, the agent still runs.
