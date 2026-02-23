@@ -19,7 +19,7 @@ pub fn list_skills(
 
 /// Unified skill listing driven by the `skills` master table.
 /// For skill-builder skills, LEFT JOINs to `workflow_runs` for step state.
-/// For marketplace/upload skills, they're always "completed" with no workflow_runs.
+/// For marketplace/imported skills, they're always "completed" with no workflow_runs.
 ///
 /// The `_workspace_path` parameter is retained for backward compatibility with the
 /// Tauri command signature (the frontend still passes it), but is not used for
@@ -83,7 +83,7 @@ fn list_skills_inner(
                 }
             }
 
-            // For marketplace/upload skills (or skill-builder with no workflow_runs row):
+            // For marketplace/imported skills (or skill-builder with no workflow_runs row):
             // show as completed with master data
             SkillSummary {
                 name: master.name.clone(),

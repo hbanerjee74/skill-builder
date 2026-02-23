@@ -47,6 +47,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (17, run_cleanup_stale_running_rows_migration),
         (18, run_skills_table_migration),
         (19, run_skills_backfill_migration),
+        (20, run_rename_upload_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -153,7 +154,7 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
         CREATE TABLE IF NOT EXISTS skills (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT NOT NULL UNIQUE,
-            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -481,7 +482,7 @@ fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
         "CREATE TABLE IF NOT EXISTS skills (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT NOT NULL UNIQUE,
-            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -536,6 +537,18 @@ fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Erro
         "migration 18: backfilled {} skills, removed {} marketplace workflow_runs",
         backfilled, removed
     );
+    Ok(())
+}
+
+fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Rename upload → imported
+    conn.execute("UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'", [])?;
+    // Clean orphaned non-bundled imported_skills with no skills master row
+    conn.execute(
+        "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+        [],
+    )?;
+    log::info!("migration 19: renamed upload→imported, cleaned orphaned imported_skills");
     Ok(())
 }
 
@@ -1864,6 +1877,12 @@ pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), 
     Ok(())
 }
 
+pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<(), String> {
+    conn.execute("DELETE FROM imported_skills WHERE skill_name = ?1", [name])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn get_imported_skill(
     conn: &Connection,
     skill_name: &str,
@@ -2557,14 +2576,14 @@ mod tests {
         let conn = create_test_db();
         upsert_skill(&conn, "gamma", "marketplace", "domain-c", "source").unwrap();
         upsert_skill(&conn, "alpha", "skill-builder", "domain-a", "domain").unwrap();
-        upsert_skill(&conn, "beta", "upload", "domain-b", "platform").unwrap();
+        upsert_skill(&conn, "beta", "imported", "domain-b", "platform").unwrap();
 
         let skills = list_all_skills(&conn).unwrap();
         assert_eq!(skills.len(), 3);
         assert_eq!(skills[0].name, "alpha");
         assert_eq!(skills[0].skill_source, "skill-builder");
         assert_eq!(skills[1].name, "beta");
-        assert_eq!(skills[1].skill_source, "upload");
+        assert_eq!(skills[1].skill_source, "imported");
         assert_eq!(skills[2].name, "gamma");
         assert_eq!(skills[2].skill_source, "marketplace");
     }

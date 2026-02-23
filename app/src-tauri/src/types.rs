@@ -126,7 +126,7 @@ pub struct SkillSummary {
     pub intake_json: Option<String>,
     #[serde(default)]
     pub source: Option<String>,
-    /// The skill_source from the skills master table (skill-builder, marketplace, upload).
+    /// The skill_source from the skills master table (skill-builder, marketplace, imported).
     #[serde(default)]
     pub skill_source: Option<String>,
     #[serde(default)]

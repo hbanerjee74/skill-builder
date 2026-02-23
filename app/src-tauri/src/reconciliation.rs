@@ -13,7 +13,7 @@ use std::path::Path;
 /// - `workspace/skill-name/` is transient scratch space. If missing for a
 ///   skill-builder skill, recreate it.
 /// - Marketplace skills live in `skills_path` — if SKILL.md is gone, delete from master.
-/// - Upload skills are skipped (no reconciliation).
+/// - Imported skills are skipped (no reconciliation).
 ///
 /// Scenarios (see docs/design/startup-recon/README.md):
 ///  1. DB and disk agree (no action)
@@ -65,10 +65,10 @@ pub fn reconcile_on_startup(
                     &mut notifications,
                 )?;
             }
-            "upload" => {
-                // Upload skills have no reconciliation checks (per design doc)
+            "imported" => {
+                // Imported skills have no reconciliation checks (per design doc)
                 log::debug!(
-                    "[reconcile] '{}': skill_source=upload, action=skip",
+                    "[reconcile] '{}': skill_source=imported, action=skip",
                     skill.name
                 );
             }
@@ -104,6 +104,7 @@ pub fn reconcile_on_startup(
                 if let Err(e) = std::fs::remove_dir_all(&path) {
                     log::error!("[reconcile] '{}': failed to remove: {}", name, e);
                 }
+                crate::db::delete_imported_skill_by_name(conn, &name).ok();
                 notifications.push(format!("'{}' removed — no SKILL.md found on disk", name));
             } else {
                 // Has SKILL.md — check context artifacts
