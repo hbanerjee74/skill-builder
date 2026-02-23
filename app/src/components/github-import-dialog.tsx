@@ -292,13 +292,17 @@ export default function GitHubImportDialog({
                         </div>
                         <div className="shrink-0 pt-0.5">
                           {state === "imported" ? (
-                            <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                            <div className="flex size-7 items-center justify-center rounded-md border">
+                              <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
                           ) : state === "exists" ? (
-                            <CheckCheck className="size-4 text-muted-foreground" />
+                            <div className="flex size-7 items-center justify-center rounded-md border">
+                              <CheckCheck className="size-3.5 text-muted-foreground" />
+                            </div>
                           ) : (
                             <Button
                               size="icon"
-                              variant="ghost"
+                              variant="outline"
                               className="size-7"
                               disabled={isImporting}
                               onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
