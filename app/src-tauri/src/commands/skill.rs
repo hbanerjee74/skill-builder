@@ -434,10 +434,20 @@ fn delete_skill_inner(
         }
     }
 
-    // Full DB cleanup: workflow_run + steps + agent_runs + tags
+    // Full DB cleanup: route to the right delete based on what's in the DB.
+    // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
     if let Some(conn) = conn {
-        crate::db::delete_workflow_run(conn, name)?;
-        log::info!("[delete_skill] DB records cleaned for {}", name);
+        let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
+            .unwrap_or(None)
+            .is_some();
+        if has_workflow_run {
+            crate::db::delete_workflow_run(conn, name)?;
+            log::info!("[delete_skill] workflow run DB records cleaned for {}", name);
+        } else {
+            crate::db::delete_imported_skill_by_name(conn, name)?;
+            crate::db::delete_skill(conn, name)?;
+            log::info!("[delete_skill] imported skill DB records cleaned for {}", name);
+        }
     }
 
     Ok(())
