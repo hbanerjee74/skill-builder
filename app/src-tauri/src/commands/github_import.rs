@@ -658,32 +658,53 @@ pub async fn import_marketplace_to_library(
     Ok(results)
 }
 
+/// Wrap a YAML string value in double quotes, escaping backslashes, double
+/// quotes, and newlines so that user-supplied values cannot inject extra keys.
+fn yaml_quote(s: &str) -> String {
+    let escaped = s
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    format!("\"{}\"", escaped)
+}
+
 /// Rewrite the SKILL.md frontmatter block in the destination directory with values from `fm`.
 fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -> Result<(), String> {
     let skill_md_path = dest_dir.join("SKILL.md");
     let existing = fs::read_to_string(&skill_md_path)
         .map_err(|e| format!("Failed to read SKILL.md for rewrite: {}", e))?;
 
-    // Extract body (everything after the closing ---)
+    // Extract body: find the closing --- that ends the frontmatter block.
+    // Must be a standalone line (not embedded in content) to avoid truncating
+    // body content that contains markdown horizontal rules.
     let body = if existing.trim_start().starts_with("---") {
-        let after_first = &existing.trim_start()[3..];
-        if let Some(pos) = after_first.find("\n---") {
-            // Body starts after "\n---" and any trailing newline
-            let after_close = &after_first[pos + 4..];
-            // Strip one leading newline if present
-            after_close.strip_prefix('\n').unwrap_or(after_close)
-        } else {
-            &existing
+        let after_open = &existing.trim_start()[3..];
+        // Skip past the opening marker's line ending
+        let content = after_open.strip_prefix('\n').unwrap_or(after_open);
+        // Find the first line that is exactly "---"
+        let mut body_start: Option<usize> = None;
+        let mut pos = 0;
+        for line in content.lines() {
+            if line.trim() == "---" {
+                body_start = Some(pos + line.len() + 1); // +1 for newline
+                break;
+            }
+            pos += line.len() + 1; // +1 for \n
+        }
+        match body_start {
+            Some(start) if start < content.len() => content[start..].to_string(),
+            _ => String::new(),
         }
     } else {
-        &existing
+        // No frontmatter — keep original content as body
+        existing.clone()
     };
 
     // Build new frontmatter YAML block
     let mut yaml = String::new();
     let mut add_field = |key: &str, val: &Option<String>| {
         if let Some(v) = val {
-            yaml.push_str(&format!("{}: {}\n", key, v));
+            yaml.push_str(&format!("{}: {}\n", key, yaml_quote(v)));
         }
     };
     add_field("name", &fm.name);
@@ -1388,5 +1409,159 @@ mod tests {
         let resolved_err: Result<String, String> = Err("network error".to_string());
         let branch_fallback = resolved_err.unwrap_or_else(|_| parsed_branch.to_string());
         assert_eq!(branch_fallback, "main", "Fallback to parsed branch when resolution fails");
+    }
+
+    // --- yaml_quote tests ---
+
+    #[test]
+    fn test_yaml_quote_plain_value() {
+        assert_eq!(yaml_quote("hello"), "\"hello\"");
+    }
+
+    #[test]
+    fn test_yaml_quote_escapes_double_quotes() {
+        assert_eq!(yaml_quote("say \"hi\""), "\"say \\\"hi\\\"\"");
+    }
+
+    #[test]
+    fn test_yaml_quote_escapes_newlines() {
+        assert_eq!(yaml_quote("line1\nline2"), "\"line1\\nline2\"");
+    }
+
+    #[test]
+    fn test_yaml_quote_escapes_backslashes() {
+        assert_eq!(yaml_quote("path\\to"), "\"path\\\\to\"");
+    }
+
+    #[test]
+    fn test_yaml_quote_escapes_colon_value() {
+        // A colon alone doesn't need escaping (it's safe inside double quotes).
+        // Verify that a value with a colon is still wrapped correctly.
+        let quoted = yaml_quote("key: value");
+        assert_eq!(quoted, "\"key: value\"");
+    }
+
+    #[test]
+    fn test_yaml_quote_injection_attempt() {
+        // A newline injection attempt must be neutralised.
+        let injected = yaml_quote("legit\nmalicious-key: injected");
+        assert_eq!(injected, "\"legit\\nmalicious-key: injected\"");
+    }
+
+    // --- rewrite_skill_md body-extraction tests ---
+
+    #[test]
+    fn test_rewrite_skill_md_body_not_truncated_by_hr() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+
+        // Body contains a markdown horizontal rule (---) on its own line.
+        // The old code would truncate the body at that line; the new code must not.
+        let original = "---\nname: old-name\ndescription: old-desc\ndomain: old-domain\ntype: domain\n---\n# Heading\n\nSome content.\n\n---\n\nMore content after the HR.\n";
+        fs::write(&skill_md, original).unwrap();
+
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("new-name".to_string()),
+            description: Some("new-desc".to_string()),
+            domain: Some("new-domain".to_string()),
+            skill_type: Some("domain".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+
+        rewrite_skill_md(dir.path(), &fm).unwrap();
+
+        let result = fs::read_to_string(&skill_md).unwrap();
+
+        // Frontmatter values must be updated and quoted
+        assert!(result.contains("name: \"new-name\""), "name not rewritten: {}", result);
+        assert!(result.contains("domain: \"new-domain\""), "domain not rewritten: {}", result);
+
+        // The body content AFTER the markdown HR must be preserved
+        assert!(
+            result.contains("More content after the HR."),
+            "body was truncated at markdown HR: {}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_rewrite_skill_md_no_frontmatter() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+
+        // File has no frontmatter at all
+        let original = "# Just a heading\nNo frontmatter here.\n";
+        fs::write(&skill_md, original).unwrap();
+
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("my-skill".to_string()),
+            description: Some("desc".to_string()),
+            domain: Some("analytics".to_string()),
+            skill_type: Some("domain".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+
+        rewrite_skill_md(dir.path(), &fm).unwrap();
+        let result = fs::read_to_string(&skill_md).unwrap();
+
+        // Should start with newly injected frontmatter
+        assert!(result.starts_with("---\n"), "missing opening ---: {}", result);
+        assert!(result.contains("name: \"my-skill\""), "name missing: {}", result);
+        // Original content should be preserved as body
+        assert!(result.contains("# Just a heading"), "original body lost: {}", result);
+    }
+
+    #[test]
+    fn test_rewrite_skill_md_yaml_injection_blocked() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+
+        let original = "---\nname: legit\ndescription: desc\ndomain: data\ntype: domain\n---\n# Body\n";
+        fs::write(&skill_md, original).unwrap();
+
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("legit\nmalicious-key: injected".to_string()),
+            description: Some("desc".to_string()),
+            domain: Some("data".to_string()),
+            skill_type: Some("domain".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+
+        rewrite_skill_md(dir.path(), &fm).unwrap();
+        let result = fs::read_to_string(&skill_md).unwrap();
+
+        // The injected key must NOT appear as a bare YAML key
+        assert!(
+            !result.contains("\nmalicious-key: injected\n"),
+            "YAML injection succeeded: {}",
+            result
+        );
+        // The newline must be escaped inside the quoted value
+        assert!(
+            result.contains("\\n"),
+            "newline not escaped in YAML value: {}",
+            result
+        );
     }
 }
