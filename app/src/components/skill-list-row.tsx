@@ -32,7 +32,7 @@ import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 /** Shared 5-column grid — used by both the row and the table header in dashboard.tsx */
-export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_8rem_7rem_6rem_auto]"
+export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_9rem_8rem_auto]"
 
 function getStatusLabel(skill: SkillSummary): string {
   if (skill.skill_source === "marketplace" || skill.skill_source === "imported" || isWorkflowComplete(skill)) {
@@ -107,11 +107,11 @@ export default function SkillListRow({
       {/* Col 3: Status */}
       <div className="hidden sm:block">
         {isComplete ? (
-          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-[10px] px-1.5 py-0">
+          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
             Completed
           </Badge>
         ) : (
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          <Badge variant="secondary" className="text-xs px-1.5 py-0">
             {statusLabel}
           </Badge>
         )}
