@@ -75,6 +75,24 @@ skills  ← master                         workspace_skills  ← standalone
 
 **`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
 
+| Column | Type | Notes |
+|---|---|---|
+| `skill_id` | TEXT PK | UUID |
+| `skill_name` | TEXT UNIQUE NOT NULL | Directory name; enforces no duplicates |
+| `domain` | TEXT | From SKILL.md frontmatter |
+| `is_active` | INTEGER | 1 = active (default), 0 = inactive |
+| `disk_path` | TEXT NOT NULL | Absolute path to skill directory on disk |
+| `imported_at` | TEXT | ISO timestamp, auto-set on insert |
+| `is_bundled` | INTEGER | 1 = seeded by app on startup (skill-test, research, etc.), 0 = user-imported |
+| `skill_type` | TEXT | From frontmatter (domain, source, platform, etc.) |
+| `version` | TEXT | From frontmatter |
+| `model` | TEXT | From frontmatter |
+| `argument_hint` | TEXT | From frontmatter |
+| `user_invocable` | INTEGER | From frontmatter |
+| `disable_model_invocation` | INTEGER | From frontmatter |
+
+`description` and `trigger_text` were removed in migrations — both are read on-demand from SKILL.md on disk. `skill_name` UNIQUE enforces the no-duplicate-name constraint for uploads and imports.
+
 ### Supporting tables
 
 **`settings`** — KV store. One JSON blob per key. Used for `AppSettings`: API key, paths, model, auth tokens, feature flags.
@@ -124,11 +142,12 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 1. Frontend calls `prepare_skill_test` with a `skill_name`.
 2. Backend creates two isolated temp workspaces under a shared `skill-builder-test-{uuid}/` parent:
-   - `baseline/` — contains only the bundled `skill-test` SKILL.md (frontmatter stripped) written to `.claude/CLAUDE.md`. No user skill.
-   - `with-skill/` — contains the same `skill-test` body plus the user's skill SKILL.md written to `.claude/CLAUDE.md`.
+   - `baseline/` — `.claude/CLAUDE.md` (`# Test Workspace`) + `.claude/skills/skill-test/` copied from bundled resources. No user skill.
+   - `with-skill/` — same as baseline, plus `.claude/skills/{skill_name}/` copied from `skills_path`.
 3. Returns `test_id`, both `cwd` paths, and a `transcript_log_dir` pointing to `{workspace}/{skill_name}/logs/`.
-4. Frontend spawns agents against both workspaces in parallel and compares behaviour.
-5. Frontend calls `cleanup_skill_test` with the `test_id` → backend removes the shared temp parent directory.
+4. Frontend wraps the user prompt (`"You are a data engineer and the user is trying to do the following task:\n\n{prompt}"`) and spawns plan agents against both workspaces in parallel. The SDK auto-loads `.claude/skills/` from each workspace `cwd`.
+5. After both plan agents complete, frontend spawns an evaluator agent in the baseline workspace.
+6. Frontend calls `cleanup_skill_test` with the `test_id` → backend removes the shared temp parent directory.
 
 ### Refine session lifecycle
 
