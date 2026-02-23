@@ -372,18 +372,15 @@ export default function GitHubImportDialog({
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="truncate text-sm font-medium">{skill.name}</span>
-                            {skill.domain && (
-                              <Badge variant="secondary" className="text-xs shrink-0">{skill.domain}</Badge>
-                            )}
                             {mode === 'skill-library' && !skill.skill_type && !isDisabled && (
                               <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                                 Missing type
                               </Badge>
                             )}
                           </div>
-                          {skill.description ? (
-                            <div className="text-xs text-muted-foreground line-clamp-1">{skill.description}</div>
-                          ) : mode === 'skill-library' && !isDisabled ? (
+                          {skill.domain ? (
+                            <div className="text-xs text-muted-foreground">{skill.domain}</div>
+                          ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
                             <div className="text-xs text-amber-600">No description</div>
                           ) : null}
                         </div>
