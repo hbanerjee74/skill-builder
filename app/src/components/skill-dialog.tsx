@@ -148,6 +148,31 @@ export default function SkillDialog(props: SkillDialogProps) {
   // Built skill detection (edit mode only)
   const isBuilt = isEdit && isSkillBuilt(editSkill)
 
+  // Imported/marketplace skills: skip intake steps (2 and 3), lock skill_type
+  const isImported = isEdit && (editSkill?.skill_source === 'marketplace' || editSkill?.skill_source === 'imported')
+  // Total wizard steps: 2 for imported (step 1 + step 4), 4 for others
+  const totalSteps = isImported ? 2 : 4
+  // Map display step index (1-based, 1..totalSteps) to actual step number
+  function nextStep(current: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+    if (isImported) return current === 1 ? 4 : 4
+    if (current === 1) return 2
+    if (current === 2) return 3
+    if (current === 3) return 4
+    return 4
+  }
+  function prevStep(current: 1 | 2 | 3 | 4): 1 | 2 | 3 | 4 {
+    if (isImported) return current === 4 ? 1 : 1
+    if (current === 4) return 3
+    if (current === 3) return 2
+    if (current === 2) return 1
+    return 1
+  }
+  // For display: which dot index (1-based) is the current step?
+  function stepDisplayIndex(s: 1 | 2 | 3 | 4): number {
+    if (!isImported) return s
+    return s === 4 ? 2 : 1
+  }
+
   // Dialog open state — controlled (edit always, create optionally) or internal
   const [internalOpen, setInternalOpen] = useState(false)
   const dialogOpen = isEdit
@@ -549,8 +574,9 @@ export default function SkillDialog(props: SkillDialogProps) {
   }
 
   function stepDotColor(s: number): string {
-    if (s === step) return "bg-primary"
-    if (s < step) return "bg-primary/40"
+    const currentDisplay = stepDisplayIndex(step)
+    if (s === currentDisplay) return "bg-primary"
+    if (s < currentDisplay) return "bg-primary/40"
     return "bg-muted-foreground/20"
   }
 
@@ -583,14 +609,14 @@ export default function SkillDialog(props: SkillDialogProps) {
 
           {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 py-3">
-            {[1, 2, 3, 4].map((s) => (
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
               <div
                 key={s}
                 className={`size-2 rounded-full transition-colors ${stepDotColor(s)}`}
               />
             ))}
             <span className="ml-2 text-xs text-muted-foreground">
-              Step {step} of 4
+              Step {stepDisplayIndex(step)} of {totalSteps}
             </span>
           </div>
 
@@ -636,16 +662,16 @@ export default function SkillDialog(props: SkillDialogProps) {
                   <Label>Skill Type</Label>
                   <RadioGroup
                     value={skillType}
-                    onValueChange={isBuilt ? undefined : setSkillType}
+                    onValueChange={(isBuilt || isImported) ? undefined : setSkillType}
                     className="grid grid-cols-2 gap-2"
-                    disabled={submitting || isBuilt}
+                    disabled={submitting || isBuilt || isImported}
                   >
                     {SKILL_TYPES.map((type) => (
                       <label
                         key={type}
-                        className={`flex items-start gap-2 rounded-md border p-3 [&:has([data-state=checked])]:border-primary ${isBuilt ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent"}`}
+                        className={`flex items-start gap-2 rounded-md border p-3 [&:has([data-state=checked])]:border-primary ${(isBuilt || isImported) ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent"}`}
                       >
-                        <RadioGroupItem value={type} id={`type-${type}`} className="mt-0.5" disabled={isBuilt} />
+                        <RadioGroupItem value={type} id={`type-${type}`} className="mt-0.5" disabled={isBuilt || isImported} />
                         <div className="flex flex-col gap-0.5">
                           <span className="text-sm font-medium">{SKILL_TYPE_LABELS[type]}</span>
                           <span className="text-xs text-muted-foreground">
@@ -921,7 +947,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   disabled={!canAdvanceStep1 || isLocked}
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(nextStep(1))}
                 >
                   Next
                   <ChevronRight className="size-4" />
@@ -933,7 +959,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(prevStep(2))}
                   disabled={submitting}
                 >
                   <ChevronLeft className="size-4" />
@@ -943,7 +969,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                   type="button"
                   variant="outline"
                   disabled={submitting || !canAdvanceStep2}
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(nextStep(2))}
                 >
                   Next
                   <ChevronRight className="size-4" />
@@ -955,7 +981,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(prevStep(3))}
                   disabled={submitting}
                 >
                   <ChevronLeft className="size-4" />
@@ -964,7 +990,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(nextStep(3))}
                   disabled={submitting}
                 >
                   Next
@@ -977,7 +1003,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setStep(3)}
+                  onClick={() => setStep(prevStep(4))}
                   disabled={submitting}
                 >
                   <ChevronLeft className="size-4" />
