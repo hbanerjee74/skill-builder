@@ -4,6 +4,26 @@ use sha2::Digest;
 use std::fs;
 use std::path::Path;
 
+/// Returns true if `marketplace` is strictly newer than `installed` by semver rules.
+/// Falls back to string inequality if either value fails to parse.
+fn semver_gt(marketplace: &str, installed: &str) -> bool {
+    match (semver::Version::parse(marketplace), semver::Version::parse(installed)) {
+        (Ok(mp), Ok(inst)) => mp > inst,
+        _ => marketplace != installed,
+    }
+}
+
+/// Merge existing field values into a new `ImportedSkill`: each field on `skill`
+/// is left unchanged if already `Some`, otherwise falls back to the `existing` value.
+fn merge_imported_fields(skill: &mut ImportedSkill, existing: &ImportedSkill) {
+    if skill.domain.is_none() { skill.domain = existing.domain.clone(); }
+    if skill.description.is_none() { skill.description = existing.description.clone(); }
+    if skill.model.is_none() { skill.model = existing.model.clone(); }
+    if skill.argument_hint.is_none() { skill.argument_hint = existing.argument_hint.clone(); }
+    if skill.user_invocable.is_none() { skill.user_invocable = existing.user_invocable; }
+    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing.disable_model_invocation; }
+}
+
 /// Fetch the default branch name for a GitHub repo via the API.
 pub(crate) async fn get_default_branch(
     client: &reqwest::Client,
@@ -587,16 +607,9 @@ pub async fn import_github_skills(
 
                 if let Some(ref existing_skill) = existing {
                     // Skip if marketplace version is NOT strictly greater than installed version.
-                    // Use semver comparison; fall back to string equality if either fails to parse.
-                    let marketplace_is_newer = {
-                        let mp_ver = skill.version.as_deref().unwrap_or("");
-                        let inst_ver = existing_skill.version.as_deref().unwrap_or("");
-                        match (semver::Version::parse(mp_ver), semver::Version::parse(inst_ver)) {
-                            (Ok(mp), Ok(inst)) => mp > inst,
-                            _ => mp_ver != inst_ver,
-                        }
-                    };
-                    if !marketplace_is_newer {
+                    let mp_ver = skill.version.as_deref().unwrap_or("");
+                    let inst_ver = existing_skill.version.as_deref().unwrap_or("");
+                    if !semver_gt(mp_ver, inst_ver) {
                         log::info!(
                             "[import_github_skills] {} already at version {:?}, skipping",
                             skill.skill_name, skill.version
@@ -610,7 +623,7 @@ pub async fn import_github_skills(
                         errors.push(format!("{}: already installed at the same version", skill.skill_name));
                         continue;
                     }
-                    // Different version — merge: new frontmatter wins if Some, else fall back to existing
+                    // Different version — merge: new frontmatter wins if Some, else fall back to existing WorkspaceSkill
                     if skill.domain.is_none() { skill.domain = existing_skill.domain.clone(); }
                     if skill.description.is_none() { skill.description = existing_skill.description.clone(); }
                     if skill.model.is_none() { skill.model = existing_skill.model.clone(); }
@@ -622,7 +635,6 @@ pub async fn import_github_skills(
                         skill.skill_name, existing_skill.version, skill.version
                     );
                 }
-
 
                 let mut ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
                 ws_skill.purpose = purpose.clone();
@@ -783,16 +795,10 @@ pub async fn import_marketplace_to_library(
                 // Fetch existing imported skill metadata (if any) for merging on upgrade
                 let existing_imported = crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
 
-                // Merge: new frontmatter value wins if Some, else fall back to existing installed value
+                // Merge: new frontmatter value wins if Some, else fall back to existing installed value.
+                // Version and skill_name are intentionally NOT merged — keep the new values.
                 if let Some(ref existing) = existing_imported {
-                    if skill.domain.is_none() { skill.domain = existing.domain.clone(); }
-                    if skill.description.is_none() { skill.description = existing.description.clone(); }
-                    if skill.model.is_none() { skill.model = existing.model.clone(); }
-                    if skill.argument_hint.is_none() { skill.argument_hint = existing.argument_hint.clone(); }
-                    if skill.user_invocable.is_none() { skill.user_invocable = existing.user_invocable; }
-                    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing.disable_model_invocation; }
-                    // Do NOT merge version — keep the new version
-                    // Do NOT merge skill_name — keep the new name
+                    merge_imported_fields(&mut skill, existing);
                 }
 
                 // Insert into skills master first so that skills.id is available as a FK
@@ -1309,14 +1315,7 @@ pub async fn check_marketplace_updates(
             };
 
             if let Some(installed_ver) = installed_ver_opt {
-                let mp_gt_installed = match (
-                    semver::Version::parse(marketplace_ver),
-                    semver::Version::parse(&installed_ver),
-                ) {
-                    (Ok(mp), Ok(inst)) => mp > inst,
-                    _ => marketplace_ver != installed_ver.as_str(),
-                };
-                if mp_gt_installed {
+                if semver_gt(marketplace_ver, &installed_ver) {
                     result.push(skill.name.clone());
                 }
             }

@@ -105,6 +105,30 @@ interface EditFormState {
   purpose: string | null
 }
 
+/** Renders a version upgrade banner when upgrading a settings-skills skill. */
+function UpgradeBanner({
+  editingSkill,
+  editForm,
+  skillStates,
+  workspaceSkills,
+}: {
+  editingSkill: AvailableSkill | null
+  editForm: EditFormState | null
+  skillStates: Map<string, SkillState>
+  workspaceSkills: WorkspaceSkill[]
+}): React.ReactElement | null {
+  if (!editingSkill || !editForm) return null
+  if (skillStates.get(editingSkill.path) !== "upgrade") return null
+  const installedVersion = workspaceSkills.find((w) => w.skill_name === editingSkill.name)?.version
+  const newVersion = editingSkill.version
+  if (!installedVersion || !newVersion || installedVersion === newVersion) return null
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
+    </div>
+  )
+}
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
@@ -678,18 +702,12 @@ export default function GitHubImportDialog({
               Review and configure the skill before importing. Purpose determines how this skill is used by agents.
             </DialogDescription>
           </DialogHeader>
-          {editingSkill && skillStates.get(editingSkill.path) === 'upgrade' && editForm && (() => {
-            const installedVersion = workspaceSkills.find((w) => w.skill_name === editingSkill.name)?.version
-            const newVersion = editingSkill.version
-            if (installedVersion && newVersion && installedVersion !== newVersion) {
-              return (
-                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
-                </div>
-              )
-            }
-            return null
-          })()}
+          <UpgradeBanner
+            editingSkill={editingSkill}
+            editForm={editForm}
+            skillStates={skillStates}
+            workspaceSkills={workspaceSkills}
+          />
           {editForm && (
             <ScrollArea className="max-h-[75vh]">
               <div className="flex flex-col gap-4 pr-2">

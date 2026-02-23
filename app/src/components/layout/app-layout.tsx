@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, getWorkspacePath } from "@/lib/tauri";
+import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
@@ -56,11 +56,9 @@ export function AppLayout() {
       }
       // Check for marketplace updates in the background
       if (s.marketplace_url) {
-        const marketplaceUrl = s.marketplace_url;
-        parseGitHubUrl(marketplaceUrl)
-          .then((repoInfo) => getWorkspacePath().then((wp) => ({ repoInfo, wp })))
-          .then(({ repoInfo }) =>
-            checkMarketplaceUpdates(repoInfo.owner, repoInfo.repo, repoInfo.branch, repoInfo.subpath ?? undefined)
+        parseGitHubUrl(s.marketplace_url)
+          .then((info) =>
+            checkMarketplaceUpdates(info.owner, info.repo, info.branch, info.subpath ?? undefined)
           )
           .then((updates) => {
             if (updates.length > 0) {
