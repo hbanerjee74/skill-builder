@@ -130,12 +130,14 @@ export default function SkillListRow({
             onClick={() => onRefine(skill)}
           />
         )}
-        <IconAction
-          icon={<FlaskConical className="size-3" />}
-          label="Test skill"
-          tooltip="Test"
-          onClick={() => onTest?.(skill)}
-        />
+        {canDownload && (
+          <IconAction
+            icon={<FlaskConical className="size-3" />}
+            label="Test skill"
+            tooltip="Test"
+            onClick={() => onTest?.(skill)}
+          />
+        )}
         {canDownload && onDownload && (
           <IconAction
             icon={<Download className="size-3" />}
