@@ -455,36 +455,6 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("api-design")).not.toBeVisible();
   });
 
-  test("D7 — edit workflow pencil navigates to workflow in review mode", async ({ page }) => {
-    await page.addInitScript((mocks) => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
-    }, {
-      ...DASHBOARD_MOCKS,
-      list_skills: DASHBOARD_SKILLS_WITH_BUILDER,
-      get_workflow_state: { run: null, steps: [] },
-    });
-
-    await navigateToDashboard(page);
-    await page.getByRole("button", { name: "List view" }).click();
-
-    // Click the Edit workflow pencil on the skill-builder skill row
-    const builderRow = page.locator("tr").filter({ hasText: "my-skill" });
-    await builderRow.getByLabel("Edit workflow").click();
-
-    // Should navigate to the workflow page for this skill
-    await expect(page).toHaveURL(/\/skill\/my-skill/);
-
-    // ReviewModeToggle should be visible — Review and Update buttons present
-    const reviewBtn = page.getByRole("button", { name: "Review" });
-    const updateBtn = page.getByRole("button", { name: "Update" });
-    await expect(reviewBtn).toBeVisible();
-    await expect(updateBtn).toBeVisible();
-
-    // Review mode is active: the Review button should not be a ghost (has solid bg class)
-    // Update button should be ghost (no solid bg). Both are enabled (not running).
-    await expect(updateBtn).not.toBeDisabled();
-  });
-
   // ─── Version-aware marketplace import tests (settings-skills mode) ────────
 
   /** Minimal mock set required for the Settings > Skills page and marketplace dialog to load. */
