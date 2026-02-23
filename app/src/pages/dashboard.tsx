@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import SkillCard from "@/components/skill-card"
-import SkillListRow from "@/components/skill-list-row"
+import SkillListRow, { LIST_ROW_GRID } from "@/components/skill-list-row"
 import { DashboardViewToggle, type ViewMode } from "@/components/dashboard-view-toggle"
 import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
@@ -36,6 +36,28 @@ import { useWorkflowStore } from "@/stores/workflow-store"
 import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
+import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
+import { cn } from "@/lib/utils"
+
+function SortHeader({ label, column, sortBy, sortDir, onSort }: {
+  label: string
+  column: string
+  sortBy: string
+  sortDir: 'asc' | 'desc'
+  onSort: (col: string) => void
+}) {
+  const isActive = sortBy === column
+  return (
+    <button
+      type="button"
+      className="flex items-center gap-1 hover:text-foreground transition-colors"
+      onClick={() => onSort(column)}
+    >
+      {label}
+      {isActive && (sortDir === 'asc' ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />)}
+    </button>
+  )
+}
 
 export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -49,6 +71,10 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all')
+  const [sortBy, setSortBy] = useState<string>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
@@ -174,10 +200,54 @@ export default function DashboardPage() {
         s.skill_type != null && selectedTypes.includes(s.skill_type)
       )
     }
+    if (selectedSources.length > 0) {
+      result = result.filter((s) =>
+        s.skill_source != null && selectedSources.includes(s.skill_source)
+      )
+    }
+    if (statusFilter === 'completed') {
+      result = result.filter((s) =>
+        s.skill_source === 'marketplace' || s.skill_source === 'imported' || s.status === 'completed'
+      )
+    }
+    if (statusFilter === 'in-progress') {
+      result = result.filter((s) =>
+        s.skill_source === 'skill-builder' && s.status !== 'completed'
+      )
+    }
     return result
-  }, [skills, searchQuery, selectedTags, selectedTypes])
+  }, [skills, searchQuery, selectedTags, selectedTypes, selectedSources, statusFilter])
 
-  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
+  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0 || selectedSources.length > 0 || statusFilter !== 'all'
+
+  const sortedSkills = useMemo(() => {
+    if (!sortBy) return filteredSkills
+    return [...filteredSkills].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'name': cmp = a.name.localeCompare(b.name); break
+        case 'source': cmp = (a.skill_source || '').localeCompare(b.skill_source || ''); break
+        case 'domain': cmp = (a.domain || '').localeCompare(b.domain || ''); break
+        case 'type': cmp = (a.skill_type || '').localeCompare(b.skill_type || ''); break
+        case 'status': {
+          const aComplete = a.skill_source !== 'skill-builder' || a.status === 'completed'
+          const bComplete = b.skill_source !== 'skill-builder' || b.status === 'completed'
+          cmp = Number(aComplete) - Number(bComplete)
+          break
+        }
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [filteredSkills, sortBy, sortDir])
+
+  const handleSort = useCallback((column: string) => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortDir('asc')
+    }
+  }, [sortBy])
 
   const handleContinue = (skill: SkillSummary) => {
     if (skill.skill_source === 'marketplace') {
@@ -243,14 +313,12 @@ export default function DashboardPage() {
         return (
           <div className="flex flex-col gap-1">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="grid grid-cols-[14%_22%_10%_22%_7rem_1fr] items-center gap-x-3 rounded-md border px-3 py-2">
+              <div key={i} className={cn("grid items-center gap-x-3 rounded-md border px-3 py-2", LIST_ROW_GRID)}>
                 <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <div className="flex gap-1">
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                </div>
+                <Skeleton className="h-5 w-16 rounded-full" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-12" />
                 <Skeleton className="h-2 w-full" />
                 <div className="flex gap-1 justify-self-end">
                   <Skeleton className="size-6 rounded-md" />
@@ -326,7 +394,17 @@ export default function DashboardPage() {
     if (viewMode === "list") {
       return (
         <div className="flex flex-col gap-1">
-          {filteredSkills.map((skill) => (
+          {/* Table header */}
+          <div className={cn("hidden sm:grid items-center gap-x-3 px-3 py-1.5 text-xs font-medium text-muted-foreground", LIST_ROW_GRID)}>
+            <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Domain" column="domain" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Type" column="type" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <span>Tags</span>
+            <SortHeader label="Progress" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <span className="justify-self-end">Actions</span>
+          </div>
+          {sortedSkills.map((skill) => (
             <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
           ))}
         </div>
@@ -335,7 +413,7 @@ export default function DashboardPage() {
 
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredSkills.map((skill) => (
+        {sortedSkills.map((skill) => (
           <SkillCard key={skill.name} {...sharedSkillProps(skill)} />
         ))}
       </div>
@@ -438,6 +516,85 @@ export default function DashboardPage() {
                   </button>
                 </>
               )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Filter className="size-4" />
+                Source
+                {selectedSources.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                    {selectedSources.length}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter by source</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {Object.entries(SOURCE_DISPLAY_LABELS).map(([key, label]) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={selectedSources.includes(key)}
+                  onCheckedChange={() => {
+                    setSelectedSources((prev) =>
+                      prev.includes(key)
+                        ? prev.filter((s) => s !== key)
+                        : [...prev, key]
+                    )
+                  }}
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {selectedSources.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <button
+                    type="button"
+                    className="w-full px-2 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedSources([])}
+                  >
+                    Clear all
+                  </button>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Filter className="size-4" />
+                Status
+                {statusFilter !== 'all' && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                    1
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter by status</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'all'}
+                onCheckedChange={() => setStatusFilter('all')}
+              >
+                All
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'completed'}
+                onCheckedChange={() => setStatusFilter('completed')}
+              >
+                Completed
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'in-progress'}
+                onCheckedChange={() => setStatusFilter('in-progress')}
+              >
+                In Progress
+              </DropdownMenuCheckboxItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <DashboardViewToggle value={viewMode} onChange={handleViewModeChange} />
