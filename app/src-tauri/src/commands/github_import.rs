@@ -914,10 +914,19 @@ pub(crate) async fn import_single_skill(
 
     // Rewrite SKILL.md with updated frontmatter if a metadata override was applied
     if metadata_override.is_some() {
-        rewrite_skill_md(&dest_dir, &fm).map_err(|e| {
-            log::error!("[import_single_skill] failed to rewrite SKILL.md for '{}': {}", skill_name, e);
-            e
-        })?;
+        if let Err(e) = rewrite_skill_md(&dest_dir, &fm) {
+            log::error!(
+                "[import_single_skill] failed to rewrite SKILL.md for '{}': {}",
+                skill_name, e
+            );
+            if let Err(ce) = fs::remove_dir_all(&dest_dir) {
+                log::warn!(
+                    "[import_single_skill] rollback cleanup failed for '{}': {}",
+                    dest_dir.display(), ce
+                );
+            }
+            return Err(e);
+        }
         log::debug!("[import_single_skill] rewrote SKILL.md frontmatter for '{}'", skill_name);
     }
 
@@ -1512,5 +1521,43 @@ mod tests {
             "newline not escaped in YAML value: {}",
             result
         );
+    }
+
+    // --- rewrite_skill_md rollback tests ---
+
+    #[test]
+    fn test_rewrite_skill_md_missing_file() {
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("test-skill".to_string()),
+            ..Default::default()
+        };
+        let result = rewrite_skill_md(tmp.path(), &fm);
+        assert!(result.is_err(), "should fail when SKILL.md is missing");
+    }
+
+    #[test]
+    fn test_rewrite_skill_md_preserves_body() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let original = "---\nname: old-name\ndomain: OldDomain\n---\n# Skill Body\n\nSome content here.\n";
+        fs::write(tmp.path().join("SKILL.md"), original).unwrap();
+
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("new-name".to_string()),
+            domain: Some("NewDomain".to_string()),
+            ..Default::default()
+        };
+        rewrite_skill_md(tmp.path(), &fm).unwrap();
+
+        let result = fs::read_to_string(tmp.path().join("SKILL.md")).unwrap();
+        assert!(result.contains("name: \"new-name\""), "name should be updated: {}", result);
+        assert!(result.contains("domain: \"NewDomain\""), "domain should be updated: {}", result);
+        assert!(result.contains("# Skill Body"), "body should be preserved: {}", result);
+        assert!(result.contains("Some content here."), "body content should be preserved: {}", result);
     }
 }
