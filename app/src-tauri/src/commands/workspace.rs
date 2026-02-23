@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::types::ReconciliationResult;
+use std::fs;
 use std::path::Path;
 
 const WORKSPACE_DIR_NAME: &str = ".vibedata";
@@ -238,6 +239,95 @@ pub fn resolve_orphan(
     crate::reconciliation::resolve_orphan(&conn, &skill_name, &action, &skills_path)
 }
 
+// --- Discovery Resolution ---
+
+/// Validate that a path derived from `skill_name` stays inside `parent`.
+/// The `parent` directory must exist; `child` is joined from it.
+fn validate_path_within(parent: &Path, skill_name: &str, label: &str) -> Result<(), String> {
+    let child = parent.join(skill_name);
+    if child.exists() {
+        let canonical_parent = fs::canonicalize(parent).map_err(|e| {
+            format!("[resolve_discovery] Failed to canonicalize {}: {}", label, e)
+        })?;
+        let canonical_child = fs::canonicalize(&child).map_err(|e| {
+            format!("[resolve_discovery] Failed to canonicalize {} child: {}", label, e)
+        })?;
+        if !canonical_child.starts_with(&canonical_parent) {
+            log::error!("[resolve_discovery] Path traversal attempt on {}: {}", label, skill_name);
+            return Err(format!("Invalid skill path: path traversal not allowed on {}", label));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resolve_discovery(
+    skill_name: String,
+    action: String,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("[resolve_discovery] skill={} action={}", skill_name, action);
+
+    // Defense-in-depth: reject obviously malicious skill names early
+    super::imported_skills::validate_skill_name(&skill_name)?;
+
+    let conn = db.0.lock().map_err(|e| {
+        log::error!("[resolve_discovery] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    let settings = crate::db::read_settings(&conn)?;
+    let skills_path = settings.skills_path
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path = settings.workspace_path
+        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
+    match action.as_str() {
+        "add-skill-builder" => {
+            // Add as skill-builder with workflow_runs at step 5
+            crate::db::save_workflow_run(
+                &conn, &skill_name, "unknown", 5, "completed", "domain",
+            )?;
+            // Validate workspace path before creating directory
+            let ws_path = Path::new(&workspace_path);
+            validate_path_within(ws_path, &skill_name, "workspace_path")?;
+            // Create workspace marker
+            let workspace_dir = ws_path.join(&skill_name);
+            let _ = std::fs::create_dir_all(&workspace_dir);
+            log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
+            Ok(())
+        }
+        "add-imported" => {
+            // Add as imported, clear context folder — force skill_source to "imported"
+            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "unknown", "domain")?;
+            // Validate skills_path before touching filesystem
+            let sp = Path::new(&skills_path);
+            validate_path_within(sp, &skill_name, "skills_path")?;
+            // Clear context folder
+            let context_dir = sp.join(&skill_name).join("context");
+            if context_dir.exists() {
+                let _ = std::fs::remove_dir_all(&context_dir);
+                log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
+            }
+            log::info!("[resolve_discovery] '{}': added as imported", skill_name);
+            Ok(())
+        }
+        "remove" => {
+            // Validate skills_path before deleting
+            let sp = Path::new(&skills_path);
+            validate_path_within(sp, &skill_name, "skills_path")?;
+            // Delete from disk
+            let skill_dir = sp.join(&skill_name);
+            if skill_dir.exists() {
+                std::fs::remove_dir_all(&skill_dir)
+                    .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
+            }
+            log::info!("[resolve_discovery] '{}': removed from disk", skill_name);
+            Ok(())
+        }
+        _ => Err(format!("Invalid discovery action: '{}'. Expected 'add-skill-builder', 'add-imported', or 'remove'.", action)),
+    }
+}
+
 // --- Workflow Sessions ---
 
 #[tauri::command]
@@ -277,5 +367,51 @@ mod tests {
         let path = resolve_workspace_path().unwrap();
         assert!(path.ends_with(".vibedata"));
         assert!(path.starts_with('/'));
+    }
+
+    #[test]
+    fn test_validate_path_within_rejects_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Create a directory outside parent that a traversal would reach
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+
+        // The traversal path "../outside" resolves to tmp/outside which is outside parent
+        // It must exist for canonicalize to work
+        let result = validate_path_within(&parent, "../outside", "test");
+        assert!(result.is_err(), "Path traversal should be rejected");
+        assert!(
+            result.unwrap_err().contains("path traversal not allowed"),
+            "Error should mention path traversal"
+        );
+    }
+
+    #[test]
+    fn test_validate_path_within_accepts_valid_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Create a valid child directory
+        let child = parent.join("valid-skill");
+        std::fs::create_dir_all(&child).unwrap();
+
+        // Should succeed
+        let result = validate_path_within(&parent, "valid-skill", "test");
+        assert!(result.is_ok(), "Valid path should be accepted");
+    }
+
+    #[test]
+    fn test_validate_path_within_skips_nonexistent_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Non-existent child: no validation happens (path doesn't exist yet)
+        let result = validate_path_within(&parent, "does-not-exist", "test");
+        assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
     }
 }

@@ -28,7 +28,7 @@ CREATE TABLE skills (
 ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
 ```
 
-`imported_skills` is a child table of `skills` for `marketplace` source skills — it stores disk path, active state, and import metadata. It is not part of the master catalog itself.
+`workspace_skills` holds Settings → Skills (bundled + GitHub/zip imports for workspace CLAUDE.md). `imported_skills` is purely plugin infrastructure (References embedded in plugin CLAUDE.md files), NOT in the master.
 
 ### skill_source values
 
@@ -43,9 +43,9 @@ ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
 | Operation | What happens |
 |-----------|-------------|
 | Create skill via builder | INSERT `skills` (skill-builder) → INSERT `workflow_runs` with `skill_id` FK |
-| Import from marketplace | INSERT `skills` (marketplace) + INSERT `imported_skills` (disk metadata). No `workflow_runs`. |
-| Disk discovery — all artifacts (scenario 9b) | User approves → INSERT `skills` (skill-builder) + INSERT `workflow_runs` at step 5 |
-| Disk discovery — incomplete (scenario 9c) | User choice: "Add to library" → INSERT `skills` (imported), delete context folder. "Remove" → delete folder. |
+| Import from marketplace | INSERT `workspace_skills` + INSERT `skills` (marketplace). No `workflow_runs`. |
+| Disk discovery — all artifacts (scenario 9a) | User approves → INSERT `skills` (skill-builder) + INSERT `workflow_runs` at step 5 |
+| Disk discovery — incomplete (scenario 9b) | Delete folder from disk. Notify user. |
 
 ---
 
@@ -141,7 +141,7 @@ Every skill in the library shows an icon indicating its `skill_source`. Displaye
 |----------------|------|-------|-------|
 | `skill-builder` | `Hammer` | Built | muted (default — most common, shouldn't be visually loud) |
 | `marketplace` | `Store` | Marketplace | blue |
-| `imported` | `Upload` | Uploaded | amber |
+| `imported` | `Upload` | Imported | amber |
 
 Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing `SkillTypeBadge` pattern in `skill-picker.tsx`.
 

@@ -1,8 +1,8 @@
 use crate::types::{
-    AgentRunRecord, AppSettings, ImportedSkill, UsageByModel, UsageByStep, UsageSummary,
-    WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
+    AgentRunRecord, AppSettings, ImportedSkill, SkillMasterRow, UsageByModel, UsageByStep,
+    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow, WorkspaceSkill,
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
@@ -45,6 +45,13 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (15, run_imported_skills_extended_migration),
         (16, run_workflow_runs_extended_migration),
         (17, run_cleanup_stale_running_rows_migration),
+        (18, run_skills_table_migration),
+        (19, run_skills_backfill_migration),
+        (20, run_rename_upload_migration),
+        (21, run_workspace_skills_migration),
+        (22, run_workflow_runs_id_migration),
+        (23, run_fk_columns_migration),
+        (24, run_frontmatter_to_skills_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -53,6 +60,11 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
             mark_migration_applied(&conn, version)?;
         }
     }
+
+    // Startup repair: ensure skills master has frontmatter columns regardless of migration state.
+    // Idempotent — checks column existence before ALTER TABLE. Guards against dev builds that
+    // recorded migration 24 in schema_migrations before the ALTER TABLE statements ran.
+    repair_skills_table_schema(&conn).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     Ok(Db(Mutex::new(conn)))
 }
@@ -146,6 +158,16 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             is_active INTEGER DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT DEFAULT (datetime('now') || 'Z')
+        );
+
+        CREATE TABLE IF NOT EXISTS skills (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
+            domain       TEXT,
+            skill_type   TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )
 }
@@ -459,6 +481,439 @@ fn run_workflow_runs_extended_migration(conn: &Connection) -> Result<(), rusqlit
             conn.execute_batch(&format!("ALTER TABLE workflow_runs ADD COLUMN {} {};", col, def))?;
         }
     }
+    Ok(())
+}
+
+/// Migration 17: Create the `skills` master table — the single catalog backing
+/// the skills library, test tab, and reconciliation.
+fn run_skills_table_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS skills (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
+            domain       TEXT,
+            skill_type   TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+    log::info!("migration 17: created skills table");
+    Ok(())
+}
+
+/// Migration 18: Backfill `skills` from `workflow_runs`, add FK column, backfill FK,
+/// and remove marketplace rows from `workflow_runs` (now in skills master only).
+fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Step 1: Backfill skills from workflow_runs
+    let backfilled: usize = conn.execute(
+        "INSERT OR IGNORE INTO skills (name, skill_source, domain, skill_type, created_at, updated_at)
+         SELECT skill_name,
+           CASE WHEN source = 'marketplace' THEN 'marketplace' ELSE 'skill-builder' END,
+           domain, skill_type, created_at, updated_at
+         FROM workflow_runs",
+        [],
+    )?;
+
+    // Step 2: Add FK column (check PRAGMA table_info first for idempotency)
+    let has_skill_id = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "skill_id").unwrap_or(false));
+    if !has_skill_id {
+        conn.execute_batch(
+            "ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // Step 3: Backfill FK
+    conn.execute(
+        "UPDATE workflow_runs SET skill_id = (SELECT id FROM skills WHERE skills.name = workflow_runs.skill_name)",
+        [],
+    )?;
+
+    // Step 4: Remove marketplace rows from workflow_runs (now in skills master only)
+    conn.execute(
+        "DELETE FROM workflow_steps WHERE skill_name IN (SELECT skill_name FROM workflow_runs WHERE source = 'marketplace')",
+        [],
+    ).ok(); // marketplace skills may not have step rows — ignore errors
+    let removed: usize = conn.execute(
+        "DELETE FROM workflow_runs WHERE source = 'marketplace'",
+        [],
+    )?;
+
+    log::info!(
+        "migration 18: backfilled {} skills, removed {} marketplace workflow_runs",
+        backfilled, removed
+    );
+    Ok(())
+}
+
+fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch("
+        BEGIN;
+
+        CREATE TABLE IF NOT EXISTS workspace_skills (
+            skill_id     TEXT PRIMARY KEY,
+            skill_name   TEXT UNIQUE NOT NULL,
+            domain       TEXT,
+            description  TEXT,
+            is_active    INTEGER NOT NULL DEFAULT 1,
+            is_bundled   INTEGER NOT NULL DEFAULT 0,
+            disk_path    TEXT NOT NULL,
+            imported_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_type   TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
+        );
+
+        INSERT OR IGNORE INTO workspace_skills
+            (skill_id, skill_name, domain, is_active, is_bundled,
+             disk_path, imported_at, skill_type, version, model,
+             argument_hint, user_invocable, disable_model_invocation)
+        SELECT
+            skill_id, skill_name, domain, is_active, is_bundled,
+            disk_path, imported_at, skill_type, version, model,
+            argument_hint, user_invocable, disable_model_invocation
+        FROM imported_skills
+        WHERE skill_type = 'skill-builder' OR is_bundled = 1;
+
+        DELETE FROM imported_skills WHERE skill_type = 'skill-builder' OR is_bundled = 1;
+
+        COMMIT;
+    ")?;
+    log::info!("migration 20: created workspace_skills table, migrated skill-builder rows");
+    Ok(())
+}
+
+/// Migration 21: Add integer primary key to `workflow_runs`.
+/// The table previously used `skill_name TEXT PRIMARY KEY`. We recreate it with
+/// `id INTEGER PRIMARY KEY AUTOINCREMENT` and `skill_name TEXT UNIQUE NOT NULL`.
+/// This unblocks rename_skill (no more INSERT+DELETE) and allows child tables to
+/// reference `workflow_runs` by integer FK instead of text `skill_name`.
+fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Idempotency guard: check whether the `id` column already exists
+    let has_id = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "id").unwrap_or(false));
+    if has_id {
+        return Ok(());
+    }
+
+    conn.execute_batch("
+        BEGIN;
+
+        DROP TABLE IF EXISTS workflow_runs_new;
+
+        CREATE TABLE workflow_runs_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
+            domain      TEXT NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_type  TEXT DEFAULT 'domain',
+            source      TEXT NOT NULL DEFAULT 'created',
+            description TEXT,
+            version     TEXT DEFAULT '1.0.0',
+            model       TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER DEFAULT 1,
+            disable_model_invocation INTEGER DEFAULT 0,
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id    INTEGER REFERENCES skills(id)
+        );
+
+        INSERT INTO workflow_runs_new
+            (skill_name, domain, current_step, status, created_at, updated_at,
+             skill_type, source, description, version, model, argument_hint,
+             user_invocable, disable_model_invocation, author_login, author_avatar,
+             display_name, intake_json, skill_id)
+        SELECT skill_name, domain, current_step, status, created_at, updated_at,
+               skill_type, COALESCE(source, 'created'), description, version, model,
+               argument_hint, user_invocable, disable_model_invocation,
+               author_login, author_avatar, display_name, intake_json, skill_id
+        FROM workflow_runs;
+
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;
+
+        COMMIT;
+    ")?;
+
+    log::info!("migration 21: added integer PK to workflow_runs");
+    Ok(())
+}
+
+/// Migration 22: Add integer FK columns to child tables and backfill from skill_name.
+/// After this migration:
+///   - workflow_steps, workflow_artifacts, agent_runs: have `workflow_run_id INT FK → workflow_runs(id)`
+///   - skill_tags, skill_locks, workflow_sessions: have `skill_id INT FK → skills(id)`
+///   - imported_skills: has `skill_master_id INT FK → skills(id)`
+fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Helper to check if a column exists in a table
+    let has_column = |table: &str, column: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({})", table))
+            .and_then(|mut stmt| {
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == column))
+            })
+            .unwrap_or(false)
+    };
+
+    // --- workflow_steps ---
+    if !has_column("workflow_steps", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_steps ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- workflow_artifacts ---
+    if !has_column("workflow_artifacts", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_artifacts ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- agent_runs ---
+    if !has_column("agent_runs", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- skill_tags ---
+    if !has_column("skill_tags", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE skill_tags ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- skill_locks ---
+    if !has_column("skill_locks", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE skill_locks ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- workflow_sessions ---
+    if !has_column("workflow_sessions", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_sessions ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- imported_skills ---
+    if !has_column("imported_skills", "skill_master_id") {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN skill_master_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // Backfill all new FK columns in a single transaction
+    conn.execute_batch("
+        BEGIN;
+
+        UPDATE workflow_steps
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_steps.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE workflow_artifacts
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_artifacts.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE agent_runs
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = agent_runs.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE skill_tags
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_tags.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE skill_locks
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_locks.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE workflow_sessions
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = workflow_sessions.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE imported_skills
+        SET skill_master_id = (
+            SELECT s.id FROM skills s WHERE s.name = imported_skills.skill_name
+        )
+        WHERE skill_master_id IS NULL;
+
+        COMMIT;
+    ")?;
+
+    log::info!("migration 22: added FK columns to child tables and backfilled");
+    Ok(())
+}
+
+/// Migration 24: Add SKILL.md frontmatter fields to the `skills` master table.
+/// These fields (description, version, model, argument_hint, user_invocable,
+/// disable_model_invocation) apply to ALL skill sources and belong in the canonical
+/// `skills` table rather than per-source tables (workflow_runs / imported_skills).
+/// Backfills from workflow_runs (skill-builder) and imported_skills (marketplace/imported).
+fn run_frontmatter_to_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let existing_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (col, def) in &[
+        ("description", "TEXT"),
+        ("version", "TEXT"),
+        ("model", "TEXT"),
+        ("argument_hint", "TEXT"),
+        ("user_invocable", "INTEGER"),
+        ("disable_model_invocation", "INTEGER"),
+    ] {
+        if !existing_cols.contains(&col.to_string()) {
+            conn.execute_batch(&format!("ALTER TABLE skills ADD COLUMN {} {};", col, def))?;
+        }
+    }
+
+    // Backfill from workflow_runs for skill-builder skills
+    conn.execute_batch(
+        "UPDATE skills
+         SET
+           description = COALESCE(skills.description, (
+               SELECT wr.description FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           version = COALESCE(skills.version, (
+               SELECT wr.version FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           model = COALESCE(skills.model, (
+               SELECT wr.model FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           argument_hint = COALESCE(skills.argument_hint, (
+               SELECT wr.argument_hint FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           user_invocable = COALESCE(skills.user_invocable, (
+               SELECT wr.user_invocable FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+               SELECT wr.disable_model_invocation FROM workflow_runs wr WHERE wr.skill_name = skills.name))
+         WHERE skill_source = 'skill-builder';",
+    )?;
+
+    // Backfill from imported_skills for marketplace/imported skills
+    // Note: description was dropped from imported_skills in migration 12; stays NULL here
+    conn.execute_batch(
+        "UPDATE skills
+         SET
+           version = COALESCE(skills.version, (
+               SELECT imp.version FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           model = COALESCE(skills.model, (
+               SELECT imp.model FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           argument_hint = COALESCE(skills.argument_hint, (
+               SELECT imp.argument_hint FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           user_invocable = COALESCE(skills.user_invocable, (
+               SELECT imp.user_invocable FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+               SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
+         WHERE skill_source IN ('marketplace', 'imported');",
+    )?;
+
+    log::info!("migration 24: added frontmatter fields to skills master, backfilled from workflow_runs and imported_skills");
+    Ok(())
+}
+
+/// Ensure the six frontmatter columns exist in the `skills` table and are populated.
+/// Idempotent — checks PRAGMA table_info before each ALTER TABLE.
+/// Called every startup to guard against dev builds that recorded migration 24 in
+/// schema_migrations before the ALTER TABLE statements actually executed.
+fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut added_any = false;
+    for (col, def) in &[
+        ("description", "TEXT"),
+        ("version", "TEXT"),
+        ("model", "TEXT"),
+        ("argument_hint", "TEXT"),
+        ("user_invocable", "INTEGER"),
+        ("disable_model_invocation", "INTEGER"),
+    ] {
+        if !cols.contains(&col.to_string()) {
+            conn.execute_batch(&format!("ALTER TABLE skills ADD COLUMN {} {};", col, def))?;
+            log::info!("repair_skills_table_schema: added missing column '{}' to skills", col);
+            added_any = true;
+        }
+    }
+
+    // If any column was missing, the migration 24 backfill never ran either.
+    // Run it now so existing imported/marketplace skills have their version/model populated.
+    if added_any {
+        conn.execute_batch(
+            "UPDATE skills
+             SET
+               description = COALESCE(skills.description, (
+                   SELECT wr.description FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               version = COALESCE(skills.version, (
+                   SELECT wr.version FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               model = COALESCE(skills.model, (
+                   SELECT wr.model FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               argument_hint = COALESCE(skills.argument_hint, (
+                   SELECT wr.argument_hint FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               user_invocable = COALESCE(skills.user_invocable, (
+                   SELECT wr.user_invocable FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+                   SELECT wr.disable_model_invocation FROM workflow_runs wr WHERE wr.skill_name = skills.name))
+             WHERE skill_source = 'skill-builder';"
+        )?;
+        conn.execute_batch(
+            "UPDATE skills
+             SET
+               version = COALESCE(skills.version, (
+                   SELECT imp.version FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               model = COALESCE(skills.model, (
+                   SELECT imp.model FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               argument_hint = COALESCE(skills.argument_hint, (
+                   SELECT imp.argument_hint FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               user_invocable = COALESCE(skills.user_invocable, (
+                   SELECT imp.user_invocable FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+                   SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
+             WHERE skill_source IN ('marketplace', 'imported');"
+        )?;
+        log::info!("repair_skills_table_schema: backfilled frontmatter fields from workflow_runs and imported_skills");
+    }
+
+    Ok(())
+}
+
+fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Rename upload → imported
+    conn.execute("UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'", [])?;
+    // Clean orphaned non-bundled imported_skills with no skills master row
+    conn.execute(
+        "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+        [],
+    )?;
+    log::info!("migration 19: renamed upload→imported, cleaned orphaned imported_skills");
     Ok(())
 }
 
@@ -854,6 +1309,11 @@ pub fn get_step_agent_runs(
     skill_name: &str,
     step_id: i32,
 ) -> Result<Vec<AgentRunRecord>, String> {
+    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+
     let mut stmt = conn
         .prepare(
             "SELECT agent_id, skill_name, step_id, model, status,
@@ -864,7 +1324,7 @@ pub fn get_step_agent_runs(
                     COALESCE(tool_use_count, 0), COALESCE(compaction_count, 0),
                     session_id, started_at, completed_at
              FROM agent_runs
-             WHERE skill_name = ?1 AND step_id = ?2
+             WHERE workflow_run_id = ?1 AND step_id = ?2
                AND status IN ('completed', 'error')
                AND reset_marker IS NULL
              ORDER BY completed_at DESC",
@@ -872,7 +1332,7 @@ pub fn get_step_agent_runs(
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![skill_name, step_id], |row| {
+        .query_map(rusqlite::params![wr_id, step_id], |row| {
             Ok(AgentRunRecord {
                 agent_id: row.get(0)?,
                 skill_name: row.get(1)?,
@@ -1018,6 +1478,157 @@ pub fn write_settings(conn: &Connection, settings: &AppSettings) -> Result<(), S
     Ok(())
 }
 
+// --- Skills Master ---
+
+/// Upsert a row in the `skills` master table. Used by `save_workflow_run` (skill-builder)
+/// and marketplace import. Returns the skill id.
+pub fn upsert_skill(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    domain: &str,
+    skill_type: &str,
+) -> Result<i64, String> {
+    log::debug!("upsert_skill: name={} skill_source={}", name, skill_source);
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(name) DO UPDATE SET
+             domain = ?3, skill_type = ?4, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, domain, skill_type],
+    )
+    .map_err(|e| {
+        log::error!("upsert_skill: failed to upsert '{}': {}", name, e);
+        e.to_string()
+    })?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )
+        .map_err(|e| {
+            log::error!("upsert_skill: failed to retrieve id for '{}': {}", name, e);
+            e.to_string()
+        })?;
+    Ok(id)
+}
+
+/// Like `upsert_skill`, but ALWAYS updates `skill_source` on conflict.
+/// Use this when the caller explicitly wants to set the source (e.g. `resolve_discovery`).
+/// `upsert_skill` intentionally skips `skill_source` on conflict to prevent
+/// `save_workflow_run` from overwriting a marketplace skill's source.
+pub fn upsert_skill_with_source(
+    conn: &Connection,
+    name: &str,
+    skill_source: &str,
+    domain: &str,
+    skill_type: &str,
+) -> Result<i64, String> {
+    log::debug!("upsert_skill_with_source: name={} skill_source={}", name, skill_source);
+    conn.execute(
+        "INSERT INTO skills (name, skill_source, domain, skill_type, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(name) DO UPDATE SET
+             skill_source = ?2, domain = ?3, skill_type = ?4, updated_at = datetime('now')",
+        rusqlite::params![name, skill_source, domain, skill_type],
+    )
+    .map_err(|e| {
+        log::error!("upsert_skill_with_source: failed to upsert '{}': {}", name, e);
+        e.to_string()
+    })?;
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM skills WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )
+        .map_err(|e| {
+            log::error!("upsert_skill_with_source: failed to retrieve id for '{}': {}", name, e);
+            e.to_string()
+        })?;
+    Ok(id)
+}
+
+/// List all skills from the master table, ordered by name.
+pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at,
+                    description, version, model, argument_hint, user_invocable, disable_model_invocation
+             FROM skills ORDER BY name",
+        )
+        .map_err(|e| {
+            log::error!("list_all_skills: failed to prepare query: {}", e);
+            e.to_string()
+        })?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SkillMasterRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                skill_source: row.get(2)?,
+                domain: row.get(3)?,
+                skill_type: row.get(4)?,
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+                description: row.get(7)?,
+                version: row.get(8)?,
+                model: row.get(9)?,
+                argument_hint: row.get(10)?,
+                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
+            })
+        })
+        .map_err(|e| {
+            log::error!("list_all_skills: query failed: {}", e);
+            e.to_string()
+        })?;
+
+    let result: Vec<SkillMasterRow> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| {
+            log::error!("list_all_skills: failed to collect rows: {}", e);
+            e.to_string()
+        })?;
+    log::debug!("list_all_skills: returning {} skills", result.len());
+    Ok(result)
+}
+
+/// Delete a skill from the master table by name.
+pub fn delete_skill(conn: &Connection, name: &str) -> Result<(), String> {
+    log::info!("delete_skill: name={}", name);
+    conn.execute("DELETE FROM skills WHERE name = ?1", rusqlite::params![name])
+        .map_err(|e| {
+            log::error!("delete_skill: failed to delete '{}': {}", name, e);
+            e.to_string()
+        })?;
+    Ok(())
+}
+
+/// Get the `workflow_runs.id` integer for a given `skill_name`. Returns None if not found.
+pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM workflow_runs WHERE skill_name = ?1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// Get the `skills.id` integer for a given skill name. Returns None if not found.
+pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM skills WHERE name = ?1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 // --- Workflow Run ---
 
 pub fn save_workflow_run(
@@ -1028,31 +1639,32 @@ pub fn save_workflow_run(
     status: &str,
     skill_type: &str,
 ) -> Result<(), String> {
+    // Ensure the skills master row exists (skill-builder source)
+    let skill_id = upsert_skill(conn, skill_name, "skill-builder", domain, skill_type)?;
     conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now') || 'Z')
+        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, skill_id, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now') || 'Z')
          ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, domain, current_step, status, skill_type],
+             domain = ?2, current_step = ?3, status = ?4, skill_type = ?5, skill_id = ?6, updated_at = datetime('now') || 'Z'",
+        rusqlite::params![skill_name, domain, current_step, status, skill_type, skill_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn save_marketplace_skill_run(
+/// Insert a marketplace skill into the skills master table only. No workflow_runs row.
+/// Replaces `save_marketplace_skill_run` — marketplace skills no longer get workflow_runs rows.
+pub fn save_marketplace_skill(
     conn: &Connection,
     skill_name: &str,
     domain: &str,
     skill_type: &str,
 ) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source, updated_at)
-         VALUES (?1, ?2, 5, 'completed', ?3, 'marketplace', datetime('now') || 'Z')
-         ON CONFLICT(skill_name) DO UPDATE SET
-             domain = ?2, current_step = 5, status = 'completed', skill_type = ?3, source = 'marketplace', updated_at = datetime('now') || 'Z'",
-        rusqlite::params![skill_name, domain, skill_type],
-    )
-    .map_err(|e| e.to_string())?;
+    log::info!("save_marketplace_skill: name={}", skill_name);
+    upsert_skill(conn, skill_name, "marketplace", domain, skill_type).map_err(|e| {
+        log::error!("save_marketplace_skill: failed for '{}': {}", skill_name, e);
+        e
+    })?;
     Ok(())
 }
 
@@ -1110,6 +1722,32 @@ pub fn set_skill_behaviour(
 ) -> Result<(), String> {
     let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
     let disable_model_invocation_i: Option<i32> = disable_model_invocation.map(|v| if v { 1 } else { 0 });
+
+    // Write to skills master — canonical store for all skill sources
+    conn.execute(
+        "UPDATE skills SET
+            description = COALESCE(?2, description),
+            version = COALESCE(?3, version),
+            model = COALESCE(?4, model),
+            argument_hint = COALESCE(?5, argument_hint),
+            user_invocable = COALESCE(?6, user_invocable),
+            disable_model_invocation = COALESCE(?7, disable_model_invocation),
+            updated_at = datetime('now')
+         WHERE name = ?1",
+        rusqlite::params![
+            skill_name,
+            description,
+            version,
+            model,
+            argument_hint,
+            user_invocable_i,
+            disable_model_invocation_i,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Dual-write to workflow_runs for skill-builder skills (no-op for marketplace/imported).
+    // These columns will be dropped from workflow_runs in a future migration.
     conn.execute(
         "UPDATE workflow_runs SET
             description = COALESCE(?2, description),
@@ -1131,6 +1769,7 @@ pub fn set_skill_behaviour(
         ],
     )
     .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -1220,24 +1859,53 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
 }
 
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
-    // Delete workflow artifacts
+    // Look up FK ids before deleting the parent rows
+    let wr_id = get_workflow_run_id(conn, skill_name)?
+        .ok_or_else(|| format!("Workflow run not found for skill '{}'", skill_name))?;
+    let s_id = get_skill_master_id(conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
+
+    // Delete child rows by FK columns only (migration 22 guarantees no NULL FKs)
     conn.execute(
-        "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM workflow_artifacts WHERE workflow_run_id = ?1",
+        rusqlite::params![wr_id],
     )
     .map_err(|e| e.to_string())?;
 
-    // Delete skill locks
     conn.execute(
-        "DELETE FROM skill_locks WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM workflow_steps WHERE workflow_run_id = ?1",
+        rusqlite::params![wr_id],
     )
     .map_err(|e| e.to_string())?;
 
-    // Delete workflow sessions
     conn.execute(
-        "DELETE FROM workflow_sessions WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM agent_runs WHERE workflow_run_id = ?1",
+        rusqlite::params![wr_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM skill_locks WHERE skill_id = ?1",
+        rusqlite::params![s_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM workflow_sessions WHERE skill_id = ?1",
+        rusqlite::params![s_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    conn.execute(
+        "DELETE FROM skill_tags WHERE skill_id = ?1",
+        rusqlite::params![s_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Delete from imported_skills to prevent stale rows blocking re-import
+    conn.execute(
+        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
+        rusqlite::params![s_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -1246,21 +1914,9 @@ pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), St
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM workflow_steps WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM agent_runs WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM skill_tags WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+
+    // Also delete from skills master table
+    delete_skill(conn, skill_name)?;
     Ok(())
 }
 
@@ -1279,14 +1935,17 @@ pub fn save_workflow_step(
         _ => (None, None),
     };
 
+    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+
     conn.execute(
-        "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(skill_name, step_id) DO UPDATE SET
              status = ?3,
              started_at = COALESCE(?4, started_at),
-             completed_at = ?5",
-        rusqlite::params![skill_name, step_id, status, started, completed],
+             completed_at = ?5,
+             workflow_run_id = COALESCE(?6, workflow_run_id)",
+        rusqlite::params![skill_name, step_id, status, started, completed, workflow_run_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1296,15 +1955,19 @@ pub fn get_workflow_steps(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Vec<WorkflowStepRow>, String> {
+    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(vec![]),
+    };
+
     let mut stmt = conn
         .prepare(
             "SELECT skill_name, step_id, status, started_at, completed_at
-             FROM workflow_steps WHERE skill_name = ?1 ORDER BY step_id",
+             FROM workflow_steps WHERE workflow_run_id = ?1 ORDER BY step_id",
         )
         .map_err(|e| e.to_string())?;
-
     let rows = stmt
-        .query_map(rusqlite::params![skill_name], |row| {
+        .query_map(rusqlite::params![wr_id], |row| {
             Ok(WorkflowStepRow {
                 skill_name: row.get(0)?,
                 step_id: row.get(1)?,
@@ -1314,9 +1977,7 @@ pub fn get_workflow_steps(
             })
         })
         .map_err(|e| e.to_string())?;
-
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 pub fn reset_workflow_steps_from(
@@ -1324,10 +1985,14 @@ pub fn reset_workflow_steps_from(
     skill_name: &str,
     from_step: i32,
 ) -> Result<(), String> {
+    let wr_id = match get_workflow_run_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(()),
+    };
     conn.execute(
         "UPDATE workflow_steps SET status = 'pending', started_at = NULL, completed_at = NULL
-         WHERE skill_name = ?1 AND step_id >= ?2",
-        rusqlite::params![skill_name, from_step],
+         WHERE workflow_run_id = ?1 AND step_id >= ?2",
+        rusqlite::params![wr_id, from_step],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1358,7 +2023,7 @@ pub fn get_tags_for_skills(
     // rusqlite's parameterized query API, so there is no SQL injection risk.
     let placeholders: Vec<String> = (1..=skill_names.len()).map(|i| format!("?{}", i)).collect();
     let sql = format!(
-        "SELECT skill_name, tag FROM skill_tags WHERE skill_name IN ({}) ORDER BY skill_name, tag",
+        "SELECT skill_name, tag FROM skill_tags WHERE skill_id IN (SELECT id FROM skills WHERE name IN ({})) ORDER BY skill_name, tag",
         placeholders.join(", ")
     );
 
@@ -1389,20 +2054,23 @@ pub fn set_skill_tags(
     skill_name: &str,
     tags: &[String],
 ) -> Result<(), String> {
+    let s_id = get_skill_master_id(conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
+
     conn.execute(
-        "DELETE FROM skill_tags WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM skill_tags WHERE skill_id = ?1",
+        rusqlite::params![s_id],
     )
     .map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, tag) VALUES (?1, ?2)")
+        .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, skill_id, tag) VALUES (?1, ?2, ?3)")
         .map_err(|e| e.to_string())?;
 
     for tag in tags {
         let normalized = tag.trim().to_lowercase();
         if !normalized.is_empty() {
-            stmt.execute(rusqlite::params![skill_name, normalized])
+            stmt.execute(rusqlite::params![skill_name, s_id, normalized])
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -1435,14 +2103,16 @@ pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     }
 }
 
+#[allow(dead_code)]
 pub fn insert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1457,6 +2127,7 @@ pub fn insert_imported_skill(
             skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
+            skill_master_id,
         ],
     )
     .map_err(|e| {
@@ -1472,14 +2143,16 @@ pub fn insert_imported_skill(
 /// Upsert a marketplace-imported skill. Uses `INSERT OR REPLACE` so that re-importing
 /// (e.g. after the skills_path setting changed or files were manually deleted) always
 /// updates the existing record rather than failing with a UNIQUE constraint.
+/// Also mirrors frontmatter fields to the `skills` master table (canonical store).
 pub fn upsert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
              domain = excluded.domain,
@@ -1490,7 +2163,8 @@ pub fn upsert_imported_skill(
              model = excluded.model,
              argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation",
+             disable_model_invocation = excluded.disable_model_invocation,
+             skill_master_id = excluded.skill_master_id",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1505,40 +2179,24 @@ pub fn upsert_imported_skill(
             skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
+            skill_master_id,
         ],
     )
     .map_err(|e| e.to_string())?;
-    Ok(())
-}
 
-/// Upsert a bundled skill into the database. Uses `INSERT OR REPLACE` keyed on
-/// `skill_name` (via UNIQUE constraint) for idempotent re-seeding on startup.
-/// Preserves `is_active` if the skill already exists.
-pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    // Mirror frontmatter fields to skills master — these values are the merged result
+    // (new frontmatter wins if non-empty, installed value as fallback) so we overwrite directly.
     conn.execute(
-        "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
-         ON CONFLICT(skill_name) DO UPDATE SET
-             skill_id = excluded.skill_id,
-             domain = excluded.domain,
-             disk_path = excluded.disk_path,
-             is_bundled = excluded.is_bundled,
-             skill_type = excluded.skill_type,
-             version = excluded.version,
-             model = excluded.model,
-             argument_hint = excluded.argument_hint,
-             user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation",
+        "UPDATE skills SET
+            version = ?2,
+            model = ?3,
+            argument_hint = ?4,
+            user_invocable = ?5,
+            disable_model_invocation = ?6,
+            updated_at = datetime('now')
+         WHERE name = ?1",
         rusqlite::params![
-            skill.skill_id,
             skill.skill_name,
-            skill.domain,
-            skill.is_active as i32,
-            skill.disk_path,
-            skill.imported_at,
-            skill.is_bundled as i32,
-            skill.skill_type,
             skill.version,
             skill.model,
             skill.argument_hint,
@@ -1547,59 +2205,24 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
         ],
     )
     .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
-pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM imported_skills ORDER BY imported_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(ImportedSkill {
-                skill_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                domain: row.get(2)?,
-                is_active: row.get::<_, i32>(3)? != 0,
-                disk_path: row.get(4)?,
-                imported_at: row.get(5)?,
-                is_bundled: row.get::<_, i32>(6)? != 0,
-                description: None,
-                skill_type: row.get(7)?,
-                version: row.get(8)?,
-                model: row.get(9)?,
-                argument_hint: row.get(10)?,
-                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut skills: Vec<ImportedSkill> = rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    for skill in &mut skills {
-        hydrate_skill_metadata(skill);
-    }
-
-    Ok(skills)
-}
-
+#[allow(dead_code)]
 pub fn update_imported_skill_active(
     conn: &Connection,
     skill_name: &str,
     is_active: bool,
     new_disk_path: &str,
 ) -> Result<(), String> {
+    let s_id = get_skill_master_id(conn, skill_name)?
+        .ok_or_else(|| format!("Skill '{}' not found in skills master", skill_name))?;
+
     let rows = conn
         .execute(
-            "UPDATE imported_skills SET is_active = ?1, disk_path = ?2 WHERE skill_name = ?3",
-            rusqlite::params![is_active as i32, new_disk_path, skill_name],
+            "UPDATE imported_skills SET is_active = ?1, disk_path = ?2 WHERE skill_master_id = ?3",
+            rusqlite::params![is_active as i32, new_disk_path, s_id],
         )
         .map_err(|e| e.to_string())?;
 
@@ -1609,12 +2232,31 @@ pub fn update_imported_skill_active(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    let s_id = match get_skill_master_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(()), // Skill not in library — nothing to delete
+    };
     conn.execute(
-        "DELETE FROM imported_skills WHERE skill_name = ?1",
-        [skill_name],
+        "DELETE FROM imported_skills WHERE skill_master_id = ?1",
+        rusqlite::params![s_id],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<(), String> {
+    log::debug!("delete_imported_skill_by_name: name={}", name);
+    let s_id = match get_skill_master_id(conn, name)? {
+        Some(id) => id,
+        None => return Ok(()), // Skill not in library — nothing to delete
+    };
+    conn.execute("DELETE FROM imported_skills WHERE skill_master_id = ?1", rusqlite::params![s_id])
+        .map_err(|e| {
+            log::error!("delete_imported_skill_by_name: failed to delete '{}': {}", name, e);
+            e.to_string()
+        })?;
     Ok(())
 }
 
@@ -1622,15 +2264,20 @@ pub fn get_imported_skill(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<ImportedSkill>, String> {
+    let s_id = match get_skill_master_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+
     let mut stmt = conn
         .prepare(
             "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
                     skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM imported_skills WHERE skill_name = ?1",
+             FROM imported_skills WHERE skill_master_id = ?1",
         )
         .map_err(|e| e.to_string())?;
 
-    let result = stmt.query_row(rusqlite::params![skill_name], |row| {
+    let result = stmt.query_row(rusqlite::params![s_id], |row| {
         Ok(ImportedSkill {
             skill_id: row.get(0)?,
             skill_name: row.get(1)?,
@@ -1659,6 +2306,7 @@ pub fn get_imported_skill(
     }
 }
 
+#[allow(dead_code)]
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
@@ -1701,14 +2349,216 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
     Ok(skills)
 }
 
+// --- Workspace Skills (Settings → Skills tab) ---
+
+const WS_COLUMNS: &str = "skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation";
+
+fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
+    use rusqlite::types::Value;
+    [
+        Value::Text(skill.skill_id.clone()),
+        Value::Text(skill.skill_name.clone()),
+        skill.domain.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.description.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        Value::Integer(skill.is_active as i64),
+        Value::Integer(skill.is_bundled as i64),
+        Value::Text(skill.disk_path.clone()),
+        Value::Text(skill.imported_at.clone()),
+        skill.skill_type.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.version.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.model.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
+    ]
+}
+
+pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
+        rusqlite::params_from_iter(ws_params(skill)),
+    ).map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            format!("Skill '{}' has already been imported", skill.skill_name)
+        } else {
+            format!("insert_workspace_skill: {}", e)
+        }
+    })?;
+    Ok(())
+}
+
+/// Update an existing workspace_skills row in-place (for version upgrades).
+/// Preserves skill_id and imported_at from the existing row.
+pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workspace_skills SET
+            domain = ?2,
+            description = ?3,
+            is_active = ?4,
+            disk_path = ?5,
+            skill_type = ?6,
+            version = ?7,
+            model = ?8,
+            argument_hint = ?9,
+            user_invocable = ?10,
+            disable_model_invocation = ?11
+         WHERE skill_name = ?1",
+        rusqlite::params![
+            skill.skill_name,
+            skill.domain,
+            skill.description,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.skill_type,
+            skill.version,
+            skill.model,
+            skill.argument_hint,
+            skill.user_invocable.map(|v| if v { 1i32 } else { 0i32 }),
+            skill.disable_model_invocation.map(|v| if v { 1i32 } else { 0i32 }),
+        ],
+    ).map_err(|e| {
+        log::error!("upsert_workspace_skill: failed for '{}': {}", skill.skill_name, e);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
+/// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
+pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        &format!(
+            "INSERT INTO workspace_skills ({WS_COLUMNS})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(skill_name) DO UPDATE SET
+                 domain = excluded.domain,
+                 description = excluded.description,
+                 is_bundled = 1,
+                 disk_path = excluded.disk_path,
+                 skill_type = excluded.skill_type,
+                 version = excluded.version,
+                 model = excluded.model,
+                 argument_hint = excluded.argument_hint,
+                 user_invocable = excluded.user_invocable,
+                 disable_model_invocation = excluded.disable_model_invocation
+                 -- is_active intentionally NOT updated: preserves user's deactivation"
+        ),
+        rusqlite::params_from_iter(ws_params(skill)),
+    ).map_err(|e| format!("upsert_bundled_workspace_skill: {}", e))?;
+    Ok(())
+}
+
+fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkill> {
+    let is_active: i64 = row.get(4)?;
+    let is_bundled: i64 = row.get(5)?;
+    let user_invocable: Option<i64> = row.get(12)?;
+    let disable_model_invocation: Option<i64> = row.get(13)?;
+    Ok(WorkspaceSkill {
+        skill_id: row.get(0)?,
+        skill_name: row.get(1)?,
+        domain: row.get(2)?,
+        description: row.get(3)?,
+        is_active: is_active != 0,
+        is_bundled: is_bundled != 0,
+        disk_path: row.get(6)?,
+        imported_at: row.get(7)?,
+        skill_type: row.get(8)?,
+        version: row.get(9)?,
+        model: row.get(10)?,
+        argument_hint: row.get(11)?,
+        user_invocable: user_invocable.map(|v| v != 0),
+        disable_model_invocation: disable_model_invocation.map(|v| v != 0),
+    })
+}
+
+pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills ORDER BY imported_at DESC")
+    ).map_err(|e| format!("list_workspace_skills: {}", e))?;
+    let skills = stmt.query_map([], row_to_workspace_skill)
+        .map_err(|e| format!("list_workspace_skills query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_workspace_skills collect: {}", e))?;
+    Ok(skills)
+}
+
+pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name")
+    ).map_err(|e| format!("list_active_workspace_skills: {}", e))?;
+    let skills = stmt.query_map([], row_to_workspace_skill)
+        .map_err(|e| format!("list_active_workspace_skills query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_active_workspace_skills collect: {}", e))?;
+    Ok(skills)
+}
+
+pub fn update_workspace_skill_active(conn: &Connection, skill_id: &str, is_active: bool, new_disk_path: &str) -> Result<(), String> {
+    let rows = conn.execute(
+        "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_id = ?3",
+        rusqlite::params![is_active as i64, new_disk_path, skill_id],
+    ).map_err(|e| format!("update_workspace_skill_active: {}", e))?;
+    if rows == 0 {
+        return Err(format!("Workspace skill with id '{}' not found", skill_id));
+    }
+    Ok(())
+}
+
+pub fn delete_workspace_skill(conn: &Connection, skill_id: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM workspace_skills WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
+    ).map_err(|e| format!("delete_workspace_skill: {}", e))?;
+    Ok(())
+}
+
+pub fn get_workspace_skill(conn: &Connection, skill_id: &str) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_id = ?1")
+    ).map_err(|e| format!("get_workspace_skill: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_id], row_to_workspace_skill)
+        .map_err(|e| format!("get_workspace_skill query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
+/// Look up a workspace skill by name. Used when skill_id is not known.
+pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1")
+    ).map_err(|e| format!("get_workspace_skill_by_name: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
+        .map_err(|e| format!("get_workspace_skill_by_name query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
 /// Return the names of all locally installed skills.
-/// Combines workflow_runs (generated/marketplace skills) and imported_skills (GitHub imports).
+/// Combines workflow_runs (generated/marketplace skills), imported_skills (GitHub imports),
+/// and workspace_skills (Settings → Skills).
 pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn.prepare(
         "SELECT skill_name FROM workflow_runs
          UNION
-         SELECT skill_name FROM imported_skills"
+         SELECT skill_name FROM imported_skills
+         UNION
+         SELECT skill_name FROM workspace_skills"
     ).map_err(|e| e.to_string())?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(names)
+}
+
+/// Return names of all skills in the skills master table.
+/// Used by the skill-library (dashboard) path to check which skills are already installed.
+pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare("SELECT name FROM skills")
+        .map_err(|e| e.to_string())?;
     let names = stmt.query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
@@ -1729,16 +2579,20 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
+    let skill_master_id = get_skill_master_id(conn, skill_name)?
+        .ok_or_else(|| "Skill not found in skills master".to_string());
+
     let result = (|| -> Result<(), String> {
+        let s_id = skill_master_id?;
         if let Some(existing) = get_skill_lock(conn, skill_name)? {
             if existing.instance_id == instance_id {
                 return Ok(()); // Already locked by us
             }
             if !check_pid_alive(existing.pid) {
-                // Dead process — reclaim
+                // Dead process — reclaim using skill_id FK
                 conn.execute(
-                    "DELETE FROM skill_locks WHERE skill_name = ?1",
-                    [skill_name],
+                    "DELETE FROM skill_locks WHERE skill_id = ?1",
+                    rusqlite::params![s_id],
                 )
                 .map_err(|e| e.to_string())?;
             } else {
@@ -1750,8 +2604,8 @@ pub fn acquire_skill_lock(
         }
 
         conn.execute(
-            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES (?1, ?2, ?3)",
-            rusqlite::params![skill_name, instance_id, pid as i64],
+            "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![skill_name, s_id, instance_id, pid as i64],
         )
         .map_err(|e| {
             if e.to_string().contains("UNIQUE") {
@@ -1779,9 +2633,13 @@ pub fn release_skill_lock(
     skill_name: &str,
     instance_id: &str,
 ) -> Result<(), String> {
+    let s_id = match get_skill_master_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(()), // Lock doesn't exist — nothing to release
+    };
     conn.execute(
-        "DELETE FROM skill_locks WHERE skill_name = ?1 AND instance_id = ?2",
-        [skill_name, instance_id],
+        "DELETE FROM skill_locks WHERE skill_id = ?1 AND instance_id = ?2",
+        rusqlite::params![s_id, instance_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1804,13 +2662,17 @@ pub fn get_skill_lock(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<crate::types::SkillLock>, String> {
+    let s_id = match get_skill_master_id(conn, skill_name)? {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+
     let mut stmt = conn
         .prepare(
-            "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_name = ?1",
+            "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_id = ?1",
         )
         .map_err(|e| e.to_string())?;
-
-    let result = stmt.query_row([skill_name], |row| {
+    let result = stmt.query_row(rusqlite::params![s_id], |row| {
         Ok(crate::types::SkillLock {
             skill_name: row.get(0)?,
             instance_id: row.get(1)?,
@@ -1853,11 +2715,21 @@ pub fn reclaim_dead_locks(conn: &Connection) -> Result<u32, String> {
     let mut reclaimed = 0u32;
     for lock in locks {
         if !check_pid_alive(lock.pid) {
-            conn.execute(
-                "DELETE FROM skill_locks WHERE skill_name = ?1",
-                [&lock.skill_name],
-            )
-            .map_err(|e| e.to_string())?;
+            // Use skill_id FK; fall back to skill_name only as a last-resort
+            // defensive cleanup (reclaim is best-effort and must not abort on lookup failure).
+            if let Ok(Some(s_id)) = get_skill_master_id(conn, &lock.skill_name) {
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_id = ?1",
+                    rusqlite::params![s_id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_name = ?1",
+                    [&lock.skill_name],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             reclaimed += 1;
         }
     }
@@ -1896,9 +2768,10 @@ pub fn create_workflow_session(
     skill_name: &str,
     pid: u32,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, skill_name)?;
     conn.execute(
-        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, pid) VALUES (?1, ?2, ?3)",
-        rusqlite::params![session_id, skill_name, pid as i64],
+        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![session_id, skill_name, skill_master_id, pid as i64],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1927,14 +2800,19 @@ pub fn end_all_sessions_for_pid(conn: &Connection, pid: u32) -> Result<u32, Stri
 /// whose PID is still alive. Used by startup reconciliation to skip skills owned by
 /// another running instance.
 pub fn has_active_session_with_live_pid(conn: &Connection, skill_name: &str) -> bool {
+    let s_id = match get_skill_master_id(conn, skill_name) {
+        Ok(Some(id)) => id,
+        _ => return false,
+    };
+
     let mut stmt = match conn.prepare(
-        "SELECT pid FROM workflow_sessions WHERE skill_name = ?1 AND ended_at IS NULL",
+        "SELECT pid FROM workflow_sessions WHERE skill_id = ?1 AND ended_at IS NULL",
     ) {
         Ok(s) => s,
         Err(_) => return false,
     };
 
-    let pids: Vec<u32> = match stmt.query_map([skill_name], |row| {
+    let pids: Vec<u32> = match stmt.query_map(rusqlite::params![s_id], |row| {
         Ok(row.get::<_, i64>(0)? as u32)
     }) {
         Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
@@ -2026,6 +2904,13 @@ mod tests {
         run_source_migration(&conn).unwrap();
         run_imported_skills_extended_migration(&conn).unwrap();
         run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        run_fk_columns_migration(&conn).unwrap();
+        run_frontmatter_to_skills_migration(&conn).unwrap();
         conn
     }
 
@@ -2231,6 +3116,8 @@ mod tests {
     #[test]
     fn test_workflow_steps_crud() {
         let conn = create_test_db();
+        // Workflow run must exist so get_workflow_steps can resolve the FK
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 1, "in_progress").unwrap();
         save_workflow_step(&conn, "test-skill", 2, "pending").unwrap();
@@ -2244,6 +3131,8 @@ mod tests {
     #[test]
     fn test_workflow_steps_reset() {
         let conn = create_test_db();
+        // Workflow run must exist so reset_workflow_steps_from can resolve the FK
+        save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "domain").unwrap();
         save_workflow_step(&conn, "test-skill", 0, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 1, "completed").unwrap();
         save_workflow_step(&conn, "test-skill", 2, "completed").unwrap();
@@ -2268,11 +3157,197 @@ mod tests {
         assert!(get_workflow_steps(&conn, "test-skill").unwrap().is_empty());
     }
 
+    // --- Skills Master CRUD tests ---
+
+    #[test]
+    fn test_upsert_skill_insert_and_return_id() {
+        let conn = create_test_db();
+        let id = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        assert!(id > 0);
+
+        // Verify the row exists
+        let skills = list_all_skills(&conn).unwrap();
+        let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
+        assert_eq!(skill.name, "my-skill");
+        assert_eq!(skill.skill_source, "skill-builder");
+        assert_eq!(skill.domain.as_deref(), Some("sales"));
+        assert_eq!(skill.skill_type.as_deref(), Some("domain"));
+    }
+
+    #[test]
+    fn test_upsert_skill_update_on_conflict() {
+        let conn = create_test_db();
+        let id1 = upsert_skill(&conn, "my-skill", "skill-builder", "sales", "domain").unwrap();
+        // Upsert same name — should update domain/skill_type, keep same id
+        let id2 = upsert_skill(&conn, "my-skill", "skill-builder", "analytics", "platform").unwrap();
+        assert_eq!(id1, id2);
+
+        let skills = list_all_skills(&conn).unwrap();
+        let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
+        assert_eq!(skill.domain.as_deref(), Some("analytics"));
+        assert_eq!(skill.skill_type.as_deref(), Some("platform"));
+    }
+
+    #[test]
+    fn test_list_all_skills_empty() {
+        let conn = create_test_db();
+        let skills = list_all_skills(&conn).unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_list_all_skills_returns_ordered_by_name() {
+        let conn = create_test_db();
+        upsert_skill(&conn, "gamma", "marketplace", "domain-c", "source").unwrap();
+        upsert_skill(&conn, "alpha", "skill-builder", "domain-a", "domain").unwrap();
+        upsert_skill(&conn, "beta", "imported", "domain-b", "platform").unwrap();
+
+        let skills = list_all_skills(&conn).unwrap();
+        assert_eq!(skills.len(), 3);
+        assert_eq!(skills[0].name, "alpha");
+        assert_eq!(skills[0].skill_source, "skill-builder");
+        assert_eq!(skills[1].name, "beta");
+        assert_eq!(skills[1].skill_source, "imported");
+        assert_eq!(skills[2].name, "gamma");
+        assert_eq!(skills[2].skill_source, "marketplace");
+    }
+
+    #[test]
+    fn test_delete_skill_removes_from_master() {
+        let conn = create_test_db();
+        upsert_skill(&conn, "to-delete", "marketplace", "sales", "domain").unwrap();
+        assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_some());
+
+        delete_skill(&conn, "to-delete").unwrap();
+        assert!(get_skill_master_id(&conn, "to-delete").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_delete_skill_nonexistent_is_ok() {
+        let conn = create_test_db();
+        // Should not error when skill doesn't exist
+        delete_skill(&conn, "nonexistent").unwrap();
+    }
+
+    #[test]
+    fn test_save_marketplace_skill_creates_master_row_only() {
+        let conn = create_test_db();
+        save_marketplace_skill(&conn, "mkt-skill", "sales", "platform").unwrap();
+
+        // Skills master row should exist with source=marketplace
+        let skills = list_all_skills(&conn).unwrap();
+        let skill = skills.into_iter().find(|s| s.name == "mkt-skill").unwrap();
+        assert_eq!(skill.skill_source, "marketplace");
+        assert_eq!(skill.domain.as_deref(), Some("sales"));
+
+        // No workflow_runs row should be created
+        let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+        assert!(run.is_none());
+    }
+
+    #[test]
+    fn test_save_workflow_run_creates_skills_master_row() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+
+        // save_workflow_run calls upsert_skill internally
+        let skills = list_all_skills(&conn).unwrap();
+        let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
+        assert_eq!(skill.skill_source, "skill-builder");
+        assert_eq!(skill.domain.as_deref(), Some("analytics"));
+    }
+
+    #[test]
+    fn test_delete_workflow_run_also_deletes_from_skills_master() {
+        let conn = create_test_db();
+        save_workflow_run(&conn, "my-skill", "analytics", 0, "pending", "domain").unwrap();
+        assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_some());
+
+        delete_workflow_run(&conn, "my-skill").unwrap();
+
+        // Both workflow_runs and skills master should be cleaned
+        assert!(get_workflow_run(&conn, "my-skill").unwrap().is_none());
+        assert!(get_skill_master_id(&conn, "my-skill").unwrap().is_none());
+    }
+
+    // --- Skills Backfill Migration tests ---
+
+    #[test]
+    fn test_backfill_migration_populates_skills_from_workflow_runs() {
+        // Simulate pre-migration state: workflow_runs exist but skills table is empty
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+
+        // Insert workflow_runs rows BEFORE running skills migration
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
+             VALUES ('created-skill', 'sales', 3, 'in_progress', 'domain', 'created')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, source)
+             VALUES ('mkt-skill', 'analytics', 5, 'completed', 'platform', 'marketplace')",
+            [],
+        ).unwrap();
+
+        // Run the skills table + backfill migrations
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        run_fk_columns_migration(&conn).unwrap();
+        run_frontmatter_to_skills_migration(&conn).unwrap();
+
+        // Verify skills master was populated
+        let skills = list_all_skills(&conn).unwrap();
+        assert_eq!(skills.len(), 2);
+
+        let created = skills.iter().find(|s| s.name == "created-skill").unwrap();
+        assert_eq!(created.skill_source, "skill-builder");
+
+        let mkt = skills.iter().find(|s| s.name == "mkt-skill").unwrap();
+        assert_eq!(mkt.skill_source, "marketplace");
+
+        // Marketplace row should be removed from workflow_runs
+        let run = get_workflow_run(&conn, "mkt-skill").unwrap();
+        assert!(run.is_none(), "marketplace rows should be removed from workflow_runs");
+
+        // Created skill should still have a workflow_runs row
+        let run = get_workflow_run(&conn, "created-skill").unwrap();
+        assert!(run.is_some());
+
+        // workflow_runs should have skill_id FK populated
+        let skill_id: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM workflow_runs WHERE skill_name = 'created-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert!(skill_id.is_some());
+        assert_eq!(skill_id.unwrap(), created.id);
+    }
+
     // --- Skill Tags tests ---
 
     #[test]
     fn test_set_and_get_tags() {
         let conn = create_test_db();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["analytics".into(), "salesforce".into()]).unwrap();
         let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
         assert_eq!(tags, vec!["analytics", "salesforce"]);
@@ -2281,6 +3356,7 @@ mod tests {
     #[test]
     fn test_tags_normalize_lowercase_trim() {
         let conn = create_test_db();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(
             &conn,
             "my-skill",
@@ -2294,6 +3370,7 @@ mod tests {
     #[test]
     fn test_tags_deduplicate() {
         let conn = create_test_db();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(
             &conn,
             "my-skill",
@@ -2307,6 +3384,7 @@ mod tests {
     #[test]
     fn test_set_tags_replaces() {
         let conn = create_test_db();
+        upsert_skill(&conn, "my-skill", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(&conn, "my-skill", &["old-tag".into()]).unwrap();
         set_skill_tags(&conn, "my-skill", &["new-tag".into()]).unwrap();
         let tags = get_tags_for_skills(&conn, &vec!["my-skill".to_string()]).unwrap().remove("my-skill").unwrap_or_default();
@@ -2316,6 +3394,9 @@ mod tests {
     #[test]
     fn test_get_tags_for_skills_batch() {
         let conn = create_test_db();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-c", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(&conn, "skill-a", &["tag1".into(), "tag2".into()]).unwrap();
         set_skill_tags(&conn, "skill-b", &["tag2".into(), "tag3".into()]).unwrap();
         set_skill_tags(&conn, "skill-c", &["tag1".into()]).unwrap();
@@ -2330,6 +3411,8 @@ mod tests {
     #[test]
     fn test_get_all_tags() {
         let conn = create_test_db();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
         set_skill_tags(&conn, "skill-a", &["beta".into(), "alpha".into()]).unwrap();
         set_skill_tags(&conn, "skill-b", &["beta".into(), "gamma".into()]).unwrap();
 
@@ -2358,6 +3441,8 @@ mod tests {
         run_intake_migration(&conn).unwrap();
         run_source_migration(&conn).unwrap();
         run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
 
         // Verify skill_type column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", "domain", 0, "pending", "platform").unwrap();
@@ -2469,6 +3554,8 @@ mod tests {
     fn test_acquire_and_release_lock() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
+        // Skill must exist in master for FK-based locking
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
         let lock = get_skill_lock(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(lock.skill_name, "test-skill");
@@ -2483,6 +3570,7 @@ mod tests {
     fn test_acquire_lock_conflict() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
         // Use the current PID so the lock appears "live"
         let pid = std::process::id();
         acquire_skill_lock(&conn, "test-skill", "inst-1", pid).unwrap();
@@ -2495,6 +3583,7 @@ mod tests {
     fn test_acquire_lock_idempotent_same_instance() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
+        upsert_skill(&conn, "test-skill", "skill-builder", "domain", "domain").unwrap();
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
         // Acquiring again from the same instance should succeed
         acquire_skill_lock(&conn, "test-skill", "inst-1", 12345).unwrap();
@@ -2504,6 +3593,9 @@ mod tests {
     fn test_release_all_instance_locks() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-c", "skill-builder", "domain", "domain").unwrap();
         acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-b", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-c", "inst-2", 67890).unwrap();
@@ -2520,6 +3612,8 @@ mod tests {
     fn test_get_all_skill_locks() {
         let conn = create_test_db();
         run_lock_table_migration(&conn).unwrap();
+        upsert_skill(&conn, "skill-a", "skill-builder", "domain", "domain").unwrap();
+        upsert_skill(&conn, "skill-b", "skill-builder", "domain", "domain").unwrap();
         acquire_skill_lock(&conn, "skill-a", "inst-1", 12345).unwrap();
         acquire_skill_lock(&conn, "skill-b", "inst-2", 67890).unwrap();
 
@@ -3506,5 +4600,415 @@ mod tests {
         // Sorted by skill_name
         assert_eq!(result[0].skill_name, "active-no-trigger");
         assert_eq!(result[1].skill_name, "active-with-trigger");
+    }
+
+    #[test]
+    fn test_delete_imported_skill_by_name() {
+        let conn = create_test_db();
+        // Skills master row required for FK-based lookup
+        upsert_skill(&conn, "delete-me", "imported", "test", "domain").unwrap();
+        let skill = ImportedSkill {
+            skill_id: "id-del".to_string(),
+            skill_name: "delete-me".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path: "/tmp/delete-me".to_string(),
+            imported_at: "2024-01-01".to_string(),
+            is_bundled: false,
+            description: None,
+            skill_type: Some("domain".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
+
+        // Verify it exists
+        assert!(get_imported_skill(&conn, "delete-me").unwrap().is_some());
+
+        // Delete by name
+        delete_imported_skill_by_name(&conn, "delete-me").unwrap();
+
+        // Verify it's gone
+        assert!(get_imported_skill(&conn, "delete-me").unwrap().is_none());
+
+        // Deleting non-existent name should not error
+        delete_imported_skill_by_name(&conn, "does-not-exist").unwrap();
+    }
+
+    #[test]
+    fn test_migration_19_cleans_orphaned_imported_skills() {
+        // Migration 19 performs two operations:
+        //   1. UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'
+        //   2. DELETE orphaned imported_skills (non-bundled, no matching skills master row)
+        // The CHECK constraint on skills.skill_source prevents inserting 'upload' after
+        // migration 17, so we test the orphan cleanup logic (the core new behavior).
+        let conn = create_test_db();
+
+        // Insert a skills master row that has a corresponding imported_skills row
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('kept-skill', 'imported', 'test', 'domain')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0)",
+            [],
+        ).unwrap();
+
+        // Insert an orphaned imported_skills row (no skills master row)
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0)",
+            [],
+        ).unwrap();
+
+        // Insert a bundled imported_skills row (should be preserved even without master row)
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1)",
+            [],
+        ).unwrap();
+
+        // Run migration 19's orphan cleanup SQL directly
+        conn.execute(
+            "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+            [],
+        ).unwrap();
+
+        // Orphaned non-bundled row should be gone
+        let orphan_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(orphan_count, 0, "Orphaned non-bundled row should be deleted");
+
+        // Non-orphaned row should be preserved
+        let kept_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'kept-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(kept_count, 1, "Non-orphaned row should be preserved");
+
+        // Bundled row should be preserved (even without master row)
+        let bundled_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(bundled_count, 1, "Bundled row should be preserved");
+    }
+
+    #[test]
+    fn test_workflow_runs_id_migration_is_idempotent() {
+        // Build a DB up through migration 20 only (not 21 yet).
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+
+        // Run migration 21 the first time — should succeed.
+        run_workflow_runs_id_migration(&conn).unwrap();
+
+        // Insert a row after migration 21 so the id column is present.
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('idempotent-skill', 'test-domain', 0, 'pending', 'domain')",
+            [],
+        ).unwrap();
+
+        // Run migration 21 a second time — must not error (idempotency guard).
+        run_workflow_runs_id_migration(&conn).unwrap();
+
+        // Verify the `id` column exists.
+        let has_id: bool = conn
+            .prepare("PRAGMA table_info(workflow_runs)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .any(|r| r.map(|n| n == "id").unwrap_or(false));
+        assert!(has_id, "id column should exist after migration 21");
+
+        // Verify skill_name UNIQUE constraint: duplicate insert must fail.
+        let result = conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('idempotent-skill', 'other-domain', 0, 'pending', 'domain')",
+            [],
+        );
+        assert!(result.is_err(), "duplicate skill_name should violate UNIQUE constraint");
+    }
+
+    #[test]
+    fn test_fk_columns_migration_is_idempotent() {
+        // create_test_db() already runs migration 22 once.
+        let conn = create_test_db();
+
+        // Create a skill row (also creates skills master via save_workflow_run).
+        save_workflow_run(&conn, "fk-idempotent-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // Run migration 22 again — must not error.
+        run_fk_columns_migration(&conn).unwrap();
+
+        // Save a workflow step and verify workflow_run_id is populated.
+        save_workflow_step(&conn, "fk-idempotent-skill", 1, "in_progress").unwrap();
+
+        let workflow_run_id: Option<i64> = conn.query_row(
+            "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = ?1 AND step_id = ?2",
+            rusqlite::params!["fk-idempotent-skill", 1],
+            |row| row.get(0),
+        ).unwrap();
+        assert!(workflow_run_id.is_some(), "workflow_run_id must be non-NULL after save_workflow_step");
+
+        let expected_wr_id = get_workflow_run_id(&conn, "fk-idempotent-skill").unwrap().unwrap();
+        assert_eq!(
+            workflow_run_id.unwrap(),
+            expected_wr_id,
+            "workflow_run_id on workflow_steps must match workflow_runs.id"
+        );
+    }
+
+    #[test]
+    fn test_fk_backfill_populates_all_child_tables() {
+        // Build a DB up through migration 21 only — no migration 22 yet.
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        // NOTE: run_fk_columns_migration NOT called yet.
+
+        // Insert a skills master row.
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('backfill-skill', 'skill-builder', 'test', 'domain')",
+            [],
+        ).unwrap();
+        let skill_master_id: i64 = conn.query_row(
+            "SELECT id FROM skills WHERE name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        // Insert a workflow_runs row (without skill_id FK column — already present from migration 18,
+        // but we set it anyway for the backfill to trace via skill_name).
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('backfill-skill', 'test', 0, 'pending', 'domain')",
+            [],
+        ).unwrap();
+        let wr_id: i64 = conn.query_row(
+            "SELECT id FROM workflow_runs WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        // Insert into workflow_steps without workflow_run_id (column doesn't exist yet).
+        conn.execute(
+            "INSERT INTO workflow_steps (skill_name, step_id, status) VALUES ('backfill-skill', 1, 'pending')",
+            [],
+        ).unwrap();
+
+        // Insert into skill_tags without skill_id.
+        conn.execute(
+            "INSERT INTO skill_tags (skill_name, tag) VALUES ('backfill-skill', 'test-tag')",
+            [],
+        ).unwrap();
+
+        // Insert into skill_locks without skill_id.
+        conn.execute(
+            "INSERT OR IGNORE INTO skill_locks (skill_name, instance_id, pid) VALUES ('backfill-skill', 'inst-1', 12345)",
+            [],
+        ).unwrap();
+
+        // Now run migration 22 — this adds FK columns and backfills them.
+        run_fk_columns_migration(&conn).unwrap();
+
+        // Verify workflow_steps.workflow_run_id was backfilled.
+        let ws_wrid: Option<i64> = conn.query_row(
+            "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = 'backfill-skill' AND step_id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(ws_wrid, Some(wr_id), "workflow_steps.workflow_run_id should be backfilled");
+
+        // Verify skill_tags.skill_id was backfilled.
+        let tag_sid: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM skill_tags WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(tag_sid, Some(skill_master_id), "skill_tags.skill_id should be backfilled");
+
+        // Verify skill_locks.skill_id was backfilled.
+        let lock_sid: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM skill_locks WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(lock_sid, Some(skill_master_id), "skill_locks.skill_id should be backfilled");
+    }
+
+    #[test]
+    fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
+        let conn = create_test_db();
+
+        // Create skill via save_workflow_run (also creates skills master row).
+        save_workflow_run(&conn, "step-test-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // Create a workflow session.
+        create_workflow_session(&conn, "session-1", "step-test-skill", std::process::id()).unwrap();
+
+        // Insert agent run with step_id=3 and status="completed" so it appears in get_step_agent_runs.
+        persist_agent_run(
+            &conn,
+            "agent-step-1",
+            "step-test-skill",
+            3,
+            "sonnet",
+            "completed",
+            100, 50, 0, 0, 0.01, 1000,
+            1, None, None, 0, 0,
+            None,
+            Some("session-1"),
+        ).unwrap();
+
+        // persist_agent_run does not populate workflow_run_id — backfill it here, mirroring
+        // what run_fk_columns_migration does for pre-existing rows.
+        let wr_id = get_workflow_run_id(&conn, "step-test-skill").unwrap().unwrap();
+        conn.execute(
+            "UPDATE agent_runs SET workflow_run_id = ?1 WHERE agent_id = 'agent-step-1'",
+            rusqlite::params![wr_id],
+        ).unwrap();
+
+        // Call get_step_agent_runs for the correct step — should return 1 run.
+        let runs = get_step_agent_runs(&conn, "step-test-skill", 3).unwrap();
+        assert_eq!(runs.len(), 1, "should find 1 agent run for step 3");
+        assert_eq!(runs[0].step_id, 3);
+
+        // Wrong step ID — should return empty.
+        let wrong_step = get_step_agent_runs(&conn, "step-test-skill", 99).unwrap();
+        assert!(wrong_step.is_empty(), "wrong step should return empty vec");
+
+        // Nonexistent skill — should return empty (no workflow_run_id found).
+        let no_skill = get_step_agent_runs(&conn, "nonexistent-skill", 3).unwrap();
+        assert!(no_skill.is_empty(), "nonexistent skill should return empty vec");
+    }
+
+    #[test]
+    fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
+        let conn = create_test_db();
+
+        // Create skill via save_workflow_run (also creates skills master row).
+        save_workflow_run(&conn, "session-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // No session yet — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return false when no session exists"
+        );
+
+        // Create session using current PID (guaranteed alive).
+        let current_pid = std::process::id();
+        create_workflow_session(&conn, "sess-live", "session-skill", current_pid).unwrap();
+
+        // Session exists with live PID — must return true.
+        assert!(
+            has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return true with an active session for a live PID"
+        );
+
+        // End the session.
+        end_workflow_session(&conn, "sess-live").unwrap();
+
+        // Session is ended — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return false after session is ended"
+        );
+
+        // Skill not in skills master — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "no-such-skill"),
+            "should return false for a skill not in the skills master table"
+        );
+    }
+
+    #[test]
+    fn test_workspace_skill_crud_uses_uuid_skill_id() {
+        let conn = create_test_db();
+
+        let skill = WorkspaceSkill {
+            skill_id: "ws-uuid-abc-123".to_string(),
+            skill_name: "my-ws-skill".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: "/tmp/ws-skill".to_string(),
+            imported_at: "2024-01-01T00:00:00Z".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+
+        // Insert the workspace skill.
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        // List workspace skills — the skill must be in the list.
+        let skills = list_workspace_skills(&conn).unwrap();
+        let found = skills.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
+        assert!(found.is_some(), "inserted skill should appear in list_workspace_skills");
+        assert_eq!(found.unwrap().skill_name, "my-ws-skill");
+        assert!(found.unwrap().is_active);
+
+        // Toggle active (also updates disk_path).
+        update_workspace_skill_active(&conn, "ws-uuid-abc-123", false, "/tmp/ws-skill-updated").unwrap();
+
+        let skills_after = list_workspace_skills(&conn).unwrap();
+        let updated = skills_after.iter().find(|s| s.skill_id == "ws-uuid-abc-123").unwrap();
+        assert!(!updated.is_active, "is_active should be false after update");
+
+        // Delete the skill.
+        delete_workspace_skill(&conn, "ws-uuid-abc-123").unwrap();
+
+        // Verify it is gone.
+        let skills_final = list_workspace_skills(&conn).unwrap();
+        let gone = skills_final.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
+        assert!(gone.is_none(), "skill should not appear in list after deletion");
     }
 }

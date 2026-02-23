@@ -13,7 +13,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Progress } from "@/components/ui/progress"
-import { Download, Lock, MessageSquare, Pencil, SquarePen, Trash2 } from "lucide-react"
+import { Download, FlaskConical, Lock, MessageSquare, Pencil, SquarePen, Trash2 } from "lucide-react"
+import { SkillSourceBadge } from "@/components/skill-source-badge"
 import {
   Tooltip,
   TooltipContent,
@@ -33,7 +34,7 @@ interface SkillCardProps {
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
-  marketplaceConfigured?: boolean
+  onTest?: (skill: SkillSummary) => void
 }
 
 export function parseStepProgress(currentStep: string | null, status: string | null): number {
@@ -121,10 +122,14 @@ export default function SkillCard({
   onEdit,
   onEditWorkflow,
   onRefine,
+  onTest,
 }: SkillCardProps) {
-  const isMarketplace = skill.source === 'marketplace'
+  const isMarketplace = skill.skill_source === 'marketplace'
   const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
   const canDownload = isMarketplace || isWorkflowComplete(skill)
+
+  // Only skill-builder skills have the right-click context menu
+  const showContextMenu = skill.skill_source === 'skill-builder'
 
   const cardContent = (
     <Card
@@ -151,11 +156,14 @@ export default function SkillCard({
             <span className="truncate">{skill.domain}</span>
           </Badge>
         )}
-        {skill.skill_type && (
-          <Badge className={cn("w-fit max-w-full text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
-            <span className="truncate">{SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}</span>
-          </Badge>
-        )}
+        <div className="flex flex-wrap items-center gap-1">
+          {skill.skill_type && (
+            <Badge className={cn("w-fit max-w-full text-xs", SKILL_TYPE_COLORS[skill.skill_type as SkillType])}>
+              <span className="truncate">{SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type}</span>
+            </Badge>
+          )}
+          <SkillSourceBadge skillSource={skill.skill_source} />
+        </div>
         {skill.tags && skill.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {skill.tags.map((tag) => (
@@ -174,12 +182,20 @@ export default function SkillCard({
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
         <div className="flex w-full items-center gap-3" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-0.5">
-            {!isMarketplace && (
+            {skill.skill_source === 'skill-builder' && (
               <IconAction
                 icon={<Pencil className="size-3" />}
                 label="Edit workflow"
                 tooltip="Edit workflow"
                 onClick={() => onEditWorkflow?.(skill)}
+              />
+            )}
+            {!showContextMenu && onEdit && (
+              <IconAction
+                icon={<SquarePen className="size-3" />}
+                label="Edit details"
+                tooltip="Edit details"
+                onClick={() => onEdit(skill)}
               />
             )}
             {canDownload && onRefine && (
@@ -188,6 +204,14 @@ export default function SkillCard({
                 label="Refine skill"
                 tooltip="Refine"
                 onClick={() => onRefine(skill)}
+              />
+            )}
+            {canDownload && (
+              <IconAction
+                icon={<FlaskConical className="size-3" />}
+                label="Test skill"
+                tooltip="Test"
+                onClick={() => onTest?.(skill)}
               />
             )}
           </div>
@@ -230,23 +254,23 @@ export default function SkillCard({
     )
   }
 
-  if (isMarketplace) {
-    return <TooltipProvider>{cardContent}</TooltipProvider>
-  }
-
   return (
     <TooltipProvider>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          {cardContent}
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onSelect={() => onEdit?.(skill)}>
-            <SquarePen className="size-4" />
-            Edit details
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
+      {showContextMenu ? (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            {cardContent}
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={() => onEdit?.(skill)}>
+              <SquarePen className="size-4" />
+              Edit details
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      ) : (
+        cardContent
+      )}
     </TooltipProvider>
   )
 }

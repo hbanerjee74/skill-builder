@@ -33,6 +33,11 @@ const sampleSkills: AvailableSkill[] = [
     domain: "sales",
     description: "Analyze your sales pipeline",
     skill_type: "skill-builder",
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
   {
     path: "skills/hr-metrics",
@@ -40,6 +45,11 @@ const sampleSkills: AvailableSkill[] = [
     domain: null,
     description: null,
     skill_type: "skill-builder",
+    version: null,
+    model: null,
+    argument_hint: null,
+    user_invocable: null,
+    disable_model_invocation: null,
   },
 ];
 
@@ -170,9 +180,9 @@ describe("GitHubImportDialog", () => {
 
     it("does not show skills filtered out by typeFilter", async () => {
       const mixed: AvailableSkill[] = [
-        { path: "skills/a", name: "Skill A", domain: null, description: null, skill_type: "skill-builder" },
-        { path: "skills/b", name: "Skill B", domain: null, description: null, skill_type: "domain" },
-        { path: "skills/c", name: "Skill C", domain: null, description: null, skill_type: null },
+        { path: "skills/a", name: "Skill A", domain: null, description: null, skill_type: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/b", name: "Skill B", domain: null, description: null, skill_type: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/c", name: "Skill C", domain: null, description: null, skill_type: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
       ];
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -230,7 +240,31 @@ describe("GitHubImportDialog", () => {
       });
     });
 
-    it("calls import_marketplace_to_library with the skill path when Import is clicked", async () => {
+    it("shows 'Edit & Import' button for each skill in skill-library mode", async () => {
+      renderDialog({ mode: "skill-library", onImported });
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
+      });
+    });
+
+    it("opens edit form when 'Edit & Import' is clicked", async () => {
+      const user = userEvent.setup();
+      renderDialog({ mode: "skill-library", onImported });
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
+      });
+
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText("Edit & Import Skill")).toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+    });
+
+    it("calls import_marketplace_to_library with skill path and metadata override on Confirm Import", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -242,19 +276,25 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
 
       await waitFor(() => {
-        expect(mockInvoke).toHaveBeenCalledWith("import_marketplace_to_library", {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
+
+      await waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("import_marketplace_to_library", expect.objectContaining({
           skillPaths: ["skills/sales-analytics"],
-        });
+        }));
       });
     });
 
-    it("shows 'Importing…' while import is in flight", async () => {
+    it("shows 'Importing…' while import is in flight after confirming edit form", async () => {
       const user = userEvent.setup();
 
       let resolveImport!: (v: unknown) => void;
@@ -271,10 +311,16 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(screen.getByText("Importing…")).toBeInTheDocument();
@@ -296,10 +342,16 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(screen.getByText("Imported")).toBeInTheDocument();
@@ -308,7 +360,7 @@ describe("GitHubImportDialog", () => {
       expect(toast.success).toHaveBeenCalledWith('Imported "Sales Analytics"');
     });
 
-    it("shows 'In library' and 'Already in your library' when result.success is false", async () => {
+    it("shows 'In library' and 'Already in your library' when result.success is false with 'already exists'", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -320,10 +372,16 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(screen.getByText("In library")).toBeInTheDocument();
@@ -345,17 +403,45 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(screen.getByText("Imported")).toBeInTheDocument();
       });
 
-      // Second skill should still have an Import button
-      expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(1);
+      // Second skill should still have an Edit & Import button
+      expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(1);
+    });
+
+    it("closes edit form without importing when Cancel is clicked", async () => {
+      const user = userEvent.setup();
+      renderDialog({ mode: "skill-library", onImported });
+
+      await waitFor(() => {
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
+      });
+
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Cancel/i }));
+
+      await waitFor(() => {
+        expect(screen.queryByText("Edit & Import Skill")).not.toBeInTheDocument();
+      });
+      expect(onImported).not.toHaveBeenCalled();
     });
   });
 
@@ -432,7 +518,7 @@ describe("GitHubImportDialog", () => {
       onImported.mockReset().mockResolvedValue(undefined);
     });
 
-    it("resets to idle and fires error toast when import throws", async () => {
+    it("resets to idle and fires error toast when import throws (via edit form)", async () => {
       const user = userEvent.setup();
 
       mockInvoke.mockImplementation((cmd: string) => {
@@ -447,17 +533,23 @@ describe("GitHubImportDialog", () => {
       renderDialog({ mode: "skill-library", onImported });
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(toast.error).toHaveBeenCalledWith("Import failed: server error");
       });
 
       // Button should be back (state reset to idle)
-      expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+      expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       expect(onImported).not.toHaveBeenCalled();
     });
   });
@@ -494,11 +586,17 @@ describe("GitHubImportDialog", () => {
       render(<Wrapper />);
 
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
 
-      // Import first skill
-      await user.click(screen.getAllByRole("button", { name: /Import/i })[0]);
+      // Open edit form and confirm import for first skill
+      await user.click(screen.getAllByRole("button", { name: /Edit & Import/i })[0]);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(screen.getByText("Imported")).toBeInTheDocument();
@@ -513,7 +611,7 @@ describe("GitHubImportDialog", () => {
 
       // After reopen, browse() fires again — state should be reset so all skills are importable
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: /Import/i })).toHaveLength(2);
+        expect(screen.getAllByRole("button", { name: /Edit & Import/i })).toHaveLength(2);
       });
       // "Imported" label should be gone (state was reset on close)
       expect(screen.queryByText("Imported")).not.toBeInTheDocument();

@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Square } from "lucide-react";
 import { toast } from "sonner";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { useAgentStore, flushMessageBuffer } from "@/stores/agent-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useTestStore } from "@/stores/test-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
@@ -265,6 +274,7 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
 
 export default function TestPage() {
   const navigate = useNavigate();
+  const { skill: skillParam } = useSearch({ from: "/test" });
 
   // --- Skills list ---
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -318,6 +328,19 @@ export default function TestPage() {
       });
     return () => { cancelled = true; };
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Auto-select skill from search param
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!skillParam || skills.length === 0) return;
+    const match = skills.find((s) => s.name === skillParam);
+    if (match) {
+      console.log("[test] pre-selected skill from search param: %s", skillParam);
+      setState((prev) => ({ ...prev, selectedSkill: match }));
+    }
+  }, [skillParam, skills]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
@@ -714,6 +737,31 @@ export default function TestPage() {
   // ---------------------------------------------------------------------------
 
   const isRunning = state.phase === "running" || state.phase === "evaluating";
+
+  // Sync phase to global test store so CloseGuard can detect running agents.
+  useEffect(() => {
+    useTestStore.getState().setRunning(isRunning);
+    return () => { useTestStore.getState().setRunning(false); };
+  }, [isRunning]);
+
+  // --- Navigation guard ---
+  const { proceed, reset: resetBlocker, status: blockerStatus } = useBlocker({
+    shouldBlockFn: () => useTestStore.getState().isRunning,
+    enableBeforeUnload: false,
+    withResolver: true,
+  });
+
+  const handleNavStay = useCallback(() => {
+    resetBlocker?.();
+  }, [resetBlocker]);
+
+  const handleNavLeave = useCallback(() => {
+    useTestStore.getState().setRunning(false);
+    useAgentStore.getState().clearRuns();
+    cleanup(stateRef.current.testId);
+    proceed?.();
+  }, [proceed, cleanup]);
+
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
   const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
   const availableModels = useSettingsStore((s) => s.availableModels);
@@ -916,6 +964,28 @@ export default function TestPage() {
           </div>
         </div>
       </div>
+
+      {/* Navigation guard dialog */}
+      {blockerStatus === "blocked" && (
+        <Dialog open onOpenChange={(open) => { if (!open) handleNavStay(); }}>
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>Test Still Running</DialogTitle>
+              <DialogDescription>
+                Agents are still running. Leaving will stop them and discard results.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleNavStay}>
+                Stay
+              </Button>
+              <Button variant="destructive" onClick={handleNavLeave}>
+                Leave
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Status bar */}
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">

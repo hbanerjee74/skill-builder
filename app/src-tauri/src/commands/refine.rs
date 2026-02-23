@@ -492,7 +492,17 @@ pub async fn send_refine_message(
             e.to_string()
         })?;
         let session = map.get(&session_id).ok_or_else(|| {
-            let msg = format!("No refine session found for id '{}'", session_id);
+            // Log active sessions to help diagnose stale-session or post-restart failures
+            let active: Vec<String> = map
+                .iter()
+                .map(|(id, s)| format!("{}={}", &id[..8.min(id.len())], s.skill_name))
+                .collect();
+            let msg = format!(
+                "No refine session found for id '{}'. Active sessions ({}): [{}]",
+                session_id,
+                map.len(),
+                active.join(", ")
+            );
             log::error!("[send_refine_message] {}", msg);
             msg
         })?;

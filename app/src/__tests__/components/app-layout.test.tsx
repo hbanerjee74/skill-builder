@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   mockInvoke,
   mockInvokeCommands,
@@ -106,6 +107,7 @@ const emptyReconciliation: ReconciliationResult = {
   orphans: [],
   notifications: [],
   auto_cleaned: 0,
+  discovered_skills: [],
 };
 
 describe("AppLayout", () => {
@@ -168,7 +170,7 @@ describe("AppLayout", () => {
   it("shows info toast when auto_cleaned > 0", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 3 },
+      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 3, discovered_skills: [] },
     });
 
     render(<AppLayout />);
@@ -183,7 +185,7 @@ describe("AppLayout", () => {
   it("shows singular text when auto_cleaned is 1", async () => {
     mockInvokeCommands({
       get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 1 },
+      reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 1, discovered_skills: [] },
     });
 
     render(<AppLayout />);
@@ -195,7 +197,7 @@ describe("AppLayout", () => {
     });
   });
 
-  it("shows warning toasts for reset notifications", async () => {
+  it("shows ReconciliationAckDialog for reset notifications instead of toasts", async () => {
     const notifications = [
       'Skill "sales-pipeline" was reset to step 3 (workspace files are behind database)',
       'Skill "hr-analytics" was reset to step 1 (workspace files are behind database)',
@@ -203,18 +205,53 @@ describe("AppLayout", () => {
 
     mockInvokeCommands({
       get_settings: defaultSettings,
-      reconcile_startup: { orphans: [], notifications, auto_cleaned: 0 },
+      reconcile_startup: { orphans: [], notifications, auto_cleaned: 0, discovered_skills: [] },
     });
 
     render(<AppLayout />);
 
+    // The ACK dialog should appear with the "Startup Reconciliation" title
     await waitFor(() => {
-      expect(toast.warning).toHaveBeenCalledWith(notifications[0], {
-        duration: 5000,
-      });
-      expect(toast.warning).toHaveBeenCalledWith(notifications[1], {
-        duration: 5000,
-      });
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+
+    // Notifications should be listed in the dialog
+    expect(screen.getByText(notifications[0])).toBeInTheDocument();
+    expect(screen.getByText(notifications[1])).toBeInTheDocument();
+
+    // Content should NOT be rendered until ACK dialog is dismissed
+    expect(screen.queryByTestId("outlet")).not.toBeInTheDocument();
+
+    // toast.warning should NOT be called (notifications go to dialog now)
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("renders content after acknowledging reconciliation dialog", async () => {
+    const user = userEvent.setup();
+
+    mockInvokeCommands({
+      get_settings: defaultSettings,
+      reconcile_startup: {
+        orphans: [],
+        notifications: ["'my-skill' was reset from step 3 to step 0"],
+        auto_cleaned: 0,
+        discovered_skills: [],
+      },
+    });
+
+    render(<AppLayout />);
+
+    // Wait for the ACK dialog
+    await waitFor(() => {
+      expect(screen.getByText("Startup Reconciliation")).toBeInTheDocument();
+    });
+
+    // Click the Acknowledge button
+    await user.click(screen.getByRole("button", { name: /Acknowledge/i }));
+
+    // Content should now render
+    await waitFor(() => {
+      expect(screen.getByTestId("outlet")).toBeInTheDocument();
     });
   });
 
@@ -231,6 +268,7 @@ describe("AppLayout", () => {
         ],
         notifications: [],
         auto_cleaned: 0,
+        discovered_skills: [],
       },
     });
 

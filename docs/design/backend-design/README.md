@@ -23,7 +23,7 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 ### Migration strategy
 
-20 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
+24 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded. After all numbered migrations complete, `repair_skills_table_schema` runs unconditionally as an idempotent startup guard: it ensures the six frontmatter columns exist on the `skills` table and backfills them if any are missing (guards against dev builds that recorded migration 24 before its ALTER TABLE statements executed).
 
 ### Schema overview
 
@@ -34,16 +34,17 @@ Skills Library (list_skills)             Settings→Skills (list_workspace_skill
 ─────────────────────────────            ──────────────────────────────────────
 skills  ← master                         workspace_skills  ← standalone
  ├─ workflow_runs        (skill_id FK → skills.id)
- │   ├─ workflow_steps     (skill_name)
- │   └─ workflow_artifacts (skill_name)
- ├─ imported_skills      (skill_name)
- ├─ workflow_sessions    (skill_name)
- │   └─ agent_runs       (workflow_session_id → workflow_sessions.session_id)
- ├─ skill_tags           (skill_name)
- └─ skill_locks          (skill_name)
+ │   ├─ workflow_steps     (workflow_run_id FK → workflow_runs.id)
+ │   └─ workflow_artifacts (workflow_run_id FK → workflow_runs.id)
+ ├─ imported_skills      (skill_master_id FK → skills.id)
+ ├─ workflow_sessions    (skill_id FK → skills.id)
+ │   └─ agent_runs       (workflow_session_id → workflow_sessions.session_id,
+ │                         workflow_run_id FK → workflow_runs.id)
+ ├─ skill_tags           (skill_id FK → skills.id)
+ └─ skill_locks          (skill_id FK → skills.id)
 ```
 
-`workflow_runs` is the only table with an enforced FK (`skill_id → skills.id`). All other tables link by `skill_name` convention. `agent_runs` is a child of `workflow_sessions` (joined via `workflow_session_id`); it also carries `skill_name` and `step_id` to identify which workflow run step it belongs to. `workspace_skills` is entirely separate — no relationship to `skills`.
+`workflow_runs` has `skill_id → skills.id`. All child tables now link by integer FK: `workflow_steps`, `workflow_artifacts`, and `agent_runs` use `workflow_run_id → workflow_runs.id`; `skill_tags`, `skill_locks`, `workflow_sessions`, and `imported_skills` use `skill_id`/`skill_master_id → skills.id`. FKs are declared via `REFERENCES` but enforcement requires `PRAGMA foreign_keys = ON` per connection. `skill_name TEXT` is retained in all tables for display and logging. `agent_runs` is a child of `workflow_sessions` (joined via `workflow_session_id`); it also carries `skill_name` and `step_id` to identify which workflow run step it belongs to. `workspace_skills` is entirely separate — no relationship to `skills`.
 
 ### Skills Library tables
 
@@ -55,21 +56,23 @@ skills  ← master                         workspace_skills  ← standalone
 | `marketplace` | Bulk imported via `import_marketplace_to_library` | `imported_skills` |
 | `imported` | Disk-discovered via reconciliation pass 2 (SKILL.md present, incomplete context) | — |
 
-**`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. FK `skill_id → skills.id`. One row per skill.
+The base `skills` columns are: `id INTEGER PRIMARY KEY AUTOINCREMENT`, `name TEXT UNIQUE`, `skill_source TEXT CHECK(...)`, `domain`, `skill_type`, `created_at`, `updated_at`. Migration 24 added six frontmatter columns — `description`, `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation` — backfilled from `workflow_runs` (skill-builder) and `imported_skills` (marketplace/imported).
 
-**`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing.
+**`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. Has integer PK `id INTEGER PRIMARY KEY AUTOINCREMENT` (added migration 22; replaced the old `skill_name TEXT PRIMARY KEY`). FK `skill_id → skills.id`. One row per skill. Marketplace skills do not get a `workflow_runs` row — they exist in `skills` master only.
 
-**`workflow_artifacts`** — Child of `workflow_runs`. Step output files stored inline (content + size). Keyed by `(skill_name, step_id, relative_path)`.
+**`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing. FK `workflow_run_id → workflow_runs.id`.
 
-**`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. Linked to `skills` by `skill_name` (convention, not enforced FK).
+**`workflow_artifacts`** — Child of `workflow_runs`. Step output files stored inline (content + size). Keyed by `(skill_name, step_id, relative_path)`. FK `workflow_run_id → workflow_runs.id`.
 
-**`workflow_sessions`** — Child of `skills` (by `skill_name`). Tracks refine and workflow session lifetimes: start, end, PID. Includes `reset_marker` to soft-delete cancelled sessions.
+**`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. FK `skill_master_id → skills.id`.
 
-**`agent_runs`** — Child of `workflow_sessions` (via `workflow_session_id`). One row per agent invocation. Also carries `skill_name` and `step_id` to identify the workflow run step. Stores model, token counts, cost, duration, turn count, stop reason, compaction count.
+**`workflow_sessions`** — Child of `skills`. Tracks refine and workflow session lifetimes: start, end, PID. FK `skill_id → skills.id`. Includes `reset_marker` to soft-delete cancelled sessions.
 
-**`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
+**`agent_runs`** — Child of `workflow_sessions` (via `workflow_session_id`). One row per agent invocation. Also carries `skill_name` and `step_id` to identify the workflow run step. FK `workflow_run_id → workflow_runs.id`. Stores model, token counts, cost, duration, turn count, stop reason, compaction count.
 
-**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. Linked to `skills` by `skill_name`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
+**`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`. FK `skill_id → skills.id`.
+
+**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. FK `skill_id → skills.id`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
 
 ### Settings→Skills table
 
@@ -130,11 +133,11 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 **ZIP upload**: `upload_skill` extracts the archive, parses SKILL.md frontmatter, and inserts into `workspace_skills`. No `skills` master row is created.
 
-**GitHub import**: `import_github_skills` fetches the repo tree, downloads selected skill directories, parses SKILL.md, and inserts into `workspace_skills`. No `skills` master row is created.
+**GitHub import**: `import_github_skills` downloads selected skill directories (paths come from the marketplace.json listing step), parses SKILL.md, and inserts into `workspace_skills`. After inserting, the SKILL.md frontmatter on disk is rewritten with the DB values (user edits applied during the import wizard); if the rewrite fails, the DB row is rolled back and the skill directory is removed. No `skills` master row is created.
 
 ### Skill ingestion — Skills Library
 
-**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`).
+**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Accepts an optional `metadata_overrides` map (`skill_path → SkillMetadataOverride`) that lets callers override any frontmatter field (name, description, domain, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation) before the DB insert. Used by the marketplace browse UI to let users adjust metadata before importing.
 
 **Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
@@ -142,7 +145,7 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 1. Frontend calls `prepare_skill_test` with a `skill_name`.
 2. Backend creates two isolated temp workspaces under a shared `skill-builder-test-{uuid}/` parent:
-   - `baseline/` — `.claude/CLAUDE.md` (`# Test Workspace`) + `.claude/skills/skill-test/` copied from bundled resources. No user skill.
+   - `baseline/` — `.claude/CLAUDE.md` (`# Test Workspace`) + `.claude/skills/skill-test/`. The test harness skill (`skill-test`) is sourced by looking for an active workspace skill with `purpose='test-context'` first; falls back to the bundled `skill-test` directory if none is found. No user skill.
    - `with-skill/` — same as baseline, plus `.claude/skills/{skill_name}/` copied from `skills_path`.
 3. Returns `test_id`, both `cwd` paths, and a `transcript_log_dir` pointing to `{workspace}/{skill_name}/logs/`.
 4. Frontend wraps the user prompt (`"You are a data engineer and the user is trying to do the following task:\n\n{prompt}"`) and spawns plan agents against both workspaces in parallel. The SDK auto-loads `.claude/skills/` from each workspace `cwd`.

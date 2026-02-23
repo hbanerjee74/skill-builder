@@ -17,9 +17,9 @@ pub fn list_skills(
     list_skills_inner(&workspace_path, &conn)
 }
 
-/// DB-primary skill listing. After reconciliation runs at startup, the DB is the
-/// single source of truth. This function queries all `workflow_runs` from the DB,
-/// batch-fetches tags, and builds a `SkillSummary` list. No filesystem scanning.
+/// Unified skill listing driven by the `skills` master table.
+/// For skill-builder skills, LEFT JOINs to `workflow_runs` for step state.
+/// For marketplace/imported skills, they're always "completed" with no workflow_runs.
 ///
 /// The `_workspace_path` parameter is retained for backward compatibility with the
 /// Tauri command signature (the frontend still passes it), but is not used for
@@ -28,41 +28,87 @@ fn list_skills_inner(
     _workspace_path: &str,
     conn: &rusqlite::Connection,
 ) -> Result<Vec<SkillSummary>, String> {
-    // Query all workflow runs from the DB
+    // Query the skills master table
+    let master_skills = crate::db::list_all_skills(conn)?;
+
+    log::debug!(
+        "[list_skills_inner] {} skills in master table",
+        master_skills.len()
+    );
+
+    // Also load workflow_runs for skill-builder skills (keyed by skill_name)
     let runs = crate::db::list_all_workflow_runs(conn)?;
+    let runs_map: std::collections::HashMap<String, crate::types::WorkflowRunRow> = runs
+        .into_iter()
+        .map(|r| (r.skill_name.clone(), r))
+        .collect();
 
     // Batch-fetch tags for all skills
-    let names: Vec<String> = runs.iter().map(|r| r.skill_name.clone()).collect();
+    let names: Vec<String> = master_skills.iter().map(|s| s.name.clone()).collect();
     let tags_map = crate::db::get_tags_for_skills(conn, &names)?;
 
-    // Build SkillSummary list from DB data
-    let mut skills: Vec<SkillSummary> = runs
+    // Frontmatter fields (description, version, model, etc.) are now in the `skills` master table
+    // via migration 24. They come through master_skills (SkillMasterRow) for all skill sources.
+
+    // Build SkillSummary list from master + optional workflow_runs
+    let mut skills: Vec<SkillSummary> = master_skills
         .into_iter()
-        .map(|run| {
+        .map(|master| {
             let tags = tags_map
-                .get(&run.skill_name)
+                .get(&master.name)
                 .cloned()
                 .unwrap_or_default();
 
+            if master.skill_source == "skill-builder" {
+                // For skill-builder: workflow_runs provides step state and workflow-specific fields.
+                // Frontmatter fields come from skills master (canonical since migration 24).
+                if let Some(run) = runs_map.get(&master.name) {
+                    return SkillSummary {
+                        name: run.skill_name.clone(),
+                        domain: Some(run.domain.clone()),
+                        current_step: Some(format!("Step {}", run.current_step)),
+                        status: Some(run.status.clone()),
+                        last_modified: Some(run.updated_at.clone()),
+                        tags,
+                        skill_type: Some(run.skill_type.clone()),
+                        author_login: run.author_login.clone(),
+                        author_avatar: run.author_avatar.clone(),
+                        display_name: run.display_name.clone(),
+                        intake_json: run.intake_json.clone(),
+                        source: Some(run.source.clone()),
+                        skill_source: Some(master.skill_source.clone()),
+                        description: master.description.clone(),
+                        version: master.version.clone(),
+                        model: master.model.clone(),
+                        argument_hint: master.argument_hint.clone(),
+                        user_invocable: master.user_invocable,
+                        disable_model_invocation: master.disable_model_invocation,
+                    };
+                }
+            }
+
+            // For marketplace/imported skills (or skill-builder with no workflow_runs row):
+            // show as completed with master data. Frontmatter fields all come from skills master.
             SkillSummary {
-                name: run.skill_name,
-                domain: Some(run.domain),
-                current_step: Some(format!("Step {}", run.current_step)),
-                status: Some(run.status),
-                last_modified: Some(run.updated_at),
+                name: master.name.clone(),
+                domain: master.domain.clone(),
+                current_step: Some("Step 5".to_string()),
+                status: Some("completed".to_string()),
+                last_modified: Some(master.updated_at.clone()),
                 tags,
-                skill_type: Some(run.skill_type),
-                author_login: run.author_login,
-                author_avatar: run.author_avatar,
-                display_name: run.display_name,
-                intake_json: run.intake_json,
-                source: Some(run.source),
-                description: run.description,
-                version: run.version,
-                model: run.model,
-                argument_hint: run.argument_hint,
-                user_invocable: run.user_invocable,
-                disable_model_invocation: run.disable_model_invocation,
+                skill_type: master.skill_type.clone(),
+                author_login: None,
+                author_avatar: None,
+                display_name: None,
+                intake_json: None,
+                source: Some(master.skill_source.clone()),
+                skill_source: Some(master.skill_source.clone()),
+                description: master.description.clone(),
+                version: master.version.clone(),
+                model: master.model.clone(),
+                argument_hint: master.argument_hint.clone(),
+                user_invocable: master.user_invocable,
+                disable_model_invocation: master.disable_model_invocation,
             }
         })
         .collect();
@@ -319,13 +365,13 @@ pub fn delete_skill(
         log::error!("[delete_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    // Read skills_path from settings DB
+    // Read skills_path from settings DB — may be None
     let settings = crate::db::read_settings(&conn).ok();
     let skills_path = settings.as_ref().and_then(|s| s.skills_path.clone());
 
-    // Require skills_path to be configured
+    // DB cleanup works even without skills_path; only filesystem cleanup needs it
     if skills_path.is_none() {
-        return Err("Skills path not configured. Please set it in Settings.".to_string());
+        log::warn!("[delete_skill] skills_path not configured; skipping filesystem cleanup for '{}'", name);
     }
 
     delete_skill_inner(
@@ -392,10 +438,20 @@ fn delete_skill_inner(
         }
     }
 
-    // Full DB cleanup: workflow_run + steps + agent_runs + tags
+    // Full DB cleanup: route to the right delete based on what's in the DB.
+    // Skill-builder skills have a workflow_run; marketplace/imported skills do not.
     if let Some(conn) = conn {
-        crate::db::delete_workflow_run(conn, name)?;
-        log::info!("[delete_skill] DB records cleaned for {}", name);
+        let has_workflow_run = crate::db::get_workflow_run_id(conn, name)
+            .unwrap_or(None)
+            .is_some();
+        if has_workflow_run {
+            crate::db::delete_workflow_run(conn, name)?;
+            log::info!("[delete_skill] workflow run DB records cleaned for {}", name);
+        } else {
+            crate::db::delete_imported_skill_by_name(conn, name)?;
+            crate::db::delete_skill(conn, name)?;
+            log::info!("[delete_skill] imported skill DB records cleaned for {}", name);
+        }
     }
 
     Ok(())
@@ -535,6 +591,14 @@ pub fn update_skill_metadata(
             log::error!("[update_skill_metadata] Failed to update domain: {}", e);
             e.to_string()
         })?;
+        // Also update skills master table — works for all skill sources
+        conn.execute(
+            "UPDATE skills SET domain = ?2, updated_at = datetime('now') WHERE name = ?1",
+            rusqlite::params![skill_name, d],
+        ).map_err(|e| {
+            log::error!("[update_skill_metadata] Failed to update skills.domain: {}", e);
+            e.to_string()
+        })?;
     }
     if let Some(st) = &skill_type {
         conn.execute(
@@ -564,6 +628,8 @@ pub fn update_skill_metadata(
         || user_invocable.is_some()
         || disable_model_invocation.is_some()
     {
+        // set_skill_behaviour writes to skills master (canonical) + workflow_runs (dual-write).
+        // Works for all skill sources — marketplace/imported updates skills master directly.
         crate::db::set_skill_behaviour(
             &conn,
             &skill_name,
@@ -637,15 +703,16 @@ fn rename_skill_inner(
     conn: &mut rusqlite::Connection,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    // Check new name doesn't already exist
-    let exists: bool = conn
+    // Check new name doesn't already exist in skills master (workflow_runs.skill_name
+    // has a UNIQUE constraint that will also catch duplicates once we update it).
+    let exists_master: bool = conn
         .query_row(
-            "SELECT COUNT(*) > 0 FROM workflow_runs WHERE skill_name = ?1",
+            "SELECT COUNT(*) > 0 FROM skills WHERE name = ?1",
             rusqlite::params![new_name],
             |row| row.get(0),
         )
-        .map_err(|e| e.to_string())?;
-    if exists {
+        .unwrap_or(false);
+    if exists_master {
         log::error!("[rename_skill] Skill '{}' already exists", new_name);
         return Err(format!("Skill '{}' already exists", new_name));
     }
@@ -660,32 +727,49 @@ fn rename_skill_inner(
 
         let tx = conn.transaction().map_err(&tx_err)?;
 
-        // workflow_runs: PK change — insert new, delete old
+        // Rename in skills master — all child tables join by integer FK, so no further UPDATEs needed.
         tx.execute(
-            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation)
-             SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM workflow_runs WHERE skill_name = ?1",
+            "UPDATE skills SET name = ?2, updated_at = datetime('now') WHERE name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // workflow_runs.skill_name is TEXT UNIQUE NOT NULL used for display/lookup — update it.
+        tx.execute(
+            "UPDATE workflow_runs SET skill_name = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // workflow_sessions.skill_name is still TEXT (for display/logging) — update it.
+        tx.execute(
+            "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // These child tables still carry skill_name TEXT for read queries — keep them in sync.
+        tx.execute(
+            "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
         tx.execute(
-            "DELETE FROM workflow_runs WHERE skill_name = ?1",
-            rusqlite::params![old_name],
+            "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
-
-        // Rename foreign-key references across all related tables
-        for table in &[
-            "workflow_steps",
-            "skill_tags",
-            "agent_runs",
-            "workflow_artifacts",
-            "skill_locks",
-            "workflow_sessions",
-        ] {
-            tx.execute(
-                &format!("UPDATE {} SET skill_name = ?2 WHERE skill_name = ?1", table),
-                rusqlite::params![old_name, new_name],
-            ).map_err(&tx_err)?;
-        }
+        tx.execute(
+            "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+        tx.execute(
+            "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+        tx.execute(
+            "UPDATE imported_skills SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+        tx.execute(
+            "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
 
         tx.commit().map_err(&tx_err)?;
     }
@@ -1169,20 +1253,30 @@ mod tests {
         )
         .unwrap();
 
-        // Add workflow steps
+        // Add workflow steps (save_workflow_step populates workflow_run_id FK automatically)
         crate::db::save_workflow_step(&conn, "db-cleanup", 0, "completed").unwrap();
 
-        // Add workflow artifact
-        conn.execute(
-            "INSERT INTO workflow_artifacts (skill_name, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', 0, 'test.md', '# Test', 6)",
+        // Add workflow artifact with FK populated
+        let wr_id: i64 = conn.query_row(
+            "SELECT id FROM workflow_runs WHERE skill_name = 'db-cleanup'",
             [],
+            |row| row.get(0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO workflow_artifacts (skill_name, workflow_run_id, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', ?1, 0, 'test.md', '# Test', 6)",
+            rusqlite::params![wr_id],
         )
         .unwrap();
 
-        // Add skill lock
-        conn.execute(
-            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES ('db-cleanup', 'inst-1', 12345)",
+        // Add skill lock with skill_id FK populated
+        let s_id: i64 = conn.query_row(
+            "SELECT id FROM skills WHERE name = 'db-cleanup'",
             [],
+            |row| row.get(0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('db-cleanup', ?1, 'inst-1', 12345)",
+            rusqlite::params![s_id],
         )
         .unwrap();
 
@@ -1327,6 +1421,115 @@ mod tests {
 
         let result = delete_skill_inner(workspace, "no-such-skill", None, None);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Insert a skills master row with source="marketplace" (no workflow_run)
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('mkt-skill', 'marketplace', 'data', 'domain')",
+            [],
+        ).unwrap();
+        // Insert corresponding imported_skills row
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)
+             VALUES ('mkt-id', 'mkt-skill', '/tmp/mkt-skill', 0,
+                     (SELECT id FROM skills WHERE name = 'mkt-skill'))",
+            [],
+        ).unwrap();
+
+        // Verify setup: no workflow_run, but skills + imported_skills rows exist
+        let wf_id = crate::db::get_workflow_run_id(&conn, "mkt-skill").unwrap();
+        assert!(wf_id.is_none(), "Marketplace skill should have no workflow_run");
+
+        let skill_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skill_count, 1);
+
+        // Delete via delete_skill_inner
+        delete_skill_inner(workspace, "mkt-skill", Some(&conn), None).unwrap();
+
+        // Both skills master and imported_skills rows should be gone
+        let skills_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skills_after, 0, "skills master row should be deleted");
+
+        let imported_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(imported_after, 0, "imported_skills row should be deleted");
+    }
+
+    #[test]
+    fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // create_skill_inner inserts into skills (skill_source="skill-builder") + workflow_runs
+        create_skill_inner(workspace, "builder-skill", "data", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+
+        // Verify setup: workflow_run exists
+        let wf_id = crate::db::get_workflow_run_id(&conn, "builder-skill").unwrap();
+        assert!(wf_id.is_some(), "skill-builder skill should have workflow_run");
+
+        delete_skill_inner(workspace, "builder-skill", Some(&conn), None).unwrap();
+
+        // workflow_runs row should be gone
+        let wf_after = crate::db::get_workflow_run(&conn, "builder-skill").unwrap();
+        assert!(wf_after.is_none(), "workflow_run should be deleted");
+
+        // skills master row should also be gone
+        let skills_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'builder-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skills_after, 0, "skills master row should be deleted");
+    }
+
+    #[test]
+    fn test_rename_skill_inner_updates_imported_skills_name() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let mut conn = create_test_db();
+
+        // Insert a skills master row (imported source)
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('imp-skill', 'imported', 'eng', 'domain')",
+            [],
+        ).unwrap();
+        // Insert imported_skills row
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)
+             VALUES ('imp-id', 'imp-skill', '/tmp/imp-skill', 0,
+                     (SELECT id FROM skills WHERE name = 'imp-skill'))",
+            [],
+        ).unwrap();
+
+        rename_skill_inner("imp-skill", "imp-skill-renamed", workspace, &mut conn, None).unwrap();
+
+        // skills master should be renamed
+        let master_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'imp-skill-renamed'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(master_count, 1, "skills master should have new name");
+
+        // imported_skills.skill_name should also be updated
+        let imported_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill-renamed'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(imported_count, 1, "imported_skills.skill_name should be updated");
+
+        // Old name should be gone from imported_skills
+        let old_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(old_count, 0, "old imported_skills name should be gone");
     }
 
     // ===== Existing tests (updated signatures) =====
@@ -1603,8 +1806,12 @@ mod tests {
 
         // These should succeed (UPDATE affects 0 rows, no error)
         crate::db::set_skill_display_name(&conn, "ghost", Some("Name")).unwrap();
-        crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]).unwrap();
         crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
+
+        // set_skill_tags now requires a skills master row — returns Err for unknown skills
+        let result = crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found in skills master"));
 
         // No row should exist
         assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
