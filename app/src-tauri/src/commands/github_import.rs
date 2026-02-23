@@ -30,6 +30,51 @@ pub(crate) async fn get_default_branch(
         .to_string())
 }
 
+/// Resolve the actual default branch and fetch the full recursive git tree.
+///
+/// Combines two API calls (repos + git/trees) that are repeated across
+/// `list_github_skills_inner`, `import_github_skills`, and
+/// `import_marketplace_to_library`.
+async fn fetch_repo_tree(
+    client: &reqwest::Client,
+    owner: &str,
+    repo: &str,
+    fallback_branch: &str,
+) -> Result<(String, Vec<serde_json::Value>), String> {
+    let branch = get_default_branch(client, owner, repo)
+        .await
+        .unwrap_or_else(|_| fallback_branch.to_string());
+
+    let tree_url = format!(
+        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+        owner, repo, branch
+    );
+
+    let response = client
+        .get(&tree_url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
+
+    let status = response.status();
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
+
+    if !status.is_success() {
+        let message = body["message"].as_str().unwrap_or("Unknown error");
+        return Err(format!("GitHub API error ({}): {}", status, message));
+    }
+
+    let tree = body["tree"]
+        .as_array()
+        .ok_or("Invalid tree response: missing 'tree' array")?
+        .clone();
+
+    Ok((branch, tree))
+}
+
 /// Build a `reqwest::Client` with standard GitHub API headers.
 /// If an OAuth token is available in settings, it is included as a Bearer token.
 pub(crate) fn build_github_client(token: Option<&str>) -> reqwest::Client {
@@ -210,43 +255,8 @@ pub(crate) async fn list_github_skills_inner(
     show_all: bool,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
-
-    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
-    // but repos may use a different default (e.g. "master").
-    let branch = get_default_branch(&client, owner, repo)
-        .await
-        .unwrap_or_else(|_| branch.to_string());
-
-    // Fetch the full recursive tree
-    let tree_url = format!(
-        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-        owner, repo, branch
-    );
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, branch).await?;
     log::info!("[list_github_skills_inner] fetching tree from {}/{} branch={}", owner, repo, branch);
-
-    let response = client
-        .get(&tree_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
-
-    let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
-
-    if !status.is_success() {
-        let message = body["message"].as_str().unwrap_or("Unknown error");
-        return Err(format!(
-            "GitHub API error ({}): {}",
-            status, message
-        ));
-    }
-
-    let tree = body["tree"]
-        .as_array()
-        .ok_or("Invalid tree response: missing 'tree' array")?;
 
     // Find all SKILL.md blob entries
     let skill_md_paths: Vec<String> = tree
@@ -433,42 +443,7 @@ pub async fn import_github_skills(
     };
 
     let client = build_github_client(token.as_deref());
-
-    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
-    // but repos may use a different default (e.g. "master").
-    let branch = get_default_branch(&client, &owner, &repo)
-        .await
-        .unwrap_or(branch);
-
-    // Fetch the full recursive tree once
-    let tree_url = format!(
-        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-        owner, repo, branch
-    );
-
-    let response = client
-        .get(&tree_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
-
-    let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
-
-    if !status.is_success() {
-        let message = body["message"].as_str().unwrap_or("Unknown error");
-        return Err(format!(
-            "GitHub API error ({}): {}",
-            status, message
-        ));
-    }
-
-    let tree = body["tree"]
-        .as_array()
-        .ok_or("Invalid tree response: missing 'tree' array")?;
+    let (branch, tree) = fetch_repo_tree(&client, &owner, &repo, &branch).await?;
 
     let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
     let mut imported: Vec<ImportedSkill> = Vec::new();
@@ -481,7 +456,7 @@ pub async fn import_github_skills(
             &repo,
             &branch,
             skill_path,
-            tree,
+            &tree,
             &skills_dir,
             false,
             None,
@@ -582,39 +557,7 @@ pub async fn import_marketplace_to_library(
     let repo = &repo_info.repo;
 
     let client = build_github_client(token.as_deref());
-
-    // Resolve the actual default branch — parse_github_url_inner defaults to "main"
-    // but repos may use a different default (e.g. "master").
-    let branch = get_default_branch(&client, owner, repo)
-        .await
-        .unwrap_or_else(|_| repo_info.branch.clone());
-
-    // Fetch the full recursive tree once
-    let tree_url = format!(
-        "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
-        owner, repo, branch
-    );
-
-    let response = client
-        .get(&tree_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch repo tree: {}", e))?;
-
-    let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse tree response: {}", e))?;
-
-    if !status.is_success() {
-        let message = body["message"].as_str().unwrap_or("Unknown error");
-        return Err(format!("GitHub API error ({}): {}", status, message));
-    }
-
-    let tree = body["tree"]
-        .as_array()
-        .ok_or("Invalid tree response: missing 'tree' array")?;
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await?;
 
     let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
@@ -622,7 +565,7 @@ pub async fn import_marketplace_to_library(
     for skill_path in &skill_paths {
         let override_ref = metadata_overrides.as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
-        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, skills_dir, true, override_ref).await {
+        match import_single_skill(&client, owner, repo, &branch, skill_path, &tree, skills_dir, true, override_ref).await {
             Ok(skill) => {
                 let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
                 let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
@@ -738,27 +681,18 @@ fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -
 
     // Build new frontmatter YAML block
     let mut yaml = String::new();
-    if let Some(ref name) = fm.name {
-        yaml.push_str(&format!("name: {}\n", name));
-    }
-    if let Some(ref desc) = fm.description {
-        yaml.push_str(&format!("description: {}\n", desc));
-    }
-    if let Some(ref domain) = fm.domain {
-        yaml.push_str(&format!("domain: {}\n", domain));
-    }
-    if let Some(ref skill_type) = fm.skill_type {
-        yaml.push_str(&format!("type: {}\n", skill_type));
-    }
-    if let Some(ref version) = fm.version {
-        yaml.push_str(&format!("version: {}\n", version));
-    }
-    if let Some(ref model) = fm.model {
-        yaml.push_str(&format!("model: {}\n", model));
-    }
-    if let Some(ref hint) = fm.argument_hint {
-        yaml.push_str(&format!("argument-hint: {}\n", hint));
-    }
+    let mut add_field = |key: &str, val: &Option<String>| {
+        if let Some(v) = val {
+            yaml.push_str(&format!("{}: {}\n", key, v));
+        }
+    };
+    add_field("name", &fm.name);
+    add_field("description", &fm.description);
+    add_field("domain", &fm.domain);
+    add_field("type", &fm.skill_type);
+    add_field("version", &fm.version);
+    add_field("model", &fm.model);
+    add_field("argument-hint", &fm.argument_hint);
     if let Some(user_inv) = fm.user_invocable {
         yaml.push_str(&format!("user-invocable: {}\n", user_inv));
     }
@@ -885,23 +819,6 @@ pub(crate) async fn import_single_skill(
     }
 
     let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
-
-    // Log absent optional fields at debug level — this is internal detail, not a lifecycle event
-    for (field, absent) in [
-        ("version", fm.version.is_none()),
-        ("model", fm.model.is_none()),
-        ("argument-hint", fm.argument_hint.is_none()),
-        ("user-invocable", fm.user_invocable.is_none()),
-        ("disable-model-invocation", fm.disable_model_invocation.is_none()),
-    ] {
-        if absent {
-            log::debug!(
-                "import_single_skill: optional field '{}' absent for skill '{}'",
-                field,
-                skill_name
-            );
-        }
-    }
 
     if skill_name.is_empty() {
         return Err("Could not determine skill name".to_string());
