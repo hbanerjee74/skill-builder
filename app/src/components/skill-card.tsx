@@ -195,12 +195,14 @@ export default function SkillCard({
                 onClick={() => onRefine(skill)}
               />
             )}
-            <IconAction
-              icon={<FlaskConical className="size-3" />}
-              label="Test skill"
-              tooltip="Test"
-              onClick={() => onTest?.(skill)}
-            />
+            {canDownload && (
+              <IconAction
+                icon={<FlaskConical className="size-3" />}
+                label="Test skill"
+                tooltip="Test"
+                onClick={() => onTest?.(skill)}
+              />
+            )}
           </div>
           <div className="flex items-center gap-0.5">
             {canDownload && onDownload && (
