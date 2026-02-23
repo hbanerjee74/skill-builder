@@ -44,7 +44,7 @@ export function SkillSourceBadge({ skillSource, className }: SkillSourceBadgePro
   const Icon = config.icon
 
   return (
-    <Badge className={cn("px-1.5 py-0 text-[10px] gap-1", config.colors, className)}>
+    <Badge className={cn("px-1.5 py-0 text-xs gap-1", config.colors, className)}>
       <Icon className="size-3" />
       {config.label}
     </Badge>

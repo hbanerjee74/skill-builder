@@ -407,18 +407,18 @@ export default function DashboardPage() {
     if (viewMode === "list") {
       return (
         <table className="w-full table-auto border-separate border-spacing-0">
-          <thead className="sticky top-0 z-10 bg-background">
+          <thead className="sticky top-0 z-10 bg-background shadow-sm">
             <tr className="hidden sm:table-row">
-              <th scope="col" className="pl-4 py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
+              <th scope="col" className="pl-4 py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
                 <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
+              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
                 <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
+              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
                 <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="pr-4 py-1.5 text-right text-sm font-semibold text-muted-foreground border-b">Actions</th>
+              <th scope="col" className="pr-4 py-1.5 text-right text-sm font-semibold text-muted-foreground border-b-2 border-border">Actions</th>
             </tr>
           </thead>
           <tbody>
