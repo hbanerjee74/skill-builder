@@ -2352,6 +2352,18 @@ pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, S
     Ok(names)
 }
 
+/// Return names of all skills in the skills master table.
+/// Used by the skill-library (dashboard) path to check which skills are already installed.
+pub fn get_dashboard_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
+    let mut stmt = conn.prepare("SELECT name FROM skills")
+        .map_err(|e| e.to_string())?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(names)
+}
+
 // --- Skill Locks ---
 
 pub fn acquire_skill_lock(

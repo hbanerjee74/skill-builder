@@ -353,6 +353,14 @@ export async function getInstalledSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_installed_skill_names")
 }
 
+export async function getDashboardSkillNames(): Promise<string[]> {
+  return invoke<string[]>("get_dashboard_skill_names")
+}
+
+export async function listSkills(workspacePath: string): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>("list_skills", { workspacePath })
+}
+
 export const listWorkspaceSkills = () =>
   invoke<WorkspaceSkill[]>("list_workspace_skills")
 

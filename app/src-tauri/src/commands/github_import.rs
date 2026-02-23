@@ -464,9 +464,8 @@ pub async fn import_github_skills(
         )
         .await
         {
-            Ok(skill) => {
+            Ok(mut skill) => {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                let ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
 
                 if let Some(ref existing_skill) = existing {
                     // Compare versions (None == None means same version)
@@ -485,11 +484,25 @@ pub async fn import_github_skills(
                         errors.push(format!("{}: already installed at the same version", skill.skill_name));
                         continue;
                     }
-                    // Different version — upgrade: update existing DB row
+                    // Different version — upgrade: merge new frontmatter with existing installed values
+                    // New value wins if Some/non-empty, else fall back to existing installed value
+                    if skill.domain.is_none() { skill.domain = existing_skill.domain.clone(); }
+                    if skill.description.is_none() { skill.description = existing_skill.description.clone(); }
+                    if skill.model.is_none() { skill.model = existing_skill.model.clone(); }
+                    if skill.argument_hint.is_none() { skill.argument_hint = existing_skill.argument_hint.clone(); }
+                    if skill.user_invocable.is_none() { skill.user_invocable = existing_skill.user_invocable; }
+                    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing_skill.disable_model_invocation; }
+                    // Do NOT merge version — keep the new version
+                    // Do NOT merge skill_name — keep the new name
                     log::info!(
                         "[import_github_skills] upgrading {} from {:?} to {:?}",
                         skill.skill_name, existing_skill.version, skill.version
                     );
+                }
+
+                let ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
+
+                if existing.is_some() {
                     if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
                         if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
@@ -542,6 +555,17 @@ pub async fn import_github_skills(
     }
 
     Ok(imported)
+}
+
+// ---------------------------------------------------------------------------
+// get_dashboard_skill_names
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn get_dashboard_skill_names(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
+    log::info!("[get_dashboard_skill_names]");
+    let conn = db.0.lock().map_err(|e| { log::error!("[get_dashboard_skill_names] lock failed: {}", e); e.to_string() })?;
+    crate::db::get_dashboard_skill_names(&conn)
 }
 
 // ---------------------------------------------------------------------------
@@ -604,22 +628,36 @@ pub async fn import_marketplace_to_library(
         let override_ref = metadata_overrides.as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
         match import_single_skill(&client, owner, repo, &branch, skill_path, &tree, skills_dir, true, override_ref).await {
-            Ok(skill) => {
-                let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
-                let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
-
+            Ok(mut skill) => {
                 let conn = db.0.lock().map_err(|e| {
                     log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
                     e.to_string()
                 })?;
 
+                // Fetch existing imported skill metadata (if any) for merging on upgrade
+                let existing_imported = crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
+
+                // Merge: new frontmatter value wins if Some, else fall back to existing installed value
+                if let Some(ref existing) = existing_imported {
+                    if skill.domain.is_none() { skill.domain = existing.domain.clone(); }
+                    if skill.description.is_none() { skill.description = existing.description.clone(); }
+                    if skill.model.is_none() { skill.model = existing.model.clone(); }
+                    if skill.argument_hint.is_none() { skill.argument_hint = existing.argument_hint.clone(); }
+                    if skill.user_invocable.is_none() { skill.user_invocable = existing.user_invocable; }
+                    if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing.disable_model_invocation; }
+                    // Do NOT merge version — keep the new version
+                    // Do NOT merge skill_name — keep the new name
+                }
+
                 // Insert into skills master first so that skills.id is available as a FK
                 // when inserting into imported_skills below.
+                let domain_for_master = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
+                let skill_type_for_master = skill.skill_type.as_deref().unwrap_or("domain");
                 if let Err(e) = crate::db::save_marketplace_skill(
                     &conn,
                     &skill.skill_name,
-                    &domain,
-                    skill_type_str,
+                    &domain_for_master,
+                    skill_type_for_master,
                 ) {
                     log::warn!(
                         "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
