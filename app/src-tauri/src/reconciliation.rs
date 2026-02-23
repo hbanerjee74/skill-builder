@@ -147,6 +147,63 @@ pub fn reconcile_on_startup(
         }
     }
 
+    // Pass 3: Move any remaining orphaned folders (not in skills master) to .trash/
+    // This catches anything missed by Pass 1 and Pass 2 — defensive catch-all.
+    // Skip skills pending user action from Pass 2 discovery.
+    let discovered_names: HashSet<String> = discovered_skills.iter().map(|d| d.name.clone()).collect();
+    if skills_dir.exists() {
+        let trash_dir = skills_dir.join(".trash");
+        for entry in std::fs::read_dir(skills_dir).into_iter().flatten().flatten() {
+            let path = entry.path();
+            if !path.is_dir() { continue; }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') { continue; } // skip dotfiles, .git, .trash
+
+            if !master_names.contains(&name) && !discovered_names.contains(&name) {
+                // Not in master after all reconciliation — move to .trash/
+                let dest = trash_dir.join(&name);
+                if let Err(e) = std::fs::create_dir_all(&trash_dir) {
+                    log::error!("[reconcile] failed to create .trash/: {}", e);
+                    continue;
+                }
+                // Remove dest if it already exists (from a previous run)
+                if dest.exists() {
+                    let _ = std::fs::remove_dir_all(&dest);
+                }
+                match std::fs::rename(&path, &dest) {
+                    Ok(()) => {
+                        log::info!("[reconcile] '{}': moved to .trash (not in skills master)", name);
+                        notifications.push(format!("'{}' moved to .trash — not in skills catalog", name));
+                    }
+                    Err(e) => {
+                        log::error!("[reconcile] '{}': failed to move to .trash: {}", name, e);
+                    }
+                }
+                // Also clean imported_skills if present
+                crate::db::delete_imported_skill_by_name(conn, &name).ok();
+            }
+        }
+    }
+
+    // Ensure .trash/ is git-ignored
+    if skills_dir.exists() {
+        let gitignore = skills_dir.join(".gitignore");
+        let needs_trash_entry = if gitignore.exists() {
+            std::fs::read_to_string(&gitignore)
+                .map(|c| !c.lines().any(|l| l.trim() == ".trash/"))
+                .unwrap_or(true)
+        } else {
+            true
+        };
+        if needs_trash_entry {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&gitignore) {
+                let _ = writeln!(f, ".trash/");
+                log::debug!("[reconcile] added .trash/ to .gitignore");
+            }
+        }
+    }
+
     log::info!(
         "[reconcile_on_startup] done: {} auto-cleaned, {} notifications, {} discovered",
         auto_cleaned, notifications.len(), discovered_skills.len()
