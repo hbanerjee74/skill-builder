@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, reconcileStartup } from "@/lib/tauri";
+import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, getWorkspacePath } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
@@ -53,6 +53,23 @@ export function AppLayout() {
         invoke<ModelInfo[]>("list_models", { apiKey: s.anthropic_api_key })
           .then((models) => setSettings({ availableModels: models }))
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
+      }
+      // Check for marketplace updates in the background
+      if (s.marketplace_url) {
+        const marketplaceUrl = s.marketplace_url;
+        parseGitHubUrl(marketplaceUrl)
+          .then((repoInfo) => getWorkspacePath().then((wp) => ({ repoInfo, wp })))
+          .then(({ repoInfo }) =>
+            checkMarketplaceUpdates(repoInfo.owner, repoInfo.repo, repoInfo.branch, repoInfo.subpath ?? undefined)
+          )
+          .then((updates) => {
+            if (updates.length > 0) {
+              toast.info(
+                `Updates available for ${updates.length} skill${updates.length !== 1 ? "s" : ""}: ${updates.join(", ")} — open Marketplace to update`
+              );
+            }
+          })
+          .catch((err) => console.warn("[app-layout] Marketplace update check failed:", err));
       }
     }).catch(() => {
       // Settings may not exist yet — show splash

@@ -392,6 +392,17 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
 
+export const checkMarketplaceUpdates = (
+  owner: string,
+  repo: string,
+  branch: string,
+  subpath?: string,
+): Promise<string[]> =>
+  invoke<string[]>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+
+export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
+  invoke<boolean>("check_skill_customized", { skillName })
+
 // --- Refine ---
 
 export const listRefinableSkills = (workspacePath: string) =>

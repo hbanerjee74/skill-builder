@@ -9,6 +9,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -17,11 +27,37 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
 import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
+
+/**
+ * Returns true only if `a` is strictly greater than `b` by semver rules.
+ * Falls back to string inequality if either value fails to parse.
+ * If `a` is null/undefined, returns false (no marketplace version → never upgrade).
+ * If only `b` is null/undefined, treats `a` as newer.
+ */
+function semverGt(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a == null || a === "") return false
+  if (b == null || b === "") return true
+  // Try semver parse: split "major.minor.patch" into numbers
+  const parseSemver = (v: string): [number, number, number] | null => {
+    const m = v.match(/^(\d+)\.(\d+)\.(\d+)/)
+    if (!m) return null
+    return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)]
+  }
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (pa && pb) {
+    if (pa[0] !== pb[0]) return pa[0] > pb[0]
+    if (pa[1] !== pb[1]) return pa[1] > pb[1]
+    return pa[2] > pb[2]
+  }
+  // Fallback: string inequality (not equal means "different", treat as newer)
+  return a !== b
+}
 
 const FALLBACK_MODEL_OPTIONS = [
   { id: "haiku",  displayName: "Haiku — fastest, lowest cost" },
@@ -91,6 +127,10 @@ export default function GitHubImportDialog({
   // Workspace skills for version comparison and purpose conflict detection (settings-skills only)
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
 
+  // Customization warning state (settings-skills upgrade path)
+  const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
+  const [showCustomizationWarning, setShowCustomizationWarning] = useState(false)
+
   function setSkillState(path: string, state: SkillState): void {
     setSkillStates((prev) => new Map(prev).set(path, state))
   }
@@ -112,6 +152,8 @@ export default function GitHubImportDialog({
     setSkillStates(new Map())
     closeEditForm()
     setWorkspaceSkills([])
+    setPendingUpgradeSkill(null)
+    setShowCustomizationWarning(false)
   }, [])
 
   const handleOpenChange = useCallback(
@@ -162,8 +204,8 @@ export default function GitHubImportDialog({
         for (const skill of available) {
           if (dashboardSet.has(skill.name)) {
             const installedSummary = newSummaryMap.get(skill.name)
-            const sameVersion = installedSummary?.version === skill.version
-            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+            const isUpgrade = semverGt(skill.version, installedSummary?.version)
+            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
           }
         }
       } else {
@@ -175,8 +217,8 @@ export default function GitHubImportDialog({
         for (const skill of available) {
           if (installedSet.has(skill.name)) {
             const installedVersion = installedVersionMap.get(skill.name)
-            const sameVersion = installedVersion === skill.version  // covers both null/undefined
-            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+            const isUpgrade = semverGt(skill.version, installedVersion)
+            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
           }
         }
       }
@@ -416,7 +458,22 @@ export default function GitHubImportDialog({
                               className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                               disabled={isImporting}
                               aria-label={`Import ${skill.name}`}
-                              onClick={() => openEditForm(skill)}
+                              onClick={async () => {
+                                if (isUpgrade && mode === 'settings-skills') {
+                                  // Check for customization before opening edit form
+                                  try {
+                                    const isCustomized = await checkSkillCustomized(skill.name)
+                                    if (isCustomized) {
+                                      setPendingUpgradeSkill(skill)
+                                      setShowCustomizationWarning(true)
+                                      return
+                                    }
+                                  } catch (err) {
+                                    console.warn("[github-import] checkSkillCustomized failed:", err)
+                                  }
+                                }
+                                openEditForm(skill)
+                              }}
                             >
                               {isImporting ? (
                                 <Loader2 className="size-3.5 animate-spin" />
@@ -621,6 +678,18 @@ export default function GitHubImportDialog({
               Review and configure the skill before importing. Purpose determines how this skill is used by agents.
             </DialogDescription>
           </DialogHeader>
+          {editingSkill && skillStates.get(editingSkill.path) === 'upgrade' && editForm && (() => {
+            const installedVersion = workspaceSkills.find((w) => w.skill_name === editingSkill.name)?.version
+            const newVersion = editingSkill.version
+            if (installedVersion && newVersion && installedVersion !== newVersion) {
+              return (
+                <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
+                </div>
+              )
+            }
+            return null
+          })()}
           {editForm && (
             <ScrollArea className="max-h-[75vh]">
               <div className="flex flex-col gap-4 pr-2">
@@ -778,6 +847,38 @@ export default function GitHubImportDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Customization warning: shown when upgrading a skill that has been locally modified */}
+      <AlertDialog open={showCustomizationWarning} onOpenChange={(open) => {
+        if (!open) {
+          setShowCustomizationWarning(false)
+          setPendingUpgradeSkill(null)
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Skill has been customized</AlertDialogTitle>
+            <AlertDialogDescription>
+              This skill has been modified since it was imported. Updating will replace your changes with the marketplace version. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowCustomizationWarning(false)
+              setPendingUpgradeSkill(null)
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const skill = pendingUpgradeSkill
+              setShowCustomizationWarning(false)
+              setPendingUpgradeSkill(null)
+              if (skill) openEditForm(skill)
+            }}>
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
