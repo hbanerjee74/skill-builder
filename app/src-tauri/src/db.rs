@@ -932,13 +932,18 @@ fn run_content_hash_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
             })
             .unwrap_or(false)
     };
+    let mut altered = false;
     if !check_col("workspace_skills", "content_hash") {
         conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN content_hash TEXT;")?;
+        altered = true;
     }
     if !check_col("imported_skills", "content_hash") {
         conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN content_hash TEXT;")?;
+        altered = true;
     }
-    log::info!("migration 26: added content_hash to workspace_skills and imported_skills");
+    if altered {
+        log::info!("migration 26: added content_hash to workspace_skills and imported_skills");
+    }
     Ok(())
 }
 

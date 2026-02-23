@@ -35,7 +35,7 @@ import { useSettingsStore } from "@/stores/settings-store"
 
 /**
  * Returns true only if `a` is strictly greater than `b` by semver rules.
- * Falls back to string inequality if either value fails to parse.
+ * Returns false if semver parsing fails on either side (can't determine direction).
  * If `a` is null/undefined, returns false (no marketplace version → never upgrade).
  * If only `b` is null/undefined, treats `a` as newer.
  */
@@ -55,8 +55,9 @@ function semverGt(a: string | null | undefined, b: string | null | undefined): b
     if (pa[1] !== pb[1]) return pa[1] > pb[1]
     return pa[2] > pb[2]
   }
-  // Fallback: string inequality (not equal means "different", treat as newer)
-  return a !== b
+  // Fallback: semver parsing failed on one or both sides — can't determine direction,
+  // so don't show a spurious upgrade badge.
+  return false
 }
 
 const FALLBACK_MODEL_OPTIONS = [

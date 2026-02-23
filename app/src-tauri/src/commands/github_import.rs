@@ -567,6 +567,7 @@ pub async fn import_github_skills(
     let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
     let mut imported: Vec<ImportedSkill> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
 
     for req in &skill_requests {
         let skill_path = &req.path;
@@ -620,7 +621,7 @@ pub async fn import_github_skills(
                                 skill.disk_path, e
                             );
                         }
-                        errors.push(format!("{}: already installed at the same version", skill.skill_name));
+                        skipped.push(skill.skill_name.clone());
                         continue;
                     }
                     // Different version — merge: new frontmatter wins if Some, else fall back to existing WorkspaceSkill
@@ -702,6 +703,9 @@ pub async fn import_github_skills(
     // If some succeeded and some failed, log warnings but return the successes
     for err in &errors {
         log::warn!("Skill import error: {}", err);
+    }
+    for name in &skipped {
+        log::info!("[import_github_skills] skipped '{}': already at same or newer version", name);
     }
 
     // Regenerate CLAUDE.md with imported skills section
@@ -1361,6 +1365,34 @@ pub fn check_skill_customized(
             return Ok(false);
         }
     };
+
+    // Validate disk_path is within expected roots (workspace skills dir or skills_path).
+    // This guards against a tampered DB row pointing outside the app's data directories.
+    {
+        let settings = crate::db::read_settings_hydrated(&conn)?;
+        let canonical_disk = std::fs::canonicalize(&disk_path).unwrap_or_default();
+
+        let workspace_root_ok = settings.workspace_path.as_ref().map(|wp| {
+            let expected = Path::new(wp).join(".claude").join("skills");
+            std::fs::canonicalize(&expected)
+                .map(|root| canonical_disk.starts_with(&root))
+                .unwrap_or(false)
+        }).unwrap_or(false);
+
+        let skills_path_ok = settings.skills_path.as_ref().map(|sp| {
+            std::fs::canonicalize(sp)
+                .map(|root| canonical_disk.starts_with(&root))
+                .unwrap_or(false)
+        }).unwrap_or(false);
+
+        if !workspace_root_ok && !skills_path_ok {
+            log::warn!(
+                "[check_skill_customized] disk_path '{}' for '{}' is outside expected roots — treating as unmodified",
+                disk_path, skill_name
+            );
+            return Ok(false);
+        }
+    }
 
     // No baseline stored — treat as unmodified
     let stored = match stored_hash {
