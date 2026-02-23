@@ -128,6 +128,9 @@ export default function SkillCard({
   const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
   const canDownload = isMarketplace || isWorkflowComplete(skill)
 
+  // Only skill-builder skills have the right-click context menu
+  const showContextMenu = skill.skill_source === 'skill-builder'
+
   const cardContent = (
     <Card
       className={cn(
@@ -187,6 +190,14 @@ export default function SkillCard({
                 onClick={() => onEditWorkflow?.(skill)}
               />
             )}
+            {!showContextMenu && onEdit && (
+              <IconAction
+                icon={<SquarePen className="size-3" />}
+                label="Edit details"
+                tooltip="Edit details"
+                onClick={() => onEdit(skill)}
+              />
+            )}
             {canDownload && onRefine && (
               <IconAction
                 icon={<MessageSquare className="size-3" />}
@@ -242,9 +253,6 @@ export default function SkillCard({
       </TooltipProvider>
     )
   }
-
-  // Only skill-builder skills have the right-click context menu
-  const showContextMenu = skill.skill_source === 'skill-builder'
 
   return (
     <TooltipProvider>
