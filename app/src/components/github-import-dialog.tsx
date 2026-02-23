@@ -70,20 +70,32 @@ export default function GitHubImportDialog({
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
 
+  function setSkillState(path: string, state: SkillState): void {
+    setSkillStates((prev) => new Map(prev).set(path, state))
+  }
+
+  function closeEditForm(): void {
+    setEditingSkill(null)
+    setEditForm(null)
+  }
+
+  function updateField<K extends keyof EditFormState>(key: K, value: EditFormState[K]): void {
+    setEditForm((f) => f ? { ...f, [key]: value } : f)
+  }
+
   const reset = useCallback(() => {
     setLoading(false)
     setRepoInfo(null)
     setSkills([])
     setError(null)
     setSkillStates(new Map())
-    setEditingSkill(null)
-    setEditForm(null)
+    closeEditForm()
   }, [])
 
   const handleOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) reset()
-      onOpenChange(open)
+    (isOpen: boolean) => {
+      if (!isOpen) reset()
+      onOpenChange(isOpen)
     },
     [onOpenChange, reset]
   )
@@ -149,12 +161,28 @@ export default function GitHubImportDialog({
     })
   }, [])
 
+  /** Handle marketplace import result, returning true if the import succeeded. */
+  function handleMarketplaceResult(path: string, results: { success: boolean; error: string | null }[]): boolean {
+    const result = results[0]
+    if (result?.success) return true
+    const errMsg = result?.error ?? "Import failed"
+    // "already exists on disk" is an expected duplicate -- show "In library".
+    // Any other error (DB failure, network, etc.) is surfaced as a toast.
+    if (errMsg.toLowerCase().includes("already exists")) {
+      setSkillState(path, "exists")
+    } else {
+      console.error("[github-import] Import failed:", errMsg)
+      setSkillState(path, "idle")
+      toast.error(errMsg)
+    }
+    return false
+  }
+
   const handleImportWithMetadata = useCallback(async (skill: AvailableSkill, form: EditFormState) => {
-    setSkillStates((prev) => new Map(prev).set(skill.path, "importing"))
-    setEditingSkill(null)
-    setEditForm(null)
+    setSkillState(skill.path, "importing")
+    closeEditForm()
     try {
-      const override: SkillMetadataOverride = {
+      const metadataOverride: SkillMetadataOverride = {
         name: form.name,
         description: form.description,
         domain: form.domain,
@@ -165,58 +193,34 @@ export default function GitHubImportDialog({
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
       }
-      const results = await importMarketplaceToLibrary([skill.path], { [skill.path]: override })
-      const result = results[0]
-      if (!result?.success) {
-        const errMsg = result?.error ?? "Import failed"
-        if (errMsg.toLowerCase().includes("already exists")) {
-          setSkillStates((prev) => new Map(prev).set(skill.path, "exists"))
-        } else {
-          console.error("[github-import] Import failed:", errMsg)
-          setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
-          toast.error(errMsg)
-        }
-        return
-      }
-      setSkillStates((prev) => new Map(prev).set(skill.path, "imported"))
+      const results = await importMarketplaceToLibrary([skill.path], { [skill.path]: metadataOverride })
+      if (!handleMarketplaceResult(skill.path, results)) return
+      setSkillState(skill.path, "imported")
       toast.success(`Imported "${form.name || skill.name}"`)
       await onImported()
     } catch (err) {
       console.error("[github-import] Import failed:", err)
-      setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
+      setSkillState(skill.path, "idle")
       toast.error(err instanceof Error ? err.message : String(err))
     }
   }, [onImported])
 
   const handleImport = useCallback(async (skill: AvailableSkill) => {
     if (!repoInfo) return
-    setSkillStates((prev) => new Map(prev).set(skill.path, "importing"))
+    setSkillState(skill.path, "importing")
     try {
       if (mode === 'skill-library') {
         const results = await importMarketplaceToLibrary([skill.path])
-        const result = results[0]
-        if (!result?.success) {
-          const errMsg = result?.error ?? "Import failed"
-          // "already exists on disk" is an expected duplicate — show "In library".
-          // Any other error (DB failure, network, etc.) is surfaced as a toast.
-          if (errMsg.toLowerCase().includes("already exists")) {
-            setSkillStates((prev) => new Map(prev).set(skill.path, "exists"))
-          } else {
-            console.error("[github-import] Import failed:", errMsg)
-            setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
-            toast.error(errMsg)
-          }
-          return
-        }
+        if (!handleMarketplaceResult(skill.path, results)) return
       } else {
         await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, [skill.path])
       }
-      setSkillStates((prev) => new Map(prev).set(skill.path, "imported"))
+      setSkillState(skill.path, "imported")
       toast.success(`Imported "${skill.name}"`)
       await onImported()
     } catch (err) {
       console.error("[github-import] Import failed:", err)
-      setSkillStates((prev) => new Map(prev).set(skill.path, "idle"))
+      setSkillState(skill.path, "idle")
       toast.error(err instanceof Error ? err.message : String(err))
     }
   }, [repoInfo, onImported, mode])
@@ -256,6 +260,12 @@ export default function GitHubImportDialog({
                 <div className="flex flex-col gap-1">
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
+                    const isImporting = state === "importing"
+
+                    let buttonLabel = "Import"
+                    if (isImporting) buttonLabel = "Importing\u2026"
+                    else if (mode === "skill-library") buttonLabel = "Edit & Import"
+
                     return (
                       <div
                         key={skill.path}
@@ -299,15 +309,15 @@ export default function GitHubImportDialog({
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled={state === "importing"}
+                              disabled={isImporting}
                               onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
                             >
-                              {state === "importing" ? (
+                              {isImporting ? (
                                 <Loader2 className="size-3.5 animate-spin" />
                               ) : (
                                 <Download className="size-3.5" />
                               )}
-                              {state === "importing" ? "Importing…" : mode === 'skill-library' ? "Edit & Import" : "Import"}
+                              {buttonLabel}
                             </Button>
                           )}
                         </div>
@@ -328,7 +338,7 @@ export default function GitHubImportDialog({
       </Dialog>
 
       {/* Metadata edit dialog — shown on top when editing a skill in skill-library mode */}
-      <Dialog open={editingSkill !== null} onOpenChange={(open) => { if (!open) { setEditingSkill(null); setEditForm(null); } }}>
+      <Dialog open={editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit &amp; Import Skill</DialogTitle>
@@ -346,7 +356,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-name"
                     value={editForm.name}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, name: e.target.value } : f)}
+                    onChange={(e) => updateField("name", e.target.value)}
                     className={!editForm.name.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="Skill name"
                   />
@@ -362,7 +372,7 @@ export default function GitHubImportDialog({
                   <Textarea
                     id="edit-description"
                     value={editForm.description}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, description: e.target.value } : f)}
+                    onChange={(e) => updateField("description", e.target.value)}
                     className={!editForm.description.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="Describe what this skill does"
                     rows={3}
@@ -379,7 +389,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-domain"
                     value={editForm.domain}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, domain: e.target.value } : f)}
+                    onChange={(e) => updateField("domain", e.target.value)}
                     className={!editForm.domain.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="e.g. finance, analytics"
                   />
@@ -395,7 +405,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-skill-type"
                     value={editForm.skill_type}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, skill_type: e.target.value } : f)}
+                    onChange={(e) => updateField("skill_type", e.target.value)}
                     className={!editForm.skill_type.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="domain, platform, source, or data-engineering"
                   />
@@ -409,7 +419,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-version"
                     value={editForm.version}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, version: e.target.value } : f)}
+                    onChange={(e) => updateField("version", e.target.value)}
                     placeholder="e.g. 1.0.0"
                   />
                 </div>
@@ -419,7 +429,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-model"
                     value={editForm.model}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, model: e.target.value } : f)}
+                    onChange={(e) => updateField("model", e.target.value)}
                     placeholder="e.g. claude-sonnet-4-5"
                   />
                 </div>
@@ -429,7 +439,7 @@ export default function GitHubImportDialog({
                   <Input
                     id="edit-argument-hint"
                     value={editForm.argument_hint}
-                    onChange={(e) => setEditForm((f) => f ? { ...f, argument_hint: e.target.value } : f)}
+                    onChange={(e) => updateField("argument_hint", e.target.value)}
                     placeholder="Hint shown to users when invoking"
                   />
                 </div>
@@ -439,7 +449,7 @@ export default function GitHubImportDialog({
                     <Checkbox
                       id="edit-user-invocable"
                       checked={editForm.user_invocable}
-                      onCheckedChange={(checked) => setEditForm((f) => f ? { ...f, user_invocable: !!checked } : f)}
+                      onCheckedChange={(checked) => updateField("user_invocable", !!checked)}
                     />
                     <Label htmlFor="edit-user-invocable" className="cursor-pointer">
                       User Invocable <span className="text-muted-foreground text-xs">(optional)</span>
@@ -450,7 +460,7 @@ export default function GitHubImportDialog({
                     <Checkbox
                       id="edit-disable-model-invocation"
                       checked={editForm.disable_model_invocation}
-                      onCheckedChange={(checked) => setEditForm((f) => f ? { ...f, disable_model_invocation: !!checked } : f)}
+                      onCheckedChange={(checked) => updateField("disable_model_invocation", !!checked)}
                     />
                     <Label htmlFor="edit-disable-model-invocation" className="cursor-pointer">
                       Disable Model Invocation <span className="text-muted-foreground text-xs">(optional)</span>
@@ -463,7 +473,7 @@ export default function GitHubImportDialog({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => { setEditingSkill(null); setEditForm(null); }}
+              onClick={closeEditForm}
             >
               Cancel
             </Button>
