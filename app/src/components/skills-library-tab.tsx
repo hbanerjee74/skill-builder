@@ -189,7 +189,6 @@ export function SkillsLibraryTab() {
         onImported={fetchSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
-        typeFilter={["skill-builder"]}
       />
     </div>
   )

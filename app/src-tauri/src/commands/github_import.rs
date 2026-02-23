@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill};
+use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill, MarketplaceJson, MarketplacePluginSource};
 use std::fs;
 use std::path::Path;
 
@@ -251,115 +251,118 @@ pub(crate) async fn list_github_skills_inner(
     owner: &str,
     repo: &str,
     branch: &str,
-    subpath: Option<&str>,
+    _subpath: Option<&str>,
     token: Option<&str>,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
-    log::info!("[list_github_skills_inner] fetching tree from {}/{} branch={}", owner, repo, branch);
-    let (branch, tree) = fetch_repo_tree(&client, owner, repo, branch).await?;
 
-    // Find all SKILL.md blob entries
-    let skill_md_paths: Vec<String> = tree
-        .iter()
-        .filter_map(|entry| {
-            let entry_path = entry["path"].as_str()?;
-            let entry_type = entry["type"].as_str()?;
+    // Resolve the actual default branch when the caller passed a placeholder.
+    let resolved_branch = if branch.is_empty() {
+        get_default_branch(&client, owner, repo)
+            .await
+            .unwrap_or_else(|_| "main".to_string())
+    } else {
+        get_default_branch(&client, owner, repo)
+            .await
+            .unwrap_or_else(|_| branch.to_string())
+    };
 
-            if entry_type != "blob" {
-                return None;
-            }
-
-            // Must end with /SKILL.md (not a bare "SKILL.md" at repo root unless in subpath)
-            if !entry_path.ends_with("/SKILL.md") && entry_path != "SKILL.md" {
-                return None;
-            }
-
-            // If subpath is specified, only include entries under it;
-            // otherwise exclude top-level directories used for plugin packaging (e.g. plugins/).
-            if let Some(sp) = subpath {
-                let prefix = if sp.ends_with('/') {
-                    sp.to_string()
-                } else {
-                    format!("{}/", sp)
-                };
-                if !entry_path.starts_with(&prefix) {
-                    return None;
-                }
-            } else if entry_path.starts_with("plugins/") {
-                return None;
-            }
-
-            Some(entry_path.to_string())
-        })
-        .collect();
-
-    log::info!(
-        "[list_github_skills_inner] found {} SKILL.md files in {}/{}: {:?}",
-        skill_md_paths.len(), owner, repo, skill_md_paths
+    // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com
+    let raw_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/.claude-plugin/marketplace.json",
+        owner, repo, resolved_branch
     );
 
-    if skill_md_paths.is_empty() {
-        return Ok(Vec::new());
+    log::info!(
+        "[list_github_skills_inner] fetching marketplace.json from {}/{} branch={}",
+        owner, repo, resolved_branch
+    );
+
+    let response = client
+        .get(&raw_url)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[list_github_skills_inner] failed to fetch marketplace.json for {}/{}: {}",
+                owner, repo, e
+            );
+            format!(
+                "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
+                owner, repo
+            )
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        log::error!(
+            "[list_github_skills_inner] failed to fetch marketplace.json for {}/{}: HTTP {}",
+            owner, repo, status
+        );
+        return Err(format!(
+            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
+            owner, repo
+        ));
     }
 
-    // Fetch each SKILL.md and parse frontmatter
-    let mut skills = Vec::new();
-    for skill_md_path in &skill_md_paths {
-        let raw_url = format!(
-            "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            owner, repo, branch, skill_md_path
-        );
+    let body = response
+        .text()
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[list_github_skills_inner] failed to read marketplace.json body for {}/{}: {}",
+                owner, repo, e
+            );
+            format!("Failed to read marketplace.json: {}", e)
+        })?;
 
-        let content = match client.get(&raw_url).send().await {
-            Ok(resp) if resp.status().is_success() => {
-                resp.text().await.unwrap_or_default()
-            }
-            Ok(resp) => {
+    let marketplace: MarketplaceJson = serde_json::from_str(&body).map_err(|e| {
+        log::error!(
+            "[list_github_skills_inner] failed to parse marketplace.json for {}/{}: {}",
+            owner, repo, e
+        );
+        format!("Failed to parse marketplace.json: {}", e)
+    })?;
+
+    let mut skills = Vec::new();
+    for plugin in &marketplace.plugins {
+        match &plugin.source {
+            MarketplacePluginSource::External { source, .. } => {
                 log::warn!(
-                    "Failed to fetch {}: HTTP {}",
-                    skill_md_path,
-                    resp.status()
+                    "[list_github_skills_inner] skipping plugin '{}' — unsupported source type '{}'",
+                    plugin.name, source
                 );
                 continue;
             }
-            Err(e) => {
-                log::warn!("Failed to fetch {}: {}", skill_md_path, e);
-                continue;
+            MarketplacePluginSource::Path(s) => {
+                let path = s.trim_start_matches("./").to_string();
+                if path.is_empty() {
+                    log::warn!(
+                        "[list_github_skills_inner] skipping plugin '{}' — empty path after stripping './'",
+                        plugin.name
+                    );
+                    continue;
+                }
+                skills.push(AvailableSkill {
+                    path,
+                    name: plugin.name.clone(),
+                    description: plugin.description.clone(),
+                    domain: plugin.category.clone(),
+                    skill_type: None,
+                    version: plugin.version.clone(),
+                    model: None,
+                    argument_hint: None,
+                    user_invocable: None,
+                    disable_model_invocation: None,
+                });
             }
-        };
-
-        // Derive skill directory path (parent of SKILL.md)
-        let skill_dir = skill_md_path
-            .strip_suffix("/SKILL.md")
-            .or_else(|| skill_md_path.strip_suffix("SKILL.md"))
-            .unwrap_or(skill_md_path)
-            .trim_end_matches('/');
-
-        let fm = super::imported_skills::parse_frontmatter_full(&content);
-
-        let Some(name) = fm.name.clone() else {
-            log::warn!("[list_github_skills_inner] skipping '{}' — missing name in frontmatter", skill_md_path);
-            continue;
-        };
-
-        log::debug!(
-            "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
-            skill_md_path, fm.name, fm.domain, fm.skill_type
-        );
-
-        skills.push(AvailableSkill {
-            path: skill_dir.to_string(),
-            name,
-            domain: fm.domain,
-            description: fm.description,
-            skill_type: fm.skill_type,
-            version: fm.version,
-            model: fm.model,
-            argument_hint: fm.argument_hint,
-            user_invocable: fm.user_invocable,
-            disable_model_invocation: fm.disable_model_invocation,
-        });
+        }
     }
+
+    log::info!(
+        "[list_github_skills_inner] found {} plugins in marketplace.json for {}/{}",
+        skills.len(), owner, repo
+    );
 
     Ok(skills)
 }
@@ -1126,72 +1129,131 @@ mod tests {
         assert!(id.starts_with("imp-my-skill-"));
     }
 
-    // --- Tree filtering logic tests ---
+    // --- marketplace.json deserialization tests ---
 
     #[test]
-    fn test_skill_md_path_detection() {
-        // Test the logic we use to identify SKILL.md paths
-        let paths = vec![
-            "analytics-skill/SKILL.md",
-            "analytics-skill/references/concepts.md",
-            "other/nested/SKILL.md",
-            "SKILL.md",
-            "not-a-skill.md",
-            "some-dir/NOT_SKILL.md",
-        ];
+    fn test_marketplace_json_path_source_deserialization() {
+        use crate::types::{MarketplaceJson, MarketplacePluginSource};
 
-        let skill_paths: Vec<&&str> = paths
-            .iter()
-            .filter(|p| p.ends_with("/SKILL.md") || **p == "SKILL.md")
-            .collect();
+        let json = r#"{
+            "name": "my-marketplace",
+            "plugins": [
+                {
+                    "name": "analytics-skill",
+                    "source": "./analytics-skill",
+                    "description": "Analytics skill",
+                    "version": "1.0.0",
+                    "category": "data"
+                },
+                {
+                    "name": "reporting",
+                    "source": "reporting-skill",
+                    "description": "Reporting",
+                    "version": "2.0.0"
+                }
+            ]
+        }"#;
 
-        assert_eq!(skill_paths.len(), 3);
-        assert!(skill_paths.contains(&&"analytics-skill/SKILL.md"));
-        assert!(skill_paths.contains(&&"other/nested/SKILL.md"));
-        assert!(skill_paths.contains(&&"SKILL.md"));
+        let parsed: MarketplaceJson = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.plugins.len(), 2);
+
+        // Plugin with ./ prefix
+        match &parsed.plugins[0].source {
+            MarketplacePluginSource::Path(s) => {
+                assert_eq!(s, "./analytics-skill");
+                let path = s.trim_start_matches("./");
+                assert_eq!(path, "analytics-skill");
+            }
+            _ => panic!("expected Path source"),
+        }
+        assert_eq!(parsed.plugins[0].description.as_deref(), Some("Analytics skill"));
+        assert_eq!(parsed.plugins[0].category.as_deref(), Some("data"));
+
+        // Plugin without ./ prefix
+        match &parsed.plugins[1].source {
+            MarketplacePluginSource::Path(s) => {
+                assert_eq!(s, "reporting-skill");
+                let path = s.trim_start_matches("./");
+                assert_eq!(path, "reporting-skill");
+            }
+            _ => panic!("expected Path source"),
+        }
     }
 
     #[test]
-    fn test_subpath_filtering() {
-        let paths = vec![
-            "skills/analytics/SKILL.md",
-            "skills/reporting/SKILL.md",
-            "other/SKILL.md",
-        ];
+    fn test_marketplace_json_external_source_deserialization() {
+        use crate::types::{MarketplaceJson, MarketplacePluginSource};
 
-        let subpath = "skills";
-        let prefix = format!("{}/", subpath);
+        let json = r#"{
+            "plugins": [
+                {
+                    "name": "external-skill",
+                    "source": {
+                        "source": "github",
+                        "repo": "owner/repo",
+                        "ref": "main",
+                        "sha": "abc123"
+                    }
+                }
+            ]
+        }"#;
 
-        let filtered: Vec<&&str> = paths
-            .iter()
-            .filter(|p| p.starts_with(&prefix))
-            .collect();
-
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.contains(&&"skills/analytics/SKILL.md"));
-        assert!(filtered.contains(&&"skills/reporting/SKILL.md"));
+        let parsed: MarketplaceJson = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.plugins.len(), 1);
+        match &parsed.plugins[0].source {
+            MarketplacePluginSource::External { source, .. } => {
+                assert_eq!(source, "github");
+            }
+            _ => panic!("expected External source"),
+        }
     }
 
     #[test]
-    fn test_plugins_dir_excluded_without_subpath() {
-        // When no subpath is specified, paths under plugins/ should be excluded
-        // to avoid picking up plugin-packaged copies of skills.
-        let paths = vec![
-            "analytics/SKILL.md",
-            "plugins/skill-builder/skills/building-skills/SKILL.md",
-            "plugins/skill-builder-practices/skills/skill-builder-practices/SKILL.md",
-            "skill-builder-practices/SKILL.md",
+    fn test_marketplace_path_stripping() {
+        // Verify the path derivation logic: strip leading ./
+        let cases = vec![
+            ("./analytics-skill", "analytics-skill"),
+            ("analytics-skill", "analytics-skill"),
+            ("./nested/skill", "nested/skill"),
+            ("./", ""),
+            ("", ""),
         ];
-
-        let filtered: Vec<&&str> = paths
-            .iter()
-            .filter(|p| !p.starts_with("plugins/"))
-            .collect();
-
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.contains(&&"analytics/SKILL.md"));
-        assert!(filtered.contains(&&"skill-builder-practices/SKILL.md"));
+        for (input, expected) in cases {
+            let result = input.trim_start_matches("./");
+            assert_eq!(result, expected, "input={:?}", input);
+        }
     }
+
+    #[test]
+    fn test_marketplace_json_optional_fields() {
+        use crate::types::{MarketplaceJson, MarketplacePluginSource};
+
+        // Plugin with only required fields — optional fields must be None
+        let json = r#"{
+            "plugins": [
+                {
+                    "name": "minimal-skill",
+                    "source": "./minimal"
+                }
+            ]
+        }"#;
+
+        let parsed: MarketplaceJson = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.plugins.len(), 1);
+        let p = &parsed.plugins[0];
+        assert_eq!(p.name, "minimal-skill");
+        assert!(p.description.is_none());
+        assert!(p.version.is_none());
+        assert!(p.author.is_none());
+        assert!(p.category.is_none());
+        assert!(p.tags.is_none());
+        match &p.source {
+            MarketplacePluginSource::Path(s) => assert_eq!(s, "./minimal"),
+            _ => panic!("expected Path source"),
+        }
+    }
+
+    // --- Frontmatter tests (used by import_single_skill) ---
 
     #[test]
     fn test_required_frontmatter_filtering_logic() {
@@ -1243,74 +1305,6 @@ mod tests {
         assert!(empty.name.is_none());
         assert!(empty.description.is_none());
         assert!(empty.domain.is_none());
-    }
-
-    #[test]
-    fn test_skill_type_library_filter() {
-        // Verify the allowlist predicate used in list_github_skills_inner.
-        const VALID_SKILL_LIBRARY_TYPES: &[&str] =
-            &["domain", "platform", "source", "data-engineering"];
-
-        let parse = super::super::imported_skills::parse_frontmatter_full;
-
-        // skill_type: domain — must be included
-        let fm_domain = parse(
-            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: domain\n---\n",
-        );
-        assert_eq!(fm_domain.skill_type.as_deref(), Some("domain"));
-        assert!(
-            VALID_SKILL_LIBRARY_TYPES.contains(&fm_domain.skill_type.as_deref().unwrap_or("")),
-            "domain should be a valid Skill Library type"
-        );
-
-        // skill_type: skill-builder — must be excluded (wrong routing, goes to Settings)
-        let fm_skill_builder = parse(
-            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: skill-builder\n---\n",
-        );
-        assert_eq!(fm_skill_builder.skill_type.as_deref(), Some("skill-builder"));
-        assert!(
-            !VALID_SKILL_LIBRARY_TYPES
-                .contains(&fm_skill_builder.skill_type.as_deref().unwrap_or("")),
-            "skill-builder should NOT be a valid Skill Library type"
-        );
-
-        // skill_type: unknown-type — must be excluded (unrecognised value)
-        let fm_unknown = parse(
-            "---\nname: my-skill\ndescription: Desc\ndomain: data\ntype: unknown-type\n---\n",
-        );
-        assert_eq!(fm_unknown.skill_type.as_deref(), Some("unknown-type"));
-        assert!(
-            !VALID_SKILL_LIBRARY_TYPES
-                .contains(&fm_unknown.skill_type.as_deref().unwrap_or("")),
-            "unknown-type should NOT be a valid Skill Library type"
-        );
-
-        // missing skill_type — must be excluded
-        let fm_missing = parse(
-            "---\nname: my-skill\ndescription: Desc\ndomain: data\n---\n",
-        );
-        assert!(fm_missing.skill_type.is_none(), "absent skill_type must be None");
-        assert!(
-            !VALID_SKILL_LIBRARY_TYPES
-                .contains(&fm_missing.skill_type.as_deref().unwrap_or("")),
-            "absent skill_type should NOT pass the Skill Library filter"
-        );
-    }
-
-    #[test]
-    fn test_skill_dir_derivation() {
-        // Test extracting the directory from a SKILL.md path
-        let path = "analytics-skill/SKILL.md";
-        let dir = path.strip_suffix("/SKILL.md").unwrap_or(path);
-        assert_eq!(dir, "analytics-skill");
-
-        let path2 = "nested/deep/skill-name/SKILL.md";
-        let dir2 = path2.strip_suffix("/SKILL.md").unwrap_or(path2);
-        assert_eq!(dir2, "nested/deep/skill-name");
-
-        // Directory name extraction
-        let dir_name = dir2.rsplit('/').next().unwrap_or(dir2);
-        assert_eq!(dir_name, "skill-name");
     }
 
     #[test]
