@@ -231,10 +231,8 @@ pub async fn list_github_skills(
     repo: String,
     branch: String,
     subpath: Option<String>,
-    show_all: Option<bool>,
 ) -> Result<Vec<AvailableSkill>, String> {
-    let show_all = show_all.unwrap_or(false);
-    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?} show_all={}", owner, repo, branch, subpath, show_all);
+    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?}", owner, repo, branch, subpath);
     // Read OAuth token if available
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -242,7 +240,7 @@ pub async fn list_github_skills(
         settings.github_oauth_token.clone()
     };
 
-    list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref(), show_all)
+    list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
         .await
 }
 
@@ -252,7 +250,6 @@ pub(crate) async fn list_github_skills_inner(
     branch: &str,
     subpath: Option<&str>,
     token: Option<&str>,
-    show_all: bool,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
     let (branch, tree) = fetch_repo_tree(&client, owner, repo, branch).await?;
@@ -304,8 +301,6 @@ pub(crate) async fn list_github_skills_inner(
 
     // Fetch each SKILL.md and parse frontmatter
     let mut skills = Vec::new();
-    let has_value = |opt: &Option<String>| opt.as_deref().is_some_and(|s| !s.is_empty());
-
     for skill_md_path in &skill_md_paths {
         let raw_url = format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}",
@@ -337,79 +332,30 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or(skill_md_path)
             .trim_end_matches('/');
 
-        if show_all {
-            // show_all mode: parse full frontmatter, use dir_name as fallback for name
-            let fm = super::imported_skills::parse_frontmatter_full(&content);
-            let dir_name = skill_dir
-                .rsplit('/')
-                .next()
-                .unwrap_or(skill_dir);
-            let name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
+        let fm = super::imported_skills::parse_frontmatter_full(&content);
+        let dir_name = skill_dir
+            .rsplit('/')
+            .next()
+            .unwrap_or(skill_dir);
+        let name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
-            log::debug!(
-                "[list_github_skills_inner] show_all parsed {}: name={:?} domain={:?} type={:?}",
-                skill_md_path, fm.name, fm.domain, fm.skill_type
-            );
+        log::debug!(
+            "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
+            skill_md_path, fm.name, fm.domain, fm.skill_type
+        );
 
-            skills.push(AvailableSkill {
-                path: skill_dir.to_string(),
-                name,
-                domain: fm.domain,
-                description: fm.description,
-                skill_type: fm.skill_type,
-                version: fm.version,
-                model: fm.model,
-                argument_hint: fm.argument_hint,
-                user_invocable: fm.user_invocable,
-                disable_model_invocation: fm.disable_model_invocation,
-            });
-        } else {
-            // Standard mode: parse basic frontmatter, apply both filters
-            let (fm_name, fm_description, fm_domain, fm_type) =
-                super::imported_skills::parse_frontmatter(&content);
-
-            log::debug!(
-                "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
-                skill_md_path, fm_name, fm_domain, fm_type
-            );
-
-            // Filter out skills missing required front matter fields — they must not appear in the UI
-            if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
-                log::warn!(
-                    "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
-                    skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
-                );
-                continue;
-            }
-
-            // Only skills with a valid Skill Library skill_type are shown in the UI.
-            // skill-builder skills go to Settings→Skills; unknown values are excluded.
-            const VALID_SKILL_LIBRARY_TYPES: &[&str] = &["domain", "platform", "source", "data-engineering"];
-            let type_value = fm_type.as_deref().unwrap_or("");
-            if !VALID_SKILL_LIBRARY_TYPES.contains(&type_value) {
-                log::warn!(
-                    "list_github_skills: skipping '{}' — skill_type {:?} is not a valid Skill Library type (expected one of: domain, platform, source, data-engineering)",
-                    skill_md_path, fm_type.as_deref().unwrap_or("<absent>")
-                );
-                continue;
-            }
-
-            // Safety: the `continue` above guarantees fm_name.is_some() at this point.
-            let name = fm_name.unwrap();
-
-            skills.push(AvailableSkill {
-                path: skill_dir.to_string(),
-                name,
-                domain: fm_domain,
-                description: fm_description,
-                skill_type: fm_type,
-                version: None,
-                model: None,
-                argument_hint: None,
-                user_invocable: None,
-                disable_model_invocation: None,
-            });
-        }
+        skills.push(AvailableSkill {
+            path: skill_dir.to_string(),
+            name,
+            domain: fm.domain,
+            description: fm.description,
+            skill_type: fm.skill_type,
+            version: fm.version,
+            model: fm.model,
+            argument_hint: fm.argument_hint,
+            user_invocable: fm.user_invocable,
+            disable_model_invocation: fm.disable_model_invocation,
+        });
     }
 
     Ok(skills)
