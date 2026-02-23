@@ -232,7 +232,7 @@ export default function GitHubImportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           {loading && (
             <div className="flex flex-col items-center gap-3 py-8">
               <Loader2 className="size-8 animate-spin text-muted-foreground" />
