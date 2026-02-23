@@ -36,6 +36,7 @@ pub(crate) struct Frontmatter {
 /// Parse YAML frontmatter from SKILL.md content.
 /// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
 /// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
+#[allow(dead_code)]
 pub(crate) fn parse_frontmatter(
     content: &str,
 ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
@@ -509,13 +510,11 @@ fn toggle_skill_active_inner(
                 );
                 return Err(format!("Failed to create skills directory: {}", e));
             }
-        } else {
-            if let Err(e) = fs::create_dir_all(&inactive_dir) {
-                let _ = crate::db::update_workspace_skill_active(
-                    conn, skill_id, !active, &old_disk_path,
-                );
-                return Err(format!("Failed to create .inactive directory: {}", e));
-            }
+        } else if let Err(e) = fs::create_dir_all(&inactive_dir) {
+            let _ = crate::db::update_workspace_skill_active(
+                conn, skill_id, !active, &old_disk_path,
+            );
+            return Err(format!("Failed to create .inactive directory: {}", e));
         }
 
         if let Err(move_err) = fs::rename(src, dst) {
