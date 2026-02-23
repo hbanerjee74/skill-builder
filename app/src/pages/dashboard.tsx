@@ -404,7 +404,7 @@ export default function DashboardPage() {
             <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <span className="justify-self-end">Actions</span>
+            <span className="w-[160px] justify-self-end text-right">Actions</span>
           </div>
           {sortedSkills.map((skill) => (
             <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />

@@ -100,12 +100,12 @@ export default function SkillListRow({
       </div>
 
       {/* Col 2: Source */}
-      <div className="hidden sm:block">
+      <div className="hidden sm:flex sm:items-center">
         <SkillSourceBadge skillSource={skill.skill_source} />
       </div>
 
       {/* Col 3: Status */}
-      <div className="hidden sm:block">
+      <div className="hidden sm:flex sm:items-center">
         {isComplete ? (
           <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
             Completed
@@ -122,9 +122,9 @@ export default function SkillListRow({
         {statusLabel}
       </div>
 
-      {/* Col 4: Actions */}
+      {/* Col 4: Actions — fixed width matches the header's Actions span so fr columns align */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
+      <div className="flex w-[160px] shrink-0 items-center gap-0.5 justify-self-end justify-end" onClick={(e) => e.stopPropagation()}>
         {skill.skill_source === 'skill-builder' && (
           <IconAction
             icon={<Pencil className="size-3" />}
