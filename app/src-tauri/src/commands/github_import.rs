@@ -186,8 +186,10 @@ pub async fn list_github_skills(
     repo: String,
     branch: String,
     subpath: Option<String>,
+    show_all: Option<bool>,
 ) -> Result<Vec<AvailableSkill>, String> {
-    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?}", owner, repo, branch, subpath);
+    let show_all = show_all.unwrap_or(false);
+    log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?} show_all={}", owner, repo, branch, subpath, show_all);
     // Read OAuth token if available
     let token = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -195,7 +197,7 @@ pub async fn list_github_skills(
         settings.github_oauth_token.clone()
     };
 
-    list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
+    list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref(), show_all)
         .await
 }
 
@@ -205,6 +207,7 @@ pub(crate) async fn list_github_skills_inner(
     branch: &str,
     subpath: Option<&str>,
     token: Option<&str>,
+    show_all: bool,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
 
@@ -317,35 +320,6 @@ pub(crate) async fn list_github_skills_inner(
             }
         };
 
-        let (fm_name, fm_description, fm_domain, fm_type) =
-            super::imported_skills::parse_frontmatter(&content);
-
-        log::debug!(
-            "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
-            skill_md_path, fm_name, fm_domain, fm_type
-        );
-
-        // Filter out skills missing required front matter fields — they must not appear in the UI
-        if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
-            log::warn!(
-                "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
-                skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
-            );
-            continue;
-        }
-
-        // Only skills with a valid Skill Library skill_type are shown in the UI.
-        // skill-builder skills go to Settings→Skills; unknown values are excluded.
-        const VALID_SKILL_LIBRARY_TYPES: &[&str] = &["domain", "platform", "source", "data-engineering"];
-        let type_value = fm_type.as_deref().unwrap_or("");
-        if !VALID_SKILL_LIBRARY_TYPES.contains(&type_value) {
-            log::warn!(
-                "list_github_skills: skipping '{}' — skill_type {:?} is not a valid Skill Library type (expected one of: domain, platform, source, data-engineering)",
-                skill_md_path, fm_type.as_deref().unwrap_or("<absent>")
-            );
-            continue;
-        }
-
         // Derive skill directory path (parent of SKILL.md)
         let skill_dir = skill_md_path
             .strip_suffix("/SKILL.md")
@@ -353,16 +327,79 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or(skill_md_path)
             .trim_end_matches('/');
 
-        // Safety: the `continue` above guarantees fm_name.is_some() at this point.
-        let name = fm_name.unwrap();
+        if show_all {
+            // show_all mode: parse full frontmatter, use dir_name as fallback for name
+            let fm = super::imported_skills::parse_frontmatter_full(&content);
+            let dir_name = skill_dir
+                .rsplit('/')
+                .next()
+                .unwrap_or(skill_dir);
+            let name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
-        skills.push(AvailableSkill {
-            path: skill_dir.to_string(),
-            name,
-            domain: fm_domain,
-            description: fm_description,
-            skill_type: fm_type,
-        });
+            log::debug!(
+                "[list_github_skills_inner] show_all parsed {}: name={:?} domain={:?} type={:?}",
+                skill_md_path, fm.name, fm.domain, fm.skill_type
+            );
+
+            skills.push(AvailableSkill {
+                path: skill_dir.to_string(),
+                name,
+                domain: fm.domain,
+                description: fm.description,
+                skill_type: fm.skill_type,
+                version: fm.version,
+                model: fm.model,
+                argument_hint: fm.argument_hint,
+                user_invocable: fm.user_invocable,
+                disable_model_invocation: fm.disable_model_invocation,
+            });
+        } else {
+            // Standard mode: parse basic frontmatter, apply both filters
+            let (fm_name, fm_description, fm_domain, fm_type) =
+                super::imported_skills::parse_frontmatter(&content);
+
+            log::debug!(
+                "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
+                skill_md_path, fm_name, fm_domain, fm_type
+            );
+
+            // Filter out skills missing required front matter fields — they must not appear in the UI
+            if !has_value(&fm_name) || !has_value(&fm_description) || !has_value(&fm_domain) {
+                log::warn!(
+                    "list_github_skills: skipping '{}' — missing required front matter (name={} description={} domain={})",
+                    skill_md_path, has_value(&fm_name), has_value(&fm_description), has_value(&fm_domain)
+                );
+                continue;
+            }
+
+            // Only skills with a valid Skill Library skill_type are shown in the UI.
+            // skill-builder skills go to Settings→Skills; unknown values are excluded.
+            const VALID_SKILL_LIBRARY_TYPES: &[&str] = &["domain", "platform", "source", "data-engineering"];
+            let type_value = fm_type.as_deref().unwrap_or("");
+            if !VALID_SKILL_LIBRARY_TYPES.contains(&type_value) {
+                log::warn!(
+                    "list_github_skills: skipping '{}' — skill_type {:?} is not a valid Skill Library type (expected one of: domain, platform, source, data-engineering)",
+                    skill_md_path, fm_type.as_deref().unwrap_or("<absent>")
+                );
+                continue;
+            }
+
+            // Safety: the `continue` above guarantees fm_name.is_some() at this point.
+            let name = fm_name.unwrap();
+
+            skills.push(AvailableSkill {
+                path: skill_dir.to_string(),
+                name,
+                domain: fm_domain,
+                description: fm_description,
+                skill_type: fm_type,
+                version: None,
+                model: None,
+                argument_hint: None,
+                user_invocable: None,
+                disable_model_invocation: None,
+            });
+        }
     }
 
     Ok(skills)
@@ -447,6 +484,7 @@ pub async fn import_github_skills(
             tree,
             &skills_dir,
             false,
+            None,
         )
         .await
         {
@@ -511,10 +549,12 @@ pub struct MarketplaceImportResult {
 pub async fn import_marketplace_to_library(
     db: tauri::State<'_, Db>,
     skill_paths: Vec<String>,
+    metadata_overrides: Option<std::collections::HashMap<String, crate::types::SkillMetadataOverride>>,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
     log::info!(
-        "[import_marketplace_to_library] importing {} skills from marketplace",
-        skill_paths.len()
+        "[import_marketplace_to_library] importing {} skills from marketplace (with_overrides={})",
+        skill_paths.len(),
+        metadata_overrides.is_some()
     );
 
     // Read settings
@@ -580,7 +620,9 @@ pub async fn import_marketplace_to_library(
     let mut results: Vec<MarketplaceImportResult> = Vec::new();
 
     for skill_path in &skill_paths {
-        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, skills_dir, true).await {
+        let override_ref = metadata_overrides.as_ref()
+            .and_then(|m| m.get(skill_path.as_str()));
+        match import_single_skill(&client, owner, repo, &branch, skill_path, tree, skills_dir, true, override_ref).await {
             Ok(skill) => {
                 let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
                 let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
@@ -673,6 +715,64 @@ pub async fn import_marketplace_to_library(
     Ok(results)
 }
 
+/// Rewrite the SKILL.md frontmatter block in the destination directory with values from `fm`.
+fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -> Result<(), String> {
+    let skill_md_path = dest_dir.join("SKILL.md");
+    let existing = fs::read_to_string(&skill_md_path)
+        .map_err(|e| format!("Failed to read SKILL.md for rewrite: {}", e))?;
+
+    // Extract body (everything after the closing ---)
+    let body = if existing.trim_start().starts_with("---") {
+        let after_first = &existing.trim_start()[3..];
+        if let Some(pos) = after_first.find("\n---") {
+            // Body starts after "\n---" and any trailing newline
+            let after_close = &after_first[pos + 4..];
+            // Strip one leading newline if present
+            after_close.strip_prefix('\n').unwrap_or(after_close)
+        } else {
+            &existing
+        }
+    } else {
+        &existing
+    };
+
+    // Build new frontmatter YAML block
+    let mut yaml = String::new();
+    if let Some(ref name) = fm.name {
+        yaml.push_str(&format!("name: {}\n", name));
+    }
+    if let Some(ref desc) = fm.description {
+        yaml.push_str(&format!("description: {}\n", desc));
+    }
+    if let Some(ref domain) = fm.domain {
+        yaml.push_str(&format!("domain: {}\n", domain));
+    }
+    if let Some(ref skill_type) = fm.skill_type {
+        yaml.push_str(&format!("type: {}\n", skill_type));
+    }
+    if let Some(ref version) = fm.version {
+        yaml.push_str(&format!("version: {}\n", version));
+    }
+    if let Some(ref model) = fm.model {
+        yaml.push_str(&format!("model: {}\n", model));
+    }
+    if let Some(ref hint) = fm.argument_hint {
+        yaml.push_str(&format!("argument-hint: {}\n", hint));
+    }
+    if let Some(user_inv) = fm.user_invocable {
+        yaml.push_str(&format!("user-invocable: {}\n", user_inv));
+    }
+    if let Some(disable) = fm.disable_model_invocation {
+        yaml.push_str(&format!("disable-model-invocation: {}\n", disable));
+    }
+
+    let new_content = format!("---\n{}---\n{}", yaml, body);
+    fs::write(&skill_md_path, new_content)
+        .map_err(|e| format!("Failed to write updated SKILL.md: {}", e))?;
+
+    Ok(())
+}
+
 /// Import a single skill directory from the repo tree.
 ///
 /// When `overwrite` is `true`, an existing destination directory is removed before
@@ -688,6 +788,7 @@ pub(crate) async fn import_single_skill(
     tree: &[serde_json::Value],
     skills_dir: &Path,
     overwrite: bool,
+    metadata_override: Option<&crate::types::SkillMetadataOverride>,
 ) -> Result<ImportedSkill, String> {
     let prefix = if skill_path.is_empty() {
         String::new()
@@ -764,7 +865,24 @@ pub(crate) async fn import_single_skill(
         .await
         .map_err(|e| format!("Failed to read SKILL.md content: {}", e))?;
 
-    let fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
+    let mut fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
+
+    // Apply metadata overrides if provided (before validation, so user-supplied values satisfy requirements)
+    if let Some(ov) = metadata_override {
+        if let Some(ref v) = ov.name { fm.name = Some(v.clone()); }
+        if let Some(ref v) = ov.description { fm.description = Some(v.clone()); }
+        if let Some(ref v) = ov.domain { fm.domain = Some(v.clone()); }
+        if let Some(ref v) = ov.skill_type { fm.skill_type = Some(v.clone()); }
+        if let Some(ref v) = ov.version { fm.version = Some(v.clone()); }
+        if let Some(ref v) = ov.model { fm.model = Some(v.clone()); }
+        if let Some(ref v) = ov.argument_hint { fm.argument_hint = Some(v.clone()); }
+        if let Some(v) = ov.user_invocable { fm.user_invocable = Some(v); }
+        if let Some(v) = ov.disable_model_invocation { fm.disable_model_invocation = Some(v); }
+        log::debug!(
+            "[import_single_skill] applied metadata override for '{}': name={:?} domain={:?} type={:?}",
+            dir_name, fm.name, fm.domain, fm.skill_type
+        );
+    }
 
     let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
 
@@ -905,6 +1023,15 @@ pub(crate) async fn import_single_skill(
 
         fs::write(&out_path, &content)
             .map_err(|e| format!("Failed to write '{}': {}", out_path.display(), e))?;
+    }
+
+    // Rewrite SKILL.md with updated frontmatter if a metadata override was applied
+    if metadata_override.is_some() {
+        rewrite_skill_md(&dest_dir, &fm).map_err(|e| {
+            log::error!("[import_single_skill] failed to rewrite SKILL.md for '{}': {}", skill_name, e);
+            e
+        })?;
+        log::debug!("[import_single_skill] rewrote SKILL.md frontmatter for '{}'", skill_name);
     }
 
     let skill_id = super::imported_skills::generate_skill_id(&skill_name);

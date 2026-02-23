@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
 
 // --- Settings ---
 
@@ -361,16 +361,16 @@ export const parseGitHubUrl = (url: string) =>
 export const checkMarketplaceUrl = (url: string) =>
   invoke<void>("check_marketplace_url", { url });
 
-export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
-  invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
+export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string, showAll?: boolean) =>
+  invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null, showAll: showAll ?? false });
 
 export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
   invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
 
 // --- Marketplace Import ---
 
-export const importMarketplaceToLibrary = (skillPaths: string[]) =>
-  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths })
+export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
 
 // --- Refine ---
 
