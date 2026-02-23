@@ -272,6 +272,7 @@ export interface WorkspaceSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  purpose: string | null
 }
 
 export interface GitHubRepoInfo {
@@ -304,6 +305,7 @@ export interface SkillMetadataOverride {
   argument_hint?: string | null
   user_invocable?: boolean | null
   disable_model_invocation?: boolean | null
+  purpose?: string | null
 }
 
 export interface MarketplaceImportResult {

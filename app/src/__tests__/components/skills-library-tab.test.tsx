@@ -75,6 +75,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
   {
     skill_id: "id-2",
@@ -91,6 +92,7 @@ const sampleSkills: WorkspaceSkill[] = [
     argument_hint: null,
     user_invocable: null,
     disable_model_invocation: null,
+    purpose: null,
   },
 ];
 
@@ -254,6 +256,7 @@ describe("SkillsLibraryTab", () => {
       argument_hint: null,
       user_invocable: null,
       disable_model_invocation: null,
+      purpose: null,
     };
 
     mockInvoke.mockImplementation((cmd: string) => {

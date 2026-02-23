@@ -147,7 +147,12 @@ export function SkillsLibraryTab() {
               className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
             >
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm font-medium">{skill.skill_name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium">{skill.skill_name}</span>
+                  {skill.is_bundled && (
+                    <Badge variant="secondary" className="text-xs">Built-in</Badge>
+                  )}
+                </div>
                 {skill.domain && (
                   <div className="text-xs text-muted-foreground">{skill.domain}</div>
                 )}
