@@ -264,6 +264,36 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("Actions", { exact: true })).toBeVisible();
   });
 
+  test("source and status column data is left-aligned with column headers", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // Get Source column header button's left edge (the sort button, not the filter dropdown)
+    const sourceHeaderBox = await page.getByRole("button", { name: "Source" }).last().boundingBox();
+    // Get the Source badge ELEMENT's left edge (not the text inside, which is offset by icon+padding).
+    // Scope to the data-analytics row to avoid matching the top-bar "Marketplace" import button.
+    const dataAnalyticsRow = page
+      .locator('[role="button"]')
+      .filter({ hasText: "data-analytics" });
+    // The Source badge is a <span> containing "Marketplace" text
+    const sourceBadgeBox = await dataAnalyticsRow
+      .locator("span")
+      .filter({ hasText: "Marketplace" })
+      .first()
+      .boundingBox();
+
+    expect(sourceHeaderBox).not.toBeNull();
+    expect(sourceBadgeBox).not.toBeNull();
+
+    // Badge left edge should be within 5px of the header label left edge — both are at the Source column start.
+    // If centered in a ~260px column, the offset would be ~130px — this test would catch that.
+    expect(Math.abs(sourceBadgeBox!.x - sourceHeaderBox!.x)).toBeLessThan(5);
+  });
+
   test("shows skill type subtitle in list view name column", async ({ page }) => {
     await page.addInitScript((mocks) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
