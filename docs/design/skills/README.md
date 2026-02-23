@@ -1,10 +1,23 @@
 # Bundled Skills
 
-Both bundled skills follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
-
-Both are seeded into the workspace on startup by `seed_bundled_skills` alongside `skill-builder-practices`, and are replaceable via the marketplace.
+Four bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`research`, `validate-skill`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
 
 Output file formats: [`../agent-specs/canonical-format.md`](../agent-specs/canonical-format.md).
+
+---
+
+## Purpose Slots
+
+Each bundled skill has a **purpose** — a slot identifier that controls which skill the app uses for a given role. The app resolves by purpose, not by name. Users can replace any bundled skill by importing a custom skill into Settings→Skills and assigning it the matching purpose. Only one active `workspace_skills` row per purpose is allowed at a time; the app falls back to the bundled skill if no active custom skill holds the slot.
+
+| Skill | Purpose |
+|---|---|
+| `research` | `research` |
+| `skill-builder-practices` | `skill-building` |
+| `skill-test` | `test-context` |
+| `validate-skill` | `validate` |
+
+**Settings→Skills import**: the marketplace listing shows all skills with a `SKILL.md` regardless of `skill_type` — `skill_type` is not filtered here. After selecting a skill to import, the user is prompted to optionally assign a purpose.
 
 ---
 
@@ -71,7 +84,7 @@ If `clarifications.md` contains `scope_recommendation: true`, the orchestrator s
 
 ### Customization
 
-Marketplace replacement is extracted to `.claude/skills/research/`. Teams can customise: dimensions per skill type, scoring rubric and selection threshold, research approach per dimension, consolidation logic. The orchestrator and `clarifications.md` format contract are app-controlled.
+Replace by importing a custom skill into Settings→Skills and assigning purpose `research`. The app will use it instead of the bundled skill. Teams can customise: dimensions per skill type, scoring rubric and selection threshold, research approach per dimension, consolidation logic. The orchestrator and `clarifications.md` format contract are app-controlled.
 
 Dimension catalog, per-type template mappings, focus line tailoring, and design guidelines: [`dimensions.md`](dimensions.md).
 
@@ -128,21 +141,23 @@ The orchestrator checks for `scope_recommendation: true` in both `decisions.md` 
 
 ### Customization
 
-Marketplace replacement is extracted to `.claude/skills/validate-skill/`. Teams can customise: quality check criteria, test prompt categories and scoring rubric, companion recommendation scoring. Output file names and YAML frontmatter schemas are app-controlled contracts.
+Replace by importing a custom skill into Settings→Skills and assigning purpose `validate`. Teams can customise: quality check criteria, test prompt categories and scoring rubric, companion recommendation scoring. Output file names and YAML frontmatter schemas are app-controlled contracts.
 
 ---
 
 ## Skill-Test Skill
 
-`skill-test` provides the test context and evaluation rubric injected into both workspaces during a skill test run. It contains no sub-agents and no references directory — it is a context-only skill consumed directly via workspace CLAUDE.md injection.
+`skill-test` provides the test context and evaluation rubric for skill test runs. It contains no sub-agents and no references directory — it is a context-only skill deployed as a `.claude/skills/` directory in both temp workspaces.
 
 Used by:
-- **Tauri app** — `prepare_skill_test()` reads its body and injects it into both temp workspaces before each test run
+- **Tauri app** — `prepare_skill_test()` copies the skill directory from bundled resources into `.claude/skills/skill-test/` in both temp workspaces before each test run
+
+Purpose slot: `test-context`. Replace by importing a custom skill into Settings→Skills and assigning purpose `test-context`.
 
 ### Structure
 
 ```
-skills/skill-test/
+agent-sources/workspace/skills/skill-test/
   SKILL.md     ← two sections: Test Context + Evaluation Rubric
 ```
 
@@ -152,4 +167,4 @@ skills/skill-test/
 
 **Evaluation Rubric** — loaded by the evaluator agent. Defines six scoring dimensions (silver vs gold, dbt project structure, dbt tests, unit test cases, dbt contracts, semantic model), scoring rules (comparative A vs B only, skip irrelevant dimensions, no surface observations), and output format (↑/↓ prefixed bullet points only).
 
-Both plan agents see the full SKILL.md in their workspace context but are only instructed to respond to the user prompt. The evaluator is explicitly asked to use the rubric via its prompt.
+Both plan agents load the full skill from their workspace but are only instructed to respond to the user prompt. The evaluator is explicitly asked to use the rubric via its prompt.
