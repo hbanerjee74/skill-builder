@@ -690,11 +690,14 @@ export default function TestPage() {
       useAgentStore.getState().registerRun(withId, testModel, skillName);
       useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
 
+      // Wrap the prompt so plan agents know the domain context
+      const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
+
       // Start both agents in parallel
       await Promise.all([
         startAgent(
           withId,
-          s.prompt,
+          wrappedPrompt,
           testModel,
           prepared.with_skill_cwd,
           [],
@@ -707,7 +710,7 @@ export default function TestPage() {
         ),
         startAgent(
           withoutId,
-          s.prompt,
+          wrappedPrompt,
           testModel,
           prepared.baseline_cwd,
           [],
