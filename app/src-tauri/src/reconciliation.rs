@@ -33,8 +33,6 @@ pub fn reconcile_on_startup(
     skills_path: &str,
 ) -> Result<ReconciliationResult, String> {
     let mut notifications = Vec::new();
-    let auto_cleaned: u32 = 0;
-
     // ── Pass 1: DB-driven — loop over skills master, branch on skill_source ──
 
     let all_skills = crate::db::list_all_skills(conn)?;
@@ -228,13 +226,13 @@ pub fn reconcile_on_startup(
 
     log::info!(
         "[reconcile_on_startup] done: {} auto-cleaned, {} notifications, {} discovered",
-        auto_cleaned, notifications.len(), discovered_skills.len()
+        0, notifications.len(), discovered_skills.len()
     );
 
     Ok(ReconciliationResult {
         orphans: Vec::new(),
         notifications,
-        auto_cleaned,
+        auto_cleaned: 0,
         discovered_skills,
     })
 }
@@ -712,7 +710,8 @@ mod tests {
         assert!(result.notifications.is_empty());
 
         // Skills master record must still exist unchanged
-        let master = crate::db::get_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        let all_skills = crate::db::list_all_skills(&conn).unwrap();
+        let master = all_skills.iter().find(|s| s.name == "my-skill").unwrap();
         assert_eq!(master.skill_source, "marketplace");
 
         // No workflow_runs row should exist for marketplace skills
@@ -739,7 +738,7 @@ mod tests {
         assert!(result.notifications[0].contains("SKILL.md not found"));
 
         // Skills master record should be deleted
-        assert!(crate::db::get_skill_by_name(&conn, "gone-skill").unwrap().is_none());
+        assert!(crate::db::get_skill_master_id(&conn, "gone-skill").unwrap().is_none());
     }
 
     // --- Missing workspace dir is recreated, not treated as stale ---
@@ -1152,7 +1151,7 @@ mod tests {
         // DB records for all skills should still be present
         assert!(crate::db::get_workflow_run(&conn, "db-only").unwrap().is_some());
         assert!(crate::db::get_workflow_run(&conn, "normal").unwrap().is_some());
-        assert!(crate::db::get_skill_by_name(&conn, "mkt-skill").unwrap().is_some());
+        assert!(crate::db::get_skill_master_id(&conn, "mkt-skill").unwrap().is_some());
     }
 
     #[test]
