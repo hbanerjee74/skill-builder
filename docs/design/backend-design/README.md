@@ -47,9 +47,9 @@ Single `Mutex<Connection>` serializes all access. WAL mode enables concurrent re
 
 Neither flow creates a `skills` master row — library and workspace are independent.
 
-### Marketplace bulk import (Skills Library)
+### Marketplace import (Skills Library)
 
-`import_marketplace_to_library` downloads all skills from a marketplace repo and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Accepts a metadata overrides map so the browse UI can let users adjust frontmatter before inserting.
+`import_marketplace_to_library` downloads a skill from the marketplace and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Skills are imported one at a time. Accepts a metadata overrides map so the browse UI can let users adjust frontmatter before inserting.
 
 ### Startup reconciliation
 
