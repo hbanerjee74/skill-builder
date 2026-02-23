@@ -334,6 +334,7 @@ fn upload_skill_inner(
         argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
+        purpose: None,
     };
 
     // Insert into workspace_skills DB
@@ -465,6 +466,25 @@ pub fn toggle_skill_active(
 
     toggle_skill_active_inner(&skill_id, skill_name, active, &workspace_path, &conn)?;
 
+    // When activating, auto-deactivate any other active skill with the same purpose
+    if active {
+        if let Some(ref purpose) = skill.purpose {
+            let rows_affected = conn.execute(
+                "UPDATE workspace_skills SET is_active = 0 WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
+                rusqlite::params![purpose, skill_id],
+            ).map_err(|e| {
+                log::error!("[toggle_skill_active] failed to deactivate conflicting purposes: {}", e);
+                format!("Failed to deactivate conflicting purpose skills: {}", e)
+            })?;
+            if rows_affected > 0 {
+                log::info!(
+                    "[toggle_skill_active] deactivated {} other skill(s) with purpose='{}'",
+                    rows_affected, purpose
+                );
+            }
+        }
+    }
+
     // Regenerate CLAUDE.md with updated active skills
     if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
         log::warn!("Failed to update CLAUDE.md after toggling skill: {}", e);
@@ -532,6 +552,33 @@ fn toggle_skill_active_inner(
         }
     }
 
+    Ok(())
+}
+
+/// Set or clear the `purpose` tag on a workspace skill.
+/// Purpose tags allow callers to resolve skills by role (e.g. "test-context",
+/// "research", "validate", "skill-building") instead of by name.
+#[tauri::command]
+pub fn set_workspace_skill_purpose(
+    state: tauri::State<'_, crate::db::Db>,
+    skill_id: String,
+    purpose: Option<String>,
+) -> Result<(), String> {
+    log::info!(
+        "[set_workspace_skill_purpose] skill_id={} purpose={:?}",
+        skill_id, purpose
+    );
+    let conn = state.0.lock().map_err(|e| {
+        log::error!("[set_workspace_skill_purpose] Failed to acquire DB lock: {}", e);
+        e.to_string()
+    })?;
+    conn.execute(
+        "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
+        rusqlite::params![purpose, skill_id],
+    ).map_err(|e| {
+        log::error!("[set_workspace_skill_purpose] DB update failed: {}", e);
+        format!("set_workspace_skill_purpose: {}", e)
+    })?;
     Ok(())
 }
 
@@ -798,6 +845,7 @@ pub(crate) fn seed_bundled_skills(
             argument_hint: fm.argument_hint,
             user_invocable: fm.user_invocable,
             disable_model_invocation: fm.disable_model_invocation,
+            purpose: None,
         };
 
         crate::db::upsert_bundled_workspace_skill(conn, &skill)?;
@@ -816,7 +864,7 @@ pub(crate) fn seed_bundled_skills(
 }
 
 /// Recursively copy a directory's contents from src to dst.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let src_path = entry.path();
@@ -1336,6 +1384,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1381,6 +1430,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1427,6 +1477,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1465,6 +1516,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1560,6 +1612,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1632,6 +1685,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1683,6 +1737,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1741,6 +1796,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1794,6 +1850,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1835,6 +1892,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -1964,6 +2022,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2085,6 +2144,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -2155,6 +2215,7 @@ domain: analytics
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 

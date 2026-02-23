@@ -429,16 +429,34 @@ pub(crate) async fn list_github_skills_inner(
 // import_github_skills
 // ---------------------------------------------------------------------------
 
+/// Per-skill import request with optional purpose tag and metadata overrides.
+#[derive(serde::Deserialize)]
+pub struct WorkspaceSkillImportRequest {
+    pub path: String,
+    pub purpose: Option<String>,
+    pub metadata_override: Option<crate::types::SkillMetadataOverride>,
+}
+
 /// Import selected skills from a GitHub repo into the local workspace.
+///
+/// Accepts a list of `WorkspaceSkillImportRequest` items. Each item specifies
+/// the skill path, an optional purpose tag, and optional metadata overrides.
+///
+/// If a workspace_skills row with the same skill_name already exists, it is
+/// updated (version, model, domain, description, disk_path, etc.) while
+/// preserving `is_active` and `is_bundled`. New skills are inserted.
 #[tauri::command]
 pub async fn import_github_skills(
     db: tauri::State<'_, Db>,
     owner: String,
     repo: String,
     branch: String,
-    skill_paths: Vec<String>,
+    skill_requests: Vec<WorkspaceSkillImportRequest>,
 ) -> Result<Vec<ImportedSkill>, String> {
-    log::info!("[import_github_skills] owner={} repo={} branch={} skill_paths={:?}", owner, repo, branch, skill_paths);
+    log::info!(
+        "[import_github_skills] owner={} repo={} branch={} count={}",
+        owner, repo, branch, skill_requests.len()
+    );
     // Read settings
     let (workspace_path, token) = {
         let conn = db.0.lock().map_err(|e| {
@@ -459,9 +477,12 @@ pub async fn import_github_skills(
     let mut imported: Vec<ImportedSkill> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
 
-    for skill_path in &skill_paths {
+    for req in &skill_requests {
+        let skill_path = &req.path;
+        let purpose = req.purpose.clone();
+        let metadata_override = req.metadata_override.as_ref();
+
         // Derive the candidate skill name from the directory path (last segment).
-        // This matches how import_single_skill computes dir_name as fallback.
         let dir_name = skill_path
             .trim_end_matches('/')
             .rsplit('/')
@@ -474,9 +495,7 @@ pub async fn import_github_skills(
             crate::db::get_workspace_skill_by_name(&conn, dir_name)?
         };
 
-        // Determine whether to overwrite the on-disk directory.
-        // For upgrades (different version) we must remove the existing dir.
-        // For same version we skip entirely (blocked by frontend, but guard here too).
+        // Overwrite the on-disk directory if an existing installation is found.
         let should_overwrite = existing.is_some();
 
         match import_single_skill(
@@ -488,7 +507,7 @@ pub async fn import_github_skills(
             &tree,
             &skills_dir,
             should_overwrite,
-            None,
+            metadata_override,
         )
         .await
         {
@@ -496,9 +515,8 @@ pub async fn import_github_skills(
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
 
                 if let Some(ref existing_skill) = existing {
-                    // Compare versions (None == None means same version)
+                    // Same version — skip (blocked by frontend, but guard here too)
                     if existing_skill.version == skill.version {
-                        // Same version — skip (blocked by frontend, but guard here too)
                         log::info!(
                             "[import_github_skills] {} already at version {:?}, skipping",
                             skill.skill_name, skill.version
@@ -512,25 +530,28 @@ pub async fn import_github_skills(
                         errors.push(format!("{}: already installed at the same version", skill.skill_name));
                         continue;
                     }
-                    // Different version — upgrade: merge new frontmatter with existing installed values
-                    // New value wins if Some/non-empty, else fall back to existing installed value
+                    // Different version — merge: new frontmatter wins if Some, else fall back to existing
                     if skill.domain.is_none() { skill.domain = existing_skill.domain.clone(); }
                     if skill.description.is_none() { skill.description = existing_skill.description.clone(); }
                     if skill.model.is_none() { skill.model = existing_skill.model.clone(); }
                     if skill.argument_hint.is_none() { skill.argument_hint = existing_skill.argument_hint.clone(); }
                     if skill.user_invocable.is_none() { skill.user_invocable = existing_skill.user_invocable; }
                     if skill.disable_model_invocation.is_none() { skill.disable_model_invocation = existing_skill.disable_model_invocation; }
-                    // Do NOT merge version — keep the new version
-                    // Do NOT merge skill_name — keep the new name
                     log::info!(
                         "[import_github_skills] upgrading {} from {:?} to {:?}",
                         skill.skill_name, existing_skill.version, skill.version
                     );
                 }
 
-                let ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
+                let mut ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
+                ws_skill.purpose = purpose.clone();
 
-                if existing.is_some() {
+                if let Some(ref existing_skill) = existing {
+                    // Preserve is_active, is_bundled, skill_id, imported_at from the existing row
+                    ws_skill.is_active = existing_skill.is_active;
+                    ws_skill.is_bundled = existing_skill.is_bundled;
+                    ws_skill.skill_id = existing_skill.skill_id.clone();
+                    ws_skill.imported_at = existing_skill.imported_at.clone();
                     if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
                         if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
@@ -547,11 +568,10 @@ pub async fn import_github_skills(
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => imported.push(skill),
                         Err(e) => {
-                            // DB insert failed (e.g. duplicate) — clean up the files we just wrote
-                            if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
+                            if let Err(cleanup_err) = fs::remove_dir_all(&ws_skill.disk_path) {
                                 log::warn!(
                                     "Failed to clean up skill directory '{}' after DB error: {}",
-                                    skill.disk_path, cleanup_err
+                                    ws_skill.disk_path, cleanup_err
                                 );
                             }
                             errors.push(format!("{}: {}", skill.skill_name, e));

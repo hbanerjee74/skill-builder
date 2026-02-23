@@ -87,10 +87,17 @@ pub fn prepare_skill_test(
     validate_skill_name(&skill_name)?;
 
     // Resolve skills_path from DB (falls back to workspace_path if not configured)
-    let skills_path = {
+    // Also look up the purpose-based "test-context" skill if one is configured.
+    let (skills_path, test_context_skill) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = db::read_settings(&conn)?;
-        settings.skills_path.unwrap_or_else(|| workspace_path.clone())
+        let sp = settings.skills_path.unwrap_or_else(|| workspace_path.clone());
+        let tc = crate::db::get_workspace_skill_by_purpose(&conn, "test-context")
+            .map_err(|e| {
+                log::error!("[prepare_skill_test] failed to query test-context skill: {}", e);
+                e.to_string()
+            })?;
+        (sp, tc)
     };
 
     let test_id = uuid::Uuid::new_v4().to_string();
@@ -103,16 +110,45 @@ pub fn prepare_skill_test(
     write_workspace_claude_md(&baseline_dir, "# Test Workspace", "baseline")?;
     write_workspace_claude_md(&with_skill_dir, "# Test Workspace", "with-skill")?;
 
-    // Copy skill-test from bundled resources (immune to workspace active/inactive state)
-    let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(&app);
     let baseline_skills_dir = baseline_dir.join(".claude").join("skills");
     let with_skill_skills_dir = with_skill_dir.join(".claude").join("skills");
 
-    log::info!("[prepare_skill_test] copying skill-test into baseline workspace");
-    copy_skill_dir(&bundled_skills_dir, &baseline_skills_dir, "skill-test")?;
+    // Resolve skill-test source: prefer purpose-based workspace skill, fall back to bundled
+    if let Some(ref tc_skill) = test_context_skill {
+        let tc_path = std::path::Path::new(&tc_skill.disk_path);
+        log::debug!(
+            "[prepare_skill_test] using test-context workspace skill from {}",
+            tc_skill.disk_path
+        );
+        // Copy the skill-test directory contents directly from disk_path
+        std::fs::create_dir_all(&baseline_skills_dir.join("skill-test")).map_err(|e| {
+            format!("Failed to create baseline skill-test dir: {}", e)
+        })?;
+        copy_dir_recursive(tc_path, &baseline_skills_dir.join("skill-test")).map_err(|e| {
+            log::error!("[prepare_skill_test] failed to copy test-context to baseline: {}", e);
+            e
+        })?;
+        std::fs::create_dir_all(&with_skill_skills_dir.join("skill-test")).map_err(|e| {
+            format!("Failed to create with-skill skill-test dir: {}", e)
+        })?;
+        copy_dir_recursive(tc_path, &with_skill_skills_dir.join("skill-test")).map_err(|e| {
+            log::error!("[prepare_skill_test] failed to copy test-context to with-skill: {}", e);
+            e
+        })?;
+        log::info!("[prepare_skill_test] copied skill-test from test-context workspace skill");
+    } else {
+        // Fallback: copy from bundled resources
+        let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(&app);
+        log::debug!(
+            "[prepare_skill_test] using bundled skill-test from {}",
+            bundled_skills_dir.display()
+        );
+        log::info!("[prepare_skill_test] copying skill-test into baseline workspace");
+        copy_skill_dir(&bundled_skills_dir, &baseline_skills_dir, "skill-test")?;
 
-    log::info!("[prepare_skill_test] copying skill-test into with-skill workspace");
-    copy_skill_dir(&bundled_skills_dir, &with_skill_skills_dir, "skill-test")?;
+        log::info!("[prepare_skill_test] copying skill-test into with-skill workspace");
+        copy_skill_dir(&bundled_skills_dir, &with_skill_skills_dir, "skill-test")?;
+    }
 
     // User skill is in skills_path (may differ from workspace_path when custom skills dir is configured)
     // User skills live in skills_path; bundled skills (like skill-test) live in workspace_path/.claude/skills/
