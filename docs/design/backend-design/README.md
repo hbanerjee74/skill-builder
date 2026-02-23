@@ -122,60 +122,12 @@ skills  ← master                         workspace_skills  ← standalone
 
 **`schema_migrations`** — Migration version tracker. `version` + `applied_at`.
 
-### Design decisions
-
-**Source-typed children.** Rather than a single wide table, each `skill_source` gets its own child table containing only the columns relevant to that source. This keeps `skills` narrow and avoids nullable columns for data that only applies to one source type.
-
-**Two registries, not one.** The Skills Library (`skills`) and Settings→Skills (`workspace_skills`) are backed by separate tables. GitHub imports and ZIP uploads go into `workspace_skills` and stay there — they have no Skills Library presence. Only marketplace bulk imports and builder-created skills appear in the Skills Library.
-
-**Soft-delete for telemetry.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can filter out cancelled or reset entries without losing cost history.
-
-**Workspace vs. app data.** Skill files live in the user-configured `skills_path` (default `~/.vibedata/`). The database lives in Tauri's `app_data_dir`. These are intentionally separate: `skills_path` is user-owned and portable; the DB is app-owned and not hand-edited.
 
 ---
 
 ## API Surface (Tauri Commands)
 
-All commands return `Result<T, String>`. Async commands use `#[tauri::command]` with Tokio.
-
-### Settings (7 commands)
-Get and save `AppSettings`, test the Anthropic API key, change runtime log level, get the log file path and default skills path.
-
-### Skill Management (13 commands)
-List skills (with tags and metadata), create, delete, rename, update tags, update metadata, get all tags, get installed skill names, AI-powered name/domain suggestions, acquire/release/check/list skill locks.
-
-### Workflow Execution (11 commands)
-Run a workflow step (spawns agent), get and save workflow state, verify step output, reset a step and all subsequent steps, preview what a reset would delete, run the answer evaluator gate, autofill clarifications and refinement suggestions, log gate decisions, get disabled steps.
-
-### Agent Lifecycle (3 commands)
-Start an agent (spawn sidecar), check whether any agents are running, graceful shutdown of all sidecars.
-
-### File I/O (7 commands)
-List skill files, read/write text files (5 MB cap), copy files, read/write base64-encoded binary files, save raw files during clarification.
-
-### Imported & Marketplace Skills (6 commands)
-Upload a ZIP skill, list imported skills (hydrated with SKILL.md), toggle active flag, delete, get skill content, export as ZIP.
-
-### GitHub Integration (9 commands)
-Parse GitHub URLs, check marketplace URL validity, list and import skills from GitHub repos, import all marketplace skills, GitHub OAuth device flow (start, poll, get user, logout).
-
-### Usage Analytics (8 commands)
-Persist agent run metrics, get usage summary (total cost, runs, averages), get recent runs and sessions, get session/step agent runs, aggregate cost by step and by model, reset usage (soft delete via reset_marker).
-
-### Workspace & Reconciliation (7 commands)
-Get workspace path, clear workspace, run startup reconciliation, resolve orphan skills, resolve discovered skills, create/end workflow sessions.
-
-### Refine (4 commands)
-Get skill content for refine editor, compute diff between original and modified, start/send/close refine session.
-
-### Git History (3 commands)
-Get commit history for a skill, compute diff between two commits, restore skill to a previous commit.
-
-### Node & Dependencies (2 commands)
-Check Node.js availability (bundled or system), check all startup dependencies.
-
-### Feedback & Testing (3 commands)
-Create a GitHub issue (feedback repo), prepare and clean up skill test environment.
+See [api.md](api.md) for the full command reference.
 
 ---
 
