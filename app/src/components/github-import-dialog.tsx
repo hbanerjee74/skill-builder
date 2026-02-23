@@ -257,7 +257,7 @@ export default function GitHubImportDialog({
                 </DialogDescription>
               </DialogHeader>
               <ScrollArea className="max-h-96">
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-1 pr-3">
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
                     const isImporting = state === "importing"
