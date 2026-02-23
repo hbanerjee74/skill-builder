@@ -1979,7 +1979,7 @@ domain: analytics
 
     #[test]
     fn test_seed_bundled_skills_stores_skill_type() {
-        // Regression test for VD-858: skill_type was omitted from upsert_bundled_skill INSERT,
+        // Regression test for VD-858: skill_type was omitted from upsert_imported_skill INSERT,
         // causing bundled skills to land with skill_type = NULL and never appear in Settings → Skills.
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
@@ -2324,7 +2324,7 @@ domain: analytics
     }
 
     #[test]
-    fn test_upsert_bundled_skill_preserves_is_active() {
+    fn test_upsert_imported_skill_preserves_is_active() {
         let conn = create_test_db();
 
         // Skills master row required for FK-based get/update operations
@@ -2352,7 +2352,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         };
-        crate::db::upsert_bundled_skill(&conn, &skill).unwrap();
+        crate::db::upsert_imported_skill(&conn, &skill).unwrap();
 
         let saved = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
         assert!(saved.is_active);
@@ -2377,7 +2377,7 @@ domain: analytics
             user_invocable: None,
             disable_model_invocation: None,
         };
-        crate::db::upsert_bundled_skill(&conn, &skill2).unwrap();
+        crate::db::upsert_imported_skill(&conn, &skill2).unwrap();
 
         // The upsert should NOT override is_active (ON CONFLICT doesn't touch it)
         let updated = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
