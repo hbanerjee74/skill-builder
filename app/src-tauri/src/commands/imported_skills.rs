@@ -431,12 +431,12 @@ fn extract_archive(
 }
 
 #[tauri::command]
-pub fn list_imported_skills(
+pub fn list_workspace_skills(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<WorkspaceSkill>, String> {
-    log::info!("[list_imported_skills]");
+    log::info!("[list_workspace_skills]");
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[list_imported_skills] Failed to acquire DB lock: {}", e);
+        log::error!("[list_workspace_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
     crate::db::list_workspace_skills(&conn)
@@ -824,7 +824,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::commands::test_utils::create_test_db;
-    use crate::types::ImportedSkill;
+    use crate::types::{ImportedSkill, WorkspaceSkill};
     use std::io::Write;
     use tempfile::tempdir;
 
@@ -850,12 +850,12 @@ mod tests {
     // --- DB CRUD tests ---
 
     #[test]
-    fn test_insert_and_list_imported_skill() {
+    fn test_insert_and_list_workspace_skill() {
         let conn = create_test_db();
-        let skill = make_test_skill();
-        crate::db::insert_imported_skill(&conn, &skill).unwrap();
+        let skill = WorkspaceSkill::from(make_test_skill());
+        crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        let skills = crate::db::list_imported_skills(&conn).unwrap();
+        let skills = crate::db::list_workspace_skills(&conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].skill_name, "my-test-skill");
         assert_eq!(skills[0].domain.as_deref(), Some("analytics"));

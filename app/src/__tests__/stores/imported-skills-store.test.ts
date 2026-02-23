@@ -59,7 +59,7 @@ describe("useImportedSkillsStore", () => {
 
   describe("fetchSkills", () => {
     it("fetches skills and updates state", async () => {
-      mockInvokeCommands({ list_imported_skills: sampleSkills });
+      mockInvokeCommands({ list_workspace_skills: sampleSkills });
 
       await useImportedSkillsStore.getState().fetchSkills();
 
@@ -68,7 +68,7 @@ describe("useImportedSkillsStore", () => {
       expect(state.skills[0].skill_name).toBe("sales-analytics");
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills");
+      expect(mockInvoke).toHaveBeenCalledWith("list_workspace_skills");
     });
 
     it("sets error on failure", async () => {
