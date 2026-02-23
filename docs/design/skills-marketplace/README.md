@@ -43,7 +43,7 @@ Skills in this layer are the product of Skill Builder — domain knowledge packa
 
 1. **Built** — created via the full workflow (Research → Decisions → Generation → Validation). Tracked in `workflow_runs` with `source='created'`.
 
-2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills. Downloads to `skills_path/`, inserts into both `workspace_skills` and `workflow_runs` with `source='marketplace'`, `status='completed'`. Appears in the dashboard immediately and qualifies for refinement.
+2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills. Downloads to `skills_path/`, inserts into `skills` master (`skill_source='marketplace'`) and `imported_skills` (disk metadata). Appears in the dashboard immediately and qualifies for refinement.
 
 A marketplace-imported skill is "already completed" — it skips the generation workflow entirely but is otherwise identical to a built skill for refinement purposes.
 
@@ -63,7 +63,13 @@ The marketplace is a GitHub repository — any repo where each subdirectory cont
 
 **Discovery**: `list_github_skills` fetches the full recursive git tree, finds all `SKILL.md` blob entries, downloads each one, parses frontmatter, and returns `AvailableSkill` records. If a `subpath` is configured, only entries under that path are included.
 
+Accepts an optional `show_all: bool` parameter (default `false`). When `false` (normal browse mode), skills are filtered to those with required frontmatter (`name`, `description`, `domain`) and a valid Skill Library `skill_type` (`domain`, `platform`, `source`, `data-engineering`). When `show_all=true`, all skills are returned regardless of frontmatter completeness or skill_type — the directory name is used as the name fallback. Used by the marketplace metadata editing UI to show the full repo contents.
+
+`AvailableSkill` records include both required fields (`path`, `name`, `domain`, `description`, `skill_type`) and optional extended fields populated from frontmatter: `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation`.
+
 **Pre-marking**: Before showing the browse dialog, `get_all_installed_skill_names` queries a UNION of `workflow_runs` and `workspace_skills` by skill name. Skills already in either table are shown as "In library" (greyed out) in the browse UI.
+
+**Metadata overrides**: `import_marketplace_to_library` accepts an optional `metadata_overrides` map keyed by skill path. Each value is a `SkillMetadataOverride` struct with all-optional fields: `name`, `description`, `domain`, `skill_type`, `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation`. Any field set in the override replaces the value parsed from SKILL.md before the DB insert. Used by the marketplace metadata editing UI to let users correct or augment frontmatter before importing.
 
 ---
 
