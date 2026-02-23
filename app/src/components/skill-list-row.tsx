@@ -1,5 +1,6 @@
 import {
   Download,
+  FlaskConical,
   Lock,
   MessageSquare,
   MoreHorizontal,
@@ -7,6 +8,7 @@ import {
   SquarePen,
   Trash2,
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -14,7 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Progress } from "@/components/ui/progress"
 import {
   Tooltip,
   TooltipContent,
@@ -24,11 +25,20 @@ import {
 import {
   IconAction,
   isWorkflowComplete,
-  parseStepProgress,
 } from "@/components/skill-card"
+import { SkillSourceBadge } from "@/components/skill-source-badge"
 import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
+
+function getStatusLabel(skill: SkillSummary): string {
+  if (skill.skill_source === "marketplace" || skill.skill_source === "imported" || isWorkflowComplete(skill)) {
+    return "Completed"
+  }
+  const match = skill.current_step?.match(/step\s*(\d+)/i)
+  if (match) return `Step ${match[1]}/5`
+  return "In Progress"
+}
 
 interface SkillListRowProps {
   skill: SkillSummary
@@ -39,7 +49,7 @@ interface SkillListRowProps {
   onEdit?: (skill: SkillSummary) => void
   onEditWorkflow?: (skill: SkillSummary) => void
   onRefine?: (skill: SkillSummary) => void
-  marketplaceConfigured?: boolean
+  onTest?: (skill: SkillSummary) => void
 }
 
 export default function SkillListRow({
@@ -51,20 +61,25 @@ export default function SkillListRow({
   onEdit,
   onEditWorkflow,
   onRefine,
+  onTest,
 }: SkillListRowProps) {
-  const isMarketplace = skill.source === 'marketplace'
-  const progress = isMarketplace ? 100 : parseStepProgress(skill.current_step, skill.status)
+  const isMarketplace = skill.skill_source === 'marketplace'
   const canDownload = isMarketplace || isWorkflowComplete(skill)
+  const statusLabel = getStatusLabel(skill)
+  const isComplete = statusLabel === "Completed"
+
+  const tdBase = cn(
+    "py-2.5 border-b transition-colors",
+    isLocked ? "opacity-50" : "",
+  )
 
   const row = (
-    <div
-      role="button"
+    <tr
       tabIndex={isLocked ? -1 : 0}
       className={cn(
-        "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[14%_22%_10%_22%_7rem_1fr]",
+        "transition-colors",
         isLocked
-          ? "opacity-50 cursor-not-allowed"
+          ? "cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
       )}
       onClick={() => !isLocked && onContinue(skill)}
@@ -75,74 +90,88 @@ export default function SkillListRow({
         }
       }}
     >
-      {/* Col 1: Name */}
-      <span className={cn("min-w-0 truncate text-sm font-medium", isLocked && "flex items-center gap-1.5")}>
-        {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
-        {skill.name}
-      </span>
+      {/* Col 1: Name + Type subtitle */}
+      <td className={cn(tdBase, "pl-4 min-w-0")}>
+        <div className={cn("min-w-0", isLocked && "flex items-center gap-1.5")}>
+          {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
+          <div className="truncate text-sm font-medium">{skill.name}</div>
+          <div className="hidden sm:block truncate text-xs text-muted-foreground">
+            {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+          </div>
+        </div>
+      </td>
 
-      {/* Col 2: Domain (2fr — wide, plain text, truncate at 30ch) */}
-      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground max-w-[30ch]">
-        {skill.domain ?? ""}
-      </span>
+      {/* Col 2: Source */}
+      <td className={cn(tdBase, "hidden sm:table-cell")}>
+        <div className="flex items-center">
+          <SkillSourceBadge skillSource={skill.skill_source} />
+        </div>
+      </td>
 
-      {/* Col 3: Type (plain text) */}
-      <span className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap">
-        {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
-      </span>
+      {/* Col 3: Status */}
+      <td className={cn(tdBase, "hidden sm:table-cell")}>
+        <div className="flex items-center">
+          {isComplete ? (
+            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
+              Completed
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-xs px-1.5 py-0">
+              {statusLabel}
+            </Badge>
+          )}
+        </div>
+      </td>
 
-      {/* Col 4: Tags (2fr — wide, plain text, comma-separated) */}
-      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground">
-        {skill.tags?.join(", ") ?? ""}
-      </span>
+      {/* Mobile: status text */}
+      <td className={cn(tdBase, "sm:hidden text-xs text-muted-foreground")}>
+        {statusLabel}
+      </td>
 
-      {/* Col 5: Progress (hidden on mobile) */}
-      <div className="hidden items-center gap-1 sm:flex">
-        <Progress value={progress} className="w-20" />
-        <span className="w-8 text-right text-xs text-muted-foreground">{progress}%</span>
-      </div>
-
-      {/* Col 4: Progress on mobile only — compact */}
-      <div className="flex items-center gap-1 sm:hidden">
-        <span className="text-xs text-muted-foreground">{progress}%</span>
-      </div>
-
-      {/* Col 6: Actions (right-aligned) */}
+      {/* Col 4: Actions */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
-        {!isMarketplace && (
+      <td className={cn(tdBase, "pr-4")} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5 justify-end">
+          {skill.skill_source === 'skill-builder' && (
+            <IconAction
+              icon={<Pencil className="size-3" />}
+              label="Edit workflow"
+              tooltip="Edit workflow"
+              onClick={() => onEditWorkflow?.(skill)}
+            />
+          )}
+          {canDownload && onRefine && (
+            <IconAction
+              icon={<MessageSquare className="size-3" />}
+              label="Refine skill"
+              tooltip="Refine"
+              onClick={() => onRefine(skill)}
+            />
+          )}
+          {canDownload && (
+            <IconAction
+              icon={<FlaskConical className="size-3" />}
+              label="Test skill"
+              tooltip="Test"
+              onClick={() => onTest?.(skill)}
+            />
+          )}
+          {canDownload && onDownload && (
+            <IconAction
+              icon={<Download className="size-3" />}
+              label="Download skill"
+              tooltip="Download .skill"
+              onClick={() => onDownload(skill)}
+            />
+          )}
           <IconAction
-            icon={<Pencil className="size-3" />}
-            label="Edit workflow"
-            tooltip="Edit workflow"
-            onClick={() => onEditWorkflow?.(skill)}
+            icon={<Trash2 className="size-3" />}
+            label="Delete skill"
+            tooltip="Delete"
+            className="hover:text-destructive"
+            onClick={() => onDelete(skill)}
           />
-        )}
-        {canDownload && onRefine && (
-          <IconAction
-            icon={<MessageSquare className="size-3" />}
-            label="Refine skill"
-            tooltip="Refine"
-            onClick={() => onRefine(skill)}
-          />
-        )}
-        {canDownload && onDownload && (
-          <IconAction
-            icon={<Download className="size-3" />}
-            label="Download skill"
-            tooltip="Download .skill"
-            onClick={() => onDownload(skill)}
-          />
-        )}
-        <IconAction
-          icon={<Trash2 className="size-3" />}
-          label="Delete skill"
-          tooltip="Delete"
-          className="hover:text-destructive"
-          onClick={() => onDelete(skill)}
-        />
 
-        {!isMarketplace && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -161,9 +190,9 @@ export default function SkillListRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        )}
-      </div>
-    </div>
+        </div>
+      </td>
+    </tr>
   )
 
   if (isLocked) {

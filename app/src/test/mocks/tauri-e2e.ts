@@ -78,7 +78,7 @@ const mockResponses: Record<string, unknown> = {
   // Sidecar lifecycle
   cleanup_skill_sidecar: undefined,
   // Reconciliation
-  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0 },
+  reconcile_startup: { orphans: [], notifications: [], auto_cleaned: 0, discovered_skills: [] },
   // Skill locks
   acquire_lock: undefined,
   release_lock: undefined,
@@ -114,7 +114,7 @@ const mockResponses: Record<string, unknown> = {
   list_user_repos: [],
   validate_remote_repo: undefined,
   // Imported skills (Skills Library page)
-  list_imported_skills: [],
+  list_workspace_skills: [],
   upload_skill: {
     skill_id: "skill-001",
     skill_name: "test-skill",

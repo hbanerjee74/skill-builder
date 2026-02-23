@@ -69,6 +69,7 @@ export interface SkillSummary {
   last_modified: string | null
   tags: string[]
   skill_type: string | null
+  skill_source?: string | null
   author_login: string | null
   author_avatar: string | null
   intake_json: string | null
@@ -167,10 +168,17 @@ export interface OrphanSkill {
   skill_type: string
 }
 
+export interface DiscoveredSkill {
+  name: string
+  detected_step: number
+  scenario: string
+}
+
 export interface ReconciliationResult {
   orphans: OrphanSkill[]
   notifications: string[]
   auto_cleaned: number
+  discovered_skills: DiscoveredSkill[]
 }
 
 export interface AgentRunRecord {
@@ -248,6 +256,24 @@ export interface ImportedSkill {
   disable_model_invocation: boolean | null
 }
 
+/** Workspace skill stored in the workspace_skills table (Settings > Skills tab). */
+export interface WorkspaceSkill {
+  skill_id: string
+  skill_name: string
+  domain: string | null
+  description: string | null
+  is_active: boolean
+  is_bundled: boolean
+  disk_path: string
+  imported_at: string
+  skill_type: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
+}
+
 export interface GitHubRepoInfo {
   owner: string
   repo: string
@@ -261,6 +287,23 @@ export interface AvailableSkill {
   domain: string | null
   description: string | null
   skill_type: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
+}
+
+export interface SkillMetadataOverride {
+  name: string
+  description: string
+  domain: string
+  skill_type: string
+  version?: string | null
+  model?: string | null
+  argument_hint?: string | null
+  user_invocable?: boolean | null
+  disable_model_invocation?: boolean | null
 }
 
 export interface MarketplaceImportResult {

@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
 
 // --- Settings ---
 
@@ -230,6 +230,9 @@ export const reconcileStartup = () =>
 export const resolveOrphan = (skillName: string, action: "delete" | "keep") =>
   invoke("resolve_orphan", { skillName, action });
 
+export const resolveDiscovery = (skillName: string, action: string) =>
+  invoke<void>("resolve_discovery", { skillName, action });
+
 // --- Feedback ---
 
 interface CreateGithubIssueRequest {
@@ -350,6 +353,17 @@ export async function getInstalledSkillNames(): Promise<string[]> {
   return invoke<string[]>("get_installed_skill_names")
 }
 
+export async function getDashboardSkillNames(): Promise<string[]> {
+  return invoke<string[]>("get_dashboard_skill_names")
+}
+
+export async function listSkills(workspacePath: string): Promise<SkillSummary[]> {
+  return invoke<SkillSummary[]>("list_skills", { workspacePath })
+}
+
+export const listWorkspaceSkills = () =>
+  invoke<WorkspaceSkill[]>("list_workspace_skills")
+
 // --- GitHub Import ---
 
 export const parseGitHubUrl = (url: string) =>
@@ -366,8 +380,8 @@ export const importGitHubSkills = (owner: string, repo: string, branch: string, 
 
 // --- Marketplace Import ---
 
-export const importMarketplaceToLibrary = (skillPaths: string[]) =>
-  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths })
+export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
 
 // --- Refine ---
 

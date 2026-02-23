@@ -1,22 +1,22 @@
-import { useState, useEffect, useCallback } from "react"
+import { useEffect, useCallback } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { Upload, Package, Github } from "lucide-react"
+import { Upload, Package, Github, Trash2 } from "lucide-react"
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import ImportedSkillCard from "@/components/imported-skill-card"
-import SkillPreviewDialog from "@/components/skill-preview-dialog"
+import { Switch } from "@/components/ui/switch"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
-import type { ImportedSkill } from "@/stores/imported-skills-store"
+import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
+import { useState } from "react"
 
 export function SkillsLibraryTab() {
   const {
@@ -29,7 +29,6 @@ export function SkillsLibraryTab() {
   } = useImportedSkillsStore()
 
   const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
-  const [previewSkillName, setPreviewSkillName] = useState<string | null>(null)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
 
   useEffect(() => {
@@ -54,63 +53,44 @@ export function SkillsLibraryTab() {
       if (message.startsWith(missingPrefix)) {
         const fields = message.slice(missingPrefix.length).split(",").filter(Boolean)
         toast.error(
-          `Import failed: SKILL.md is missing required fields: ${fields.join(", ")}. Add them to the frontmatter and try again.`,
+          `Import failed: SKILL.md is missing required fields: ${fields.join(", ")}.`,
           { id: toastId, duration: Infinity }
         )
       } else {
-        toast.error(
-          `Import failed: ${message}`,
-          { id: toastId, duration: Infinity }
-        )
+        toast.error(`Import failed: ${message}`, { id: toastId, duration: Infinity })
       }
     }
   }, [uploadSkill])
 
-  const handleToggleActive = useCallback(
-    async (skillName: string, active: boolean) => {
+  const handleToggle = useCallback(
+    async (skill: WorkspaceSkill) => {
       try {
-        await toggleActive(skillName, active)
+        await toggleActive(skill.skill_id, !skill.is_active)
         toast.success(
-          active ? `"${skillName}" activated` : `"${skillName}" deactivated`,
+          !skill.is_active ? `"${skill.skill_name}" activated` : `"${skill.skill_name}" deactivated`,
           { duration: 1500 }
         )
       } catch (err) {
-        console.error("[skills-library] toggle active failed:", err)
-        toast.error(
-          `Failed to toggle: ${err instanceof Error ? err.message : String(err)}`,
-          { duration: Infinity }
-        )
+        console.error("[skills-library] toggle failed:", err)
+        toast.error(`Failed to toggle: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
       }
     },
     [toggleActive]
   )
 
   const handleDelete = useCallback(
-    async (skill: ImportedSkill) => {
+    async (skill: WorkspaceSkill) => {
       const toastId = toast.loading(`Deleting "${skill.skill_name}"...`)
       try {
-        await deleteSkill(skill.skill_name)
+        await deleteSkill(skill.skill_id)
         toast.success(`Deleted "${skill.skill_name}"`, { id: toastId })
       } catch (err) {
         console.error("[skills-library] delete failed:", err)
-        toast.error(
-          `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
-          { id: toastId, duration: Infinity }
-        )
+        toast.error(`Delete failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
       }
     },
     [deleteSkill]
   )
-
-  const displayedSkills = skills.filter((s) => s.skill_type === "skill-builder")
-
-  const previewSkill = previewSkillName
-    ? displayedSkills.find((s) => s.skill_name === previewSkillName) ?? null
-    : null
-
-  const handlePreview = useCallback((skill: ImportedSkill) => {
-    setPreviewSkillName(skill.skill_name)
-  }, [])
 
   return (
     <div className="space-y-6">
@@ -132,53 +112,76 @@ export function SkillsLibraryTab() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-              </CardContent>
-            </Card>
+            <div key={i} className="flex items-center gap-4 rounded-md border px-4 py-3">
+              <Skeleton className="h-4 w-40 flex-1" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-5 w-8" />
+            </div>
           ))}
         </div>
-      ) : displayedSkills.length === 0 ? (
+      ) : skills.length === 0 ? (
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-muted">
               <Package className="size-6 text-muted-foreground" />
             </div>
-            <CardTitle>No imported skills</CardTitle>
+            <CardTitle>No workspace skills</CardTitle>
             <CardDescription>
-              Upload a .skill package or browse the marketplace to add skills to your library.
+              Upload a .skill package or browse the marketplace to add skills.
             </CardDescription>
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {displayedSkills.map((skill) => (
-            <ImportedSkillCard
+        <div className="rounded-md border">
+          <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+            <span className="flex-1">Name</span>
+            <span className="w-24">Version</span>
+            <span className="w-20">Active</span>
+            <span className="w-8" />
+          </div>
+          {skills.map((skill) => (
+            <div
               key={skill.skill_id}
-              skill={skill}
-              onToggleActive={handleToggleActive}
-              onDelete={handleDelete}
-              onPreview={handlePreview}
-            />
+              className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="truncate text-sm font-medium">{skill.skill_name}</div>
+                {skill.domain && (
+                  <div className="text-xs text-muted-foreground">{skill.domain}</div>
+                )}
+              </div>
+              <div className="w-24 shrink-0">
+                {skill.version ? (
+                  <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </div>
+              <div className="w-20 shrink-0 flex items-center gap-2">
+                <Switch
+                  checked={skill.is_active}
+                  onCheckedChange={() => handleToggle(skill)}
+                  aria-label={`Toggle ${skill.skill_name}`}
+                />
+              </div>
+              <div className="w-8 shrink-0 flex items-center justify-end">
+                {!skill.is_bundled && (
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label={`Delete ${skill.skill_name}`}
+                    onClick={() => handleDelete(skill)}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
-
-      <SkillPreviewDialog
-        skill={previewSkill}
-        open={previewSkill !== null}
-        onOpenChange={(open) => {
-          if (!open) setPreviewSkillName(null)
-        }}
-      />
 
       <GitHubImportDialog
         open={showGitHubImport}
@@ -186,7 +189,6 @@ export function SkillsLibraryTab() {
         onImported={fetchSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
-        typeFilter={["skill-builder"]}
       />
     </div>
   )

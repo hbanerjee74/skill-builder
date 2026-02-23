@@ -9,6 +9,7 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | `get_settings` | Read `AppSettings` from DB |
 | `save_settings` | Write `AppSettings`; handles `skills_path` init/move |
 | `test_api_key` | Validate an Anthropic API key with a live call |
+| `list_models` | Fetch available model list from the Anthropic API |
 | `set_log_level` | Change runtime log level without restarting |
 | `get_log_file_path` | Path to the Tauri app log file |
 | `get_default_skills_path` | Platform default for `skills_path` |
@@ -38,6 +39,7 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | Command | Description |
 |---|---|
 | `run_workflow_step` | Execute a workflow step (spawns agent) |
+| `package_skill` | Package a skill directory as a `.skill` ZIP archive |
 | `get_workflow_state` | Current step and all step statuses |
 | `save_workflow_state` | Persist workflow run and step data |
 | `verify_step_output` | Check that expected output files exist |
@@ -75,12 +77,11 @@ All commands are exposed via `#[tauri::command]` and return `Result<T, String>`.
 | Command | Description |
 |---|---|
 | `upload_skill` | Extract ZIP and register in `workspace_skills` |
-| `list_imported_skills` | All `workspace_skills` entries hydrated with SKILL.md |
-| `toggle_skill_active` | Set active/inactive flag; auto-deactivates other active skills sharing the same purpose |
+| `list_workspace_skills` | All `workspace_skills` entries hydrated with SKILL.md |
+| `toggle_skill_active` | Set active/inactive flag |
 | `delete_imported_skill` | Remove from `workspace_skills` |
 | `get_skill_content` | Read SKILL.md content |
 | `export_skill` | Package a skill as a ZIP for download |
-| `set_workspace_skill_purpose` | Set or clear the `purpose` tag on a workspace skill |
 
 ## GitHub Integration
 

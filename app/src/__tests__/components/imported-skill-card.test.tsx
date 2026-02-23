@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ImportedSkillCard from "@/components/imported-skill-card";
-import type { ImportedSkill } from "@/stores/imported-skills-store";
+import WorkspaceSkillCard from "@/components/imported-skill-card";
+import type { WorkspaceSkill } from "@/stores/imported-skills-store";
 
-const baseSkill: ImportedSkill = {
+const baseSkill: WorkspaceSkill = {
   skill_id: "id-1",
   skill_name: "sales-analytics",
   domain: "sales",
@@ -21,10 +21,10 @@ const baseSkill: ImportedSkill = {
   disable_model_invocation: null,
 };
 
-describe("ImportedSkillCard", () => {
+describe("WorkspaceSkillCard", () => {
   it("renders skill name", () => {
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -36,7 +36,7 @@ describe("ImportedSkillCard", () => {
 
   it("renders domain badge when domain is present", () => {
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -49,7 +49,7 @@ describe("ImportedSkillCard", () => {
   it("does not render domain badge when domain is null", () => {
     const skill = { ...baseSkill, domain: null };
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={skill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -61,7 +61,7 @@ describe("ImportedSkillCard", () => {
 
   it("renders description fallback when no trigger text", () => {
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -76,7 +76,7 @@ describe("ImportedSkillCard", () => {
   it("renders argument_hint when set", () => {
     const skill = { ...baseSkill, argument_hint: "Use when analyzing sales data" };
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={skill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -88,7 +88,7 @@ describe("ImportedSkillCard", () => {
 
   it("renders description with 'no trigger set' when argument_hint is null", () => {
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -104,7 +104,7 @@ describe("ImportedSkillCard", () => {
   it("renders 'No trigger set' when both trigger_text and description are null", () => {
     const skill = { ...baseSkill, description: null };
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={skill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -116,7 +116,7 @@ describe("ImportedSkillCard", () => {
 
   it("renders Preview button", () => {
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -130,7 +130,7 @@ describe("ImportedSkillCard", () => {
     const user = userEvent.setup();
     const onPreview = vi.fn();
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -146,7 +146,7 @@ describe("ImportedSkillCard", () => {
     const user = userEvent.setup();
     const onToggleActive = vi.fn();
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={onToggleActive}
         onDelete={vi.fn()}
@@ -164,7 +164,7 @@ describe("ImportedSkillCard", () => {
     const onToggleActive = vi.fn();
     const inactiveSkill = { ...baseSkill, is_active: false };
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={inactiveSkill}
         onToggleActive={onToggleActive}
         onDelete={vi.fn()}
@@ -181,7 +181,7 @@ describe("ImportedSkillCard", () => {
     const user = userEvent.setup();
     const onDelete = vi.fn();
     render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={onDelete}
@@ -204,7 +204,7 @@ describe("ImportedSkillCard", () => {
   it("applies dimmed styling when skill is inactive", () => {
     const inactiveSkill = { ...baseSkill, is_active: false };
     const { container } = render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={inactiveSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -218,7 +218,7 @@ describe("ImportedSkillCard", () => {
 
   it("does not apply dimmed styling when skill is active", () => {
     const { container } = render(
-      <ImportedSkillCard
+      <WorkspaceSkillCard
         skill={baseSkill}
         onToggleActive={vi.fn()}
         onDelete={vi.fn()}
@@ -231,7 +231,7 @@ describe("ImportedSkillCard", () => {
   });
 
   describe("bundled skills", () => {
-    const bundledSkill: ImportedSkill = {
+    const bundledSkill: WorkspaceSkill = {
       ...baseSkill,
       skill_id: "bundled-1",
       skill_name: "skill-builder-practices",
@@ -241,7 +241,7 @@ describe("ImportedSkillCard", () => {
 
     it("shows Built-in badge for bundled skills", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={bundledSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -253,7 +253,7 @@ describe("ImportedSkillCard", () => {
 
     it("does not show Built-in badge for non-bundled skills", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={baseSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -265,7 +265,7 @@ describe("ImportedSkillCard", () => {
 
     it("hides delete button for bundled skills", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={bundledSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -279,7 +279,7 @@ describe("ImportedSkillCard", () => {
       const user = userEvent.setup();
       const onToggleActive = vi.fn();
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={bundledSkill}
           onToggleActive={onToggleActive}
           onDelete={vi.fn()}
@@ -295,7 +295,7 @@ describe("ImportedSkillCard", () => {
   });
 
   describe("research bundled skill", () => {
-    const researchSkill: ImportedSkill = {
+    const researchSkill: WorkspaceSkill = {
       ...baseSkill,
       skill_id: "bundled-research",
       skill_name: "research",
@@ -306,7 +306,7 @@ describe("ImportedSkillCard", () => {
 
     it("shows Built-in badge for research skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={researchSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -318,7 +318,7 @@ describe("ImportedSkillCard", () => {
 
     it("does not show delete button for research skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={researchSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -330,7 +330,7 @@ describe("ImportedSkillCard", () => {
 
     it("shows toggle active switch for research skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={researchSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -346,7 +346,7 @@ describe("ImportedSkillCard", () => {
       const user = userEvent.setup();
       const onToggleActive = vi.fn();
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={researchSkill}
           onToggleActive={onToggleActive}
           onDelete={vi.fn()}
@@ -361,7 +361,7 @@ describe("ImportedSkillCard", () => {
   });
 
   describe("validate-skill bundled skill", () => {
-    const validateSkill: ImportedSkill = {
+    const validateSkill: WorkspaceSkill = {
       ...baseSkill,
       skill_id: "bundled-validate-skill",
       skill_name: "validate-skill",
@@ -372,7 +372,7 @@ describe("ImportedSkillCard", () => {
 
     it("shows Built-in badge for validate-skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={validateSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -384,7 +384,7 @@ describe("ImportedSkillCard", () => {
 
     it("does not show delete button for validate-skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={validateSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -396,7 +396,7 @@ describe("ImportedSkillCard", () => {
 
     it("shows toggle active switch for validate-skill", () => {
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={validateSkill}
           onToggleActive={vi.fn()}
           onDelete={vi.fn()}
@@ -412,7 +412,7 @@ describe("ImportedSkillCard", () => {
       const user = userEvent.setup();
       const onToggleActive = vi.fn();
       render(
-        <ImportedSkillCard
+        <WorkspaceSkillCard
           skill={validateSkill}
           onToggleActive={onToggleActive}
           onDelete={vi.fn()}

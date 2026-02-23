@@ -16,6 +16,7 @@ const createdComplete: SkillSummary = {
   last_modified: null,
   tags: [],
   skill_type: "skill-builder",
+  skill_source: "skill-builder",
   author_login: null,
   author_avatar: null,
   intake_json: null,
@@ -30,6 +31,7 @@ const createdIncomplete: SkillSummary = {
 
 const marketplaceSkill: SkillSummary = {
   ...createdComplete,
+  skill_source: "marketplace",
   source: "marketplace",
 };
 
@@ -48,6 +50,12 @@ function renderRow(
   const onEditWorkflow = vi.fn();
   const onRefine = vi.fn();
 
+  // SkillListRow renders a <tr>, so it must be mounted inside a valid table context.
+  const table = document.createElement("table");
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+  document.body.appendChild(table);
+
   render(
     <SkillListRow
       skill={skill}
@@ -58,7 +66,8 @@ function renderRow(
       onEditWorkflow={onEditWorkflow}
       onRefine={onRefine}
       {...overrides}
-    />
+    />,
+    { container: tbody }
   );
 
   return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow, onRefine };
@@ -111,13 +120,13 @@ describe("SkillListRow — created skill", () => {
   });
 
   it("shows progress based on current_step", () => {
-    renderRow(createdIncomplete); // step 2 → 50%
-    expect(screen.getAllByText("50%").length).toBeGreaterThan(0);
+    renderRow(createdIncomplete); // step 2 → "Step 2/5"
+    expect(screen.getAllByText("Step 2/5").length).toBeGreaterThan(0);
   });
 
-  it("shows 100% when complete", () => {
+  it("shows Completed when complete", () => {
     renderRow(createdComplete);
-    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
   });
 
   it("calls onContinue when row is clicked", async () => {
@@ -179,9 +188,9 @@ describe("SkillListRow — marketplace skill", () => {
     expect(screen.queryByRole("button", { name: /More actions/i })).not.toBeInTheDocument();
   });
 
-  it("always shows 100% progress regardless of step data", () => {
+  it("always shows Completed regardless of step data", () => {
     renderRow({ ...marketplaceSkill, status: "running", current_step: "step 1" });
-    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
   });
 
   it("calls onContinue when row is clicked", async () => {
@@ -210,14 +219,19 @@ describe("SkillListRow — marketplace skill", () => {
 // SkillListRow — null/undefined source defaults to created behaviour
 // ---------------------------------------------------------------------------
 
-describe("SkillListRow — null/undefined source defaults to created behaviour", () => {
-  it("shows Edit Workflow when source is null", () => {
-    renderRow({ ...createdComplete, source: null });
+describe("SkillListRow — null/undefined skill_source defaults to non-editable behaviour", () => {
+  it("shows Edit Workflow when skill_source is skill-builder", () => {
+    renderRow({ ...createdComplete, skill_source: "skill-builder" });
     expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
   });
 
-  it("shows Edit Workflow when source is undefined", () => {
-    renderRow({ ...createdComplete, source: undefined });
-    expect(screen.getByRole("button", { name: /Edit workflow/i })).toBeInTheDocument();
+  it("hides Edit Workflow when skill_source is null", () => {
+    renderRow({ ...createdComplete, skill_source: null });
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
+  });
+
+  it("hides Edit Workflow when skill_source is undefined", () => {
+    renderRow({ ...createdComplete, skill_source: undefined });
+    expect(screen.queryByRole("button", { name: /Edit workflow/i })).not.toBeInTheDocument();
   });
 });

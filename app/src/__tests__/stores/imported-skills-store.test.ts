@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
-import type { ImportedSkill } from "@/stores/imported-skills-store";
+import type { WorkspaceSkill } from "@/stores/imported-skills-store";
 
-const sampleSkills: ImportedSkill[] = [
+const sampleSkills: WorkspaceSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
@@ -59,7 +59,7 @@ describe("useImportedSkillsStore", () => {
 
   describe("fetchSkills", () => {
     it("fetches skills and updates state", async () => {
-      mockInvokeCommands({ list_imported_skills: sampleSkills });
+      mockInvokeCommands({ list_workspace_skills: sampleSkills });
 
       await useImportedSkillsStore.getState().fetchSkills();
 
@@ -68,7 +68,7 @@ describe("useImportedSkillsStore", () => {
       expect(state.skills[0].skill_name).toBe("sales-analytics");
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
-      expect(mockInvoke).toHaveBeenCalledWith("list_imported_skills");
+      expect(mockInvoke).toHaveBeenCalledWith("list_workspace_skills");
     });
 
     it("sets error on failure", async () => {
@@ -83,9 +83,9 @@ describe("useImportedSkillsStore", () => {
     });
 
     it("sets isLoading during fetch", async () => {
-      let resolvePromise: (value: ImportedSkill[]) => void;
+      let resolvePromise: (value: WorkspaceSkill[]) => void;
       mockInvoke.mockReturnValue(
-        new Promise<ImportedSkill[]>((resolve) => {
+        new Promise<WorkspaceSkill[]>((resolve) => {
           resolvePromise = resolve;
         })
       );
@@ -101,7 +101,7 @@ describe("useImportedSkillsStore", () => {
 
   describe("uploadSkill", () => {
     it("uploads and prepends skill to list", async () => {
-      const newSkill: ImportedSkill = {
+      const newSkill: WorkspaceSkill = {
         skill_id: "id-3",
         skill_name: "new-skill",
         domain: "marketing",
@@ -138,10 +138,10 @@ describe("useImportedSkillsStore", () => {
       mockInvokeCommands({ toggle_skill_active: undefined });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
-      await useImportedSkillsStore.getState().toggleActive("sales-analytics", false);
+      await useImportedSkillsStore.getState().toggleActive("id-1", false);
 
       expect(mockInvoke).toHaveBeenCalledWith("toggle_skill_active", {
-        skillName: "sales-analytics",
+        skillId: "id-1",
         active: false,
       });
 
@@ -154,7 +154,7 @@ describe("useImportedSkillsStore", () => {
       mockInvokeCommands({ toggle_skill_active: undefined });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
-      await useImportedSkillsStore.getState().toggleActive("hr-metrics", true);
+      await useImportedSkillsStore.getState().toggleActive("id-2", true);
 
       const state = useImportedSkillsStore.getState();
       const other = state.skills.find((s) => s.skill_name === "sales-analytics");
@@ -167,10 +167,10 @@ describe("useImportedSkillsStore", () => {
       mockInvokeCommands({ delete_imported_skill: undefined });
       useImportedSkillsStore.setState({ skills: sampleSkills });
 
-      await useImportedSkillsStore.getState().deleteSkill("sales-analytics");
+      await useImportedSkillsStore.getState().deleteSkill("id-1");
 
       expect(mockInvoke).toHaveBeenCalledWith("delete_imported_skill", {
-        skillName: "sales-analytics",
+        skillId: "id-1",
       });
 
       const state = useImportedSkillsStore.getState();
@@ -185,7 +185,7 @@ describe("useImportedSkillsStore", () => {
         selectedSkill: sampleSkills[0],
       });
 
-      await useImportedSkillsStore.getState().deleteSkill("sales-analytics");
+      await useImportedSkillsStore.getState().deleteSkill("id-1");
 
       expect(useImportedSkillsStore.getState().selectedSkill).toBeNull();
     });
@@ -197,7 +197,7 @@ describe("useImportedSkillsStore", () => {
         selectedSkill: sampleSkills[0],
       });
 
-      await useImportedSkillsStore.getState().deleteSkill("hr-metrics");
+      await useImportedSkillsStore.getState().deleteSkill("id-2");
 
       expect(useImportedSkillsStore.getState().selectedSkill?.skill_name).toBe(
         "sales-analytics"

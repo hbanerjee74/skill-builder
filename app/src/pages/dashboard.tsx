@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { save } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
-import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github } from "lucide-react"
+import { FolderOpen, Search, Filter, AlertCircle, Settings, Plus, Github, ChevronUp, ChevronDown } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -36,6 +36,28 @@ import { useWorkflowStore } from "@/stores/workflow-store"
 import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
+import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
+
+
+function SortHeader({ label, column, sortBy, sortDir, onSort }: {
+  label: string
+  column: string
+  sortBy: string
+  sortDir: 'asc' | 'desc'
+  onSort: (col: string) => void
+}) {
+  const isActive = sortBy === column
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-1 text-left hover:text-foreground transition-colors"
+      onClick={() => onSort(column)}
+    >
+      {label}
+      {isActive && (sortDir === 'asc' ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />)}
+    </button>
+  )
+}
 
 export default function DashboardPage() {
   const [skills, setSkills] = useState<SkillSummary[]>([])
@@ -43,12 +65,15 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
-  const [skillLibraryMarketplaceTypeFilter, setSkillLibraryMarketplaceTypeFilter] = useState<string[]>(['platform', 'domain', 'source', 'data-engineering'])
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all')
+  const [sortBy, setSortBy] = useState<string>('name')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
@@ -174,13 +199,62 @@ export default function DashboardPage() {
         s.skill_type != null && selectedTypes.includes(s.skill_type)
       )
     }
+    if (selectedSources.length > 0) {
+      result = result.filter((s) =>
+        s.skill_source != null && selectedSources.includes(s.skill_source)
+      )
+    }
+    if (statusFilter === 'completed') {
+      result = result.filter((s) =>
+        s.skill_source === 'marketplace' || s.skill_source === 'imported' || s.status === 'completed'
+      )
+    }
+    if (statusFilter === 'in-progress') {
+      result = result.filter((s) =>
+        s.skill_source === 'skill-builder' && s.status !== 'completed'
+      )
+    }
     return result
-  }, [skills, searchQuery, selectedTags, selectedTypes])
+  }, [skills, searchQuery, selectedTags, selectedTypes, selectedSources, statusFilter])
 
-  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0
+  const isFiltering =
+    searchQuery.trim().length > 0 ||
+    selectedTags.length > 0 ||
+    selectedTypes.length > 0 ||
+    selectedSources.length > 0 ||
+    statusFilter !== 'all'
+
+  const sortedSkills = useMemo(() => {
+    if (!sortBy) return filteredSkills
+    return [...filteredSkills].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'name': cmp = a.name.localeCompare(b.name); break
+        case 'source': cmp = (a.skill_source || '').localeCompare(b.skill_source || ''); break
+        case 'domain': cmp = (a.domain || '').localeCompare(b.domain || ''); break
+        case 'type': cmp = (a.skill_type || '').localeCompare(b.skill_type || ''); break
+        case 'status': {
+          const aComplete = a.skill_source !== 'skill-builder' || a.status === 'completed'
+          const bComplete = b.skill_source !== 'skill-builder' || b.status === 'completed'
+          cmp = Number(aComplete) - Number(bComplete)
+          break
+        }
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [filteredSkills, sortBy, sortDir])
+
+  const handleSort = useCallback((column: string) => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortDir('asc')
+    }
+  }, [sortBy])
 
   const handleContinue = (skill: SkillSummary) => {
-    if (skill.source === 'marketplace') {
+    if (skill.skill_source === 'marketplace') {
       navigate({ to: "/refine", search: { skill: skill.name } })
       return
     }
@@ -195,6 +269,11 @@ export default function DashboardPage() {
 
   const handleRefine = useCallback((skill: SkillSummary) => {
     navigate({ to: "/refine", search: { skill: skill.name } })
+  }, [navigate])
+
+  const handleTest = useCallback((skill: SkillSummary) => {
+    console.log("[dashboard] navigating to test: skill=%s", skill.name)
+    navigate({ to: "/test", search: { skill: skill.name } })
   }, [navigate])
 
   const handleDownload = useCallback(async (skill: SkillSummary) => {
@@ -214,6 +293,7 @@ export default function DashboardPage() {
         toast.dismiss(toastId)
       }
     } catch (err) {
+      console.error("[dashboard] Download failed:", err)
       toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
     }
   }, [workspacePath])
@@ -228,7 +308,7 @@ export default function DashboardPage() {
       onEdit: setEditTarget,
       onEditWorkflow: handleEditWorkflow,
       onRefine: handleRefine,
-      marketplaceConfigured: !!marketplaceUrl,
+      onTest: handleTest,
     }
   }
 
@@ -236,24 +316,32 @@ export default function DashboardPage() {
     if (loading) {
       if (viewMode === "list") {
         return (
-          <div className="flex flex-col gap-1">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="grid grid-cols-[14%_22%_10%_22%_7rem_1fr] items-center gap-x-3 rounded-md border px-3 py-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <div className="flex gap-1">
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                  <Skeleton className="h-5 w-14 rounded-full" />
-                </div>
-                <Skeleton className="h-2 w-full" />
-                <div className="flex gap-1 justify-self-end">
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                </div>
-              </div>
-            ))}
+          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+            <table className="w-full table-auto border-separate border-spacing-0">
+              <tbody>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <tr key={i}>
+                    <td className="py-2.5 pl-4 border-b">
+                      <Skeleton className="h-4 w-32 mb-1" />
+                      <Skeleton className="h-3 w-16" />
+                    </td>
+                    <td className="hidden sm:table-cell py-2.5 border-b">
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </td>
+                    <td className="hidden sm:table-cell py-2.5 border-b">
+                      <Skeleton className="h-5 w-16 rounded-full" />
+                    </td>
+                    <td className="py-2.5 pr-4 border-b">
+                      <div className="flex gap-1 justify-end">
+                        <Skeleton className="size-6 rounded-md" />
+                        <Skeleton className="size-6 rounded-md" />
+                        <Skeleton className="size-6 rounded-md" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )
       }
@@ -320,17 +408,35 @@ export default function DashboardPage() {
 
     if (viewMode === "list") {
       return (
-        <div className="flex flex-col gap-1">
-          {filteredSkills.map((skill) => (
-            <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
-          ))}
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+          <table className="w-full table-auto border-separate border-spacing-0">
+            <thead className="sticky top-0 z-10 bg-background">
+              <tr className="hidden sm:table-row">
+                <th scope="col" className="pl-4 py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
+                  <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
+                  <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
+                  <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th scope="col" className="pr-4 py-1.5 text-right text-sm font-semibold text-muted-foreground border-b-2 border-border">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedSkills.map((skill) => (
+                <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )
     }
 
     return (
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filteredSkills.map((skill) => (
+        {sortedSkills.map((skill) => (
           <SkillCard key={skill.name} {...sharedSkillProps(skill)} />
         ))}
       </div>
@@ -338,7 +444,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6">
+    <div className={viewMode === "list" ? "flex flex-col h-full gap-6 p-6" : "flex flex-col gap-6 p-6"}>
       {workspacePath && skillsPath && (
         <div className="flex items-center justify-end gap-2">
           <Button
@@ -435,6 +541,85 @@ export default function DashboardPage() {
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Filter className="size-4" />
+                Source
+                {selectedSources.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                    {selectedSources.length}
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter by source</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {Object.entries(SOURCE_DISPLAY_LABELS).map(([key, label]) => (
+                <DropdownMenuCheckboxItem
+                  key={key}
+                  checked={selectedSources.includes(key)}
+                  onCheckedChange={() => {
+                    setSelectedSources((prev) =>
+                      prev.includes(key)
+                        ? prev.filter((s) => s !== key)
+                        : [...prev, key]
+                    )
+                  }}
+                >
+                  {label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {selectedSources.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <button
+                    type="button"
+                    className="w-full px-2 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setSelectedSources([])}
+                  >
+                    Clear all
+                  </button>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Filter className="size-4" />
+                Status
+                {statusFilter !== 'all' && (
+                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                    1
+                  </Badge>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter by status</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'all'}
+                onCheckedChange={() => setStatusFilter('all')}
+              >
+                All
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'completed'}
+                onCheckedChange={() => setStatusFilter('completed')}
+              >
+                Completed
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={statusFilter === 'in-progress'}
+                onCheckedChange={() => setStatusFilter('in-progress')}
+              >
+                In Progress
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DashboardViewToggle value={viewMode} onChange={handleViewModeChange} />
         </div>
       )}
@@ -450,8 +635,7 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
-          onOpenMarketplace={(typeFilter) => {
-            setSkillLibraryMarketplaceTypeFilter(typeFilter)
+          onOpenMarketplace={() => {
             setSkillLibraryMarketplaceOpen(true)
             setCreateOpen(false)
           }}
@@ -486,9 +670,9 @@ export default function DashboardPage() {
         open={skillLibraryMarketplaceOpen}
         onOpenChange={setSkillLibraryMarketplaceOpen}
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-        typeFilter={skillLibraryMarketplaceTypeFilter}
         mode="skill-library"
         url={marketplaceUrl ?? ""}
+        workspacePath={workspacePath}
       />
 
     </div>
