@@ -235,7 +235,10 @@ pub async fn list_github_skills(
     log::info!("[list_github_skills] owner={} repo={} branch={} subpath={:?}", owner, repo, branch, subpath);
     // Read OAuth token if available
     let token = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let conn = db.0.lock().map_err(|e| {
+            log::error!("[list_github_skills] failed to acquire DB lock: {}", e);
+            e.to_string()
+        })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
         settings.github_oauth_token.clone()
     };
@@ -252,8 +255,8 @@ pub(crate) async fn list_github_skills_inner(
     token: Option<&str>,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
-    let (branch, tree) = fetch_repo_tree(&client, owner, repo, branch).await?;
     log::info!("[list_github_skills_inner] fetching tree from {}/{} branch={}", owner, repo, branch);
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, branch).await?;
 
     // Find all SKILL.md blob entries
     let skill_md_paths: Vec<String> = tree
