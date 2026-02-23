@@ -1225,20 +1225,30 @@ mod tests {
         )
         .unwrap();
 
-        // Add workflow steps
+        // Add workflow steps (save_workflow_step populates workflow_run_id FK automatically)
         crate::db::save_workflow_step(&conn, "db-cleanup", 0, "completed").unwrap();
 
-        // Add workflow artifact
-        conn.execute(
-            "INSERT INTO workflow_artifacts (skill_name, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', 0, 'test.md', '# Test', 6)",
+        // Add workflow artifact with FK populated
+        let wr_id: i64 = conn.query_row(
+            "SELECT id FROM workflow_runs WHERE skill_name = 'db-cleanup'",
             [],
+            |row| row.get(0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO workflow_artifacts (skill_name, workflow_run_id, step_id, relative_path, content, size_bytes) VALUES ('db-cleanup', ?1, 0, 'test.md', '# Test', 6)",
+            rusqlite::params![wr_id],
         )
         .unwrap();
 
-        // Add skill lock
-        conn.execute(
-            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES ('db-cleanup', 'inst-1', 12345)",
+        // Add skill lock with skill_id FK populated
+        let s_id: i64 = conn.query_row(
+            "SELECT id FROM skills WHERE name = 'db-cleanup'",
             [],
+            |row| row.get(0),
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES ('db-cleanup', ?1, 'inst-1', 12345)",
+            rusqlite::params![s_id],
         )
         .unwrap();
 
@@ -1659,8 +1669,12 @@ mod tests {
 
         // These should succeed (UPDATE affects 0 rows, no error)
         crate::db::set_skill_display_name(&conn, "ghost", Some("Name")).unwrap();
-        crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]).unwrap();
         crate::db::set_skill_intake(&conn, "ghost", Some("{}")).unwrap();
+
+        // set_skill_tags now requires a skills master row — returns Err for unknown skills
+        let result = crate::db::set_skill_tags(&conn, "ghost", &["tag".into()]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found in skills master"));
 
         // No row should exist
         assert!(crate::db::get_workflow_run(&conn, "ghost").unwrap().is_none());
