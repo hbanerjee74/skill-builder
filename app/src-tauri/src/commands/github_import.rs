@@ -333,11 +333,11 @@ pub(crate) async fn list_github_skills_inner(
             .trim_end_matches('/');
 
         let fm = super::imported_skills::parse_frontmatter_full(&content);
-        let dir_name = skill_dir
-            .rsplit('/')
-            .next()
-            .unwrap_or(skill_dir);
-        let name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
+
+        let Some(name) = fm.name.clone() else {
+            log::warn!("[list_github_skills_inner] skipping '{}' — missing name in frontmatter", skill_md_path);
+            continue;
+        };
 
         log::debug!(
             "[list_github_skills_inner] parsed {}: name={:?} domain={:?} type={:?}",
