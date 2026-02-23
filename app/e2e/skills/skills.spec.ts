@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
-import importedSkillsFixture from "../fixtures/imported-skills.json" with { type: "json" };
+import workspaceSkillsFixture from "../fixtures/workspace-skills.json" with { type: "json" };
 
 /** Navigate to the Skills section of the Settings page. */
 async function navigateToSkillsLibrary(page: Parameters<typeof waitForAppReady>[0]) {
@@ -19,32 +19,28 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
   test("shows empty state when no skills exist", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
+        list_workspace_skills: [],
       };
     });
 
     await navigateToSkillsLibrary(page);
 
-    // Empty state card should be visible (CardTitle renders as <div>, not a heading)
-    await expect(page.getByText("No imported skills")).toBeVisible();
+    await expect(page.getByText("No workspace skills")).toBeVisible();
     await expect(
-      page.getByText("Upload a .skill package or browse the marketplace to add skills to your library.")
+      page.getByText("Upload a .skill package or browse the marketplace to add skills.")
     ).toBeVisible();
   });
 
   test("shows action buttons in Skills Library tab", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
+        list_workspace_skills: [],
       };
     });
 
     await navigateToSkillsLibrary(page);
 
-    // Settings page header
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-
-    // Settings sidebar shows "Skills" as active section
     await expect(page.locator("nav button", { hasText: "Skills" })).toBeVisible();
 
     // Action buttons — Marketplace button exists (may be disabled without marketplaceUrl)
@@ -52,171 +48,99 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
   });
 
-  test("shows populated state with skill cards", async ({ page }) => {
-    // Add skill_type: "skill-builder" to fixture items so they pass the displayedSkills filter
-    const skillsWithType = importedSkillsFixture
-      .filter((s) => !s.is_bundled)
-      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+  test("shows skill list with names and version badges", async ({ page }) => {
+    const nonBundled = workspaceSkillsFixture.filter((s) => !s.is_bundled);
 
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: skills,
+        list_workspace_skills: skills,
       };
-    }, skillsWithType);
+    }, nonBundled);
 
     await navigateToSkillsLibrary(page);
 
-    // Both skill cards should be visible (CardTitle renders as <div>, not a heading)
+    // Both skills should be visible in the list
     await expect(page.getByText("data-analytics")).toBeVisible();
     await expect(page.getByText("api-design")).toBeVisible();
 
-    // Domain badges
-    await expect(page.getByText("Data", { exact: true })).toBeVisible();
-    await expect(page.getByText("Engineering", { exact: true })).toBeVisible();
+    // Domain subtext
+    await expect(page.getByText("Data")).toBeVisible();
+    await expect(page.getByText("Engineering")).toBeVisible();
 
-    // argument_hint is displayed on the card
-    await expect(page.getByText("When the user asks about data analysis...")).toBeVisible();
-    await expect(page.getByText("When designing REST APIs...")).toBeVisible();
+    // data-analytics has version "1.0.0", api-design has no version (shows "—")
+    await expect(page.getByText("1.0.0")).toBeVisible();
   });
 
   test("can toggle skill active state", async ({ page }) => {
-    const skillsWithType = importedSkillsFixture
-      .filter((s) => !s.is_bundled)
-      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+    const nonBundled = workspaceSkillsFixture.filter((s) => !s.is_bundled);
 
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: skills,
+        list_workspace_skills: skills,
         toggle_skill_active: undefined,
       };
-    }, skillsWithType);
+    }, nonBundled);
 
     await navigateToSkillsLibrary(page);
 
-    // Find the switch for data-analytics skill
-    const dataAnalyticsSwitch = page.getByLabel("Toggle data-analytics active");
-    await expect(dataAnalyticsSwitch).toBeChecked();
+    // Find the active toggle for data-analytics
+    const toggle = page.getByLabel("Toggle data-analytics");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toBeChecked();
 
-    // Toggle it off
-    await dataAnalyticsSwitch.click();
-
-    // The card should now have opacity-60 class (we can verify by checking the card's opacity style)
-    const dataAnalyticsCard = page.locator(".opacity-60").filter({
-      hasText: "data-analytics",
-    });
-    await expect(dataAnalyticsCard).toBeVisible();
+    // Toggle it — should fire toggle_skill_active without error
+    await toggle.click();
   });
 
-  test("can delete skill with two-click confirmation", async ({ page }) => {
-    const skillsWithType = importedSkillsFixture
-      .filter((s) => !s.is_bundled)
-      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+  test("delete button is hidden for bundled skills", async ({ page }) => {
+    await page.addInitScript((skills) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
+        list_workspace_skills: skills,
+      };
+    }, workspaceSkillsFixture);
+
+    await navigateToSkillsLibrary(page);
+
+    // Non-bundled skills should have a delete button
+    await expect(page.getByLabel("Delete data-analytics")).toBeVisible();
+
+    // Bundled skills must NOT have a delete button
+    await expect(page.getByLabel("Delete skill-builder-practices")).not.toBeVisible();
+  });
+
+  test("can delete a non-bundled skill", async ({ page }) => {
+    const nonBundled = workspaceSkillsFixture.filter((s) => !s.is_bundled);
 
     await page.addInitScript((skills) => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: skills,
+        list_workspace_skills: skills,
         delete_imported_skill: undefined,
       };
-    }, skillsWithType);
+    }, nonBundled);
 
     await navigateToSkillsLibrary(page);
 
-    // Find the delete button for data-analytics (CardTitle is a <div>, not a heading)
-    const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
-      hasText: "data-analytics",
-    }).first();
-
-    const deleteButton = dataAnalyticsCard.getByLabel("Delete skill");
-    await expect(deleteButton).toBeVisible();
-
-    // First click - should change to destructive variant
-    await deleteButton.click();
-    await expect(dataAnalyticsCard.getByLabel("Confirm delete")).toBeVisible();
-
-    // Second click - should delete the skill
-    await dataAnalyticsCard.getByLabel("Confirm delete").click();
-
-    // Card should disappear
-    await expect(page.getByText("data-analytics")).not.toBeVisible();
-    // But the other skill should remain
+    // Both skills visible
+    await expect(page.getByText("data-analytics")).toBeVisible();
     await expect(page.getByText("api-design")).toBeVisible();
-  });
 
-  test("can open preview dialog", async ({ page }) => {
-    const mockSkillContent = "# Data Analytics Skill\n\nThis is a sample skill for data analytics.";
-    const skillsWithType = importedSkillsFixture
-      .filter((s) => !s.is_bundled)
-      .map((s) => ({ ...s, skill_type: "skill-builder" }));
+    // Delete data-analytics
+    await page.getByLabel("Delete data-analytics").click();
 
-    await page.addInitScript(
-      ({ skills, content }) => {
-        (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-          list_imported_skills: skills,
-          get_skill_content: content,
-        };
-      },
-      { skills: skillsWithType, content: mockSkillContent }
-    );
-
-    await navigateToSkillsLibrary(page);
-
-    // Click the Preview button for data-analytics (CardTitle is a <div>, not a heading)
-    const dataAnalyticsCard = page.locator("[data-slot='card']").filter({
-      hasText: "data-analytics",
-    }).first();
-
-    await dataAnalyticsCard.getByRole("button", { name: /preview/i }).click();
-
-    // Dialog should open with skill name as title (DialogTitle IS a heading)
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "data-analytics" })).toBeVisible();
-    await expect(page.getByText("SKILL.md content preview")).toBeVisible();
-
-    // Should show the markdown content
-    await expect(page.getByText("Data Analytics Skill")).toBeVisible();
-  });
-
-  test("can close preview dialog", async ({ page }) => {
-    const mockSkillContent = "# API Design Skill\n\nREST API best practices.";
-    const skillsWithType = importedSkillsFixture
-      .filter((s) => !s.is_bundled)
-      .map((s) => ({ ...s, skill_type: "skill-builder" }));
-
-    await page.addInitScript(
-      ({ skills, content }) => {
-        (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-          list_imported_skills: skills,
-          get_skill_content: content,
-        };
-      },
-      { skills: skillsWithType, content: mockSkillContent }
-    );
-
-    await navigateToSkillsLibrary(page);
-
-    // Open preview (CardTitle is a <div>, not a heading)
-    const apiDesignCard = page.locator("[data-slot='card']").filter({
-      hasText: "api-design",
-    }).first();
-
-    await apiDesignCard.getByRole("button", { name: /preview/i }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-
-    // Close dialog by pressing Escape (the X button uses sr-only "Close" text)
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).not.toBeVisible();
+    // data-analytics should disappear; api-design remains
+    await expect(page.getByText("data-analytics")).not.toBeVisible();
+    await expect(page.getByText("api-design")).toBeVisible();
   });
 
   test("upload skill button is clickable", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
+        list_workspace_skills: [],
       };
     });
 
     await navigateToSkillsLibrary(page);
 
-    // Verify the Upload Skill button exists and is clickable
     const uploadButton = page.getByRole("button", { name: /upload skill/i }).first();
     await expect(uploadButton).toBeVisible();
     await expect(uploadButton).toBeEnabled();
@@ -225,7 +149,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
   test("can open Marketplace import dialog", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
+        list_workspace_skills: [],
         get_settings: {
           anthropic_api_key: "sk-ant-test",
           workspace_path: "/tmp/test-workspace",
@@ -248,20 +172,19 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Click Marketplace button (enabled when marketplace_url is configured)
     await page.getByRole("button", { name: /marketplace/i }).first().click();
 
-    // Dialog should open and auto-browse (shows loading or "Browse Marketplace" heading)
+    // Dialog should open and auto-browse
     await expect(page.getByRole("dialog")).toBeVisible();
   });
 
   test("Marketplace button is disabled without marketplace URL configured", async ({ page }) => {
     await page.addInitScript(() => {
       (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_imported_skills: [],
+        list_workspace_skills: [],
       };
     });
 
     await navigateToSkillsLibrary(page);
 
-    // Marketplace button should be disabled when no marketplace URL is set (default mock has no marketplace_url)
     const marketplaceButton = page.getByRole("button", { name: /marketplace/i }).first();
     await expect(marketplaceButton).toBeVisible();
     await expect(marketplaceButton).toBeDisabled();
