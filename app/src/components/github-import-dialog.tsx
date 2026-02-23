@@ -298,7 +298,7 @@ export default function GitHubImportDialog({
                           ) : (
                             <Button
                               size="icon"
-                              variant="outline"
+                              variant="ghost"
                               className="size-7"
                               disabled={isImporting}
                               onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
