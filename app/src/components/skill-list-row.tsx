@@ -32,6 +32,11 @@ import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+/** Shared grid column definition — used by both the row and the table header in dashboard.tsx */
+export const LIST_ROW_GRID = "grid-cols-[1fr_7rem_10rem_8rem_6rem_7rem_auto]"
+/** Responsive variant for row usage (mobile: 2-col, desktop: full grid) */
+const LIST_ROW_GRID_RESPONSIVE = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_7rem_10rem_8rem_6rem_7rem_auto]"
+
 interface SkillListRowProps {
   skill: SkillSummary
   isLocked?: boolean
@@ -65,7 +70,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        "grid-cols-[1fr_auto] sm:grid-cols-[14%_22%_10%_22%_7rem_1fr]",
+        LIST_ROW_GRID_RESPONSIVE,
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
@@ -84,34 +89,38 @@ export default function SkillListRow({
         {skill.name}
       </span>
 
-      {/* Col 2: Domain (2fr — wide, plain text, truncate at 30ch) */}
-      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground max-w-[30ch]">
-        {skill.domain ?? ""}
-      </span>
-
-      {/* Col 3: Type + Source (plain text) */}
-      <span className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
-        {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+      {/* Col 2: Source */}
+      <span className="hidden sm:block">
         <SkillSourceBadge skillSource={skill.skill_source} />
       </span>
 
-      {/* Col 4: Tags (2fr — wide, plain text, comma-separated) */}
+      {/* Col 3: Domain */}
+      <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground">
+        {skill.domain ?? ""}
+      </span>
+
+      {/* Col 4: Type */}
+      <span className="hidden sm:block text-xs text-muted-foreground whitespace-nowrap">
+        {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+      </span>
+
+      {/* Col 5: Tags */}
       <span className="hidden sm:block min-w-0 truncate text-xs text-muted-foreground">
         {skill.tags?.join(", ") ?? ""}
       </span>
 
-      {/* Col 5: Progress (hidden on mobile) */}
+      {/* Col 6: Progress (hidden on mobile) */}
       <div className="hidden items-center gap-1 sm:flex">
         <Progress value={progress} className="w-20" />
         <span className="w-8 text-right text-xs text-muted-foreground">{progress}%</span>
       </div>
 
-      {/* Col 4: Progress on mobile only — compact */}
+      {/* Progress on mobile only — compact */}
       <div className="flex items-center gap-1 sm:hidden">
         <span className="text-xs text-muted-foreground">{progress}%</span>
       </div>
 
-      {/* Col 6: Actions (right-aligned) */}
+      {/* Col 7: Actions (right-aligned) */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
       <div className="flex shrink-0 items-center gap-0.5 justify-self-end" onClick={(e) => e.stopPropagation()}>
         {skill.skill_source === 'skill-builder' && (
