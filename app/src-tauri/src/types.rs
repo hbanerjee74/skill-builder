@@ -267,6 +267,19 @@ pub struct SkillMasterRow {
     pub skill_type: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    // SKILL.md frontmatter fields — canonical store for all skill sources
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub argument_hint: Option<String>,
+    #[serde(default)]
+    pub user_invocable: Option<bool>,
+    #[serde(default)]
+    pub disable_model_invocation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
