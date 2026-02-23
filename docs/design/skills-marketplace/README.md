@@ -43,9 +43,13 @@ Before import, the app compares the candidate skill against existing `workspace_
 
 ### Editable metadata at import
 
-When importing into Settings→Skills, an edit form is shown pre-populated with the skill's frontmatter values. The user can modify `name`, `description`, `domain`, `skill_type`, `version`, and `model` before confirming. The confirmed values are written to `SKILL.md` on disk and stored in the DB.
+An edit form is shown for both Settings→Skills and Skill Library imports, pre-populated with the skill's frontmatter values. The user can modify `name`, `description`, `domain`, `skill_type`, `version`, and `model` before confirming. The confirmed values are written to `SKILL.md` on disk and stored in the DB.
 
-**Frontmatter rewrite on disk**: when the user confirms, the YAML frontmatter block in `SKILL.MD` is rewritten with the user-supplied values. Body content below the closing `---` is preserved. If the rewrite fails, the import is rolled back — the skill directory is removed and no DB row is inserted — and the error is surfaced to the user.
+The two modes differ in when overrides are applied:
+- **Skill Library**: confirming the edit form immediately triggers the import with the overrides passed to `importMarketplaceToLibrary`.
+- **Settings→Skills**: confirming saves the overrides per-skill; they are applied at bulk import time when the user clicks Import.
+
+**Frontmatter rewrite on disk**: `import_single_skill` (used by both import paths) rewrites the YAML frontmatter block in `SKILL.md` with the final values after downloading. Body content below the closing `---` is preserved. If the rewrite fails, the import is rolled back — the skill directory is removed and no DB row is inserted — and the error is surfaced to the user.
 
 ### Purpose slots
 
@@ -60,7 +64,7 @@ Each workspace skill may hold a **purpose** — a named role the app resolves at
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
 
-**Import-time assignment**: during marketplace import into Settings→Skills, the user can optionally assign a purpose to the incoming skill. If the selected purpose is already held by an active workspace skill, the import is blocked with the message "Purpose occupied by `{name}`".
+**Import-time assignment**: during marketplace import into Settings→Skills, the user can optionally assign a purpose to the incoming skill. If the selected purpose is already held by a DIFFERENT active workspace skill (matched by `skill_name`), the import is blocked with the message "Purpose occupied by `{name}`". Re-importing a skill that already holds the target purpose (same name) does not trigger the conflict check.
 
 **Activation behaviour**: activating a workspace skill that has a purpose automatically deactivates any other active skill holding the same purpose. Only one active skill per purpose at a time.
 
