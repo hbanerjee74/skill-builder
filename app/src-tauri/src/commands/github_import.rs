@@ -1560,4 +1560,28 @@ mod tests {
         assert!(result.contains("# Skill Body"), "body should be preserved: {}", result);
         assert!(result.contains("Some content here."), "body content should be preserved: {}", result);
     }
+
+    #[test]
+    fn test_rollback_removes_dest_dir_on_rewrite_failure() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Simulate dest_dir with downloaded skill files but no SKILL.md
+        let parent = TempDir::new().unwrap();
+        let dest_dir = parent.path().join("my-skill");
+        fs::create_dir_all(&dest_dir).unwrap();
+        fs::write(dest_dir.join("some-file.txt"), "content").unwrap();
+
+        // rewrite_skill_md fails because there is no SKILL.md
+        let fm = super::super::imported_skills::Frontmatter {
+            name: Some("my-skill".to_string()),
+            ..Default::default()
+        };
+        let result = rewrite_skill_md(&dest_dir, &fm);
+        assert!(result.is_err(), "rewrite should fail without SKILL.md");
+
+        // Rollback cleanup (mirrors import_single_skill on rewrite failure)
+        fs::remove_dir_all(&dest_dir).unwrap();
+        assert!(!dest_dir.exists(), "dest_dir should be gone after rollback");
+    }
 }
