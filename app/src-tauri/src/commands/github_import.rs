@@ -359,9 +359,39 @@ pub(crate) async fn list_github_skills_inner(
         }
     }
 
+    // Fetch the repo tree once to verify which manifest entries actually contain
+    // a SKILL.md. Plugin packages (e.g. ./plugins/*) live alongside skills but
+    // don't have a SKILL.md and cannot be imported as skills.
+    let (_, tree) = fetch_repo_tree(&client, owner, repo, &resolved_branch).await?;
+
+    // Build a set of directory paths that own a SKILL.md blob in the tree.
+    let skill_dirs: std::collections::HashSet<String> = tree
+        .iter()
+        .filter_map(|entry| {
+            let p = entry["path"].as_str()?;
+            if entry["type"].as_str()? != "blob" {
+                return None;
+            }
+            p.strip_suffix("/SKILL.md").map(|dir| dir.to_string())
+        })
+        .collect();
+
+    let before = skills.len();
+    skills.retain(|s| {
+        if skill_dirs.contains(&s.path) {
+            true
+        } else {
+            log::debug!(
+                "[list_github_skills_inner] skipping '{}' — no SKILL.md at {}/SKILL.md",
+                s.name, s.path
+            );
+            false
+        }
+    });
+
     log::info!(
-        "[list_github_skills_inner] found {} plugins in marketplace.json for {}/{}",
-        skills.len(), owner, repo
+        "[list_github_skills_inner] found {} importable skills ({} filtered — no SKILL.md) in marketplace.json for {}/{}",
+        skills.len(), before - skills.len(), owner, repo
     );
 
     Ok(skills)
