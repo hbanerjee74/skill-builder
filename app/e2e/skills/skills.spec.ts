@@ -15,6 +15,13 @@ async function navigateToSkillsLibrary(page: Parameters<typeof waitForAppReady>[
   await page.waitForTimeout(300);
 }
 
+/** Navigate to the main dashboard (skills list with grid/list view toggle). */
+async function navigateToDashboard(page: Parameters<typeof waitForAppReady>[0]) {
+  await page.goto("/");
+  await waitForAppReady(page);
+  await page.waitForTimeout(300);
+}
+
 test.describe("Skills Library", { tag: "@skills" }, () => {
   test("shows empty state when no skills exist", async ({ page }) => {
     await page.addInitScript(() => {
@@ -174,6 +181,123 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     // Dialog should open and auto-browse
     await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  // ─── List view ───────────────────────────────────────────────────────────
+
+  /** SkillSummary-shaped skills for dashboard list view tests. */
+  const DASHBOARD_SKILLS = [
+    {
+      name: "data-analytics",
+      domain: "Data",
+      current_step: null,
+      status: "completed",
+      last_modified: "2025-01-15T10:00:00Z",
+      tags: [],
+      skill_type: "domain",
+      skill_source: "marketplace",
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
+    },
+    {
+      name: "api-design",
+      domain: "Engineering",
+      current_step: null,
+      status: "completed",
+      last_modified: "2025-01-14T09:00:00Z",
+      tags: [],
+      skill_type: "platform",
+      skill_source: "imported",
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
+    },
+  ];
+
+  const DASHBOARD_MOCKS = {
+    get_settings: {
+      anthropic_api_key: "sk-ant-test",
+      workspace_path: "/tmp/ws",
+      skills_path: "/tmp/skills",
+      dashboard_view_mode: null,
+    },
+    list_skills: DASHBOARD_SKILLS,
+    get_all_tags: [],
+    save_settings: undefined,
+    check_workspace_path: true,
+  };
+
+  test("can switch to list view and back to grid view", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+
+    // Default is grid view
+    await expect(page.getByRole("button", { name: "Grid view" })).toHaveAttribute("aria-pressed", "true");
+
+    // Switch to list view — skills still visible
+    await page.getByRole("button", { name: "List view" }).click();
+    await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText("data-analytics")).toBeVisible();
+    await expect(page.getByText("api-design")).toBeVisible();
+
+    // Switch back to grid view
+    await page.getByRole("button", { name: "Grid view" }).click();
+    await expect(page.getByRole("button", { name: "Grid view" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("shows table header columns in list view", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    await expect(page.getByRole("button", { name: "Name" })).toBeVisible();
+    // "Source" and "Status" also appear as filter dropdown buttons; use last() to target the table header
+    await expect(page.getByRole("button", { name: "Source" }).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Status" }).last()).toBeVisible();
+    await expect(page.getByText("Actions", { exact: true })).toBeVisible();
+  });
+
+  test("shows skill type subtitle in list view name column", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // data-analytics has skill_type "domain" → "Domain" label
+    await expect(page.getByText("Domain", { exact: true })).toBeVisible();
+    // api-design has skill_type "platform" → "Platform" label
+    await expect(page.getByText("Platform", { exact: true })).toBeVisible();
+  });
+
+  test("can sort skills by name in list view", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // Default: ascending by name — "api-design" comes before "data-analytics"
+    const apiBoxAsc = await page.getByText("api-design").first().boundingBox();
+    const dataBoxAsc = await page.getByText("data-analytics").first().boundingBox();
+    expect(apiBoxAsc!.y).toBeLessThan(dataBoxAsc!.y);
+
+    // Click Name to reverse to descending
+    await page.getByRole("button", { name: "Name" }).click();
+
+    // Now "data-analytics" comes before "api-design"
+    const apiBoxDesc = await page.getByText("api-design").first().boundingBox();
+    const dataBoxDesc = await page.getByText("data-analytics").first().boundingBox();
+    expect(dataBoxDesc!.y).toBeLessThan(apiBoxDesc!.y);
   });
 
   test("Marketplace button is disabled without marketplace URL configured", async ({ page }) => {
