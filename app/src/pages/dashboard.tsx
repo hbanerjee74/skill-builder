@@ -316,21 +316,21 @@ export default function DashboardPage() {
     if (loading) {
       if (viewMode === "list") {
         return (
-          <table className="w-full table-auto border-collapse">
+          <table className="w-full table-auto border-separate border-spacing-0">
             <tbody>
               {[1, 2, 3, 4, 5].map((i) => (
-                <tr key={i} className="border-b">
-                  <td className="py-2.5 pl-4">
+                <tr key={i}>
+                  <td className="py-2.5 pl-4 border-b">
                     <Skeleton className="h-4 w-32 mb-1" />
                     <Skeleton className="h-3 w-16" />
                   </td>
-                  <td className="hidden sm:table-cell py-2.5">
+                  <td className="hidden sm:table-cell py-2.5 border-b">
                     <Skeleton className="h-5 w-16 rounded-full" />
                   </td>
-                  <td className="hidden sm:table-cell py-2.5">
+                  <td className="hidden sm:table-cell py-2.5 border-b">
                     <Skeleton className="h-5 w-16 rounded-full" />
                   </td>
-                  <td className="py-2.5 pr-4">
+                  <td className="py-2.5 pr-4 border-b">
                     <div className="flex gap-1 justify-end">
                       <Skeleton className="size-6 rounded-md" />
                       <Skeleton className="size-6 rounded-md" />
@@ -406,19 +406,19 @@ export default function DashboardPage() {
 
     if (viewMode === "list") {
       return (
-        <table className="w-full table-auto border-collapse">
-          <thead>
-            <tr className="hidden sm:table-row border-b text-sm font-semibold text-muted-foreground">
-              <th scope="col" className="pl-4 py-1.5 text-left font-semibold">
+        <table className="w-full table-auto border-separate border-spacing-0">
+          <thead className="sticky top-0 z-10 bg-background">
+            <tr className="hidden sm:table-row">
+              <th scope="col" className="pl-4 py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
                 <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="py-1.5 text-left font-semibold">
+              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
                 <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="py-1.5 text-left font-semibold">
+              <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b">
                 <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
               </th>
-              <th scope="col" className="pr-4 py-1.5 text-right font-semibold">Actions</th>
+              <th scope="col" className="pr-4 py-1.5 text-right text-sm font-semibold text-muted-foreground border-b">Actions</th>
             </tr>
           </thead>
           <tbody>
