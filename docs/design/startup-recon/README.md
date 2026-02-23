@@ -14,7 +14,7 @@ The `skills` table is the single catalog backing the skills library, test tab, a
 CREATE TABLE skills (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   name         TEXT NOT NULL UNIQUE,
-  skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+  skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
   domain       TEXT,
   skill_type   TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -36,7 +36,7 @@ ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
 |-------|--------|--------------------------|
 | `skill-builder` | Created via builder workflow, OR discovered on disk with full context artifacts | Yes — step state, run history |
 | `marketplace` | Imported from marketplace | No |
-| `upload` | Discovered on disk with SKILL.md only (no context artifacts). Reserved — no upload button exists today. | No |
+| `imported` | Discovered on disk with SKILL.md only (no context artifacts). Assigned via reconciliation pass 2 — no direct creation path in the UI. | No |
 
 ### Write paths
 
@@ -108,7 +108,7 @@ Reconciliation operates only on `skills_path` (the user-configured output direct
 |---|----------|-----------------|--------------------|----------|
 | 9a | Folder found, no SKILL.md | `skills` master: no row for this name | `{skills_path}/{name}/` exists but no `SKILL.md` inside | Delete `{skills_path}/{name}/`. Notify: "'{name}' removed — no SKILL.md found". No user choice. |
 | 9b | SKILL.md + ALL context artifacts | `skills` master: no row for this name | `detect_furthest_step` returns step 5 (all confirmed: `context/clarifications.md`, `context/research-plan.md`, `context/decisions.md`, `SKILL.md`) | **User choice required.** (a) "Add to library" → add as `skill-builder` (completed), auto-create `workflow_runs` at step 5. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
-| 9c | SKILL.md + SOME context artifacts | `skills` master: no row for this name | `SKILL.md` exists but `detect_furthest_step` returns < 5 (some context files present, some missing) | **User choice required.** (a) "Add to library" → add as `upload`, delete `{skills_path}/{name}/context/` folder, no `workflow_runs`. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
+| 9c | SKILL.md + SOME context artifacts | `skills` master: no row for this name | `SKILL.md` exists but `detect_furthest_step` returns < 5 (some context files present, some missing) | **User choice required.** (a) "Add to library" → add as `imported`, delete `{skills_path}/{name}/context/` folder, no `workflow_runs`. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
 
 ---
 
@@ -141,7 +141,7 @@ Every skill in the library shows an icon indicating its `skill_source`. Displaye
 |----------------|------|-------|-------|
 | `skill-builder` | `Hammer` | Built | muted (default — most common, shouldn't be visually loud) |
 | `marketplace` | `Store` | Marketplace | blue |
-| `upload` | `Upload` | Uploaded | amber |
+| `imported` | `Upload` | Uploaded | amber |
 
 Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing `SkillTypeBadge` pattern in `skill-picker.tsx`.
 
