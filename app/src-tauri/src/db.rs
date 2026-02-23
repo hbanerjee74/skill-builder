@@ -543,6 +543,8 @@ fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Erro
 
 fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch("
+        BEGIN;
+
         CREATE TABLE IF NOT EXISTS workspace_skills (
             skill_id     TEXT PRIMARY KEY,
             skill_name   TEXT UNIQUE NOT NULL,
@@ -561,17 +563,19 @@ fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Err
         );
 
         INSERT OR IGNORE INTO workspace_skills
-            (skill_id, skill_name, domain, description, is_active, is_bundled,
+            (skill_id, skill_name, domain, is_active, is_bundled,
              disk_path, imported_at, skill_type, version, model,
              argument_hint, user_invocable, disable_model_invocation)
         SELECT
-            skill_id, skill_name, domain, description, is_active, is_bundled,
+            skill_id, skill_name, domain, is_active, is_bundled,
             disk_path, imported_at, skill_type, version, model,
             argument_hint, user_invocable, disable_model_invocation
         FROM imported_skills
         WHERE skill_type = 'skill-builder' OR is_bundled = 1;
 
         DELETE FROM imported_skills WHERE skill_type = 'skill-builder' OR is_bundled = 1;
+
+        COMMIT;
     ")?;
     log::info!("migration 20: created workspace_skills table, migrated skill-builder rows");
     Ok(())
