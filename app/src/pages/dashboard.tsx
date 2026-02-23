@@ -400,7 +400,7 @@ export default function DashboardPage() {
       return (
         <div className="flex flex-col gap-1">
           {/* Table header */}
-          <div className={cn("hidden sm:grid items-center gap-x-4 px-4 py-1.5 text-xs font-medium text-muted-foreground border-b mb-1", LIST_ROW_GRID)}>
+          <div className={cn("hidden sm:grid items-center gap-x-4 px-4 py-1.5 text-xs font-medium text-muted-foreground border-b sticky top-0 z-10 bg-background", LIST_ROW_GRID)}>
             <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />

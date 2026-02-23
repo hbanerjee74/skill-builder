@@ -18,6 +18,21 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, getInstalledSkillNames } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride } from "@/lib/types"
+import { SKILL_TYPES } from "@/lib/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useSettingsStore } from "@/stores/settings-store"
+
+const FALLBACK_MODEL_OPTIONS = [
+  { id: "haiku",  displayName: "Haiku — fastest, lowest cost" },
+  { id: "sonnet", displayName: "Sonnet — balanced (default)" },
+  { id: "opus",   displayName: "Opus — most capable" },
+]
 
 interface GitHubImportDialogProps {
   open: boolean
@@ -65,6 +80,7 @@ export default function GitHubImportDialog({
   const [skills, setSkills] = useState<AvailableSkill[]>([])
   const [error, setError] = useState<string | null>(null)
   const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
+  const availableModels = useSettingsStore((s) => s.availableModels)
 
   // Edit form state for skill-library mode
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
@@ -152,7 +168,7 @@ export default function GitHubImportDialog({
       description: skill.description ?? '',
       domain: skill.domain ?? '',
       skill_type: skill.skill_type ?? '',
-      version: skill.version ?? '',
+      version: skill.version ?? '1.0.0',
       model: skill.model ?? '',
       argument_hint: skill.argument_hint ?? '',
       user_invocable: skill.user_invocable ?? false,
@@ -225,7 +241,7 @@ export default function GitHubImportDialog({
   }, [repoInfo, onImported, mode])
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.skill_type.trim()
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.skill_type
     : false
 
   return (
@@ -392,14 +408,25 @@ export default function GitHubImportDialog({
                   <Label htmlFor="edit-skill-type">
                     Skill Type <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="edit-skill-type"
+                  <Select
                     value={editForm.skill_type}
-                    onChange={(e) => updateField("skill_type", e.target.value)}
-                    className={!editForm.skill_type.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
-                    placeholder="domain, platform, source, or data-engineering"
-                  />
-                  {!editForm.skill_type.trim() && (
+                    onValueChange={(v) => updateField("skill_type", v)}
+                  >
+                    <SelectTrigger
+                      id="edit-skill-type"
+                      className={!editForm.skill_type ? "border-destructive focus-visible:ring-destructive" : ""}
+                    >
+                      <SelectValue placeholder="Select skill type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SKILL_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!editForm.skill_type && (
                     <p className="text-xs text-destructive">Skill type is required</p>
                   )}
                 </div>
@@ -416,12 +443,20 @@ export default function GitHubImportDialog({
 
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="edit-model">Model <span className="text-muted-foreground text-xs">(optional)</span></Label>
-                  <Input
-                    id="edit-model"
+                  <Select
                     value={editForm.model}
-                    onChange={(e) => updateField("model", e.target.value)}
-                    placeholder="e.g. claude-sonnet-4-5"
-                  />
+                    onValueChange={(v) => updateField("model", v)}
+                  >
+                    <SelectTrigger id="edit-model">
+                      <SelectValue placeholder="App default" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">App default</SelectItem>
+                      {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
