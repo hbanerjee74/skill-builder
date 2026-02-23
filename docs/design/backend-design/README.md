@@ -136,7 +136,7 @@ This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
 ### Skill ingestion — Skills Library
 
-**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`).
+**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). Accepts an optional `metadata_overrides` map (`skill_path → SkillMetadataOverride`) that lets callers override any frontmatter field (name, description, domain, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation) before the DB insert. Used by the marketplace browse UI to let users adjust metadata before importing.
 
 **Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
