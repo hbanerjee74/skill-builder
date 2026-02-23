@@ -394,6 +394,34 @@ pub(crate) async fn list_github_skills_inner(
         skills.len(), before - skills.len(), owner, repo
     );
 
+    // Fetch each skill's SKILL.md concurrently to populate version and skill_type.
+    // These fields live in the manifest (SKILL.md), not in marketplace.json.
+    let fetch_fns: Vec<_> = skills
+        .iter()
+        .map(|skill| {
+            let client = client.clone();
+            let url = format!(
+                "https://raw.githubusercontent.com/{}/{}/{}/{}/SKILL.md",
+                owner, repo, resolved_branch, skill.path
+            );
+            async move {
+                match client.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => resp.text().await.ok(),
+                    _ => None,
+                }
+            }
+        })
+        .collect();
+
+    let contents = futures::future::join_all(fetch_fns).await;
+    for (skill, content_opt) in skills.iter_mut().zip(contents) {
+        if let Some(content) = content_opt {
+            let fm = super::imported_skills::parse_frontmatter_full(&content);
+            skill.version = fm.version;
+            skill.skill_type = fm.skill_type;
+        }
+    }
+
     Ok(skills)
 }
 

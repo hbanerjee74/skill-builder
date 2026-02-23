@@ -61,6 +61,11 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         }
     }
 
+    // Startup repair: ensure skills master has frontmatter columns regardless of migration state.
+    // Idempotent — checks column existence before ALTER TABLE. Guards against dev builds that
+    // recorded migration 24 in schema_migrations before the ALTER TABLE statements ran.
+    repair_skills_table_schema(&conn).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -829,6 +834,74 @@ fn run_frontmatter_to_skills_migration(conn: &Connection) -> Result<(), rusqlite
     )?;
 
     log::info!("migration 24: added frontmatter fields to skills master, backfilled from workflow_runs and imported_skills");
+    Ok(())
+}
+
+/// Ensure the six frontmatter columns exist in the `skills` table and are populated.
+/// Idempotent — checks PRAGMA table_info before each ALTER TABLE.
+/// Called every startup to guard against dev builds that recorded migration 24 in
+/// schema_migrations before the ALTER TABLE statements actually executed.
+fn repair_skills_table_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut added_any = false;
+    for (col, def) in &[
+        ("description", "TEXT"),
+        ("version", "TEXT"),
+        ("model", "TEXT"),
+        ("argument_hint", "TEXT"),
+        ("user_invocable", "INTEGER"),
+        ("disable_model_invocation", "INTEGER"),
+    ] {
+        if !cols.contains(&col.to_string()) {
+            conn.execute_batch(&format!("ALTER TABLE skills ADD COLUMN {} {};", col, def))?;
+            log::info!("repair_skills_table_schema: added missing column '{}' to skills", col);
+            added_any = true;
+        }
+    }
+
+    // If any column was missing, the migration 24 backfill never ran either.
+    // Run it now so existing imported/marketplace skills have their version/model populated.
+    if added_any {
+        conn.execute_batch(
+            "UPDATE skills
+             SET
+               description = COALESCE(skills.description, (
+                   SELECT wr.description FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               version = COALESCE(skills.version, (
+                   SELECT wr.version FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               model = COALESCE(skills.model, (
+                   SELECT wr.model FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               argument_hint = COALESCE(skills.argument_hint, (
+                   SELECT wr.argument_hint FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               user_invocable = COALESCE(skills.user_invocable, (
+                   SELECT wr.user_invocable FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+               disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+                   SELECT wr.disable_model_invocation FROM workflow_runs wr WHERE wr.skill_name = skills.name))
+             WHERE skill_source = 'skill-builder';"
+        )?;
+        conn.execute_batch(
+            "UPDATE skills
+             SET
+               version = COALESCE(skills.version, (
+                   SELECT imp.version FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               model = COALESCE(skills.model, (
+                   SELECT imp.model FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               argument_hint = COALESCE(skills.argument_hint, (
+                   SELECT imp.argument_hint FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               user_invocable = COALESCE(skills.user_invocable, (
+                   SELECT imp.user_invocable FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+               disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+                   SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
+             WHERE skill_source IN ('marketplace', 'imported');"
+        )?;
+        log::info!("repair_skills_table_schema: backfilled frontmatter fields from workflow_runs and imported_skills");
+    }
+
     Ok(())
 }
 

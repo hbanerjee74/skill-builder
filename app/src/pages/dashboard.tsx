@@ -672,6 +672,7 @@ export default function DashboardPage() {
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
         mode="skill-library"
         url={marketplaceUrl ?? ""}
+        workspacePath={workspacePath}
       />
 
     </div>

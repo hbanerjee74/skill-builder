@@ -186,7 +186,7 @@ export default function GitHubImportDialog({
     } finally {
       setLoading(false)
     }
-  }, [url, typeFilter])
+  }, [url, typeFilter, workspacePath])
 
   useEffect(() => {
     if (open) browse()
