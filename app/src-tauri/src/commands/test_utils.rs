@@ -79,6 +79,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             skill_id TEXT PRIMARY KEY,
             skill_name TEXT NOT NULL UNIQUE,
             domain TEXT,
+            description TEXT,
             is_active INTEGER NOT NULL DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -86,6 +87,22 @@ pub fn create_test_db() -> rusqlite::Connection {
             skill_type TEXT,
             version TEXT,
             model TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS workspace_skills (
+            skill_id     TEXT PRIMARY KEY,
+            skill_name   TEXT UNIQUE NOT NULL,
+            domain       TEXT,
+            description  TEXT,
+            is_active    INTEGER NOT NULL DEFAULT 1,
+            is_bundled   INTEGER NOT NULL DEFAULT 0,
+            disk_path    TEXT NOT NULL,
+            imported_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_type   TEXT,
+            version      TEXT,
+            model        TEXT,
             argument_hint TEXT,
             user_invocable INTEGER,
             disable_model_invocation INTEGER

@@ -1,6 +1,6 @@
 use crate::types::{
     AgentRunRecord, AppSettings, ImportedSkill, SkillMasterRow, UsageByModel, UsageByStep,
-    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow,
+    UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow, WorkspaceSkill,
 };
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -48,6 +48,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (18, run_skills_table_migration),
         (19, run_skills_backfill_migration),
         (20, run_rename_upload_migration),
+        (21, run_workspace_skills_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -537,6 +538,42 @@ fn run_skills_backfill_migration(conn: &Connection) -> Result<(), rusqlite::Erro
         "migration 18: backfilled {} skills, removed {} marketplace workflow_runs",
         backfilled, removed
     );
+    Ok(())
+}
+
+fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS workspace_skills (
+            skill_id     TEXT PRIMARY KEY,
+            skill_name   TEXT UNIQUE NOT NULL,
+            domain       TEXT,
+            description  TEXT,
+            is_active    INTEGER NOT NULL DEFAULT 1,
+            is_bundled   INTEGER NOT NULL DEFAULT 0,
+            disk_path    TEXT NOT NULL,
+            imported_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_type   TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
+        );
+
+        INSERT OR IGNORE INTO workspace_skills
+            (skill_id, skill_name, domain, description, is_active, is_bundled,
+             disk_path, imported_at, skill_type, version, model,
+             argument_hint, user_invocable, disable_model_invocation)
+        SELECT
+            skill_id, skill_name, domain, description, is_active, is_bundled,
+            disk_path, imported_at, skill_type, version, model,
+            argument_hint, user_invocable, disable_model_invocation
+        FROM imported_skills
+        WHERE skill_type = 'skill-builder' OR is_bundled = 1;
+
+        DELETE FROM imported_skills WHERE skill_type = 'skill-builder' OR is_bundled = 1;
+    ")?;
+    log::info!("migration 20: created workspace_skills table, migrated skill-builder rows");
     Ok(())
 }
 
@@ -1970,13 +2007,169 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
     Ok(skills)
 }
 
+// --- Workspace Skills (Settings → Skills tab) ---
+
+pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+        rusqlite::params![
+            skill.skill_id, skill.skill_name, skill.domain, skill.description,
+            skill.is_active as i64, skill.is_bundled as i64, skill.disk_path, skill.imported_at,
+            skill.skill_type, skill.version, skill.model, skill.argument_hint,
+            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
+        ],
+    ).map_err(|e| {
+        if e.to_string().contains("UNIQUE") {
+            format!("Skill '{}' has already been imported", skill.skill_name)
+        } else {
+            format!("insert_workspace_skill: {}", e)
+        }
+    })?;
+    Ok(())
+}
+
+pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         ON CONFLICT(skill_name) DO UPDATE SET
+             domain = excluded.domain,
+             description = excluded.description,
+             is_bundled = excluded.is_bundled,
+             disk_path = excluded.disk_path,
+             skill_type = excluded.skill_type,
+             version = excluded.version,
+             model = excluded.model,
+             argument_hint = excluded.argument_hint,
+             user_invocable = excluded.user_invocable,
+             disable_model_invocation = excluded.disable_model_invocation",
+        rusqlite::params![
+            skill.skill_id, skill.skill_name, skill.domain, skill.description,
+            skill.is_active as i64, skill.is_bundled as i64, skill.disk_path, skill.imported_at,
+            skill.skill_type, skill.version, skill.model, skill.argument_hint,
+            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
+        ],
+    ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
+    Ok(())
+}
+
+/// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
+pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+         ON CONFLICT(skill_name) DO UPDATE SET
+             domain = excluded.domain,
+             description = excluded.description,
+             is_bundled = 1,
+             disk_path = excluded.disk_path,
+             skill_type = excluded.skill_type,
+             version = excluded.version,
+             model = excluded.model,
+             argument_hint = excluded.argument_hint,
+             user_invocable = excluded.user_invocable,
+             disable_model_invocation = excluded.disable_model_invocation
+             -- is_active intentionally NOT updated: preserves deactivation state",
+        rusqlite::params![
+            skill.skill_id, skill.skill_name, skill.domain, skill.description,
+            skill.is_active as i64, 1i64, skill.disk_path, skill.imported_at,
+            skill.skill_type, skill.version, skill.model, skill.argument_hint,
+            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
+        ],
+    ).map_err(|e| format!("upsert_bundled_workspace_skill: {}", e))?;
+    Ok(())
+}
+
+fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkill> {
+    let is_active: i64 = row.get(4)?;
+    let is_bundled: i64 = row.get(5)?;
+    let user_invocable: Option<i64> = row.get(12)?;
+    let disable_model_invocation: Option<i64> = row.get(13)?;
+    Ok(WorkspaceSkill {
+        skill_id: row.get(0)?,
+        skill_name: row.get(1)?,
+        domain: row.get(2)?,
+        description: row.get(3)?,
+        is_active: is_active != 0,
+        is_bundled: is_bundled != 0,
+        disk_path: row.get(6)?,
+        imported_at: row.get(7)?,
+        skill_type: row.get(8)?,
+        version: row.get(9)?,
+        model: row.get(10)?,
+        argument_hint: row.get(11)?,
+        user_invocable: user_invocable.map(|v| v != 0),
+        disable_model_invocation: disable_model_invocation.map(|v| v != 0),
+    })
+}
+
+pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
+         FROM workspace_skills ORDER BY imported_at DESC"
+    ).map_err(|e| format!("list_workspace_skills: {}", e))?;
+    let skills = stmt.query_map([], row_to_workspace_skill)
+        .map_err(|e| format!("list_workspace_skills query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_workspace_skills collect: {}", e))?;
+    Ok(skills)
+}
+
+pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
+         FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name"
+    ).map_err(|e| format!("list_active_workspace_skills: {}", e))?;
+    let skills = stmt.query_map([], row_to_workspace_skill)
+        .map_err(|e| format!("list_active_workspace_skills query: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("list_active_workspace_skills collect: {}", e))?;
+    Ok(skills)
+}
+
+pub fn update_workspace_skill_active(conn: &Connection, skill_name: &str, is_active: bool, new_disk_path: &str) -> Result<(), String> {
+    let rows = conn.execute(
+        "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_name = ?3",
+        rusqlite::params![is_active as i64, new_disk_path, skill_name],
+    ).map_err(|e| format!("update_workspace_skill_active: {}", e))?;
+    if rows == 0 {
+        return Err(format!("Workspace skill '{}' not found", skill_name));
+    }
+    Ok(())
+}
+
+pub fn delete_workspace_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM workspace_skills WHERE skill_name = ?1",
+        rusqlite::params![skill_name],
+    ).map_err(|e| format!("delete_workspace_skill: {}", e))?;
+    Ok(())
+}
+
+pub fn get_workspace_skill(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
+         FROM workspace_skills WHERE skill_name = ?1"
+    ).map_err(|e| format!("get_workspace_skill: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
+        .map_err(|e| format!("get_workspace_skill query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
 /// Return the names of all locally installed skills.
-/// Combines workflow_runs (generated/marketplace skills) and imported_skills (GitHub imports).
+/// Combines workflow_runs (generated/marketplace skills), imported_skills (GitHub imports),
+/// and workspace_skills (Settings → Skills).
 pub fn get_all_installed_skill_names(conn: &Connection) -> Result<Vec<String>, String> {
     let mut stmt = conn.prepare(
         "SELECT skill_name FROM workflow_runs
          UNION
-         SELECT skill_name FROM imported_skills"
+         SELECT skill_name FROM imported_skills
+         UNION
+         SELECT skill_name FROM workspace_skills"
     ).map_err(|e| e.to_string())?;
     let names = stmt.query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?
