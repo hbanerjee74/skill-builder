@@ -2009,16 +2009,32 @@ pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, Strin
 
 // --- Workspace Skills (Settings → Skills tab) ---
 
+const WS_COLUMNS: &str = "skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation";
+
+fn ws_params(skill: &WorkspaceSkill) -> [rusqlite::types::Value; 14] {
+    use rusqlite::types::Value;
+    [
+        Value::Text(skill.skill_id.clone()),
+        Value::Text(skill.skill_name.clone()),
+        skill.domain.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.description.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        Value::Integer(skill.is_active as i64),
+        Value::Integer(skill.is_bundled as i64),
+        Value::Text(skill.disk_path.clone()),
+        Value::Text(skill.imported_at.clone()),
+        skill.skill_type.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.version.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.model.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.argument_hint.as_ref().map_or(Value::Null, |v| Value::Text(v.clone())),
+        skill.user_invocable.map_or(Value::Null, |b| Value::Integer(b as i64)),
+        skill.disable_model_invocation.map_or(Value::Null, |b| Value::Integer(b as i64)),
+    ]
+}
+
 pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-        rusqlite::params![
-            skill.skill_id, skill.skill_name, skill.domain, skill.description,
-            skill.is_active as i64, skill.is_bundled as i64, skill.disk_path, skill.imported_at,
-            skill.skill_type, skill.version, skill.model, skill.argument_hint,
-            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
-        ],
+        &format!("INSERT INTO workspace_skills ({WS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)"),
+        rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| {
         if e.to_string().contains("UNIQUE") {
             format!("Skill '{}' has already been imported", skill.skill_name)
@@ -2031,25 +2047,22 @@ pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
 
 pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(skill_name) DO UPDATE SET
-             domain = excluded.domain,
-             description = excluded.description,
-             is_bundled = excluded.is_bundled,
-             disk_path = excluded.disk_path,
-             skill_type = excluded.skill_type,
-             version = excluded.version,
-             model = excluded.model,
-             argument_hint = excluded.argument_hint,
-             user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation",
-        rusqlite::params![
-            skill.skill_id, skill.skill_name, skill.domain, skill.description,
-            skill.is_active as i64, skill.is_bundled as i64, skill.disk_path, skill.imported_at,
-            skill.skill_type, skill.version, skill.model, skill.argument_hint,
-            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
-        ],
+        &format!(
+            "INSERT INTO workspace_skills ({WS_COLUMNS})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(skill_name) DO UPDATE SET
+                 domain = excluded.domain,
+                 description = excluded.description,
+                 is_bundled = excluded.is_bundled,
+                 disk_path = excluded.disk_path,
+                 skill_type = excluded.skill_type,
+                 version = excluded.version,
+                 model = excluded.model,
+                 argument_hint = excluded.argument_hint,
+                 user_invocable = excluded.user_invocable,
+                 disable_model_invocation = excluded.disable_model_invocation"
+        ),
+        rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| format!("upsert_workspace_skill: {}", e))?;
     Ok(())
 }
@@ -2057,26 +2070,23 @@ pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
 /// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
 pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO workspace_skills (skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
-         ON CONFLICT(skill_name) DO UPDATE SET
-             domain = excluded.domain,
-             description = excluded.description,
-             is_bundled = 1,
-             disk_path = excluded.disk_path,
-             skill_type = excluded.skill_type,
-             version = excluded.version,
-             model = excluded.model,
-             argument_hint = excluded.argument_hint,
-             user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation
-             -- is_active intentionally NOT updated: preserves deactivation state",
-        rusqlite::params![
-            skill.skill_id, skill.skill_name, skill.domain, skill.description,
-            skill.is_active as i64, 1i64, skill.disk_path, skill.imported_at,
-            skill.skill_type, skill.version, skill.model, skill.argument_hint,
-            skill.user_invocable.map(|b| b as i64), skill.disable_model_invocation.map(|b| b as i64),
-        ],
+        &format!(
+            "INSERT INTO workspace_skills ({WS_COLUMNS})
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+             ON CONFLICT(skill_name) DO UPDATE SET
+                 domain = excluded.domain,
+                 description = excluded.description,
+                 is_bundled = 1,
+                 disk_path = excluded.disk_path,
+                 skill_type = excluded.skill_type,
+                 version = excluded.version,
+                 model = excluded.model,
+                 argument_hint = excluded.argument_hint,
+                 user_invocable = excluded.user_invocable,
+                 disable_model_invocation = excluded.disable_model_invocation
+                 -- is_active intentionally NOT updated: preserves user's deactivation"
+        ),
+        rusqlite::params_from_iter(ws_params(skill)),
     ).map_err(|e| format!("upsert_bundled_workspace_skill: {}", e))?;
     Ok(())
 }
@@ -2106,8 +2116,7 @@ fn row_to_workspace_skill(row: &rusqlite::Row) -> rusqlite::Result<WorkspaceSkil
 
 pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
     let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-         FROM workspace_skills ORDER BY imported_at DESC"
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills ORDER BY imported_at DESC")
     ).map_err(|e| format!("list_workspace_skills: {}", e))?;
     let skills = stmt.query_map([], row_to_workspace_skill)
         .map_err(|e| format!("list_workspace_skills query: {}", e))?
@@ -2118,8 +2127,7 @@ pub fn list_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, S
 
 pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSkill>, String> {
     let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-         FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name"
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE is_active = 1 ORDER BY skill_name")
     ).map_err(|e| format!("list_active_workspace_skills: {}", e))?;
     let skills = stmt.query_map([], row_to_workspace_skill)
         .map_err(|e| format!("list_active_workspace_skills query: {}", e))?
@@ -2149,8 +2157,7 @@ pub fn delete_workspace_skill(conn: &Connection, skill_name: &str) -> Result<(),
 
 pub fn get_workspace_skill(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
     let mut stmt = conn.prepare(
-        "SELECT skill_id, skill_name, domain, description, is_active, is_bundled, disk_path, imported_at, skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-         FROM workspace_skills WHERE skill_name = ?1"
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1")
     ).map_err(|e| format!("get_workspace_skill: {}", e))?;
     let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
         .map_err(|e| format!("get_workspace_skill query: {}", e))?;
