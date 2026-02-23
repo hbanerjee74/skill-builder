@@ -120,7 +120,7 @@ export default function ReconciliationAckDialog({
                   const isResolving = state === "resolving"
                   const isResolved = state === "resolved"
                   const addAction =
-                    skill.scenario === "9b" ? "add-skill-builder" : "add-upload"
+                    skill.scenario === "9b" ? "add-skill-builder" : "add-imported"
 
                   return (
                     <li
