@@ -296,7 +296,7 @@ export default function GitHubImportDialog({
                               <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                             </div>
                           ) : state === "exists" ? (
-                            <div className="flex size-7 items-center justify-center rounded-md border">
+                            <div className="flex size-7 items-center justify-center rounded-md border bg-muted">
                               <CheckCheck className="size-3.5 text-muted-foreground" />
                             </div>
                           ) : (
