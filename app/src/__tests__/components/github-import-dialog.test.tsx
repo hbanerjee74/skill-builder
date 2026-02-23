@@ -138,7 +138,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         list_workspace_skills: [],
       });
     });
@@ -171,12 +171,24 @@ describe("GitHubImportDialog", () => {
       expect(badges).toHaveLength(1);
     });
 
-    it("shows description when present", async () => {
-      renderDialog();
+    it("shows description in edit form when edit button is clicked", async () => {
+      const user = userEvent.setup();
+      renderDialog({ mode: "skill-library" });
 
       await waitFor(() => {
-        expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument();
+        expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
+
+      // Click the pencil edit button for the first skill
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      await user.click(editButtons[0]);
+
+      await waitFor(() => {
+        expect(screen.getByText("Edit & Import Skill")).toBeInTheDocument();
+      });
+      // Description should be in the edit form
+      expect(screen.getByDisplayValue("Analyze your sales pipeline")).toBeInTheDocument();
     });
 
     it("does not show skills filtered out by typeFilter in skill-library mode", async () => {
@@ -188,7 +200,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: mixed,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         list_workspace_skills: [],
       });
 
@@ -202,19 +214,20 @@ describe("GitHubImportDialog", () => {
       expect(screen.queryByText("Skill C")).not.toBeInTheDocument();
     });
 
-    it("shows checkboxes for each skill initially in settings-skills mode", async () => {
+    it("shows edit (pencil) buttons for each skill in settings-skills mode", async () => {
       renderDialog();
 
       await waitFor(() => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // In settings-skills mode, each skill row has a checkbox (not an Import button)
-      const checkboxes = screen.getAllByRole("checkbox");
-      expect(checkboxes).toHaveLength(2);
+      // In settings-skills mode, each idle skill row has a pencil icon button
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      expect(editButtons).toHaveLength(2);
     });
 
-    it("pre-marks skills that are already installed as 'Already installed'", async () => {
+    it("pre-marks skills that are already installed as 'Up to date' when same version", async () => {
       // In settings-skills mode, duplicate detection uses list_workspace_skills by name
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
@@ -237,7 +250,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         list_workspace_skills: [installedWs],
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
       });
 
       renderDialog();
@@ -246,15 +259,13 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("HR Metrics")).toBeInTheDocument();
       });
 
-      // Sales Analytics should show "Already installed" badge
-      expect(screen.getByText("Already installed")).toBeInTheDocument();
-      // HR Metrics checkbox should be enabled; Sales Analytics checkbox disabled
-      const checkboxes = screen.getAllByRole("checkbox");
-      expect(checkboxes).toHaveLength(2);
-      // The first skill (Sales Analytics) is disabled
-      expect(checkboxes[0]).toBeDisabled();
-      // The second skill (HR Metrics) is enabled
-      expect(checkboxes[1]).not.toBeDisabled();
+      // Sales Analytics (same version null == null) should show "Up to date" badge
+      expect(screen.getByText("Up to date")).toBeInTheDocument();
+      // HR Metrics should still have an edit button; Sales Analytics should not (disabled)
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      // Only HR Metrics (1 skill) should have an edit button; Sales Analytics is disabled
+      expect(editButtons).toHaveLength(1);
     });
   });
 
@@ -267,7 +278,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
       });
     });
 
@@ -309,7 +320,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -338,7 +349,7 @@ describe("GitHubImportDialog", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
-        if (cmd === "get_installed_skill_names") return Promise.resolve([]);
+        if (cmd === "get_dashboard_skill_names") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library") {
           return new Promise((res) => { resolveImport = res; });
         }
@@ -370,7 +381,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -397,7 +408,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: false, error: "already exists" }],
       });
 
@@ -425,7 +436,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -482,18 +493,20 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         list_workspace_skills: [],
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
+        check_skill_customized: false,
       });
     });
 
-    it("calls import_github_skills when skill is selected and Next + Import is clicked", async () => {
+    it("calls import_github_skills when skill edit button is clicked and Confirm Import is clicked", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         list_workspace_skills: [],
-        get_installed_skill_names: [],
-        import_github_skills: [],
+        get_dashboard_skill_names: [],
+        check_skill_customized: false,
+        import_github_skills: undefined,
       });
 
       renderDialog({ mode: "settings-skills", onImported });
@@ -502,21 +515,16 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // Select first skill via checkbox row click
-      const row = screen.getByText("Sales Analytics").closest("div[class*='flex']");
-      await user.click(row!);
+      // Click the pencil button to open the import dialog for the first skill
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      await user.click(editButtons[0]);
 
-      // Click Next: Assign Purpose
+      // Import dialog shown — click Confirm Import
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Next: Assign Purpose/i })).toBeEnabled();
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { name: /Next: Assign Purpose/i }));
-
-      // Purpose step shown — click Import
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Import 1 skill/i })).toBeInTheDocument();
-      });
-      await user.click(screen.getByRole("button", { name: /Import 1 skill/i }));
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith("import_github_skills", expect.objectContaining({
@@ -527,14 +535,15 @@ describe("GitHubImportDialog", () => {
       });
     });
 
-    it("calls onImported and fires success toast after bulk import", async () => {
+    it("calls onImported and fires success toast after import", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         list_workspace_skills: [],
-        get_installed_skill_names: [],
-        import_github_skills: [],
+        get_dashboard_skill_names: [],
+        check_skill_customized: false,
+        import_github_skills: undefined,
       });
 
       renderDialog({ mode: "settings-skills", onImported });
@@ -543,19 +552,15 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // Select first skill and proceed to import
-      const row = screen.getByText("Sales Analytics").closest("div[class*='flex']");
-      await user.click(row!);
+      // Click the pencil button and confirm import
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      await user.click(editButtons[0]);
 
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Next: Assign Purpose/i })).toBeEnabled();
+        expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { name: /Next: Assign Purpose/i }));
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Import 1 skill/i })).toBeInTheDocument();
-      });
-      await user.click(screen.getByRole("button", { name: /Import 1 skill/i }));
+      await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       // After import, onImported should be called and success toast fired
       await waitFor(() => {
@@ -579,7 +584,7 @@ describe("GitHubImportDialog", () => {
       mockInvoke.mockImplementation((cmd: string) => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
-        if (cmd === "get_installed_skill_names") return Promise.resolve([]);
+        if (cmd === "get_dashboard_skill_names") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library")
           return Promise.reject(new Error("Import failed: server error"));
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -606,7 +611,7 @@ describe("GitHubImportDialog", () => {
       await user.click(screen.getByRole("button", { name: /Confirm Import/i }));
 
       await waitFor(() => {
-        expect(toast.error).toHaveBeenCalledWith("Import failed: server error");
+        expect(toast.error).toHaveBeenCalledWith("Import failed: server error", expect.anything());
       });
 
       // Edit buttons should be back (state reset to idle)
@@ -618,7 +623,7 @@ describe("GitHubImportDialog", () => {
     });
   });
 
-  // Test D — Version guard: "Upgrade available" and "Already installed" states
+  // Test D — Version guard: "Update available" and "Up to date" states
   describe("Version guard — settings-skills mode", () => {
     const availableSkillVersioned: AvailableSkill = {
       path: "skills/my-skill",
@@ -633,7 +638,7 @@ describe("GitHubImportDialog", () => {
       disable_model_invocation: null,
     };
 
-    it("shows 'Upgrade available' and skill is selectable when available version is newer", async () => {
+    it("shows 'Update available' and skill is selectable when available version is newer", async () => {
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
         skill_name: "my-skill",
@@ -655,6 +660,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: [availableSkillVersioned],
         list_workspace_skills: [installedWs],
+        check_skill_customized: false,
       });
 
       renderDialog({ mode: "settings-skills" });
@@ -663,15 +669,16 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("my-skill")).toBeInTheDocument();
       });
 
-      // "Upgrade available" badge should be visible
-      expect(screen.getByText("Upgrade available")).toBeInTheDocument();
+      // "Update available" badge should be visible
+      expect(screen.getByText("Update available")).toBeInTheDocument();
 
-      // The checkbox should be enabled (skill is selectable, not disabled)
-      const checkbox = screen.getByRole("checkbox");
-      expect(checkbox).not.toBeDisabled();
+      // The skill should have an edit button (not disabled)
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      expect(editButtons).toHaveLength(1);
     });
 
-    it("shows 'Already installed' and disables the row when versions are the same", async () => {
+    it("shows 'Up to date' and disables the row when versions are the same", async () => {
       const sameVersionSkill: AvailableSkill = { ...availableSkillVersioned, version: "1.0.0" };
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
@@ -702,23 +709,25 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("my-skill")).toBeInTheDocument();
       });
 
-      // "Already installed" badge should be visible
-      expect(screen.getByText("Already installed")).toBeInTheDocument();
+      // "Up to date" badge should be visible
+      expect(screen.getByText("Up to date")).toBeInTheDocument();
 
-      // The checkbox should be disabled
-      const checkbox = screen.getByRole("checkbox");
-      expect(checkbox).toBeDisabled();
+      // No edit button (skill is disabled/up-to-date)
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      expect(editButtons).toHaveLength(0);
     });
   });
 
-  // Test E — Purpose step appears after selecting a skill and clicking Next
-  describe("Purpose step — settings-skills mode", () => {
-    it("shows purpose assignment UI after selecting a skill and clicking Next", async () => {
+  // Test E — Import dialog opens after clicking pencil button in settings-skills mode
+  describe("Import dialog — settings-skills mode", () => {
+    it("shows import dialog with purpose field after clicking edit button", async () => {
       const user = userEvent.setup();
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         list_workspace_skills: [],
+        check_skill_customized: false,
       });
 
       renderDialog({ mode: "settings-skills" });
@@ -727,25 +736,16 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // Click the row to select the first skill
-      const row = screen.getByText("Sales Analytics").closest("div[class*='flex']");
-      await user.click(row!);
+      // Click the pencil button for the first skill
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      await user.click(editButtons[0]);
 
-      // Wait for the checkbox to be checked
+      // Import dialog should be shown with purpose assignment UI
       await waitFor(() => {
-        const checkboxes = screen.getAllByRole("checkbox");
-        const salesCheckbox = checkboxes[0];
-        expect(salesCheckbox).toBeChecked();
+        expect(screen.getByText("Import Skill")).toBeInTheDocument();
       });
-
-      // Click Next: Assign Purpose
-      const nextBtn = screen.getByRole("button", { name: /Next: Assign Purpose/i });
-      await user.click(nextBtn);
-
-      // Purpose assignment step should be shown
-      await waitFor(() => {
-        expect(screen.getByText("Assign Purpose (Optional)")).toBeInTheDocument();
-      });
+      expect(screen.getByRole("button", { name: /Confirm Import/i })).toBeInTheDocument();
     });
   });
 
@@ -802,6 +802,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: [upgradeAvailableSkill],
         list_workspace_skills: [existingVersionWs, occupyingWs],
+        check_skill_customized: false,
       });
 
       renderDialog({ mode: "settings-skills" });
@@ -810,34 +811,27 @@ describe("GitHubImportDialog", () => {
         expect(screen.getByText("Sales Analytics")).toBeInTheDocument();
       });
 
-      // The skill should have "Upgrade available" badge and a selectable checkbox
-      expect(screen.getByText("Upgrade available")).toBeInTheDocument();
-      const checkbox = screen.getByRole("checkbox");
-      expect(checkbox).not.toBeDisabled();
+      // The skill should have "Update available" badge and an edit button
+      expect(screen.getByText("Update available")).toBeInTheDocument();
+      const allButtons = screen.getAllByRole("button") as HTMLElement[];
+      const editButtons = allButtons.filter((btn) => !btn.textContent?.trim());
+      expect(editButtons).toHaveLength(1);
 
-      // Select the skill by clicking the row
-      const row = screen.getByText("Sales Analytics").closest("div[class*='flex']");
-      await user.click(row!);
+      // Click the edit button — existingVersionWs has purpose="research" which conflicts
+      await user.click(editButtons[0]);
 
+      // Import dialog shown with conflict message
       await waitFor(() => {
-        expect(screen.getByRole("checkbox")).toBeChecked();
-      });
-
-      // Click Next — purposeMap is pre-populated with "research" from existingVersionWs
-      await user.click(screen.getByRole("button", { name: /Next: Assign Purpose/i }));
-
-      // Purpose step shown; "research" is pre-populated and conflicts with occupyingWs
-      await waitFor(() => {
-        expect(screen.getByText("Assign Purpose (Optional)")).toBeInTheDocument();
+        expect(screen.getByText("Update Skill")).toBeInTheDocument();
       });
 
       // Conflict message should appear because "research" is occupied by "other-research-skill"
       await waitFor(() => {
-        expect(screen.getByText(/Purpose occupied by/i)).toBeInTheDocument();
+        expect(screen.getByText(/Purpose already assigned to/i)).toBeInTheDocument();
       });
 
       // Import button should be disabled due to conflict
-      const importBtn = screen.getByRole("button", { name: /Import 1 skill/i });
+      const importBtn = screen.getByRole("button", { name: /Confirm Import/i });
       expect(importBtn).toBeDisabled();
     });
   });
@@ -849,7 +843,7 @@ describe("GitHubImportDialog", () => {
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
-        get_installed_skill_names: [],
+        get_dashboard_skill_names: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
