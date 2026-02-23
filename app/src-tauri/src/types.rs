@@ -1,5 +1,44 @@
 use serde::{Deserialize, Serialize};
 
+// ─── marketplace.json deserialization types ──────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceJson {
+    pub plugins: Vec<MarketplacePlugin>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarketplacePlugin {
+    pub name: String,
+    pub source: MarketplacePluginSource,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub author: Option<MarketplaceAuthor>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceAuthor {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+/// The `source` field in a marketplace plugin entry can be a plain string
+/// (relative path such as `"./analytics-skill"`) or an object (e.g. npm, pip,
+/// url). Only string sources are supported for listing; object sources are
+/// skipped with a warning.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum MarketplacePluginSource {
+    Path(String),
+    External {
+        source: String,
+        #[serde(flatten)]
+        extra: serde_json::Value,
+    },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
