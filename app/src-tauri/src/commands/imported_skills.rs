@@ -497,11 +497,19 @@ fn toggle_skill_active_inner(
     if src.exists() {
         // Ensure destination parent directory exists
         if active {
-            fs::create_dir_all(&skills_dir)
-                .map_err(|e| format!("Failed to create skills directory: {}", e))?;
+            if let Err(e) = fs::create_dir_all(&skills_dir) {
+                let _ = crate::db::update_workspace_skill_active(
+                    conn, skill_name, !active, &old_disk_path,
+                );
+                return Err(format!("Failed to create skills directory: {}", e));
+            }
         } else {
-            fs::create_dir_all(&inactive_dir)
-                .map_err(|e| format!("Failed to create .inactive directory: {}", e))?;
+            if let Err(e) = fs::create_dir_all(&inactive_dir) {
+                let _ = crate::db::update_workspace_skill_active(
+                    conn, skill_name, !active, &old_disk_path,
+                );
+                return Err(format!("Failed to create .inactive directory: {}", e));
+            }
         }
 
         if let Err(move_err) = fs::rename(src, dst) {
