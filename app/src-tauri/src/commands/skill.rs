@@ -679,14 +679,8 @@ fn rename_skill_inner(
     conn: &mut rusqlite::Connection,
     skills_path: Option<&str>,
 ) -> Result<(), String> {
-    // Check new name doesn't already exist in workflow_runs or skills master
-    let exists_wr: bool = conn
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM workflow_runs WHERE skill_name = ?1",
-            rusqlite::params![new_name],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+    // Check new name doesn't already exist in skills master (workflow_runs.skill_name
+    // has a UNIQUE constraint that will also catch duplicates once we update it).
     let exists_master: bool = conn
         .query_row(
             "SELECT COUNT(*) > 0 FROM skills WHERE name = ?1",
@@ -694,7 +688,7 @@ fn rename_skill_inner(
             |row| row.get(0),
         )
         .unwrap_or(false);
-    if exists_wr || exists_master {
+    if exists_master {
         log::error!("[rename_skill] Skill '{}' already exists", new_name);
         return Err(format!("Skill '{}' already exists", new_name));
     }
@@ -709,36 +703,43 @@ fn rename_skill_inner(
 
         let tx = conn.transaction().map_err(&tx_err)?;
 
-        // workflow_runs: PK change — insert new, delete old
+        // Rename in skills master — all child tables join by integer FK, so no further UPDATEs needed.
         tx.execute(
-            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type, created_at, updated_at, author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation)
-             SELECT ?2, domain, current_step, status, skill_type, created_at, datetime('now') || 'Z', author_login, author_avatar, display_name, intake_json, source, description, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM workflow_runs WHERE skill_name = ?1",
+            "UPDATE skills SET name = ?2, updated_at = datetime('now') WHERE name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // workflow_runs.skill_name is TEXT UNIQUE NOT NULL used for display/lookup — update it.
+        tx.execute(
+            "UPDATE workflow_runs SET skill_name = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // workflow_sessions.skill_name is still TEXT (for display/logging) — update it.
+        tx.execute(
+            "UPDATE workflow_sessions SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+
+        // These child tables still carry skill_name TEXT for read queries — keep them in sync.
+        tx.execute(
+            "UPDATE workflow_steps SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
         tx.execute(
-            "DELETE FROM workflow_runs WHERE skill_name = ?1",
-            rusqlite::params![old_name],
+            "UPDATE workflow_artifacts SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
-
-        // Rename foreign-key references across all related tables
-        for table in &[
-            "workflow_steps",
-            "skill_tags",
-            "agent_runs",
-            "workflow_artifacts",
-            "skill_locks",
-            "workflow_sessions",
-        ] {
-            tx.execute(
-                &format!("UPDATE {} SET skill_name = ?2 WHERE skill_name = ?1", table),
-                rusqlite::params![old_name, new_name],
-            ).map_err(&tx_err)?;
-        }
-
-        // Also rename in skills master table
         tx.execute(
-            "UPDATE skills SET name = ?2, updated_at = datetime('now') WHERE name = ?1",
+            "UPDATE agent_runs SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+        tx.execute(
+            "UPDATE skill_tags SET skill_name = ?2 WHERE skill_name = ?1",
+            rusqlite::params![old_name, new_name],
+        ).map_err(&tx_err)?;
+        tx.execute(
+            "UPDATE skill_locks SET skill_name = ?2 WHERE skill_name = ?1",
             rusqlite::params![old_name, new_name],
         ).map_err(&tx_err)?;
 

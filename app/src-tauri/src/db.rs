@@ -2,7 +2,7 @@ use crate::types::{
     AgentRunRecord, AppSettings, ImportedSkill, SkillMasterRow, UsageByModel, UsageByStep,
     UsageSummary, WorkflowRunRow, WorkflowSessionRecord, WorkflowStepRow, WorkspaceSkill,
 };
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
@@ -49,6 +49,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (19, run_skills_backfill_migration),
         (20, run_rename_upload_migration),
         (21, run_workspace_skills_migration),
+        (22, run_workflow_runs_id_migration),
+        (23, run_fk_columns_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -578,6 +580,188 @@ fn run_workspace_skills_migration(conn: &Connection) -> Result<(), rusqlite::Err
         COMMIT;
     ")?;
     log::info!("migration 20: created workspace_skills table, migrated skill-builder rows");
+    Ok(())
+}
+
+/// Migration 21: Add integer primary key to `workflow_runs`.
+/// The table previously used `skill_name TEXT PRIMARY KEY`. We recreate it with
+/// `id INTEGER PRIMARY KEY AUTOINCREMENT` and `skill_name TEXT UNIQUE NOT NULL`.
+/// This unblocks rename_skill (no more INSERT+DELETE) and allows child tables to
+/// reference `workflow_runs` by integer FK instead of text `skill_name`.
+fn run_workflow_runs_id_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Idempotency guard: check whether the `id` column already exists
+    let has_id = conn
+        .prepare("PRAGMA table_info(workflow_runs)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .any(|r| r.map(|n| n == "id").unwrap_or(false));
+    if has_id {
+        return Ok(());
+    }
+
+    conn.execute_batch("
+        BEGIN;
+
+        DROP TABLE IF EXISTS workflow_runs_new;
+
+        CREATE TABLE workflow_runs_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
+            domain      TEXT NOT NULL,
+            current_step INTEGER NOT NULL DEFAULT 0,
+            status      TEXT NOT NULL DEFAULT 'pending',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
+            skill_type  TEXT DEFAULT 'domain',
+            source      TEXT NOT NULL DEFAULT 'created',
+            description TEXT,
+            version     TEXT DEFAULT '1.0.0',
+            model       TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER DEFAULT 1,
+            disable_model_invocation INTEGER DEFAULT 0,
+            author_login TEXT,
+            author_avatar TEXT,
+            display_name TEXT,
+            intake_json TEXT,
+            skill_id    INTEGER REFERENCES skills(id)
+        );
+
+        INSERT INTO workflow_runs_new
+            (skill_name, domain, current_step, status, created_at, updated_at,
+             skill_type, source, description, version, model, argument_hint,
+             user_invocable, disable_model_invocation, author_login, author_avatar,
+             display_name, intake_json, skill_id)
+        SELECT skill_name, domain, current_step, status, created_at, updated_at,
+               skill_type, COALESCE(source, 'created'), description, version, model,
+               argument_hint, user_invocable, disable_model_invocation,
+               author_login, author_avatar, display_name, intake_json, skill_id
+        FROM workflow_runs;
+
+        DROP TABLE workflow_runs;
+        ALTER TABLE workflow_runs_new RENAME TO workflow_runs;
+
+        COMMIT;
+    ")?;
+
+    log::info!("migration 21: added integer PK to workflow_runs");
+    Ok(())
+}
+
+/// Migration 22: Add integer FK columns to child tables and backfill from skill_name.
+/// After this migration:
+///   - workflow_steps, workflow_artifacts, agent_runs: have `workflow_run_id INT FK → workflow_runs(id)`
+///   - skill_tags, skill_locks, workflow_sessions: have `skill_id INT FK → skills(id)`
+///   - imported_skills: has `skill_master_id INT FK → skills(id)`
+fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Helper to check if a column exists in a table
+    let has_column = |table: &str, column: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({})", table))
+            .and_then(|mut stmt| {
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == column))
+            })
+            .unwrap_or(false)
+    };
+
+    // --- workflow_steps ---
+    if !has_column("workflow_steps", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_steps ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- workflow_artifacts ---
+    if !has_column("workflow_artifacts", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_artifacts ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- agent_runs ---
+    if !has_column("agent_runs", "workflow_run_id") {
+        conn.execute_batch(
+            "ALTER TABLE agent_runs ADD COLUMN workflow_run_id INTEGER REFERENCES workflow_runs(id);",
+        )?;
+    }
+
+    // --- skill_tags ---
+    if !has_column("skill_tags", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE skill_tags ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- skill_locks ---
+    if !has_column("skill_locks", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE skill_locks ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- workflow_sessions ---
+    if !has_column("workflow_sessions", "skill_id") {
+        conn.execute_batch(
+            "ALTER TABLE workflow_sessions ADD COLUMN skill_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // --- imported_skills ---
+    if !has_column("imported_skills", "skill_master_id") {
+        conn.execute_batch(
+            "ALTER TABLE imported_skills ADD COLUMN skill_master_id INTEGER REFERENCES skills(id);",
+        )?;
+    }
+
+    // Backfill all new FK columns in a single transaction
+    conn.execute_batch("
+        BEGIN;
+
+        UPDATE workflow_steps
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_steps.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE workflow_artifacts
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = workflow_artifacts.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE agent_runs
+        SET workflow_run_id = (
+            SELECT wr.id FROM workflow_runs wr WHERE wr.skill_name = agent_runs.skill_name
+        )
+        WHERE workflow_run_id IS NULL;
+
+        UPDATE skill_tags
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_tags.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE skill_locks
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = skill_locks.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE workflow_sessions
+        SET skill_id = (
+            SELECT s.id FROM skills s WHERE s.name = workflow_sessions.skill_name
+        )
+        WHERE skill_id IS NULL;
+
+        UPDATE imported_skills
+        SET skill_master_id = (
+            SELECT s.id FROM skills s WHERE s.name = imported_skills.skill_name
+        )
+        WHERE skill_master_id IS NULL;
+
+        COMMIT;
+    ")?;
+
+    log::info!("migration 22: added FK columns to child tables and backfilled");
     Ok(())
 }
 
@@ -1309,6 +1493,28 @@ pub fn get_skill_by_name(
     }
 }
 
+/// Get the `workflow_runs.id` integer for a given `skill_name`. Returns None if not found.
+pub fn get_workflow_run_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM workflow_runs WHERE skill_name = ?1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// Get the `skills.id` integer for a given skill name. Returns None if not found.
+pub fn get_skill_master_id(conn: &Connection, skill_name: &str) -> Result<Option<i64>, String> {
+    conn.query_row(
+        "SELECT id FROM skills WHERE name = ?1",
+        rusqlite::params![skill_name],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
 // --- Workflow Run ---
 
 pub fn save_workflow_run(
@@ -1512,53 +1718,81 @@ pub fn list_all_workflow_runs(conn: &Connection) -> Result<Vec<WorkflowRunRow>, 
 }
 
 pub fn delete_workflow_run(conn: &Connection, skill_name: &str) -> Result<(), String> {
-    // Delete workflow artifacts
-    conn.execute(
-        "DELETE FROM workflow_artifacts WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+    // Look up FK ids before deleting the parent rows
+    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+    let skill_master_id = get_skill_master_id(conn, skill_name)?;
 
-    // Delete skill locks
-    conn.execute(
-        "DELETE FROM skill_locks WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+    // Delete child rows using FK columns where available, then also by skill_name
+    // to catch any rows that were inserted without the FK backfilled (workflow_run_id = NULL).
+    if let Some(wr_id) = workflow_run_id {
+        conn.execute(
+            "DELETE FROM workflow_artifacts WHERE workflow_run_id = ?1",
+            rusqlite::params![wr_id],
+        )
+        .map_err(|e| e.to_string())?;
 
-    // Delete workflow sessions
-    conn.execute(
-        "DELETE FROM workflow_sessions WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+        conn.execute(
+            "DELETE FROM workflow_steps WHERE workflow_run_id = ?1",
+            rusqlite::params![wr_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM agent_runs WHERE workflow_run_id = ?1",
+            rusqlite::params![wr_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    // Always also clean up by skill_name to catch rows with NULL workflow_run_id
+    conn.execute("DELETE FROM workflow_artifacts WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM workflow_steps WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM agent_runs WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+
+    if let Some(s_id) = skill_master_id {
+        conn.execute(
+            "DELETE FROM skill_locks WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM workflow_sessions WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        // Delete from imported_skills to prevent stale rows blocking re-import
+        conn.execute(
+            "DELETE FROM imported_skills WHERE skill_master_id = ?1",
+            rusqlite::params![s_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    // Always also clean up by skill_name to catch rows with NULL skill_id
+    conn.execute("DELETE FROM skill_locks WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM workflow_sessions WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM skill_tags WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM imported_skills WHERE skill_name = ?1", [skill_name])
+        .map_err(|e| e.to_string())?;
 
     conn.execute(
         "DELETE FROM workflow_runs WHERE skill_name = ?1",
         [skill_name],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM workflow_steps WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM agent_runs WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-    conn.execute(
-        "DELETE FROM skill_tags WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
-    // Delete from imported_skills to prevent stale rows blocking re-import
-    conn.execute(
-        "DELETE FROM imported_skills WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+
     // Also delete from skills master table
     delete_skill(conn, skill_name)?;
     Ok(())
@@ -1579,14 +1813,17 @@ pub fn save_workflow_step(
         _ => (None, None),
     };
 
+    let workflow_run_id = get_workflow_run_id(conn, skill_name)?;
+
     conn.execute(
-        "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO workflow_steps (skill_name, step_id, status, started_at, completed_at, workflow_run_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(skill_name, step_id) DO UPDATE SET
              status = ?3,
              started_at = COALESCE(?4, started_at),
-             completed_at = ?5",
-        rusqlite::params![skill_name, step_id, status, started, completed],
+             completed_at = ?5,
+             workflow_run_id = COALESCE(?6, workflow_run_id)",
+        rusqlite::params![skill_name, step_id, status, started, completed, workflow_run_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -1596,6 +1833,28 @@ pub fn get_workflow_steps(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Vec<WorkflowStepRow>, String> {
+    // Use workflow_run_id FK if available, fall back to skill_name for unbackfilled rows
+    if let Some(wr_id) = get_workflow_run_id(conn, skill_name)? {
+        let mut stmt = conn
+            .prepare(
+                "SELECT skill_name, step_id, status, started_at, completed_at
+                 FROM workflow_steps WHERE workflow_run_id = ?1 ORDER BY step_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![wr_id], |row| {
+                Ok(WorkflowStepRow {
+                    skill_name: row.get(0)?,
+                    step_id: row.get(1)?,
+                    status: row.get(2)?,
+                    started_at: row.get(3)?,
+                    completed_at: row.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        return rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string());
+    }
+
     let mut stmt = conn
         .prepare(
             "SELECT skill_name, step_id, status, started_at, completed_at
@@ -1615,8 +1874,7 @@ pub fn get_workflow_steps(
         })
         .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
 
 pub fn reset_workflow_steps_from(
@@ -1624,12 +1882,21 @@ pub fn reset_workflow_steps_from(
     skill_name: &str,
     from_step: i32,
 ) -> Result<(), String> {
-    conn.execute(
-        "UPDATE workflow_steps SET status = 'pending', started_at = NULL, completed_at = NULL
-         WHERE skill_name = ?1 AND step_id >= ?2",
-        rusqlite::params![skill_name, from_step],
-    )
-    .map_err(|e| e.to_string())?;
+    if let Some(wr_id) = get_workflow_run_id(conn, skill_name)? {
+        conn.execute(
+            "UPDATE workflow_steps SET status = 'pending', started_at = NULL, completed_at = NULL
+             WHERE workflow_run_id = ?1 AND step_id >= ?2",
+            rusqlite::params![wr_id, from_step],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "UPDATE workflow_steps SET status = 'pending', started_at = NULL, completed_at = NULL
+             WHERE skill_name = ?1 AND step_id >= ?2",
+            rusqlite::params![skill_name, from_step],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -1689,21 +1956,43 @@ pub fn set_skill_tags(
     skill_name: &str,
     tags: &[String],
 ) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM skill_tags WHERE skill_name = ?1",
-        [skill_name],
-    )
-    .map_err(|e| e.to_string())?;
+    let skill_master_id = get_skill_master_id(conn, skill_name)?;
 
-    let mut stmt = conn
-        .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, tag) VALUES (?1, ?2)")
+    if let Some(s_id) = skill_master_id {
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_id = ?1",
+            rusqlite::params![s_id],
+        )
         .map_err(|e| e.to_string())?;
 
-    for tag in tags {
-        let normalized = tag.trim().to_lowercase();
-        if !normalized.is_empty() {
-            stmt.execute(rusqlite::params![skill_name, normalized])
-                .map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, skill_id, tag) VALUES (?1, ?2, ?3)")
+            .map_err(|e| e.to_string())?;
+
+        for tag in tags {
+            let normalized = tag.trim().to_lowercase();
+            if !normalized.is_empty() {
+                stmt.execute(rusqlite::params![skill_name, s_id, normalized])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    } else {
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_name = ?1",
+            [skill_name],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let mut stmt = conn
+            .prepare("INSERT OR IGNORE INTO skill_tags (skill_name, tag) VALUES (?1, ?2)")
+            .map_err(|e| e.to_string())?;
+
+        for tag in tags {
+            let normalized = tag.trim().to_lowercase();
+            if !normalized.is_empty() {
+                stmt.execute(rusqlite::params![skill_name, normalized])
+                    .map_err(|e| e.to_string())?;
+            }
         }
     }
 
@@ -1739,10 +2028,11 @@ pub fn insert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1757,6 +2047,7 @@ pub fn insert_imported_skill(
             skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
+            skill_master_id,
         ],
     )
     .map_err(|e| {
@@ -1776,10 +2067,11 @@ pub fn upsert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
              domain = excluded.domain,
@@ -1790,7 +2082,8 @@ pub fn upsert_imported_skill(
              model = excluded.model,
              argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation",
+             disable_model_invocation = excluded.disable_model_invocation,
+             skill_master_id = excluded.skill_master_id",
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1805,6 +2098,7 @@ pub fn upsert_imported_skill(
             skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
+            skill_master_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -1815,10 +2109,11 @@ pub fn upsert_imported_skill(
 /// `skill_name` (via UNIQUE constraint) for idempotent re-seeding on startup.
 /// Preserves `is_active` if the skill already exists.
 pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, &skill.skill_name)?;
     conn.execute(
         "INSERT INTO imported_skills (skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+             skill_type, version, model, argument_hint, user_invocable, disable_model_invocation, skill_master_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
          ON CONFLICT(skill_name) DO UPDATE SET
              skill_id = excluded.skill_id,
              domain = excluded.domain,
@@ -1829,7 +2124,9 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
              model = excluded.model,
              argument_hint = excluded.argument_hint,
              user_invocable = excluded.user_invocable,
-             disable_model_invocation = excluded.disable_model_invocation",
+             disable_model_invocation = excluded.disable_model_invocation,
+             skill_master_id = excluded.skill_master_id",
+        // is_active intentionally NOT updated: preserves user's deactivation
         rusqlite::params![
             skill.skill_id,
             skill.skill_name,
@@ -1844,6 +2141,7 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
             skill.argument_hint,
             skill.user_invocable.map(|v| v as i32),
             skill.disable_model_invocation.map(|v| v as i32),
+            skill_master_id,
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -2101,33 +2399,46 @@ pub fn list_active_workspace_skills(conn: &Connection) -> Result<Vec<WorkspaceSk
     Ok(skills)
 }
 
-pub fn update_workspace_skill_active(conn: &Connection, skill_name: &str, is_active: bool, new_disk_path: &str) -> Result<(), String> {
+pub fn update_workspace_skill_active(conn: &Connection, skill_id: &str, is_active: bool, new_disk_path: &str) -> Result<(), String> {
     let rows = conn.execute(
-        "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_name = ?3",
-        rusqlite::params![is_active as i64, new_disk_path, skill_name],
+        "UPDATE workspace_skills SET is_active = ?1, disk_path = ?2 WHERE skill_id = ?3",
+        rusqlite::params![is_active as i64, new_disk_path, skill_id],
     ).map_err(|e| format!("update_workspace_skill_active: {}", e))?;
     if rows == 0 {
-        return Err(format!("Workspace skill '{}' not found", skill_name));
+        return Err(format!("Workspace skill with id '{}' not found", skill_id));
     }
     Ok(())
 }
 
-pub fn delete_workspace_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
+pub fn delete_workspace_skill(conn: &Connection, skill_id: &str) -> Result<(), String> {
     conn.execute(
-        "DELETE FROM workspace_skills WHERE skill_name = ?1",
-        rusqlite::params![skill_name],
+        "DELETE FROM workspace_skills WHERE skill_id = ?1",
+        rusqlite::params![skill_id],
     ).map_err(|e| format!("delete_workspace_skill: {}", e))?;
     Ok(())
 }
 
-pub fn get_workspace_skill(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
+pub fn get_workspace_skill(conn: &Connection, skill_id: &str) -> Result<Option<WorkspaceSkill>, String> {
     let mut stmt = conn.prepare(
-        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1")
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_id = ?1")
     ).map_err(|e| format!("get_workspace_skill: {}", e))?;
-    let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
+    let mut rows = stmt.query_map(rusqlite::params![skill_id], row_to_workspace_skill)
         .map_err(|e| format!("get_workspace_skill query: {}", e))?;
     match rows.next() {
         Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
+/// Look up a workspace skill by name. Used when skill_id is not known.
+pub fn get_workspace_skill_by_name(conn: &Connection, skill_name: &str) -> Result<Option<WorkspaceSkill>, String> {
+    let mut stmt = conn.prepare(
+        &format!("SELECT {WS_COLUMNS} FROM workspace_skills WHERE skill_name = ?1")
+    ).map_err(|e| format!("get_workspace_skill_by_name: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name], row_to_workspace_skill)
+        .map_err(|e| format!("get_workspace_skill_by_name query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_by_name row: {}", e))?)),
         None => Ok(None),
     }
 }
@@ -2163,18 +2474,28 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
+    let skill_master_id = get_skill_master_id(conn, skill_name).unwrap_or(None);
+
     let result = (|| -> Result<(), String> {
         if let Some(existing) = get_skill_lock(conn, skill_name)? {
             if existing.instance_id == instance_id {
                 return Ok(()); // Already locked by us
             }
             if !check_pid_alive(existing.pid) {
-                // Dead process — reclaim
-                conn.execute(
-                    "DELETE FROM skill_locks WHERE skill_name = ?1",
-                    [skill_name],
-                )
-                .map_err(|e| e.to_string())?;
+                // Dead process — reclaim using skill_id FK if available
+                if let Some(s_id) = skill_master_id {
+                    conn.execute(
+                        "DELETE FROM skill_locks WHERE skill_id = ?1",
+                        rusqlite::params![s_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                } else {
+                    conn.execute(
+                        "DELETE FROM skill_locks WHERE skill_name = ?1",
+                        [skill_name],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
             } else {
                 return Err(format!(
                     "Skill '{}' is being edited in another instance",
@@ -2184,8 +2505,8 @@ pub fn acquire_skill_lock(
         }
 
         conn.execute(
-            "INSERT INTO skill_locks (skill_name, instance_id, pid) VALUES (?1, ?2, ?3)",
-            rusqlite::params![skill_name, instance_id, pid as i64],
+            "INSERT INTO skill_locks (skill_name, skill_id, instance_id, pid) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![skill_name, skill_master_id, instance_id, pid as i64],
         )
         .map_err(|e| {
             if e.to_string().contains("UNIQUE") {
@@ -2213,11 +2534,20 @@ pub fn release_skill_lock(
     skill_name: &str,
     instance_id: &str,
 ) -> Result<(), String> {
-    conn.execute(
-        "DELETE FROM skill_locks WHERE skill_name = ?1 AND instance_id = ?2",
-        [skill_name, instance_id],
-    )
-    .map_err(|e| e.to_string())?;
+    // Try to release by skill_id FK first, fall back to skill_name
+    if let Ok(Some(s_id)) = get_skill_master_id(conn, skill_name) {
+        conn.execute(
+            "DELETE FROM skill_locks WHERE skill_id = ?1 AND instance_id = ?2",
+            rusqlite::params![s_id, instance_id],
+        )
+        .map_err(|e| e.to_string())?;
+    } else {
+        conn.execute(
+            "DELETE FROM skill_locks WHERE skill_name = ?1 AND instance_id = ?2",
+            [skill_name, instance_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -2238,6 +2568,28 @@ pub fn get_skill_lock(
     conn: &Connection,
     skill_name: &str,
 ) -> Result<Option<crate::types::SkillLock>, String> {
+    // Use skill_id FK if available
+    if let Ok(Some(s_id)) = get_skill_master_id(conn, skill_name) {
+        let mut stmt = conn
+            .prepare(
+                "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let result = stmt.query_row(rusqlite::params![s_id], |row| {
+            Ok(crate::types::SkillLock {
+                skill_name: row.get(0)?,
+                instance_id: row.get(1)?,
+                pid: row.get::<_, i64>(2)? as u32,
+                acquired_at: row.get(3)?,
+            })
+        });
+        return match result {
+            Ok(lock) => Ok(Some(lock)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        };
+    }
+
     let mut stmt = conn
         .prepare(
             "SELECT skill_name, instance_id, pid, acquired_at FROM skill_locks WHERE skill_name = ?1",
@@ -2287,11 +2639,20 @@ pub fn reclaim_dead_locks(conn: &Connection) -> Result<u32, String> {
     let mut reclaimed = 0u32;
     for lock in locks {
         if !check_pid_alive(lock.pid) {
-            conn.execute(
-                "DELETE FROM skill_locks WHERE skill_name = ?1",
-                [&lock.skill_name],
-            )
-            .map_err(|e| e.to_string())?;
+            // Use skill_id FK if available, fall back to skill_name
+            if let Ok(Some(s_id)) = get_skill_master_id(conn, &lock.skill_name) {
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_id = ?1",
+                    rusqlite::params![s_id],
+                )
+                .map_err(|e| e.to_string())?;
+            } else {
+                conn.execute(
+                    "DELETE FROM skill_locks WHERE skill_name = ?1",
+                    [&lock.skill_name],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             reclaimed += 1;
         }
     }
@@ -2330,9 +2691,10 @@ pub fn create_workflow_session(
     skill_name: &str,
     pid: u32,
 ) -> Result<(), String> {
+    let skill_master_id = get_skill_master_id(conn, skill_name)?;
     conn.execute(
-        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, pid) VALUES (?1, ?2, ?3)",
-        rusqlite::params![session_id, skill_name, pid as i64],
+        "INSERT OR IGNORE INTO workflow_sessions (session_id, skill_name, skill_id, pid) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![session_id, skill_name, skill_master_id, pid as i64],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -2463,6 +2825,9 @@ mod tests {
         run_skills_table_migration(&conn).unwrap();
         run_skills_backfill_migration(&conn).unwrap();
         run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        run_fk_columns_migration(&conn).unwrap();
         conn
     }
 

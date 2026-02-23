@@ -12,8 +12,8 @@ interface ImportedSkillsState {
 
   fetchSkills: () => Promise<void>;
   uploadSkill: (filePath: string) => Promise<WorkspaceSkill>;
-  toggleActive: (skillName: string, active: boolean) => Promise<void>;
-  deleteSkill: (skillName: string) => Promise<void>;
+  toggleActive: (skillId: string, active: boolean) => Promise<void>;
+  deleteSkill: (skillId: string) => Promise<void>;
   getSkillContent: (skillName: string) => Promise<string>;
   setSelectedSkill: (skill: WorkspaceSkill | null) => void;
 }
@@ -27,7 +27,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
     try {
-      const skills = await invoke<WorkspaceSkill[]>("list_imported_skills");
+      const skills = await invoke<WorkspaceSkill[]>("list_workspace_skills");
       set({ skills, isLoading: false });
     } catch (err) {
       set({
@@ -43,21 +43,21 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
     return skill;
   },
 
-  toggleActive: async (skillName: string, active: boolean) => {
-    await invoke("toggle_skill_active", { skillName, active });
+  toggleActive: async (skillId: string, active: boolean) => {
+    await invoke("toggle_skill_active", { skillId, active });
     set((state) => ({
       skills: state.skills.map((s) =>
-        s.skill_name === skillName ? { ...s, is_active: active } : s
+        s.skill_id === skillId ? { ...s, is_active: active } : s
       ),
     }));
   },
 
-  deleteSkill: async (skillName: string) => {
-    await invoke("delete_imported_skill", { skillName });
+  deleteSkill: async (skillId: string) => {
+    await invoke("delete_imported_skill", { skillId });
     set((state) => ({
-      skills: state.skills.filter((s) => s.skill_name !== skillName),
+      skills: state.skills.filter((s) => s.skill_id !== skillId),
       selectedSkill:
-        state.selectedSkill?.skill_name === skillName
+        state.selectedSkill?.skill_id === skillId
           ? null
           : state.selectedSkill,
     }));
