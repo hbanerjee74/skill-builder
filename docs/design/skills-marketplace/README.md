@@ -27,7 +27,7 @@ Skills in this layer are loaded into the agent workspace and wired into CLAUDE.m
 
 1. **Bundled** — shipped with the app, seeded by `seed_bundled_skills` on startup. Always overwrite on seed; `is_active` state is preserved across re-seeds. Cannot be deleted — only deactivated.
 
-2. **Marketplace import** (Settings→Skills browse dialog) — scans the configured marketplace repo, filtered to `skill_type='skill-builder'`. Downloads to `workspace_path/.claude/skills/`, inserts into `imported_skills` only. No dashboard entry.
+2. **Marketplace import** (Settings→Skills browse dialog) — scans the configured marketplace repo, filtered to `skill_type='skill-builder'`. Downloads to `workspace_path/.claude/skills/`, inserts into `workspace_skills` only. No dashboard entry.
 
 3. **Zip upload** — extracts to `workspace_path/.claude/skills/`. Mandatory frontmatter: `name`, `domain`, `description`. Always forces `skill_type='skill-builder'` regardless of frontmatter.
 
@@ -43,7 +43,7 @@ Skills in this layer are the product of Skill Builder — domain knowledge packa
 
 1. **Built** — created via the full workflow (Research → Decisions → Generation → Validation). Tracked in `workflow_runs` with `source='created'`.
 
-2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills. Downloads to `skills_path/`, inserts into both `imported_skills` and `workflow_runs` with `source='marketplace'`, `status='completed'`. Appears in the dashboard immediately and qualifies for refinement.
+2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills. Downloads to `skills_path/`, inserts into both `workspace_skills` and `workflow_runs` with `source='marketplace'`, `status='completed'`. Appears in the dashboard immediately and qualifies for refinement.
 
 A marketplace-imported skill is "already completed" — it skips the generation workflow entirely but is otherwise identical to a built skill for refinement purposes.
 
@@ -63,7 +63,7 @@ The marketplace is a GitHub repository — any repo where each subdirectory cont
 
 **Discovery**: `list_github_skills` fetches the full recursive git tree, finds all `SKILL.md` blob entries, downloads each one, parses frontmatter, and returns `AvailableSkill` records. If a `subpath` is configured, only entries under that path are included.
 
-**Pre-marking**: Before showing the browse dialog, `get_all_installed_skill_names` queries a UNION of `workflow_runs` and `imported_skills` by skill name. Skills already in either table are shown as "In library" (greyed out) in the browse UI.
+**Pre-marking**: Before showing the browse dialog, `get_all_installed_skill_names` queries a UNION of `workflow_runs` and `workspace_skills` by skill name. Skills already in either table are shown as "In library" (greyed out) in the browse UI.
 
 ---
 
