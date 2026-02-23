@@ -103,15 +103,15 @@ skills  ← master (skill_name)            workspace_skills  ← standalone
 
 **`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. Linked to `skills` by `skill_name` (convention, not enforced FK).
 
-### Settings→Skills table
-
-**`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
-
 **`workflow_sessions`** — Tracks refine and workflow session lifetimes (start, end, PID). Linked to `skills` by `skill_name`. Includes `reset_marker` to soft-delete cancelled sessions.
 
 **`agent_runs`** — One row per agent invocation. Stores model, token counts, cost, duration, turn count, stop reason, compaction count. Linked to `skills` by `skill_name`; also references `step_id` and `session_id` by convention.
 
 **`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
+
+### Settings→Skills table
+
+**`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
 
 ### Supporting tables
 
