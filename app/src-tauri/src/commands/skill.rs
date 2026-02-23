@@ -1405,6 +1405,115 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_delete_skill_inner_marketplace_skill_routes_to_imported_path() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // Insert a skills master row with source="marketplace" (no workflow_run)
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('mkt-skill', 'marketplace', 'data', 'domain')",
+            [],
+        ).unwrap();
+        // Insert corresponding imported_skills row
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)
+             VALUES ('mkt-id', 'mkt-skill', '/tmp/mkt-skill', 0,
+                     (SELECT id FROM skills WHERE name = 'mkt-skill'))",
+            [],
+        ).unwrap();
+
+        // Verify setup: no workflow_run, but skills + imported_skills rows exist
+        let wf_id = crate::db::get_workflow_run_id(&conn, "mkt-skill").unwrap();
+        assert!(wf_id.is_none(), "Marketplace skill should have no workflow_run");
+
+        let skill_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skill_count, 1);
+
+        // Delete via delete_skill_inner
+        delete_skill_inner(workspace, "mkt-skill", Some(&conn), None).unwrap();
+
+        // Both skills master and imported_skills rows should be gone
+        let skills_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skills_after, 0, "skills master row should be deleted");
+
+        let imported_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'mkt-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(imported_after, 0, "imported_skills row should be deleted");
+    }
+
+    #[test]
+    fn test_delete_skill_inner_skill_builder_routes_to_workflow_path() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let conn = create_test_db();
+
+        // create_skill_inner inserts into skills (skill_source="skill-builder") + workflow_runs
+        create_skill_inner(workspace, "builder-skill", "data", None, None, Some(&conn), None, None, None, None, None, None, None, None, None, None).unwrap();
+
+        // Verify setup: workflow_run exists
+        let wf_id = crate::db::get_workflow_run_id(&conn, "builder-skill").unwrap();
+        assert!(wf_id.is_some(), "skill-builder skill should have workflow_run");
+
+        delete_skill_inner(workspace, "builder-skill", Some(&conn), None).unwrap();
+
+        // workflow_runs row should be gone
+        let wf_after = crate::db::get_workflow_run(&conn, "builder-skill").unwrap();
+        assert!(wf_after.is_none(), "workflow_run should be deleted");
+
+        // skills master row should also be gone
+        let skills_after: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'builder-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(skills_after, 0, "skills master row should be deleted");
+    }
+
+    #[test]
+    fn test_rename_skill_inner_updates_imported_skills_name() {
+        let dir = tempdir().unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let mut conn = create_test_db();
+
+        // Insert a skills master row (imported source)
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('imp-skill', 'imported', 'eng', 'domain')",
+            [],
+        ).unwrap();
+        // Insert imported_skills row
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled, skill_master_id)
+             VALUES ('imp-id', 'imp-skill', '/tmp/imp-skill', 0,
+                     (SELECT id FROM skills WHERE name = 'imp-skill'))",
+            [],
+        ).unwrap();
+
+        rename_skill_inner("imp-skill", "imp-skill-renamed", workspace, &mut conn, None).unwrap();
+
+        // skills master should be renamed
+        let master_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM skills WHERE name = 'imp-skill-renamed'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(master_count, 1, "skills master should have new name");
+
+        // imported_skills.skill_name should also be updated
+        let imported_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill-renamed'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(imported_count, 1, "imported_skills.skill_name should be updated");
+
+        // Old name should be gone from imported_skills
+        let old_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'imp-skill'", [], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(old_count, 0, "old imported_skills name should be gone");
+    }
+
     // ===== Existing tests (updated signatures) =====
 
     #[test]
