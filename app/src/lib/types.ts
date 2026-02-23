@@ -256,6 +256,24 @@ export interface ImportedSkill {
   disable_model_invocation: boolean | null
 }
 
+/** Workspace skill — stored in the workspace_skills table (Settings → Skills tab). */
+export interface WorkspaceSkill {
+  skill_id: string
+  skill_name: string
+  domain: string | null
+  description: string | null   // stored in DB (not hydrated from disk)
+  is_active: boolean
+  is_bundled: boolean
+  disk_path: string
+  imported_at: string
+  skill_type: string | null    // always 'skill-builder' in practice
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
+}
+
 export interface GitHubRepoInfo {
   owner: string
   repo: string

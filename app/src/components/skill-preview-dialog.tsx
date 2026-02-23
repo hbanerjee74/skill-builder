@@ -11,10 +11,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog"
 import { useImportedSkillsStore } from "@/stores/imported-skills-store"
-import type { ImportedSkill } from "@/stores/imported-skills-store"
+import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 
 interface SkillPreviewDialogProps {
-  skill: ImportedSkill | null
+  skill: WorkspaceSkill | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
