@@ -148,6 +148,16 @@ fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             is_active INTEGER DEFAULT 1,
             disk_path TEXT NOT NULL,
             imported_at TEXT DEFAULT (datetime('now') || 'Z')
+        );
+
+        CREATE TABLE IF NOT EXISTS skills (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL UNIQUE,
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            domain       TEXT,
+            skill_type   TEXT,
+            created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )
 }
