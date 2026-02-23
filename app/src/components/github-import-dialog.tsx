@@ -16,8 +16,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill, SkillSummary } from "@/lib/types"
 import { SKILL_TYPES } from "@/lib/types"
 import {
   Select,
@@ -51,6 +51,8 @@ interface GitHubImportDialogProps {
    * Defaults to 'settings-skills' for backward compatibility.
    */
   mode?: 'skill-library' | 'settings-skills'
+  /** Workspace path — required for skill-library mode to look up installed skill metadata. */
+  workspacePath?: string
 }
 
 type SkillState = "idle" | "importing" | "imported" | "exists" | "same-version" | "upgrade"
@@ -77,13 +79,14 @@ export default function GitHubImportDialog({
   url,
   typeFilter,
   mode = 'settings-skills',
+  workspacePath,
 }: GitHubImportDialogProps) {
   const [loading, setLoading] = useState(false)
   const [repoInfo, setRepoInfo] = useState<GitHubRepoInfo | null>(null)
   const [skills, setSkills] = useState<AvailableSkill[]>([])
   const [error, setError] = useState<string | null>(null)
   const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
-  const [installedMap, setInstalledMap] = useState<Map<string, WorkspaceSkill>>(new Map())
+  const [installedSkillSummaryMap, setInstalledSkillSummaryMap] = useState<Map<string, SkillSummary>>(new Map())
   const availableModels = useSettingsStore((s) => s.availableModels)
 
   // Edit form state for skill-library mode
@@ -109,7 +112,7 @@ export default function GitHubImportDialog({
     setSkills([])
     setError(null)
     setSkillStates(new Map())
-    setInstalledMap(new Map())
+    setInstalledSkillSummaryMap(new Map())
     closeEditForm()
   }, [])
 
@@ -142,19 +145,39 @@ export default function GitHubImportDialog({
         setError("No skills found in this repository.")
         return
       }
-      // Pre-mark skills that are already installed (version-aware)
-      const installedSkills = await listWorkspaceSkills()
-      const installedSet = new Set(installedSkills.map((s) => s.skill_name))
-      const newInstalledMap = new Map(installedSkills.map((s) => [s.skill_name, s]))
+
       const preStates = new Map<string, SkillState>()
-      for (const skill of available) {
-        if (installedSet.has(skill.name)) {
-          const installed = newInstalledMap.get(skill.name)
-          const sameVersion = installed?.version === skill.version  // covers both null/undefined
-          preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+
+      if (mode === 'skill-library') {
+        // skill-library: check the skills master table (covers both skill-builder and marketplace skills)
+        const dashboardNames = await getDashboardSkillNames()
+        const dashboardSet = new Set(dashboardNames)
+        // Also fetch full metadata for version comparison and edit form pre-population
+        const wp = workspacePath ?? ''
+        const summaries = wp ? await listSkills(wp) : []
+        const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
+        for (const skill of available) {
+          if (dashboardSet.has(skill.name)) {
+            const installedSummary = newSummaryMap.get(skill.name)
+            const sameVersion = installedSummary?.version === skill.version
+            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+          }
+        }
+        setInstalledSkillSummaryMap(newSummaryMap)
+      } else {
+        // settings-skills: check workspace_skills table
+        const installedSkills = await listWorkspaceSkills()
+        const installedSet = new Set(installedSkills.map((s) => s.skill_name))
+        const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
+        for (const skill of available) {
+          if (installedSet.has(skill.name)) {
+            const installedVersion = installedVersionMap.get(skill.name)
+            const sameVersion = installedVersion === skill.version  // covers both null/undefined
+            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+          }
         }
       }
-      setInstalledMap(newInstalledMap)
+
       setSkillStates(preStates)
       setSkills(available)
     } catch (err) {
@@ -172,19 +195,22 @@ export default function GitHubImportDialog({
 
   const openEditForm = useCallback((skill: AvailableSkill, installedSkill?: WorkspaceSkill | null) => {
     setEditingSkill(skill)
-    // For upgrades, pre-populate from the installed skill so users review their own values.
-    // For fresh installs, use the marketplace skill's values.
-    const base = installedSkill ?? skill
+    // Merge: new value wins if non-empty, else fall back to installed value
+    const str = (newVal: string | null | undefined, oldVal: string | null | undefined) =>
+      (newVal && newVal.trim()) ? newVal : (oldVal ?? '')
+    const bool = (newVal: boolean | null | undefined, oldVal: boolean | null | undefined) =>
+      newVal != null ? newVal : (oldVal ?? false)
+
     setEditForm({
-      name: ('skill_name' in base ? (base as WorkspaceSkill).skill_name : (base as AvailableSkill).name) ?? skill.name ?? '',
-      description: base.description ?? '',
-      domain: base.domain ?? '',
-      skill_type: ('skill_type' in base ? base.skill_type : null) ?? skill.skill_type ?? '',
-      version: skill.version ?? ('version' in base ? base.version : null) ?? '1.0.0',
-      model: ('model' in base ? base.model : null) || APP_DEFAULT_MODEL,
-      argument_hint: base.argument_hint ?? '',
-      user_invocable: base.user_invocable ?? false,
-      disable_model_invocation: base.disable_model_invocation ?? false,
+      name: skill.name ?? installedSkill?.skill_name ?? '',
+      description: str(skill.description, installedSkill?.description),
+      domain: str(skill.domain, installedSkill?.domain),
+      skill_type: str(skill.skill_type, installedSkill?.skill_type),
+      version: skill.version ?? installedSkill?.version ?? '1.0.0',  // always new version
+      model: (skill.model || installedSkill?.model) ? (skill.model || installedSkill?.model || APP_DEFAULT_MODEL) : APP_DEFAULT_MODEL,
+      argument_hint: str(skill.argument_hint, installedSkill?.argument_hint),
+      user_invocable: bool(skill.user_invocable, installedSkill?.user_invocable),
+      disable_model_invocation: bool(skill.disable_model_invocation, installedSkill?.disable_model_invocation),
     })
   }, [])
 
@@ -348,8 +374,23 @@ export default function GitHubImportDialog({
                               disabled={isImporting}
                               onClick={() => {
                                 if (mode === 'skill-library') {
-                                  const installed = isUpgrade ? installedMap.get(skill.name) : null
-                                  openEditForm(skill, installed)
+                                  const installedSummary = isUpgrade ? installedSkillSummaryMap.get(skill.name) : null
+                                  openEditForm(skill, installedSummary ? {
+                                    skill_id: '',
+                                    skill_name: installedSummary.name,
+                                    description: installedSummary.description ?? null,
+                                    domain: installedSummary.domain ?? null,
+                                    skill_type: installedSummary.skill_type ?? null,
+                                    version: installedSummary.version ?? null,
+                                    model: installedSummary.model ?? null,
+                                    argument_hint: installedSummary.argumentHint ?? null,
+                                    user_invocable: installedSummary.userInvocable ?? null,
+                                    disable_model_invocation: installedSummary.disableModelInvocation ?? null,
+                                    is_active: true,
+                                    is_bundled: false,
+                                    disk_path: '',
+                                    imported_at: '',
+                                  } as WorkspaceSkill : null)
                                 } else {
                                   handleImport(skill)
                                 }
