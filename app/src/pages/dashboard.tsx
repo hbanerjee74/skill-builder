@@ -50,7 +50,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: {
   return (
     <button
       type="button"
-      className="flex items-center gap-1 hover:text-foreground transition-colors"
+      className="flex w-full items-center gap-1 text-left hover:text-foreground transition-colors"
       onClick={() => onSort(column)}
     >
       {label}
