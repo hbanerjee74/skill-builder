@@ -66,41 +66,71 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 20 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
 
-### Tables
+### Schema overview
 
-| Table | Purpose |
-|---|---|
-| `settings` | KV store; one row per key. Used for `AppSettings` (API key, paths, model, auth tokens, flags). |
-| `skills` | Master catalog for the **Skills Library**. Three `skill_source` values: `'skill-builder'` (built via workflow), `'marketplace'` (bulk imported), `'imported'` (disk-discovered via reconciliation pass 2 — SKILL.md present but incomplete context artifacts). |
-| `workflow_runs` | Build progress for skill-builder skills: current step, status, intake data, display metadata. One row per skill. |
-| `workflow_steps` | Per-step status and timing for each workflow run. |
-| `workflow_sessions` | Session tracking for refine and workflow invocations. Includes `reset_marker` for cancelled sessions. |
-| `agent_runs` | Metrics for every agent invocation: model, token counts, cost, duration, turn count, stop reason. |
-| `workflow_artifacts` | File content produced by workflow steps, stored inline with path and size. |
-| `skill_tags` | Many-to-many skill→tag, normalized to lowercase. |
-| `imported_skills` | Disk-path and metadata store for marketplace bulk imports. Created alongside a `skills` master row by `import_marketplace_to_library`. |
-| `workspace_skills` | Skills shown in the **Settings→Skills tab** — populated via GitHub import (`import_github_skills`) and disk ZIP upload (`upload_skill`). Manages per-skill active/inactive state. These skills do **not** appear in the `skills` master table. |
-| `skill_locks` | Concurrency control — prevents concurrent edits across app instances. |
-| `schema_migrations` | Migration version tracker. |
+The schema has two independent skill registries that serve different parts of the UI:
 
-### Key relationships
+```
+Skills Library (list_skills)             Settings→Skills (list_workspace_skills)
+─────────────────────────────            ──────────────────────────────────────
+skills  ← master                         workspace_skills  ← standalone
+ ├─ workflow_runs   (skill-builder)
+ │   ├─ workflow_steps
+ │   └─ workflow_artifacts
+ └─ imported_skills (marketplace)
+```
 
-- `workflow_runs.skill_id` → `skills.id` (FK; skill-builder skills only)
-- `imported_skills.skill_name` → `skills.name` (by convention — marketplace imports have a row in both)
-- `workspace_skills` is completely separate from `skills` — Settings→Skills and the Skills Library are backed by different tables with no FK between them
-- `agent_runs` references `(skill_name, step_id, session_id)` — not enforced as FK, joined by convention
-- `workflow_artifacts` keyed by `(skill_name, step_id, relative_path)`
-- `skill_tags` keyed by `(skill_name, tag)`
+`skills` is the parent table for the Skills Library. Each `skill_source` value has a corresponding child table that stores source-specific data — `workflow_runs` for `'skill-builder'` skills (build state and step history), `imported_skills` for `'marketplace'` skills (disk path, active state, metadata). `'imported'` skills have no child table.
+
+`workspace_skills` is entirely separate — it has no relationship to `skills` and is never reconciled against it.
+
+### Skills Library tables
+
+**`skills`** — Parent catalog. One row per skill in the Skills Library. `skill_source` is the discriminator:
+
+| `skill_source` | Origin | Child table |
+|---|---|---|
+| `skill-builder` | Created via builder workflow, or disk-discovered with full context artifacts | `workflow_runs` |
+| `marketplace` | Bulk imported via `import_marketplace_to_library` | `imported_skills` |
+| `imported` | Disk-discovered via reconciliation pass 2 (SKILL.md present, incomplete context) | — |
+
+**`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. FK `skill_id → skills.id`. One row per skill.
+
+**`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing.
+
+**`workflow_artifacts`** — Child of `workflow_runs`. Step output files stored inline (content + size). Keyed by `(skill_name, step_id, relative_path)`.
+
+**`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. Linked to `skills` by `skill_name` (convention, not enforced FK).
+
+### Settings→Skills table
+
+**`workspace_skills`** — Standalone registry for the Settings→Skills tab. Populated by `import_github_skills` (GitHub) and `upload_skill` (disk ZIP). Manages per-skill active/inactive toggle. These skills do **not** appear in the `skills` master and are not part of the Skills Library.
+
+### Session and telemetry tables
+
+**`workflow_sessions`** — Tracks refine and workflow session lifetimes (start, end, PID). Includes `reset_marker` to soft-delete cancelled sessions.
+
+**`agent_runs`** — One row per agent invocation. Stores model, token counts, cost, duration, turn count, stop reason, compaction count. Linked to `(skill_name, step_id, session_id)` by convention.
+
+### Supporting tables
+
+**`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
+
+**`skill_locks`** — Concurrency control. Prevents two app instances from editing the same skill simultaneously. Keyed by `skill_name`; stores `instance_id` and `pid`.
+
+**`settings`** — KV store. One JSON blob per key. Used for `AppSettings`: API key, paths, model, auth tokens, feature flags.
+
+**`schema_migrations`** — Migration version tracker. `version` + `applied_at`.
 
 ### Design decisions
 
-**Two separate skill registries.** The `skills` table is the master catalog for the Skills Library (`list_skills`). The `workspace_skills` table is a separate registry for the Settings→Skills tab (`list_workspace_skills`). Skills in `workspace_skills` — those imported from GitHub or uploaded via ZIP — do not appear in the Skills Library and have no row in `skills`. Marketplace bulk imports (`import_marketplace_to_library`) are the only import path that writes to both: `imported_skills` (disk metadata) and `skills` (library entry).
+**Source-typed children.** Rather than a single wide table, each `skill_source` gets its own child table containing only the columns relevant to that source. This keeps `skills` narrow and avoids nullable columns for data that only applies to one source type.
 
-**`skill_source` discriminator in `skills`.** Three values: `'skill-builder'` for workflow-built skills (always have a `workflow_runs` row), `'marketplace'` for marketplace imports (no `workflow_runs`), and `'imported'` for skills discovered on disk during reconciliation pass 2 with a SKILL.md but incomplete context artifacts (no `workflow_runs`).
+**Two registries, not one.** The Skills Library (`skills`) and Settings→Skills (`workspace_skills`) are backed by separate tables. GitHub imports and ZIP uploads go into `workspace_skills` and stay there — they have no Skills Library presence. Only marketplace bulk imports and builder-created skills appear in the Skills Library.
 
-**Soft-delete for usage data.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can hide cancelled/reset entries without losing historical cost data.
+**Soft-delete for telemetry.** `agent_runs` and `workflow_sessions` use a `reset_marker` column rather than hard deletes. The UI can filter out cancelled or reset entries without losing cost history.
 
-**Split workspace vs. app data.** Skills content lives in the user-configured workspace path (`~/.vibedata/` by default). The database lives in Tauri's `app_data_dir`. These are intentionally separate: the workspace is user-owned and portable; the DB is app-owned and not hand-edited.
+**Workspace vs. app data.** Skill files live in the user-configured `skills_path` (default `~/.vibedata/`). The database lives in Tauri's `app_data_dir`. These are intentionally separate: `skills_path` is user-owned and portable; the DB is app-owned and not hand-edited.
 
 ---
 
