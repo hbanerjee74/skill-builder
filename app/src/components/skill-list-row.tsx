@@ -32,7 +32,7 @@ import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 /** Shared 5-column grid — used by both the row and the table header in dashboard.tsx */
-export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_9rem_8rem_auto]"
+export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_auto]"
 
 function getStatusLabel(skill: SkillSummary): string {
   if (skill.skill_source === "marketplace" || skill.skill_source === "imported" || isWorkflowComplete(skill)) {
