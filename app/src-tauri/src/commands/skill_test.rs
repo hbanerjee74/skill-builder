@@ -37,8 +37,15 @@ fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> R
 fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &str) -> Result<(), String> {
     let src = src_skills_dir.join(skill_name);
     let dest = dest_skills_dir.join(skill_name);
-    std::fs::create_dir_all(dest_skills_dir).map_err(|e| format!("Failed to create skills dir: {}", e))?;
-    copy_dir_recursive(&src, &dest)
+    std::fs::create_dir_all(dest_skills_dir).map_err(|e| {
+        let msg = format!("Failed to create skills dir {:?}: {}", dest_skills_dir, e);
+        log::error!("[copy_skill_dir] {}", msg);
+        msg
+    })?;
+    copy_dir_recursive(&src, &dest).map_err(|e| {
+        log::error!("[copy_skill_dir] Failed to copy skill '{}': {}", skill_name, e);
+        e
+    })
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
@@ -66,6 +73,7 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
 /// pick up skill context automatically via the SDK's workspace loading.
 #[tauri::command]
 pub fn prepare_skill_test(
+    app: tauri::AppHandle,
     workspace_path: String,
     skill_name: String,
     db: tauri::State<'_, Db>,
@@ -95,26 +103,20 @@ pub fn prepare_skill_test(
     write_workspace_claude_md(&baseline_dir, "# Test Workspace", "baseline")?;
     write_workspace_claude_md(&with_skill_dir, "# Test Workspace", "with-skill")?;
 
-    // Copy skill-test dir into both workspaces
-    let workspace_skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
+    // Copy skill-test from bundled resources (immune to workspace active/inactive state)
+    let bundled_skills_dir = super::workflow::resolve_bundled_skills_dir(&app);
     let baseline_skills_dir = baseline_dir.join(".claude").join("skills");
     let with_skill_skills_dir = with_skill_dir.join(".claude").join("skills");
 
-    log::info!(
-        "[prepare_skill_test] copying skill-test into baseline workspace"
-    );
-    copy_skill_dir(&workspace_skills_dir, &baseline_skills_dir, "skill-test")?;
+    log::info!("[prepare_skill_test] copying skill-test into baseline workspace");
+    copy_skill_dir(&bundled_skills_dir, &baseline_skills_dir, "skill-test")?;
 
-    log::info!(
-        "[prepare_skill_test] copying skill-test into with-skill workspace"
-    );
-    copy_skill_dir(&workspace_skills_dir, &with_skill_skills_dir, "skill-test")?;
+    log::info!("[prepare_skill_test] copying skill-test into with-skill workspace");
+    copy_skill_dir(&bundled_skills_dir, &with_skill_skills_dir, "skill-test")?;
 
-    // Copy user skill into with-skill workspace only
-    log::info!(
-        "[prepare_skill_test] copying skill '{}' into with-skill workspace",
-        skill_name
-    );
+    // User skill is in skills_path (may differ from workspace_path when custom skills dir is configured)
+    // User skills live in skills_path; bundled skills (like skill-test) live in workspace_path/.claude/skills/
+    log::info!("[prepare_skill_test] copying skill '{}' into with-skill workspace", skill_name);
     copy_skill_dir(
         &Path::new(&skills_path),
         &with_skill_skills_dir,
