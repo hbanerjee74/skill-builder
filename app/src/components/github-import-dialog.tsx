@@ -237,6 +237,7 @@ export default function GitHubImportDialog({
 
   /** skill-library: edit metadata then import immediately via importMarketplaceToLibrary */
   const handleImportWithMetadata = useCallback(async (skill: AvailableSkill, form: EditFormState) => {
+    console.log(`[github-import] importing "${form.name || skill.name}" from marketplace (path=${skill.path})`)
     setSkillState(skill.path, "importing")
     closeEditForm()
     try {
@@ -268,6 +269,7 @@ export default function GitHubImportDialog({
     if (!editingSkill || !editForm || !repoInfo) return
     const skillPath = editingSkill.path
     const skillName = editForm.name || editingSkill.name
+    console.log(`[github-import] importing "${skillName}" from ${repoInfo.owner}/${repoInfo.repo} (path=${skillPath})`)
     setSkillState(skillPath, "importing")
     closeEditForm()
     try {
