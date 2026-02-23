@@ -17,11 +17,17 @@ const SOURCE_CONFIG: Record<string, {
     label: "Marketplace",
     colors: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
   },
-  upload: {
+  imported: {
     icon: Upload,
-    label: "Uploaded",
+    label: "Imported",
     colors: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
   },
+}
+
+export const SOURCE_DISPLAY_LABELS: Record<string, string> = {
+  "skill-builder": "Skill Builder",
+  "marketplace": "Marketplace",
+  "imported": "Imported",
 }
 
 interface SkillSourceBadgeProps {
