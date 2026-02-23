@@ -55,6 +55,9 @@ interface GitHubImportDialogProps {
 
 type SkillState = "idle" | "importing" | "imported" | "exists"
 
+/** Sentinel used in the model <Select> to represent "no override — use app default". */
+const APP_DEFAULT_MODEL = "__app_default__"
+
 interface EditFormState {
   name: string
   description: string
@@ -169,7 +172,7 @@ export default function GitHubImportDialog({
       domain: skill.domain ?? '',
       skill_type: skill.skill_type ?? '',
       version: skill.version ?? '1.0.0',
-      model: skill.model ?? '',
+      model: skill.model || APP_DEFAULT_MODEL,
       argument_hint: skill.argument_hint ?? '',
       user_invocable: skill.user_invocable ?? false,
       disable_model_invocation: skill.disable_model_invocation ?? false,
@@ -203,7 +206,7 @@ export default function GitHubImportDialog({
         domain: form.domain,
         skill_type: form.skill_type,
         version: form.version || null,
-        model: form.model,  // "" signals "App default" → clear model from frontmatter
+        model: form.model === APP_DEFAULT_MODEL ? "" : form.model,  // "" signals "App default" → clear model from frontmatter
         argument_hint: form.argument_hint || null,
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
@@ -451,7 +454,7 @@ export default function GitHubImportDialog({
                       <SelectValue placeholder="App default" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">App default</SelectItem>
+                      <SelectItem value={APP_DEFAULT_MODEL}>App default</SelectItem>
                       {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
                       ))}
