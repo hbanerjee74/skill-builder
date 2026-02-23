@@ -33,9 +33,7 @@ import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 /** Shared grid column definition — used by both the row and the table header in dashboard.tsx */
-export const LIST_ROW_GRID = "grid-cols-[1fr_7rem_10rem_8rem_6rem_7rem_auto]"
-/** Responsive variant for row usage (mobile: 2-col, desktop: full grid) */
-const LIST_ROW_GRID_RESPONSIVE = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_7rem_10rem_8rem_6rem_7rem_auto]"
+export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[1fr_7rem_10rem_8rem_6rem_7rem_auto]"
 
 interface SkillListRowProps {
   skill: SkillSummary
@@ -70,7 +68,7 @@ export default function SkillListRow({
       tabIndex={isLocked ? -1 : 0}
       className={cn(
         "grid items-center gap-x-3 rounded-md border px-3 py-2 transition-colors",
-        LIST_ROW_GRID_RESPONSIVE,
+        LIST_ROW_GRID,
         isLocked
           ? "opacity-50 cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
