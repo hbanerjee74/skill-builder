@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult } from "@/lib/types";
 
 // --- Settings ---
 

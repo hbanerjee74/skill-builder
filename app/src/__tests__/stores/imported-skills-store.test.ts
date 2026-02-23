@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { useImportedSkillsStore } from "@/stores/imported-skills-store";
-import type { ImportedSkill } from "@/stores/imported-skills-store";
+import type { WorkspaceSkill } from "@/stores/imported-skills-store";
 
-const sampleSkills: ImportedSkill[] = [
+const sampleSkills: WorkspaceSkill[] = [
   {
     skill_id: "id-1",
     skill_name: "sales-analytics",
@@ -83,9 +83,9 @@ describe("useImportedSkillsStore", () => {
     });
 
     it("sets isLoading during fetch", async () => {
-      let resolvePromise: (value: ImportedSkill[]) => void;
+      let resolvePromise: (value: WorkspaceSkill[]) => void;
       mockInvoke.mockReturnValue(
-        new Promise<ImportedSkill[]>((resolve) => {
+        new Promise<WorkspaceSkill[]>((resolve) => {
           resolvePromise = resolve;
         })
       );
@@ -101,7 +101,7 @@ describe("useImportedSkillsStore", () => {
 
   describe("uploadSkill", () => {
     it("uploads and prepends skill to list", async () => {
-      const newSkill: ImportedSkill = {
+      const newSkill: WorkspaceSkill = {
         skill_id: "id-3",
         skill_name: "new-skill",
         domain: "marketing",

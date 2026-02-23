@@ -1,21 +1,21 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import type { ImportedSkill } from "@/lib/types";
+import type { WorkspaceSkill } from "@/lib/types";
 
-export type { ImportedSkill };
+export type { WorkspaceSkill };
 
 interface ImportedSkillsState {
-  skills: ImportedSkill[];
+  skills: WorkspaceSkill[];
   isLoading: boolean;
   error: string | null;
-  selectedSkill: ImportedSkill | null;
+  selectedSkill: WorkspaceSkill | null;
 
   fetchSkills: () => Promise<void>;
-  uploadSkill: (filePath: string) => Promise<ImportedSkill>;
+  uploadSkill: (filePath: string) => Promise<WorkspaceSkill>;
   toggleActive: (skillName: string, active: boolean) => Promise<void>;
   deleteSkill: (skillName: string) => Promise<void>;
   getSkillContent: (skillName: string) => Promise<string>;
-  setSelectedSkill: (skill: ImportedSkill | null) => void;
+  setSelectedSkill: (skill: WorkspaceSkill | null) => void;
 }
 
 export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
@@ -27,7 +27,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
     try {
-      const skills = await invoke<ImportedSkill[]>("list_imported_skills");
+      const skills = await invoke<WorkspaceSkill[]>("list_imported_skills");
       set({ skills, isLoading: false });
     } catch (err) {
       set({
@@ -38,7 +38,7 @@ export const useImportedSkillsStore = create<ImportedSkillsState>((set) => ({
   },
 
   uploadSkill: async (filePath: string) => {
-    const skill = await invoke<ImportedSkill>("upload_skill", { filePath });
+    const skill = await invoke<WorkspaceSkill>("upload_skill", { filePath });
     set((state) => ({ skills: [skill, ...state.skills] }));
     return skill;
   },
