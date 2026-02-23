@@ -230,7 +230,7 @@ export default function GitHubImportDialog({
     } else {
       console.error("[github-import] Import failed:", errMsg)
       setSkillState(path, "idle")
-      toast.error(errMsg)
+      toast.error(errMsg, { duration: Infinity })
     }
     return false
   }
@@ -259,7 +259,7 @@ export default function GitHubImportDialog({
     } catch (err) {
       console.error("[github-import] Import failed:", err)
       setSkillState(skill.path, "idle")
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
     }
   }, [onImported])
 
@@ -293,7 +293,7 @@ export default function GitHubImportDialog({
     } catch (err) {
       console.error("[github-import] Import failed:", err)
       setSkillState(skillPath, "idle")
-      toast.error(err instanceof Error ? err.message : String(err))
+      toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
     }
   }, [editingSkill, editForm, repoInfo, onImported])
 
