@@ -172,6 +172,23 @@ pub fn reconcile_on_startup(
                 }
                 match std::fs::rename(&path, &dest) {
                     Ok(()) => {
+                        // Remove from git index so git stops tracking the folder
+                        let git_rm = std::process::Command::new("git")
+                            .args(["rm", "-r", "--cached", "--quiet", "--ignore-unmatch", &name])
+                            .current_dir(skills_dir)
+                            .output();
+                        match git_rm {
+                            Ok(out) if out.status.success() => {
+                                log::debug!("[reconcile] '{}': removed from git index", name);
+                            }
+                            Ok(out) => {
+                                log::debug!("[reconcile] '{}': git rm --cached: {}", name,
+                                    String::from_utf8_lossy(&out.stderr).trim());
+                            }
+                            Err(e) => {
+                                log::debug!("[reconcile] '{}': git rm --cached failed: {}", name, e);
+                            }
+                        }
                         log::info!("[reconcile] '{}': moved to .trash (not in skills master)", name);
                         notifications.push(format!("'{}' moved to .trash — not in skills catalog", name));
                     }
@@ -202,6 +219,11 @@ pub fn reconcile_on_startup(
                 log::debug!("[reconcile] added .trash/ to .gitignore");
             }
         }
+    }
+
+    // Commit any git index changes from Pass 3 (removals + .gitignore update)
+    if let Err(e) = crate::git::commit_all(skills_dir, "reconcile: move orphaned folders to .trash") {
+        log::debug!("[reconcile] git commit after pass 3: {}", e);
     }
 
     log::info!(
