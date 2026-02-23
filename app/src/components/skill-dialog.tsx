@@ -123,10 +123,8 @@ const SHORTHAND_TO_MODEL: Record<string, string> = {
   opus: "claude-opus-4-6",
 }
 
-const DEFAULT_MODEL = FALLBACK_MODEL_OPTIONS[0].id // claude-haiku-4-5
-
 function normalizeModelValue(raw: string | null | undefined): string {
-  if (!raw) return DEFAULT_MODEL
+  if (!raw) return ""  // "" = App default (no model override)
   return SHORTHAND_TO_MODEL[raw] ?? raw
 }
 
@@ -170,7 +168,7 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [claudeMistakes, setClaudeMistakes] = useState("")
   // Step 4 behaviour fields
   const [version, setVersion] = useState("1.0.0")
-  const [model, setModel] = useState(DEFAULT_MODEL)
+  const [model, setModel] = useState("")
   const [argumentHint, setArgumentHint] = useState("")
   const [userInvocable, setUserInvocable] = useState(true)
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
@@ -231,7 +229,7 @@ export default function SkillDialog(props: SkillDialogProps) {
     setUniqueSetup("")
     setClaudeMistakes("")
     setVersion("1.0.0")
-    setModel(DEFAULT_MODEL)
+    setModel("")
     setArgumentHint("")
     setUserInvocable(true)
     setDisableModelInvocation(false)
@@ -853,6 +851,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                     disabled={submitting}
                     className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                   >
+                    <option value="">App default</option>
                     {(availableModels.length > 0 ? availableModels : FALLBACK_MODEL_OPTIONS).map((m) => (
                       <option key={m.id} value={m.id}>{m.displayName}</option>
                     ))}

@@ -203,7 +203,7 @@ export default function GitHubImportDialog({
         domain: form.domain,
         skill_type: form.skill_type,
         version: form.version || null,
-        model: form.model || null,
+        model: form.model,  // "" signals "App default" → clear model from frontmatter
         argument_hint: form.argument_hint || null,
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
