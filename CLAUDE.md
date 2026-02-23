@@ -102,6 +102,10 @@ Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance 
 
 Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new plugin source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
 
+## Docs
+
+Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
+
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
