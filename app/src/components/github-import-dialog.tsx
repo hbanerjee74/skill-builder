@@ -319,7 +319,7 @@ export default function GitHubImportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-3xl">
           {loading && (
             <div className="flex flex-col items-center gap-3 py-8">
               <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -343,7 +343,7 @@ export default function GitHubImportDialog({
                   {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
                 </DialogDescription>
               </DialogHeader>
-              <ScrollArea className="max-h-96">
+              <ScrollArea className="max-h-[70vh]">
                 <div className="flex flex-col gap-1 pr-3">
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
@@ -440,7 +440,7 @@ export default function GitHubImportDialog({
 
       {/* skill-library: edit & import dialog */}
       <Dialog open={mode === 'skill-library' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit &amp; Import Skill</DialogTitle>
             <DialogDescription>
@@ -448,7 +448,7 @@ export default function GitHubImportDialog({
             </DialogDescription>
           </DialogHeader>
           {editForm && (
-            <ScrollArea className="max-h-[60vh]">
+            <ScrollArea className="max-h-[75vh]">
               <div className="flex flex-col gap-4 pr-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="edit-name">
@@ -608,7 +608,7 @@ export default function GitHubImportDialog({
 
       {/* settings-skills: dedicated import dialog with all metadata + purpose */}
       <Dialog open={mode === 'settings-skills' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {editingSkill && skillStates.get(editingSkill.path) === 'upgrade' ? 'Update Skill' : 'Import Skill'}
@@ -618,7 +618,7 @@ export default function GitHubImportDialog({
             </DialogDescription>
           </DialogHeader>
           {editForm && (
-            <ScrollArea className="max-h-[60vh]">
+            <ScrollArea className="max-h-[75vh]">
               <div className="flex flex-col gap-4 pr-2">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="si-name">
