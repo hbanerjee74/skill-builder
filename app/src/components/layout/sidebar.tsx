@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, PanelLeftClose, PanelLeftOpen, DollarSign, FlaskConical, Github, LogOut } from "lucide-react";
+import { Home, PanelLeftClose, PanelLeftOpen, DollarSign, Github, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import { useAuthStore } from "@/stores/auth-store";
 
 const navItems = [
   { to: "/" as const, label: "Skill Library", icon: Home },
-  { to: "/test" as const, label: "Test", icon: FlaskConical },
   { to: "/usage" as const, label: "Usage", icon: DollarSign },
 ];
 
