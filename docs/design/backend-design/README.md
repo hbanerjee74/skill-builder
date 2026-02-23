@@ -23,7 +23,7 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 ### Migration strategy
 
-24 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
+24 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded. After all numbered migrations complete, `repair_skills_table_schema` runs unconditionally as an idempotent startup guard: it ensures the six frontmatter columns exist on the `skills` table and backfills them if any are missing (guards against dev builds that recorded migration 24 before its ALTER TABLE statements executed).
 
 ### Schema overview
 
@@ -56,7 +56,9 @@ skills  ← master                         workspace_skills  ← standalone
 | `marketplace` | Bulk imported via `import_marketplace_to_library` | `imported_skills` |
 | `imported` | Disk-discovered via reconciliation pass 2 (SKILL.md present, incomplete context) | — |
 
-**`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. FK `skill_id → skills.id`. One row per skill.
+The base `skills` columns are: `id INTEGER PRIMARY KEY AUTOINCREMENT`, `name TEXT UNIQUE`, `skill_source TEXT CHECK(...)`, `domain`, `skill_type`, `created_at`, `updated_at`. Migration 24 added six frontmatter columns — `description`, `version`, `model`, `argument_hint`, `user_invocable`, `disable_model_invocation` — backfilled from `workflow_runs` (skill-builder) and `imported_skills` (marketplace/imported).
+
+**`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. Has integer PK `id INTEGER PRIMARY KEY AUTOINCREMENT` (added migration 22; replaced the old `skill_name TEXT PRIMARY KEY`). FK `skill_id → skills.id`. One row per skill. Marketplace skills do not get a `workflow_runs` row — they exist in `skills` master only.
 
 **`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing. FK `workflow_run_id → workflow_runs.id`.
 
@@ -91,7 +93,6 @@ skills  ← master                         workspace_skills  ← standalone
 | `argument_hint` | TEXT | From frontmatter |
 | `user_invocable` | INTEGER | From frontmatter |
 | `disable_model_invocation` | INTEGER | From frontmatter |
-| `purpose` | TEXT | Optional role tag (e.g. `research`, `test-context`, `validate`). Enables purpose-based runtime lookup. Activating a skill with a purpose auto-deactivates any other active skill holding the same purpose. DB-only — not written to frontmatter. |
 
 `description` and `trigger_text` were removed in migrations — both are read on-demand from SKILL.md on disk. `skill_name` UNIQUE enforces the no-duplicate-name constraint for uploads and imports.
 
