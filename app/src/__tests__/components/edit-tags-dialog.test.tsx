@@ -517,7 +517,7 @@ describe("SkillDialog (edit mode)", () => {
       ).not.toBeInTheDocument();
     });
 
-    it("disables skill name input when isLocked is true", () => {
+    it("does not disable skill name input when isLocked is true (isLocked gates navigation, not fields)", () => {
       render(
         <SkillDialog
           mode="edit"
@@ -529,7 +529,9 @@ describe("SkillDialog (edit mode)", () => {
           isLocked={true}
         />
       );
-      expect(screen.getByLabelText("Skill Name")).toBeDisabled();
+      // isLocked disables Next/Save buttons, not individual fields
+      // (field locking uses isBuilt instead)
+      expect(screen.getByLabelText("Skill Name")).not.toBeDisabled();
     });
 
     it("disables Next button on step 1 when isLocked is true", () => {
@@ -547,9 +549,9 @@ describe("SkillDialog (edit mode)", () => {
       expect(screen.getByRole("button", { name: /Next/i })).toBeDisabled();
     });
 
-    it("disables Save button on step 2 when isLocked is true", async () => {
+    it("disables Save button on step 4 when isLocked is true", async () => {
       const user = userEvent.setup();
-      // Render unlocked first so the user can navigate to step 2,
+      // Render unlocked first so the user can navigate to step 4,
       // then re-render with isLocked to verify the Save button is disabled.
       const { rerender } = render(
         <SkillDialog
@@ -562,7 +564,7 @@ describe("SkillDialog (edit mode)", () => {
           isLocked={false}
         />
       );
-      await goToStep(user, 2);
+      await goToStep(user, 4);
       rerender(
         <SkillDialog
           mode="edit"
@@ -592,7 +594,7 @@ describe("SkillDialog (edit mode)", () => {
           isLocked={false}
         />
       );
-      await goToStep(user, 2);
+      await goToStep(user, 4);
       rerender(
         <SkillDialog
           mode="edit"

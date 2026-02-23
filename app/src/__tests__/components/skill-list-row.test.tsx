@@ -113,13 +113,13 @@ describe("SkillListRow — created skill", () => {
   });
 
   it("shows progress based on current_step", () => {
-    renderRow(createdIncomplete); // step 2 → 50%
-    expect(screen.getAllByText("50%").length).toBeGreaterThan(0);
+    renderRow(createdIncomplete); // step 2 → "Step 2/5"
+    expect(screen.getAllByText("Step 2/5").length).toBeGreaterThan(0);
   });
 
-  it("shows 100% when complete", () => {
+  it("shows Completed when complete", () => {
     renderRow(createdComplete);
-    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
   });
 
   it("calls onContinue when row is clicked", async () => {
@@ -181,9 +181,9 @@ describe("SkillListRow — marketplace skill", () => {
     expect(screen.queryByRole("button", { name: /More actions/i })).not.toBeInTheDocument();
   });
 
-  it("always shows 100% progress regardless of step data", () => {
+  it("always shows Completed regardless of step data", () => {
     renderRow({ ...marketplaceSkill, status: "running", current_step: "step 1" });
-    expect(screen.getAllByText("100%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Completed").length).toBeGreaterThan(0);
   });
 
   it("calls onContinue when row is clicked", async () => {

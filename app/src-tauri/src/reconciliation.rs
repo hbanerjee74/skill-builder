@@ -2102,4 +2102,35 @@ mod tests {
         assert!(crate::db::get_workflow_run(&conn, "disk-only-skill").unwrap().is_none());
         assert!(crate::db::get_workflow_run(&conn, ".git").unwrap().is_none());
     }
+
+    // =========================================================================
+    // Pass 3: Orphan folder → .trash/ move
+    // =========================================================================
+
+    #[test]
+    fn test_pass3_skips_dotfiles_and_trash() {
+        // Dotfiles and .trash itself should be skipped by Pass 3
+        let tmp = tempfile::tempdir().unwrap();
+        let skills = tmp.path().join("skills");
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::create_dir_all(&skills).unwrap();
+
+        let conn = create_test_db();
+
+        // Create dotfile dirs — should not be moved or touched
+        std::fs::create_dir_all(skills.join(".git")).unwrap();
+        std::fs::create_dir_all(skills.join(".trash")).unwrap();
+
+        let result = reconcile_on_startup(
+            &conn,
+            workspace.to_str().unwrap(),
+            skills.to_str().unwrap(),
+        ).unwrap();
+
+        assert!(result.notifications.is_empty());
+        // .git and .trash should still exist
+        assert!(skills.join(".git").exists(), ".git should not be touched");
+        assert!(skills.join(".trash").exists(), ".trash should not be touched");
+    }
 }

@@ -167,6 +167,11 @@ describe("SkillsLibraryTab", () => {
     setupMocks([]);
     render(<SkillsLibraryTab />);
 
+    // Wait for list_skills to be called (settings loaded → workspacePath set → loadSkills fires)
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("list_skills", expect.anything());
+    });
+
     await waitFor(() => {
       expect(screen.getByText("No skills yet")).toBeInTheDocument();
     });
