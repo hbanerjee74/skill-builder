@@ -69,7 +69,7 @@ export default function SkillListRow({
   const isComplete = statusLabel === "Completed"
 
   const tdBase = cn(
-    "py-2.5 transition-colors",
+    "py-2.5 border-b transition-colors",
     isLocked ? "opacity-50" : "",
   )
 
@@ -77,7 +77,7 @@ export default function SkillListRow({
     <tr
       tabIndex={isLocked ? -1 : 0}
       className={cn(
-        "border-b transition-colors",
+        "transition-colors",
         isLocked
           ? "cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
