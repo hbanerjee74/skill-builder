@@ -207,12 +207,6 @@ function evalRowBg(direction: EvalDirection): string {
   }
 }
 
-/** Derive a human-readable label from a model ID string. */
-function deriveModelLabel(modelId: string): string {
-  if (modelId.includes("haiku")) return "Haiku";
-  if (modelId.includes("opus")) return "Opus";
-  return "Sonnet";
-}
 
 /** Return the evaluator placeholder message based on phase. */
 function evalPlaceholder(phase: Phase, errorMessage: string | null): string {
@@ -632,6 +626,8 @@ export default function TestPage() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const testModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
+
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
@@ -770,11 +766,6 @@ export default function TestPage() {
   }, [proceed, cleanup]);
 
   const elapsedStr = `${(elapsed / 1000).toFixed(1)}s`;
-  const activeModel = useSettingsStore((s) => s.preferredModel ?? "sonnet");
-  const availableModels = useSettingsStore((s) => s.availableModels);
-  // Use API display name if available, otherwise derive from model string
-  const modelLabel = availableModels.find((m) => m.id === activeModel)?.displayName
-    ?? deriveModelLabel(activeModel);
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
