@@ -565,7 +565,10 @@ pub async fn import_github_skills(
                         imported.push(skill);
                     }
                 } else {
-                    // Fresh install
+                    log::debug!(
+                        "[import_github_skills] inserting new workspace skill '{}'",
+                        ws_skill.skill_name
+                    );
                     match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                         Ok(()) => imported.push(skill),
                         Err(e) => {

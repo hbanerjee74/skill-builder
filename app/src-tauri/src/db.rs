@@ -5031,4 +5031,54 @@ mod tests {
         let gone = skills_final.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
         assert!(gone.is_none(), "skill should not appear in list after deletion");
     }
+
+    fn make_ws_skill(skill_id: &str, skill_name: &str, purpose: Option<&str>, is_active: bool) -> WorkspaceSkill {
+        WorkspaceSkill {
+            skill_id: skill_id.to_string(),
+            skill_name: skill_name.to_string(),
+            domain: None,
+            description: None,
+            is_active,
+            is_bundled: false,
+            disk_path: format!("/tmp/{}", skill_name),
+            imported_at: "2025-01-01T00:00:00Z".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: purpose.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_happy_path() {
+        let conn = create_test_db();
+        let skill = make_ws_skill("id-research", "research-skill", Some("research"), true);
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        let found = get_workspace_skill_by_purpose(&conn, "research").unwrap();
+        assert!(found.is_some(), "should find an active skill with purpose='research'");
+        assert_eq!(found.unwrap().skill_name, "research-skill");
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_no_match() {
+        let conn = create_test_db();
+
+        let found = get_workspace_skill_by_purpose(&conn, "nonexistent-purpose").unwrap();
+        assert!(found.is_none(), "should return None for a purpose that has no matching skill");
+    }
+
+    #[test]
+    fn test_get_workspace_skill_by_purpose_inactive_ignored() {
+        let conn = create_test_db();
+        // Insert an inactive skill with purpose "validate"
+        let skill = make_ws_skill("id-validate", "validate-skill", Some("validate"), false);
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        let found = get_workspace_skill_by_purpose(&conn, "validate").unwrap();
+        assert!(found.is_none(), "should return None when the only matching skill is inactive");
+    }
 }

@@ -2323,4 +2323,188 @@ domain: analytics
         assert!(skill_md.contains("# Export Test"));
     }
 
+    #[test]
+    fn test_upsert_bundled_skill_preserves_is_active() {
+        let conn = create_test_db();
+
+        // Skills master row required for FK-based get/update operations
+        crate::db::upsert_skill(&conn, "upsert-test", "imported", "test", "domain").unwrap();
+
+        // Create skill dirs on disk so hydration works
+        let skill_tmp = tempdir().unwrap();
+        let disk1 = create_skill_on_disk(skill_tmp.path(), "upsert-test", Some("Original trigger"), Some("Original"));
+        let disk2 = create_skill_on_disk(skill_tmp.path(), "upsert-test-v2", Some("Updated trigger"), Some("Updated"));
+
+        // First insert with is_active = true
+        let skill = ImportedSkill {
+            skill_id: "bundled-1".to_string(),
+            skill_name: "upsert-test".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path: disk1,
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+        crate::db::upsert_bundled_skill(&conn, &skill).unwrap();
+
+        let saved = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
+        assert!(saved.is_active);
+
+        // Deactivate via DB
+        crate::db::update_imported_skill_active(&conn, "upsert-test", false, "/tmp/inactive").unwrap();
+
+        // Re-upsert with is_active = true in the struct and a new disk_path
+        let skill2 = ImportedSkill {
+            skill_id: "bundled-1".to_string(),
+            skill_name: "upsert-test".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path: disk2,
+            imported_at: "2000-01-01T00:00:00Z".to_string(),
+            is_bundled: true,
+            description: None,
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+        crate::db::upsert_bundled_skill(&conn, &skill2).unwrap();
+
+        // The upsert should NOT override is_active (ON CONFLICT doesn't touch it)
+        let updated = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
+        assert!(!updated.is_active, "upsert should preserve is_active from existing row");
+        // disk_path should be updated
+        assert!(updated.disk_path.contains("upsert-test-v2"));
+        // description is hydrated from the new disk_path's SKILL.md
+        assert_eq!(updated.description.as_deref(), Some("Updated"));
+    }
+
+    // --- set_workspace_skill_purpose tests ---
+
+    #[test]
+    fn test_set_workspace_skill_purpose_persists() {
+        let conn = create_test_db();
+
+        // Insert a workspace skill with no purpose
+        let skill = WorkspaceSkill {
+            skill_id: "id-purpose-test".to_string(),
+            skill_name: "purpose-skill".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: "/tmp/purpose-skill".to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &skill).unwrap();
+
+        // Set purpose to "research"
+        conn.execute(
+            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
+            rusqlite::params!["research", "id-purpose-test"],
+        ).unwrap();
+
+        let updated = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
+        assert_eq!(updated.purpose.as_deref(), Some("research"), "purpose should be set to 'research'");
+
+        // Clear purpose (set to NULL)
+        conn.execute(
+            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
+            rusqlite::params![Option::<String>::None, "id-purpose-test"],
+        ).unwrap();
+
+        let cleared = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
+        assert!(cleared.purpose.is_none(), "purpose should be NULL after clearing");
+    }
+
+    // --- toggle_skill_active sibling deactivation test ---
+
+    #[test]
+    fn test_toggle_skill_active_deactivates_same_purpose_sibling() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let skills_dir = workspace.path().join(".claude").join("skills");
+
+        // Skill A: active, purpose "research"
+        let skill_a_dir = skills_dir.join("skill-a");
+        fs::create_dir_all(&skill_a_dir).unwrap();
+        fs::write(skill_a_dir.join("SKILL.md"), "# Skill A").unwrap();
+        let skill_a = WorkspaceSkill {
+            skill_id: "id-a".to_string(),
+            skill_name: "skill-a".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: skill_a_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+        };
+        crate::db::insert_workspace_skill(&conn, &skill_a).unwrap();
+
+        // Skill B: inactive, purpose "research"
+        let inactive_dir = skills_dir.join(".inactive");
+        let skill_b_inactive = inactive_dir.join("skill-b");
+        fs::create_dir_all(&skill_b_inactive).unwrap();
+        fs::write(skill_b_inactive.join("SKILL.md"), "# Skill B").unwrap();
+        let skill_b = WorkspaceSkill {
+            skill_id: "id-b".to_string(),
+            skill_name: "skill-b".to_string(),
+            domain: None,
+            description: None,
+            is_active: false,
+            is_bundled: false,
+            disk_path: skill_b_inactive.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+        };
+        crate::db::insert_workspace_skill(&conn, &skill_b).unwrap();
+
+        // Activate skill B — this triggers sibling deactivation of skill A
+        toggle_skill_active_inner("id-b", "skill-b", true, workspace_path, &conn).unwrap();
+
+        // Deactivate siblings with the same purpose (mimics the body of toggle_skill_active)
+        let rows_affected = conn.execute(
+            "UPDATE workspace_skills SET is_active = 0 WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
+            rusqlite::params!["research", "id-b"],
+        ).unwrap();
+        assert_eq!(rows_affected, 1, "exactly one sibling (skill-a) should be deactivated");
+
+        // Verify DB state
+        let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a").unwrap().unwrap();
+        assert!(!a.is_active, "skill-a should be deactivated as the same-purpose sibling");
+
+        let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b").unwrap().unwrap();
+        assert!(b.is_active, "skill-b should now be active");
+    }
 }
