@@ -91,7 +91,7 @@ The two modes differ in when overrides are applied:
 
 Before showing the browse dialog, skills already present in the app are marked so the user can see what's installed:
 
-- **Skill Library path**: queries a UNION of `workflow_runs` and `imported_skills` by skill name. Skills found in either table are shown as "In library".
+- **Skill Library path**: queries `workflow_runs UNION imported_skills UNION workspace_skills` by skill name (via `get_all_installed_skill_names`). Skills found in any table are shown as "In library". Note: with the `skills` master table added in VD-859, this should migrate to `SELECT skill_name FROM skills` — the union query is a pre-VD-859 holdover.
 - **Settings→Skills path**: queries `workspace_skills` by name and version. Skills matching name + version are shown as "Already installed"; skills matching name but at an older version are shown as "Upgrade available".
 
 ---
@@ -110,15 +110,25 @@ Skills in this layer are loaded into the agent workspace and wired into CLAUDE.m
 
 **Active/inactive toggle** — deactivating moves the skill directory from `skills/` to `skills/.inactive/`. The DB is updated first; if the file move fails, the DB update is rolled back. CLAUDE.md is rebuilt after every toggle.
 
-### Version-aware import guard
+### Import guards (name, version, purpose)
 
-Before import, the app compares the candidate skill against existing `workspace_skills` rows by name:
+Settings→Skills imports pass through two sequential checks before the skill lands in `workspace_skills`.
 
-| Condition | Status shown | Action |
+**Step 1 — Name + version (browse time)**
+
+When the browse dialog loads, each candidate is compared against existing `workspace_skills` rows:
+
+| Condition | State | Behaviour |
 |---|---|---|
-| Same name + same version already in `workspace_skills` | "Already installed" | Import blocked |
-| Same name + newer version available | "Upgrade available" | Import allowed — overwrites existing directory on disk and updates the DB row, preserving `is_active` and `is_bundled` |
-| No name match | Available | Import proceeds normally |
+| Same name, same or older version in `workspace_skills` | `exists` | Row greyed out, checkbox disabled — "Already installed" |
+| Same name, newer version available | `upgrade` | Selectable — "Upgrade available"; overwrites disk dir and updates the DB row, preserving `is_active` and `is_bundled` |
+| No name match | available | Selectable, proceeds normally |
+
+**Step 2 — Purpose conflict (confirm time)**
+
+After selecting skills the user proceeds to the purpose assignment step. Each selected skill can optionally be assigned a purpose. Before the final import is allowed, the app checks: for each assigned purpose, is it already held by a DIFFERENT active workspace skill (one with a different `skill_name`)? If so, import is blocked with "Purpose occupied by `{name}`".
+
+Re-importing the same skill name that already holds the target purpose does not trigger the conflict — the check excludes the incoming skill by name.
 
 ### Purpose slots
 
@@ -132,8 +142,6 @@ Each workspace skill may hold a **purpose** — a named role the app resolves at
 | `skill-builder-practices` | `skill-building` |
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
-
-**Import-time assignment**: during marketplace import into Settings→Skills, the user can optionally assign a purpose to the incoming skill. If the selected purpose is already held by a DIFFERENT active workspace skill (matched by `skill_name`), the import is blocked with the message "Purpose occupied by `{name}`". Re-importing a skill that already holds the target purpose (same name) does not trigger the conflict check.
 
 **Activation behaviour**: activating a workspace skill that has a purpose automatically deactivates any other active skill holding the same purpose. Only one active skill per purpose at a time.
 
