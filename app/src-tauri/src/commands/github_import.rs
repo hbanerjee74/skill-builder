@@ -585,13 +585,28 @@ pub async fn import_marketplace_to_library(
                 let domain = skill.domain.as_deref().unwrap_or(&skill.skill_name).to_string();
                 let skill_type_str = skill.skill_type.as_deref().unwrap_or("domain");
 
-                // Upsert into imported_skills first. Uses ON CONFLICT DO UPDATE so
-                // re-imports (e.g. after skills_path changed) succeed rather than
-                // hitting a UNIQUE constraint.
                 let conn = db.0.lock().map_err(|e| {
                     log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
                     e.to_string()
                 })?;
+
+                // Insert into skills master first so that skills.id is available as a FK
+                // when inserting into imported_skills below.
+                if let Err(e) = crate::db::save_marketplace_skill(
+                    &conn,
+                    &skill.skill_name,
+                    &domain,
+                    skill_type_str,
+                ) {
+                    log::warn!(
+                        "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
+                        skill.skill_name, e
+                    );
+                }
+
+                // Upsert into imported_skills. Uses ON CONFLICT DO UPDATE so re-imports
+                // (e.g. after skills_path changed) succeed rather than hitting a UNIQUE
+                // constraint. skill_master_id FK is populated from the skills row above.
                 if let Err(e) = crate::db::upsert_imported_skill(&conn, &skill) {
                     log::error!(
                         "[import_marketplace_to_library] failed to save imported_skills record for '{}': {}",
@@ -609,20 +624,6 @@ pub async fn import_marketplace_to_library(
                         error: Some(e),
                     });
                     continue;
-                }
-
-                // Record in skills master with skill_source='marketplace'.
-                // No workflow_runs row — marketplace skills live only in the master.
-                if let Err(e) = crate::db::save_marketplace_skill(
-                    &conn,
-                    &skill.skill_name,
-                    &domain,
-                    skill_type_str,
-                ) {
-                    log::warn!(
-                        "[import_marketplace_to_library] failed to save marketplace skill for '{}': {}",
-                        skill.skill_name, e
-                    );
                 }
 
                 log::info!(
