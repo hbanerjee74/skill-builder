@@ -318,17 +318,6 @@ pub fn resolve_discovery(
             // Delete from disk
             let skill_dir = sp.join(&skill_name);
             if skill_dir.exists() {
-                // Re-validate after confirming existence (canonicalize requires existing path)
-                let canonical_sp = fs::canonicalize(sp).map_err(|e| {
-                    format!("[resolve_discovery] Failed to canonicalize skills_path: {}", e)
-                })?;
-                let canonical_dir = fs::canonicalize(&skill_dir).map_err(|e| {
-                    format!("[resolve_discovery] Failed to canonicalize skill dir: {}", e)
-                })?;
-                if !canonical_dir.starts_with(&canonical_sp) {
-                    log::error!("[resolve_discovery] Path traversal attempt on remove: {}", skill_name);
-                    return Err("Invalid skill path: path traversal not allowed".to_string());
-                }
                 std::fs::remove_dir_all(&skill_dir)
                     .map_err(|e| format!("Failed to remove '{}': {}", skill_name, e))?;
             }

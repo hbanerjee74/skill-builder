@@ -770,15 +770,15 @@ pub(crate) async fn import_single_skill(
 
     // Apply metadata overrides if provided (before validation, so user-supplied values satisfy requirements)
     if let Some(ov) = metadata_override {
-        if let Some(ref v) = ov.name { fm.name = Some(v.clone()); }
-        if let Some(ref v) = ov.description { fm.description = Some(v.clone()); }
-        if let Some(ref v) = ov.domain { fm.domain = Some(v.clone()); }
-        if let Some(ref v) = ov.skill_type { fm.skill_type = Some(v.clone()); }
-        if let Some(ref v) = ov.version { fm.version = Some(v.clone()); }
-        if let Some(ref v) = ov.model { fm.model = Some(v.clone()); }
-        if let Some(ref v) = ov.argument_hint { fm.argument_hint = Some(v.clone()); }
-        if let Some(v) = ov.user_invocable { fm.user_invocable = Some(v); }
-        if let Some(v) = ov.disable_model_invocation { fm.disable_model_invocation = Some(v); }
+        fm.name = ov.name.clone().or(fm.name);
+        fm.description = ov.description.clone().or(fm.description);
+        fm.domain = ov.domain.clone().or(fm.domain);
+        fm.skill_type = ov.skill_type.clone().or(fm.skill_type);
+        fm.version = ov.version.clone().or(fm.version);
+        fm.model = ov.model.clone().or(fm.model);
+        fm.argument_hint = ov.argument_hint.clone().or(fm.argument_hint);
+        fm.user_invocable = ov.user_invocable.or(fm.user_invocable);
+        fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
         log::debug!(
             "[import_single_skill] applied metadata override for '{}': name={:?} domain={:?} type={:?}",
             dir_name, fm.name, fm.domain, fm.skill_type
