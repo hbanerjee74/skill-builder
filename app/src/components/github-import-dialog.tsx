@@ -237,7 +237,8 @@ export default function GitHubImportDialog({
 
   /** skill-library: edit metadata then import immediately via importMarketplaceToLibrary */
   const handleImportWithMetadata = useCallback(async (skill: AvailableSkill, form: EditFormState) => {
-    console.log(`[github-import] importing "${form.name || skill.name}" from marketplace (path=${skill.path})`)
+    const skillName = form.name || skill.name
+    console.log(`[github-import] importing "${skillName}" from marketplace (path=${skill.path})`)
     setSkillState(skill.path, "importing")
     closeEditForm()
     try {
@@ -252,13 +253,15 @@ export default function GitHubImportDialog({
         user_invocable: form.user_invocable,
         disable_model_invocation: form.disable_model_invocation,
       }
+      console.log(`[github-import] calling import_marketplace_to_library for "${skillName}"`)
       const results = await importMarketplaceToLibrary([skill.path], { [skill.path]: metadataOverride })
+      console.log(`[github-import] import_marketplace_to_library result:`, results)
       if (!handleMarketplaceResult(skill.path, results)) return
       setSkillState(skill.path, "imported")
-      toast.success(`Imported "${form.name || skill.name}"`)
+      toast.success(`Imported "${skillName}"`)
       await onImported()
     } catch (err) {
-      console.error("[github-import] Import failed:", err)
+      console.error("[github-import] import_marketplace_to_library failed:", err)
       setSkillState(skill.path, "idle")
       toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
     }
@@ -269,7 +272,7 @@ export default function GitHubImportDialog({
     if (!editingSkill || !editForm || !repoInfo) return
     const skillPath = editingSkill.path
     const skillName = editForm.name || editingSkill.name
-    console.log(`[github-import] importing "${skillName}" from ${repoInfo.owner}/${repoInfo.repo} (path=${skillPath})`)
+    console.log(`[github-import] importing "${skillName}" from ${repoInfo.owner}/${repoInfo.repo} (path=${skillPath}, purpose=${editForm.purpose ?? 'none'})`)
     setSkillState(skillPath, "importing")
     closeEditForm()
     try {
@@ -288,12 +291,14 @@ export default function GitHubImportDialog({
           disable_model_invocation: editForm.disable_model_invocation,
         },
       }]
+      console.log(`[github-import] calling import_github_skills with ${requests.length} request(s)`)
       await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests)
+      console.log(`[github-import] "${skillName}" imported successfully`)
       setSkillState(skillPath, "imported")
       toast.success(`Imported "${skillName}"`)
       await onImported()
     } catch (err) {
-      console.error("[github-import] Import failed:", err)
+      console.error("[github-import] import_github_skills failed:", err)
       setSkillState(skillPath, "idle")
       toast.error(err instanceof Error ? err.message : String(err), { duration: Infinity })
     }
