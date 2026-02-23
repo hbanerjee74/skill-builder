@@ -64,8 +64,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("api-design")).toBeVisible();
 
     // Domain subtext
-    await expect(page.getByText("Data")).toBeVisible();
-    await expect(page.getByText("Engineering")).toBeVisible();
+    await expect(page.getByText("Data", { exact: true })).toBeVisible();
+    await expect(page.getByText("Engineering", { exact: true })).toBeVisible();
 
     // data-analytics has version "1.0.0", api-design has no version (shows "—")
     await expect(page.getByText("1.0.0")).toBeVisible();
