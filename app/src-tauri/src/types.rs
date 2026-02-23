@@ -279,6 +279,24 @@ pub struct ImportedSkill {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceSkill {
+    pub skill_id: String,
+    pub skill_name: String,
+    pub domain: Option<String>,
+    pub description: Option<String>,   // stored in DB (not hydrated from disk)
+    pub is_active: bool,
+    pub is_bundled: bool,
+    pub disk_path: String,
+    pub imported_at: String,
+    pub skill_type: Option<String>,    // always 'skill-builder' in practice
+    pub version: Option<String>,
+    pub model: Option<String>,
+    pub argument_hint: Option<String>,
+    pub user_invocable: Option<bool>,
+    pub disable_model_invocation: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrphanSkill {
     pub skill_name: String,
     pub domain: String,
