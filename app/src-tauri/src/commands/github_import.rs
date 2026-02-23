@@ -432,6 +432,25 @@ pub async fn import_github_skills(
     let mut errors: Vec<String> = Vec::new();
 
     for skill_path in &skill_paths {
+        // Derive the candidate skill name from the directory path (last segment).
+        // This matches how import_single_skill computes dir_name as fallback.
+        let dir_name = skill_path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(skill_path.as_str());
+
+        // Check if this skill is already installed (by dir name as proxy for skill_name).
+        let existing = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            crate::db::get_workspace_skill_by_name(&conn, dir_name)?
+        };
+
+        // Determine whether to overwrite the on-disk directory.
+        // For upgrades (different version) we must remove the existing dir.
+        // For same version we skip entirely (blocked by frontend, but guard here too).
+        let should_overwrite = existing.is_some();
+
         match import_single_skill(
             &client,
             &owner,
@@ -440,7 +459,7 @@ pub async fn import_github_skills(
             skill_path,
             &tree,
             &skills_dir,
-            false,
+            should_overwrite,
             None,
         )
         .await
@@ -448,17 +467,54 @@ pub async fn import_github_skills(
             Ok(skill) => {
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
                 let ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
-                match crate::db::insert_workspace_skill(&conn, &ws_skill) {
-                    Ok(()) => imported.push(skill),
-                    Err(e) => {
-                        // DB insert failed (e.g. duplicate) — clean up the files we just wrote
+
+                if let Some(ref existing_skill) = existing {
+                    // Compare versions (None == None means same version)
+                    if existing_skill.version == skill.version {
+                        // Same version — skip (blocked by frontend, but guard here too)
+                        log::info!(
+                            "[import_github_skills] {} already at version {:?}, skipping",
+                            skill.skill_name, skill.version
+                        );
+                        if let Err(e) = fs::remove_dir_all(&skill.disk_path) {
+                            log::warn!(
+                                "[import_github_skills] cleanup failed for {}: {}",
+                                skill.disk_path, e
+                            );
+                        }
+                        errors.push(format!("{}: already installed at the same version", skill.skill_name));
+                        continue;
+                    }
+                    // Different version — upgrade: update existing DB row
+                    log::info!(
+                        "[import_github_skills] upgrading {} from {:?} to {:?}",
+                        skill.skill_name, existing_skill.version, skill.version
+                    );
+                    if let Err(e) = crate::db::upsert_workspace_skill(&conn, &ws_skill) {
                         if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
                             log::warn!(
-                                "Failed to clean up skill directory '{}' after DB error: {}",
+                                "[import_github_skills] cleanup failed after upsert error for {}: {}",
                                 skill.disk_path, cleanup_err
                             );
                         }
                         errors.push(format!("{}: {}", skill.skill_name, e));
+                    } else {
+                        imported.push(skill);
+                    }
+                } else {
+                    // Fresh install
+                    match crate::db::insert_workspace_skill(&conn, &ws_skill) {
+                        Ok(()) => imported.push(skill),
+                        Err(e) => {
+                            // DB insert failed (e.g. duplicate) — clean up the files we just wrote
+                            if let Err(cleanup_err) = fs::remove_dir_all(&skill.disk_path) {
+                                log::warn!(
+                                    "Failed to clean up skill directory '{}' after DB error: {}",
+                                    skill.disk_path, cleanup_err
+                                );
+                            }
+                            errors.push(format!("{}: {}", skill.skill_name, e));
+                        }
                     }
                 }
             }

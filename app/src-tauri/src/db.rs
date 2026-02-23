@@ -2185,6 +2185,42 @@ pub fn insert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Resu
     Ok(())
 }
 
+/// Update an existing workspace_skills row in-place (for version upgrades).
+/// Preserves skill_id and imported_at from the existing row.
+pub fn upsert_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workspace_skills SET
+            domain = ?2,
+            description = ?3,
+            is_active = ?4,
+            disk_path = ?5,
+            skill_type = ?6,
+            version = ?7,
+            model = ?8,
+            argument_hint = ?9,
+            user_invocable = ?10,
+            disable_model_invocation = ?11
+         WHERE skill_name = ?1",
+        rusqlite::params![
+            skill.skill_name,
+            skill.domain,
+            skill.description,
+            skill.is_active as i32,
+            skill.disk_path,
+            skill.skill_type,
+            skill.version,
+            skill.model,
+            skill.argument_hint,
+            skill.user_invocable.map(|v| if v { 1i32 } else { 0i32 }),
+            skill.disable_model_invocation.map(|v| if v { 1i32 } else { 0i32 }),
+        ],
+    ).map_err(|e| {
+        log::error!("upsert_workspace_skill: failed for '{}': {}", skill.skill_name, e);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
 /// Re-seed a bundled skill: overwrites all frontmatter + disk path, preserves is_active.
 pub fn upsert_bundled_workspace_skill(conn: &Connection, skill: &WorkspaceSkill) -> Result<(), String> {
     conn.execute(

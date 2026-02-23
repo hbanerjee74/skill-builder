@@ -16,8 +16,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, getInstalledSkillNames } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride } from "@/lib/types"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills } from "@/lib/tauri"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
 import { SKILL_TYPES } from "@/lib/types"
 import {
   Select,
@@ -53,7 +53,7 @@ interface GitHubImportDialogProps {
   mode?: 'skill-library' | 'settings-skills'
 }
 
-type SkillState = "idle" | "importing" | "imported" | "exists"
+type SkillState = "idle" | "importing" | "imported" | "exists" | "same-version" | "upgrade"
 
 /** Sentinel used in the model <Select> to represent "no override — use app default". */
 const APP_DEFAULT_MODEL = "__app_default__"
@@ -83,6 +83,7 @@ export default function GitHubImportDialog({
   const [skills, setSkills] = useState<AvailableSkill[]>([])
   const [error, setError] = useState<string | null>(null)
   const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
+  const [installedMap, setInstalledMap] = useState<Map<string, WorkspaceSkill>>(new Map())
   const availableModels = useSettingsStore((s) => s.availableModels)
 
   // Edit form state for skill-library mode
@@ -108,6 +109,7 @@ export default function GitHubImportDialog({
     setSkills([])
     setError(null)
     setSkillStates(new Map())
+    setInstalledMap(new Map())
     closeEditForm()
   }, [])
 
@@ -140,15 +142,19 @@ export default function GitHubImportDialog({
         setError("No skills found in this repository.")
         return
       }
-      // Pre-mark skills that are already installed
-      const installedNames = await getInstalledSkillNames()
-      const installedSet = new Set(installedNames)
+      // Pre-mark skills that are already installed (version-aware)
+      const installedSkills = await listWorkspaceSkills()
+      const installedSet = new Set(installedSkills.map((s) => s.skill_name))
+      const newInstalledMap = new Map(installedSkills.map((s) => [s.skill_name, s]))
       const preStates = new Map<string, SkillState>()
       for (const skill of available) {
         if (installedSet.has(skill.name)) {
-          preStates.set(skill.path, "exists")
+          const installed = newInstalledMap.get(skill.name)
+          const sameVersion = installed?.version === skill.version  // covers both null/undefined
+          preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
         }
       }
+      setInstalledMap(newInstalledMap)
       setSkillStates(preStates)
       setSkills(available)
     } catch (err) {
@@ -164,18 +170,21 @@ export default function GitHubImportDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const openEditForm = useCallback((skill: AvailableSkill) => {
+  const openEditForm = useCallback((skill: AvailableSkill, installedSkill?: WorkspaceSkill | null) => {
     setEditingSkill(skill)
+    // For upgrades, pre-populate from the installed skill so users review their own values.
+    // For fresh installs, use the marketplace skill's values.
+    const base = installedSkill ?? skill
     setEditForm({
-      name: skill.name ?? '',
-      description: skill.description ?? '',
-      domain: skill.domain ?? '',
-      skill_type: skill.skill_type ?? '',
-      version: skill.version ?? '1.0.0',
-      model: skill.model || APP_DEFAULT_MODEL,
-      argument_hint: skill.argument_hint ?? '',
-      user_invocable: skill.user_invocable ?? false,
-      disable_model_invocation: skill.disable_model_invocation ?? false,
+      name: ('skill_name' in base ? (base as WorkspaceSkill).skill_name : (base as AvailableSkill).name) ?? skill.name ?? '',
+      description: base.description ?? '',
+      domain: base.domain ?? '',
+      skill_type: ('skill_type' in base ? base.skill_type : null) ?? skill.skill_type ?? '',
+      version: skill.version ?? ('version' in base ? base.version : null) ?? '1.0.0',
+      model: ('model' in base ? base.model : null) || APP_DEFAULT_MODEL,
+      argument_hint: base.argument_hint ?? '',
+      user_invocable: base.user_invocable ?? false,
+      disable_model_invocation: base.disable_model_invocation ?? false,
     })
   }, [])
 
@@ -279,22 +288,35 @@ export default function GitHubImportDialog({
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
                     const isImporting = state === "importing"
+                    const isSameVersion = state === "same-version"
+                    const isUpgrade = state === "upgrade"
+                    const isDimmed = state === "exists" || isSameVersion
                     const ActionIcon = isImporting ? Loader2 : mode === 'skill-library' ? PencilLine : Download
 
                     return (
                       <div
                         key={skill.path}
-                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${state === "exists" ? "bg-muted" : ""}`}
+                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${isDimmed ? "bg-muted" : ""}`}
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <div className="flex items-center gap-2">
-                            <span className={`text-sm font-medium truncate ${state === "exists" ? "text-muted-foreground" : ""}`}>{skill.name}</span>
+                            <span className={`text-sm font-medium truncate ${isDimmed ? "text-muted-foreground" : ""}`}>{skill.name}</span>
                             {skill.domain && (
-                              <Badge variant="secondary" className={`text-xs shrink-0 ${state === "exists" ? "text-muted-foreground" : ""}`}>
+                              <Badge variant="secondary" className={`text-xs shrink-0 ${isDimmed ? "text-muted-foreground" : ""}`}>
                                 {skill.domain}
                               </Badge>
                             )}
-                            {mode === 'skill-library' && !skill.skill_type && (
+                            {isSameVersion && (
+                              <Badge variant="secondary" className="text-xs shrink-0 text-muted-foreground">
+                                Up to date
+                              </Badge>
+                            )}
+                            {isUpgrade && (
+                              <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
+                                Update available
+                              </Badge>
+                            )}
+                            {mode === 'skill-library' && !skill.skill_type && !isSameVersion && (
                               <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                                 Missing type
                               </Badge>
@@ -305,7 +327,7 @@ export default function GitHubImportDialog({
                               {skill.description}
                             </span>
                           )}
-                          {mode === 'skill-library' && !skill.description && (
+                          {mode === 'skill-library' && !skill.description && !isSameVersion && (
                             <span className="text-xs text-amber-600">No description</span>
                           )}
                         </div>
@@ -314,7 +336,7 @@ export default function GitHubImportDialog({
                             <div className="flex size-7 items-center justify-center rounded-md border">
                               <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                             </div>
-                          ) : state === "exists" ? (
+                          ) : state === "exists" || isSameVersion ? (
                             <div className="flex size-7 items-center justify-center rounded-md border bg-muted">
                               <CheckCheck className="size-3.5 text-muted-foreground" />
                             </div>
@@ -324,7 +346,14 @@ export default function GitHubImportDialog({
                               variant="outline"
                               className="size-7"
                               disabled={isImporting}
-                              onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
+                              onClick={() => {
+                                if (mode === 'skill-library') {
+                                  const installed = isUpgrade ? installedMap.get(skill.name) : null
+                                  openEditForm(skill, installed)
+                                } else {
+                                  handleImport(skill)
+                                }
+                              }}
                             >
                               <ActionIcon className={`size-3.5${isImporting ? ' animate-spin' : ''}`} />
                             </Button>
