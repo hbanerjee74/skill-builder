@@ -283,17 +283,38 @@ pub struct WorkspaceSkill {
     pub skill_id: String,
     pub skill_name: String,
     pub domain: Option<String>,
-    pub description: Option<String>,   // stored in DB (not hydrated from disk)
+    pub description: Option<String>,
     pub is_active: bool,
     pub is_bundled: bool,
     pub disk_path: String,
     pub imported_at: String,
-    pub skill_type: Option<String>,    // always 'skill-builder' in practice
+    pub skill_type: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+}
+
+impl From<ImportedSkill> for WorkspaceSkill {
+    fn from(s: ImportedSkill) -> Self {
+        Self {
+            skill_id: s.skill_id,
+            skill_name: s.skill_name,
+            domain: s.domain,
+            description: s.description,
+            is_active: s.is_active,
+            is_bundled: s.is_bundled,
+            disk_path: s.disk_path,
+            imported_at: s.imported_at,
+            skill_type: s.skill_type,
+            version: s.version,
+            model: s.model,
+            argument_hint: s.argument_hint,
+            user_invocable: s.user_invocable,
+            disable_model_invocation: s.disable_model_invocation,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
