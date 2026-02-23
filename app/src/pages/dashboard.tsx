@@ -217,7 +217,12 @@ export default function DashboardPage() {
     return result
   }, [skills, searchQuery, selectedTags, selectedTypes, selectedSources, statusFilter])
 
-  const isFiltering = searchQuery.trim().length > 0 || selectedTags.length > 0 || selectedTypes.length > 0 || selectedSources.length > 0 || statusFilter !== 'all'
+  const isFiltering =
+    searchQuery.trim().length > 0 ||
+    selectedTags.length > 0 ||
+    selectedTypes.length > 0 ||
+    selectedSources.length > 0 ||
+    statusFilter !== 'all'
 
   const sortedSkills = useMemo(() => {
     if (!sortBy) return filteredSkills

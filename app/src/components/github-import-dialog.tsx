@@ -260,6 +260,7 @@ export default function GitHubImportDialog({
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
                     const isImporting = state === "importing"
+                    const ActionIcon = isImporting ? Loader2 : mode === 'skill-library' ? PencilLine : Download
 
                     return (
                       <div
@@ -306,13 +307,7 @@ export default function GitHubImportDialog({
                               disabled={isImporting}
                               onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
                             >
-                              {isImporting ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : mode === 'skill-library' ? (
-                                <PencilLine className="size-3.5" />
-                              ) : (
-                                <Download className="size-3.5" />
-                              )}
+                              <ActionIcon className={`size-3.5${isImporting ? ' animate-spin' : ''}`} />
                             </Button>
                           )}
                         </div>
