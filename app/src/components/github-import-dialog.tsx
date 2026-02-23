@@ -348,75 +348,77 @@ export default function GitHubImportDialog({
                   {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
                 </DialogDescription>
               </DialogHeader>
-              <ScrollArea className="max-h-[70vh]">
-                <div className="flex flex-col gap-1 pr-3">
+              <div className="rounded-md border">
+                <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+                  <span className="flex-1">Name</span>
+                  <span className="w-20 shrink-0">Version</span>
+                  <span className="w-28 shrink-0">Status</span>
+                  <span className="w-8 shrink-0" />
+                </div>
+                <ScrollArea className="max-h-[60vh]">
                   {skills.map((skill) => {
                     const state = skillStates.get(skill.path) ?? "idle"
                     const isImporting = state === "importing"
                     const isSameVersion = state === "same-version"
                     const isUpgrade = state === "upgrade"
                     const isExists = state === "exists"
-                    const isDimmed = isExists || isSameVersion
                     const isDisabled = isExists || isSameVersion
 
                     return (
                       <div
                         key={skill.path}
-                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${isDimmed ? "bg-muted" : ""}`}
+                        className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
                       >
-                        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className={`text-sm font-medium truncate ${isDimmed ? "text-muted-foreground" : ""}`}>{skill.name}</span>
+                            <span className="truncate text-sm font-medium">{skill.name}</span>
                             {skill.domain && (
-                              <Badge variant="secondary" className={`text-xs shrink-0 ${isDimmed ? "text-muted-foreground" : ""}`}>
-                                {skill.domain}
-                              </Badge>
+                              <Badge variant="secondary" className="text-xs shrink-0">{skill.domain}</Badge>
                             )}
-                            {isExists && (
-                              <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">
-                                Already installed
-                              </Badge>
-                            )}
-                            {isSameVersion && (
-                              <Badge variant="secondary" className="text-xs shrink-0 text-muted-foreground">
-                                Up to date
-                              </Badge>
-                            )}
-                            {isUpgrade && (
-                              <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
-                                Update available
-                              </Badge>
-                            )}
-                            {mode === 'skill-library' && !skill.skill_type && !isSameVersion && (
+                            {mode === 'skill-library' && !skill.skill_type && !isDisabled && (
                               <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                                 Missing type
                               </Badge>
                             )}
                           </div>
-                          {skill.description && (
-                            <span className="text-xs text-muted-foreground line-clamp-2">
-                              {skill.description}
-                            </span>
-                          )}
-                          {mode === 'skill-library' && !skill.description && !isSameVersion && (
-                            <span className="text-xs text-amber-600">No description</span>
+                          {skill.description ? (
+                            <div className="text-xs text-muted-foreground line-clamp-1">{skill.description}</div>
+                          ) : mode === 'skill-library' && !isDisabled ? (
+                            <div className="text-xs text-amber-600">No description</div>
+                          ) : null}
+                        </div>
+                        <div className="w-20 shrink-0">
+                          {skill.version ? (
+                            <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </div>
-                        <div className="shrink-0 pt-0.5 flex items-center gap-1">
+                        <div className="w-28 shrink-0">
+                          {state === "imported" && (
+                            <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                          )}
+                          {isSameVersion && (
+                            <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
+                          )}
+                          {isUpgrade && (
+                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
+                          )}
+                          {isExists && (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
+                          )}
+                        </div>
+                        <div className="w-8 shrink-0 flex items-center justify-end">
                           {state === "imported" ? (
-                            <div className="flex size-7 items-center justify-center rounded-md border">
-                              <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                            </div>
+                            <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                           ) : isDisabled ? (
-                            <div className="flex size-7 items-center justify-center rounded-md border bg-muted">
-                              <CheckCheck className="size-3.5 text-muted-foreground" />
-                            </div>
+                            <CheckCheck className="size-3.5 text-muted-foreground" />
                           ) : (
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="size-7"
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                               disabled={isImporting}
+                              aria-label={`Import ${skill.name}`}
                               onClick={() => openEditForm(skill)}
                             >
                               {isImporting ? (
@@ -424,14 +426,14 @@ export default function GitHubImportDialog({
                               ) : (
                                 <PencilLine className="size-3.5" />
                               )}
-                            </Button>
+                            </button>
                           )}
                         </div>
                       </div>
                     )
                   })}
-                </div>
-              </ScrollArea>
+                </ScrollArea>
+              </div>
             </>
           )}
 
