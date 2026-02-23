@@ -4551,4 +4551,316 @@ mod tests {
         ).unwrap();
         assert_eq!(bundled_count, 1, "Bundled row should be preserved");
     }
+
+    #[test]
+    fn test_workflow_runs_id_migration_is_idempotent() {
+        // Build a DB up through migration 20 only (not 21 yet).
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+
+        // Run migration 21 the first time — should succeed.
+        run_workflow_runs_id_migration(&conn).unwrap();
+
+        // Insert a row after migration 21 so the id column is present.
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('idempotent-skill', 'test-domain', 0, 'pending', 'domain')",
+            [],
+        ).unwrap();
+
+        // Run migration 21 a second time — must not error (idempotency guard).
+        run_workflow_runs_id_migration(&conn).unwrap();
+
+        // Verify the `id` column exists.
+        let has_id: bool = conn
+            .prepare("PRAGMA table_info(workflow_runs)").unwrap()
+            .query_map([], |r| r.get::<_, String>(1)).unwrap()
+            .any(|r| r.map(|n| n == "id").unwrap_or(false));
+        assert!(has_id, "id column should exist after migration 21");
+
+        // Verify skill_name UNIQUE constraint: duplicate insert must fail.
+        let result = conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('idempotent-skill', 'other-domain', 0, 'pending', 'domain')",
+            [],
+        );
+        assert!(result.is_err(), "duplicate skill_name should violate UNIQUE constraint");
+    }
+
+    #[test]
+    fn test_fk_columns_migration_is_idempotent() {
+        // create_test_db() already runs migration 22 once.
+        let conn = create_test_db();
+
+        // Create a skill row (also creates skills master via save_workflow_run).
+        save_workflow_run(&conn, "fk-idempotent-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // Run migration 22 again — must not error.
+        run_fk_columns_migration(&conn).unwrap();
+
+        // Save a workflow step and verify workflow_run_id is populated.
+        save_workflow_step(&conn, "fk-idempotent-skill", 1, "in_progress").unwrap();
+
+        let workflow_run_id: Option<i64> = conn.query_row(
+            "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = ?1 AND step_id = ?2",
+            rusqlite::params!["fk-idempotent-skill", 1],
+            |row| row.get(0),
+        ).unwrap();
+        assert!(workflow_run_id.is_some(), "workflow_run_id must be non-NULL after save_workflow_step");
+
+        let expected_wr_id = get_workflow_run_id(&conn, "fk-idempotent-skill").unwrap().unwrap();
+        assert_eq!(
+            workflow_run_id.unwrap(),
+            expected_wr_id,
+            "workflow_run_id on workflow_steps must match workflow_runs.id"
+        );
+    }
+
+    #[test]
+    fn test_fk_backfill_populates_all_child_tables() {
+        // Build a DB up through migration 21 only — no migration 22 yet.
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        run_add_skill_type_migration(&conn).unwrap();
+        run_lock_table_migration(&conn).unwrap();
+        run_author_migration(&conn).unwrap();
+        run_usage_tracking_migration(&conn).unwrap();
+        run_workflow_session_migration(&conn).unwrap();
+        run_sessions_table_migration(&conn).unwrap();
+        run_trigger_text_migration(&conn).unwrap();
+        run_agent_stats_migration(&conn).unwrap();
+        run_intake_migration(&conn).unwrap();
+        run_composite_pk_migration(&conn).unwrap();
+        run_bundled_skill_migration(&conn).unwrap();
+        run_remove_validate_step_migration(&conn).unwrap();
+        run_source_migration(&conn).unwrap();
+        run_imported_skills_extended_migration(&conn).unwrap();
+        run_workflow_runs_extended_migration(&conn).unwrap();
+        run_skills_table_migration(&conn).unwrap();
+        run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        // NOTE: run_fk_columns_migration NOT called yet.
+
+        // Insert a skills master row.
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('backfill-skill', 'skill-builder', 'test', 'domain')",
+            [],
+        ).unwrap();
+        let skill_master_id: i64 = conn.query_row(
+            "SELECT id FROM skills WHERE name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        // Insert a workflow_runs row (without skill_id FK column — already present from migration 18,
+        // but we set it anyway for the backfill to trace via skill_name).
+        conn.execute(
+            "INSERT INTO workflow_runs (skill_name, domain, current_step, status, skill_type)
+             VALUES ('backfill-skill', 'test', 0, 'pending', 'domain')",
+            [],
+        ).unwrap();
+        let wr_id: i64 = conn.query_row(
+            "SELECT id FROM workflow_runs WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+
+        // Insert into workflow_steps without workflow_run_id (column doesn't exist yet).
+        conn.execute(
+            "INSERT INTO workflow_steps (skill_name, step_id, status) VALUES ('backfill-skill', 1, 'pending')",
+            [],
+        ).unwrap();
+
+        // Insert into skill_tags without skill_id.
+        conn.execute(
+            "INSERT INTO skill_tags (skill_name, tag) VALUES ('backfill-skill', 'test-tag')",
+            [],
+        ).unwrap();
+
+        // Insert into skill_locks without skill_id.
+        conn.execute(
+            "INSERT OR IGNORE INTO skill_locks (skill_name, instance_id, pid) VALUES ('backfill-skill', 'inst-1', 12345)",
+            [],
+        ).unwrap();
+
+        // Now run migration 22 — this adds FK columns and backfills them.
+        run_fk_columns_migration(&conn).unwrap();
+
+        // Verify workflow_steps.workflow_run_id was backfilled.
+        let ws_wrid: Option<i64> = conn.query_row(
+            "SELECT workflow_run_id FROM workflow_steps WHERE skill_name = 'backfill-skill' AND step_id = 1",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(ws_wrid, Some(wr_id), "workflow_steps.workflow_run_id should be backfilled");
+
+        // Verify skill_tags.skill_id was backfilled.
+        let tag_sid: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM skill_tags WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(tag_sid, Some(skill_master_id), "skill_tags.skill_id should be backfilled");
+
+        // Verify skill_locks.skill_id was backfilled.
+        let lock_sid: Option<i64> = conn.query_row(
+            "SELECT skill_id FROM skill_locks WHERE skill_name = 'backfill-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(lock_sid, Some(skill_master_id), "skill_locks.skill_id should be backfilled");
+    }
+
+    #[test]
+    fn test_get_step_agent_runs_uses_workflow_run_id_fk() {
+        let conn = create_test_db();
+
+        // Create skill via save_workflow_run (also creates skills master row).
+        save_workflow_run(&conn, "step-test-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // Create a workflow session.
+        create_workflow_session(&conn, "session-1", "step-test-skill", std::process::id()).unwrap();
+
+        // Insert agent run with step_id=3 and status="completed" so it appears in get_step_agent_runs.
+        persist_agent_run(
+            &conn,
+            "agent-step-1",
+            "step-test-skill",
+            3,
+            "sonnet",
+            "completed",
+            100, 50, 0, 0, 0.01, 1000,
+            1, None, None, 0, 0,
+            None,
+            Some("session-1"),
+        ).unwrap();
+
+        // persist_agent_run does not populate workflow_run_id — backfill it here, mirroring
+        // what run_fk_columns_migration does for pre-existing rows.
+        let wr_id = get_workflow_run_id(&conn, "step-test-skill").unwrap().unwrap();
+        conn.execute(
+            "UPDATE agent_runs SET workflow_run_id = ?1 WHERE agent_id = 'agent-step-1'",
+            rusqlite::params![wr_id],
+        ).unwrap();
+
+        // Call get_step_agent_runs for the correct step — should return 1 run.
+        let runs = get_step_agent_runs(&conn, "step-test-skill", 3).unwrap();
+        assert_eq!(runs.len(), 1, "should find 1 agent run for step 3");
+        assert_eq!(runs[0].step_id, 3);
+
+        // Wrong step ID — should return empty.
+        let wrong_step = get_step_agent_runs(&conn, "step-test-skill", 99).unwrap();
+        assert!(wrong_step.is_empty(), "wrong step should return empty vec");
+
+        // Nonexistent skill — should return empty (no workflow_run_id found).
+        let no_skill = get_step_agent_runs(&conn, "nonexistent-skill", 3).unwrap();
+        assert!(no_skill.is_empty(), "nonexistent skill should return empty vec");
+    }
+
+    #[test]
+    fn test_has_active_session_with_live_pid_uses_skill_id_fk() {
+        let conn = create_test_db();
+
+        // Create skill via save_workflow_run (also creates skills master row).
+        save_workflow_run(&conn, "session-skill", "test-domain", 0, "pending", "domain").unwrap();
+
+        // No session yet — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return false when no session exists"
+        );
+
+        // Create session using current PID (guaranteed alive).
+        let current_pid = std::process::id();
+        create_workflow_session(&conn, "sess-live", "session-skill", current_pid).unwrap();
+
+        // Session exists with live PID — must return true.
+        assert!(
+            has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return true with an active session for a live PID"
+        );
+
+        // End the session.
+        end_workflow_session(&conn, "sess-live").unwrap();
+
+        // Session is ended — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "session-skill"),
+            "should return false after session is ended"
+        );
+
+        // Skill not in skills master — must return false.
+        assert!(
+            !has_active_session_with_live_pid(&conn, "no-such-skill"),
+            "should return false for a skill not in the skills master table"
+        );
+    }
+
+    #[test]
+    fn test_workspace_skill_crud_uses_uuid_skill_id() {
+        let conn = create_test_db();
+
+        let skill = WorkspaceSkill {
+            skill_id: "ws-uuid-abc-123".to_string(),
+            skill_name: "my-ws-skill".to_string(),
+            domain: None,
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: "/tmp/ws-skill".to_string(),
+            imported_at: "2024-01-01T00:00:00Z".to_string(),
+            skill_type: None,
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+
+        // Insert the workspace skill.
+        insert_workspace_skill(&conn, &skill).unwrap();
+
+        // List workspace skills — the skill must be in the list.
+        let skills = list_workspace_skills(&conn).unwrap();
+        let found = skills.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
+        assert!(found.is_some(), "inserted skill should appear in list_workspace_skills");
+        assert_eq!(found.unwrap().skill_name, "my-ws-skill");
+        assert!(found.unwrap().is_active);
+
+        // Toggle active (also updates disk_path).
+        update_workspace_skill_active(&conn, "ws-uuid-abc-123", false, "/tmp/ws-skill-updated").unwrap();
+
+        let skills_after = list_workspace_skills(&conn).unwrap();
+        let updated = skills_after.iter().find(|s| s.skill_id == "ws-uuid-abc-123").unwrap();
+        assert!(!updated.is_active, "is_active should be false after update");
+
+        // Delete the skill.
+        delete_workspace_skill(&conn, "ws-uuid-abc-123").unwrap();
+
+        // Verify it is gone.
+        let skills_final = list_workspace_skills(&conn).unwrap();
+        let gone = skills_final.iter().find(|s| s.skill_id == "ws-uuid-abc-123");
+        assert!(gone.is_none(), "skill should not appear in list after deletion");
+    }
 }
