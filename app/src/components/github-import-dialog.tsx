@@ -100,8 +100,6 @@ export default function GitHubImportDialog({
   // Workspace skills for version comparison and conflict detection
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
 
-  const availableModels = useSettingsStore((s) => s.availableModels)
-
   function setSkillState(path: string, state: SkillState): void {
     setSkillStates((prev) => new Map(prev).set(path, state))
   }
@@ -421,7 +419,7 @@ export default function GitHubImportDialog({
   const hasPurposeConflict = purposeConflicts.length > 0
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || (mode !== 'settings-skills' && !editForm.skill_type)
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
     : false
 
   const isSkillLibraryEditMode = mode === 'skill-library'
@@ -764,7 +762,7 @@ export default function GitHubImportDialog({
                       >
                         <SelectTrigger
                           id="edit-skill-type"
-                          className={!editForm.skill_type ? "border-destructive focus-visible:ring-destructive" : ""}
+                          className={!editForm.skill_type.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                         >
                           <SelectValue placeholder="Select skill type" />
                         </SelectTrigger>
@@ -776,7 +774,7 @@ export default function GitHubImportDialog({
                           ))}
                         </SelectContent>
                       </Select>
-                      {!editForm.skill_type && (
+                      {!editForm.skill_type.trim() && (
                         <p className="text-xs text-destructive">Skill type is required</p>
                       )}
                     </>
@@ -784,12 +782,12 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-version">Version</Label>
+                  <Label htmlFor="edit-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
                   <Input
                     id="edit-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
-                    placeholder="1.0.0"
+                    placeholder="e.g. 1.0.0"
                   />
                 </div>
 
