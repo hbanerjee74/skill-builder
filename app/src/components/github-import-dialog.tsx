@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react"
-import { Loader2, AlertCircle, Download, CheckCircle2 } from "lucide-react"
+import { Loader2, AlertCircle, Download, PencilLine, CheckCircle2, CheckCheck } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -262,10 +262,6 @@ export default function GitHubImportDialog({
                     const state = skillStates.get(skill.path) ?? "idle"
                     const isImporting = state === "importing"
 
-                    let buttonLabel = "Import"
-                    if (isImporting) buttonLabel = "Importing\u2026"
-                    else if (mode === "skill-library") buttonLabel = "Edit & Import"
-
                     return (
                       <div
                         key={skill.path}
@@ -293,31 +289,27 @@ export default function GitHubImportDialog({
                           {mode === 'skill-library' && !skill.description && (
                             <span className="text-xs text-amber-600">No description</span>
                           )}
-                          {state === "exists" && (
-                            <span className="text-xs text-muted-foreground">Already in your library</span>
-                          )}
                         </div>
                         <div className="shrink-0 pt-0.5">
                           {state === "imported" ? (
-                            <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-                              <CheckCircle2 className="size-4" />
-                              Imported
-                            </span>
+                            <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
                           ) : state === "exists" ? (
-                            <span className="text-xs text-muted-foreground">In library</span>
+                            <CheckCheck className="size-4 text-muted-foreground" />
                           ) : (
                             <Button
-                              size="sm"
+                              size="icon"
                               variant="outline"
+                              className="size-7"
                               disabled={isImporting}
                               onClick={() => mode === 'skill-library' ? openEditForm(skill) : handleImport(skill)}
                             >
                               {isImporting ? (
                                 <Loader2 className="size-3.5 animate-spin" />
+                              ) : mode === 'skill-library' ? (
+                                <PencilLine className="size-3.5" />
                               ) : (
                                 <Download className="size-3.5" />
                               )}
-                              {buttonLabel}
                             </Button>
                           )}
                         </div>
