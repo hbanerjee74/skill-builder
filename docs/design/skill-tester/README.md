@@ -128,3 +128,20 @@ See `mockup.html` in this folder — open in any browser.
 - Transport: new Rust command `run_skill_test(skill_name, prompt)` → spawns two parallel `tokio::process::Command` children, emits Tauri events for streaming
 - Evaluator: third `claude -p` call after both streams complete, no plugin dir
 - Temp workspace: create per-run dir in `$TMPDIR` with empty `.claude/CLAUDE.md`, clean up after run
+
+---
+
+## How the prompt is used
+
+The user enters a single prompt in the textarea. That **same text is sent verbatim** to both the with-skill and without-skill plan agents — no wrapping or prefix is added.
+
+The difference between the two runs is the **working directory**, not the prompt. Each agent's working directory contains a pre-populated `.claude/CLAUDE.md`:
+
+- **Without skill**: skill-test context only (`skills/skill-test/SKILL.md` body)
+- **With skill**: skill-test context + the user's skill body under `## Active Skill: {name}`
+
+The SDK loads the workspace CLAUDE.md automatically, so each agent receives different ambient context while processing the same user prompt.
+
+After both plans complete, the evaluator receives a constructed prompt containing the original user prompt, Plan A (with-skill output), and Plan B (without-skill output), and is asked to score differences using the Evaluation Rubric from the skill-test context.
+
+See `PROMPTS.md` in this folder for the exact prompt strings sent to each agent.
