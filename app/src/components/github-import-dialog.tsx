@@ -265,13 +265,13 @@ export default function GitHubImportDialog({
                     return (
                       <div
                         key={skill.path}
-                        className="flex items-start gap-3 rounded-md px-2 py-2.5"
+                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${state === "exists" ? "bg-muted" : ""}`}
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <div className="flex items-center gap-2">
                             <span className={`text-sm font-medium truncate ${state === "exists" ? "text-muted-foreground" : ""}`}>{skill.name}</span>
                             {skill.domain && (
-                              <Badge variant="secondary" className="text-xs shrink-0">
+                              <Badge variant="secondary" className={`text-xs shrink-0 ${state === "exists" ? "text-muted-foreground" : ""}`}>
                                 {skill.domain}
                               </Badge>
                             )}
