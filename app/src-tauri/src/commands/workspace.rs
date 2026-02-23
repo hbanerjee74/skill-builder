@@ -296,9 +296,9 @@ pub fn resolve_discovery(
             log::info!("[resolve_discovery] '{}': added as skill-builder (completed)", skill_name);
             Ok(())
         }
-        "add-upload" => {
-            // Add as upload, clear context folder — force skill_source to "upload"
-            crate::db::upsert_skill_with_source(&conn, &skill_name, "upload", "unknown", "domain")?;
+        "add-imported" => {
+            // Add as imported, clear context folder — force skill_source to "imported"
+            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "unknown", "domain")?;
             // Validate skills_path before touching filesystem
             let sp = Path::new(&skills_path);
             validate_path_within(sp, &skill_name, "skills_path")?;
@@ -308,7 +308,7 @@ pub fn resolve_discovery(
                 let _ = std::fs::remove_dir_all(&context_dir);
                 log::info!("[resolve_discovery] '{}': cleared context folder", skill_name);
             }
-            log::info!("[resolve_discovery] '{}': added as upload", skill_name);
+            log::info!("[resolve_discovery] '{}': added as imported", skill_name);
             Ok(())
         }
         "remove" => {
@@ -335,7 +335,7 @@ pub fn resolve_discovery(
             log::info!("[resolve_discovery] '{}': removed from disk", skill_name);
             Ok(())
         }
-        _ => Err(format!("Invalid discovery action: '{}'. Expected 'add-skill-builder', 'add-upload', or 'remove'.", action)),
+        _ => Err(format!("Invalid discovery action: '{}'. Expected 'add-skill-builder', 'add-imported', or 'remove'.", action)),
     }
 }
 

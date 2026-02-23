@@ -141,7 +141,7 @@ Every skill in the library shows an icon indicating its `skill_source`. Displaye
 |----------------|------|-------|-------|
 | `skill-builder` | `Hammer` | Built | muted (default — most common, shouldn't be visually loud) |
 | `marketplace` | `Store` | Marketplace | blue |
-| `imported` | `Upload` | Uploaded | amber |
+| `imported` | `Upload` | Imported | amber |
 
 Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing `SkillTypeBadge` pattern in `skill-picker.tsx`.
 

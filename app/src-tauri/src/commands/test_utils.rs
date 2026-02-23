@@ -10,7 +10,7 @@ pub fn create_test_db() -> rusqlite::Connection {
         CREATE TABLE IF NOT EXISTS skills (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT NOT NULL UNIQUE,
-            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'upload')),
+            skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
