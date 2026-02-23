@@ -1850,45 +1850,6 @@ pub fn upsert_bundled_skill(conn: &Connection, skill: &ImportedSkill) -> Result<
     Ok(())
 }
 
-pub fn list_imported_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT skill_id, skill_name, domain, is_active, disk_path, imported_at, is_bundled,
-                    skill_type, version, model, argument_hint, user_invocable, disable_model_invocation
-             FROM imported_skills ORDER BY imported_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(ImportedSkill {
-                skill_id: row.get(0)?,
-                skill_name: row.get(1)?,
-                domain: row.get(2)?,
-                is_active: row.get::<_, i32>(3)? != 0,
-                disk_path: row.get(4)?,
-                imported_at: row.get(5)?,
-                is_bundled: row.get::<_, i32>(6)? != 0,
-                description: None,
-                skill_type: row.get(7)?,
-                version: row.get(8)?,
-                model: row.get(9)?,
-                argument_hint: row.get(10)?,
-                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
-                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut skills: Vec<ImportedSkill> = rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    for skill in &mut skills {
-        hydrate_skill_metadata(skill);
-    }
-
-    Ok(skills)
-}
 
 pub fn update_imported_skill_active(
     conn: &Connection,

@@ -114,7 +114,7 @@ const mockResponses: Record<string, unknown> = {
   list_user_repos: [],
   validate_remote_repo: undefined,
   // Imported skills (Skills Library page)
-  list_imported_skills: [],
+  list_workspace_skills: [],
   upload_skill: {
     skill_id: "skill-001",
     skill_name: "test-skill",
