@@ -177,7 +177,7 @@ The agent runtime is a Node.js process using `@anthropic-ai/claude-agent-sdk`, m
 
 ### Git integration
 
-The skills output directory (`skills_path`) is initialized as a git repository on first use. The Rust `git.rs` module (backed by `git2`) commits changes on skill creation, path migration, and workflow completion. This enables the history and version-restore features exposed via the git commands.
+The skills output directory (`skills_path`) is initialized as a **local** git repository on first use — no remote. The Rust `git.rs` module (backed by `git2`) commits changes on skill creation, path migration, and workflow completion. This enables the history and version-restore features exposed via the git commands.
 
 ### Log levels
 
