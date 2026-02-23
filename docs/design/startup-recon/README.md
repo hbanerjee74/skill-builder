@@ -28,7 +28,7 @@ CREATE TABLE skills (
 ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
 ```
 
-`imported_skills` is unchanged — it is plugin infrastructure (bundled skills, GitHub/zip imports for `CLAUDE.md`), NOT in the master.
+`imported_skills` is a child table of `skills` for `marketplace` source skills — it stores disk path, active state, and import metadata. It is not part of the master catalog itself.
 
 ### skill_source values
 
@@ -43,9 +43,9 @@ ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
 | Operation | What happens |
 |-----------|-------------|
 | Create skill via builder | INSERT `skills` (skill-builder) → INSERT `workflow_runs` with `skill_id` FK |
-| Import from marketplace | INSERT `imported_skills` (plugin) + INSERT `skills` (marketplace). No `workflow_runs`. |
-| Disk discovery — all artifacts (scenario 9a) | User approves → INSERT `skills` (skill-builder) + INSERT `workflow_runs` at step 5 |
-| Disk discovery — incomplete (scenario 9b) | Delete folder from disk. Notify user. |
+| Import from marketplace | INSERT `skills` (marketplace) + INSERT `imported_skills` (disk metadata). No `workflow_runs`. |
+| Disk discovery — all artifacts (scenario 9b) | User approves → INSERT `skills` (skill-builder) + INSERT `workflow_runs` at step 5 |
+| Disk discovery — incomplete (scenario 9c) | User choice: "Add to library" → INSERT `skills` (imported), delete context folder. "Remove" → delete folder. |
 
 ---
 
@@ -126,7 +126,7 @@ After both passes complete, if `notifications.len() > 0` OR `discovered_skills.l
 
 - Show `ReconciliationAckDialog` (modal, non-dismissible)
 - Lists all notifications grouped by severity (errors first, then resets/info)
-- For scenario 9a (user choice): inline action buttons per discovered skill — "Add to library" / "Remove"
+- For scenarios 9b and 9c (user choice): inline action buttons per discovered skill — "Add to library" / "Remove"
 - Dashboard does NOT mount until user acknowledges all notifications and resolves all discoveries
 
 Today, notifications are returned to the frontend and shown as 5-second toasts that disappear. After this change, they block the dashboard via a modal ACK dialog.
