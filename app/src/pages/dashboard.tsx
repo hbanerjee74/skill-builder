@@ -65,7 +65,6 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
-  const [skillLibraryMarketplaceTypeFilter, setSkillLibraryMarketplaceTypeFilter] = useState<string[]>(['platform', 'domain', 'source', 'data-engineering'])
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -609,8 +608,7 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
-          onOpenMarketplace={(typeFilter) => {
-            setSkillLibraryMarketplaceTypeFilter(typeFilter)
+          onOpenMarketplace={() => {
             setSkillLibraryMarketplaceOpen(true)
             setCreateOpen(false)
           }}
@@ -645,7 +643,6 @@ export default function DashboardPage() {
         open={skillLibraryMarketplaceOpen}
         onOpenChange={setSkillLibraryMarketplaceOpen}
         onImported={async () => { await Promise.all([loadSkills(), loadTags()]); }}
-        typeFilter={skillLibraryMarketplaceTypeFilter}
         mode="skill-library"
         url={marketplaceUrl ?? ""}
       />
