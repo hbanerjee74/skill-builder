@@ -778,7 +778,12 @@ pub(crate) async fn import_single_skill(
         fm.domain = ov.domain.clone().or(fm.domain);
         fm.skill_type = ov.skill_type.clone().or(fm.skill_type);
         fm.version = ov.version.clone().or(fm.version);
-        fm.model = ov.model.clone().or(fm.model);
+        // Empty string means "App default" — explicitly clear any model from frontmatter.
+        fm.model = match ov.model.as_deref() {
+            Some("") => None,
+            Some(v) => Some(v.to_string()),
+            None => fm.model,
+        };
         fm.argument_hint = ov.argument_hint.clone().or(fm.argument_hint);
         fm.user_invocable = ov.user_invocable.or(fm.user_invocable);
         fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
