@@ -451,9 +451,25 @@ pub async fn import_github_skills(
         .await
         {
             Ok(skill) => {
-                // Insert into DB
+                // Insert into workspace_skills DB (Settings → Skills path)
                 let conn = db.0.lock().map_err(|e| e.to_string())?;
-                match crate::db::insert_imported_skill(&conn, &skill) {
+                let ws_skill = crate::types::WorkspaceSkill {
+                    skill_id: skill.skill_id.clone(),
+                    skill_name: skill.skill_name.clone(),
+                    domain: skill.domain.clone(),
+                    description: skill.description.clone(),
+                    is_active: skill.is_active,
+                    is_bundled: skill.is_bundled,
+                    disk_path: skill.disk_path.clone(),
+                    imported_at: skill.imported_at.clone(),
+                    skill_type: skill.skill_type.clone(),
+                    version: skill.version.clone(),
+                    model: skill.model.clone(),
+                    argument_hint: skill.argument_hint.clone(),
+                    user_invocable: skill.user_invocable,
+                    disable_model_invocation: skill.disable_model_invocation,
+                };
+                match crate::db::insert_workspace_skill(&conn, &ws_skill) {
                     Ok(()) => imported.push(skill),
                     Err(e) => {
                         // DB insert failed (e.g. duplicate) — clean up the files we just wrote
