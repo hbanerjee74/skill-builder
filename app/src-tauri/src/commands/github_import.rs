@@ -543,6 +543,7 @@ pub async fn import_github_skills(
                     );
                 }
 
+
                 let mut ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
                 ws_skill.purpose = purpose.clone();
 

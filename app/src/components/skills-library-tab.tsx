@@ -22,13 +22,7 @@ import type { WorkspaceSkill } from "@/stores/imported-skills-store"
 import { useSettingsStore } from "@/stores/settings-store"
 import GitHubImportDialog from "@/components/github-import-dialog"
 import { setWorkspaceSkillPurpose } from "@/lib/tauri"
-
-const PURPOSE_OPTIONS = [
-  { value: "test-context", label: "test-context" },
-  { value: "research", label: "research" },
-  { value: "validate", label: "validate" },
-  { value: "skill-building", label: "skill-building" },
-]
+import { PURPOSE_OPTIONS } from "@/lib/types"
 
 export function SkillsLibraryTab() {
   const {

@@ -308,6 +308,13 @@ export interface SkillMetadataOverride {
   purpose?: string | null
 }
 
+export const PURPOSE_OPTIONS = [
+  { value: "test-context", label: "test-context" },
+  { value: "research", label: "research" },
+  { value: "validate", label: "validate" },
+  { value: "skill-building", label: "skill-building" },
+] as const
+
 export interface MarketplaceImportResult {
   skill_name: string
   success: boolean

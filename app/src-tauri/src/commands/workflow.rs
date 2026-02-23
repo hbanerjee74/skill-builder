@@ -96,14 +96,11 @@ pub fn resolve_bundled_skills_dir(app_handle: &tauri::AppHandle) -> PathBuf {
 
     match dev_path {
         Some(ref p) if p.is_dir() => p.clone(),
-        _ => {
-            let resource = app_handle
-                .path()
-                .resource_dir()
-                .map(|r| r.join("workspace").join("skills"))
-                .unwrap_or_default();
-            resource
-        }
+        _ => app_handle
+            .path()
+            .resource_dir()
+            .map(|r| r.join("workspace").join("skills"))
+            .unwrap_or_default(),
     }
 }
 

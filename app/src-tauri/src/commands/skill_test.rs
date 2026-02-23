@@ -33,34 +33,19 @@ fn write_workspace_claude_md(parent_dir: &Path, content: &str, label: &str) -> R
 }
 
 /// Recursively copy a skill directory into `dest_skills_dir/{skill_name}/`.
-/// Creates `dest_skills_dir` if it doesn't exist.
+/// Creates `dest_skills_dir` and the destination subdirectory if they don't exist.
 fn copy_skill_dir(src_skills_dir: &Path, dest_skills_dir: &Path, skill_name: &str) -> Result<(), String> {
     let src = src_skills_dir.join(skill_name);
     let dest = dest_skills_dir.join(skill_name);
-    std::fs::create_dir_all(dest_skills_dir).map_err(|e| {
-        let msg = format!("Failed to create skills dir {:?}: {}", dest_skills_dir, e);
+    std::fs::create_dir_all(&dest).map_err(|e| {
+        let msg = format!("Failed to create skills dir {:?}: {}", dest, e);
         log::error!("[copy_skill_dir] {}", msg);
         msg
     })?;
-    copy_dir_recursive(&src, &dest).map_err(|e| {
+    super::imported_skills::copy_dir_recursive(&src, &dest).map_err(|e| {
         log::error!("[copy_skill_dir] Failed to copy skill '{}': {}", skill_name, e);
         e
     })
-}
-
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(dest).map_err(|e| format!("Failed to create dir {:?}: {}", dest, e))?;
-    for entry in std::fs::read_dir(src).map_err(|e| format!("Failed to read dir {:?}: {}", src, e))? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let src_path = entry.path();
-        let dest_path = dest.join(entry.file_name());
-        if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dest_path)?;
-        } else {
-            std::fs::copy(&src_path, &dest_path).map_err(|e| format!("Failed to copy {:?}: {}", src_path, e))?;
-        }
-    }
-    Ok(())
 }
 
 /// Prepare isolated temp workspaces for a skill test run.
@@ -120,21 +105,17 @@ pub fn prepare_skill_test(
             "[prepare_skill_test] using test-context workspace skill from {}",
             tc_skill.disk_path
         );
-        // Copy the skill-test directory contents directly from disk_path
-        std::fs::create_dir_all(&baseline_skills_dir.join("skill-test")).map_err(|e| {
-            format!("Failed to create baseline skill-test dir: {}", e)
-        })?;
-        copy_dir_recursive(tc_path, &baseline_skills_dir.join("skill-test")).map_err(|e| {
-            log::error!("[prepare_skill_test] failed to copy test-context to baseline: {}", e);
-            e
-        })?;
-        std::fs::create_dir_all(&with_skill_skills_dir.join("skill-test")).map_err(|e| {
-            format!("Failed to create with-skill skill-test dir: {}", e)
-        })?;
-        copy_dir_recursive(tc_path, &with_skill_skills_dir.join("skill-test")).map_err(|e| {
-            log::error!("[prepare_skill_test] failed to copy test-context to with-skill: {}", e);
-            e
-        })?;
+        // Copy the test-context skill into both workspaces as "skill-test"
+        for (label, dest_dir) in [("baseline", &baseline_skills_dir), ("with-skill", &with_skill_skills_dir)] {
+            let dest = dest_dir.join("skill-test");
+            std::fs::create_dir_all(&dest).map_err(|e| {
+                format!("Failed to create {} skill-test dir: {}", label, e)
+            })?;
+            super::imported_skills::copy_dir_recursive(tc_path, &dest).map_err(|e| {
+                log::error!("[prepare_skill_test] failed to copy test-context to {}: {}", label, e);
+                e
+            })?;
+        }
         log::info!("[prepare_skill_test] copied skill-test from test-context workspace skill");
     } else {
         // Fallback: copy from bundled resources

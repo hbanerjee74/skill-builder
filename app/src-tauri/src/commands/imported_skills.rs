@@ -521,21 +521,13 @@ fn toggle_skill_active_inner(
 
     // Step 2: Move files on disk. If this fails, revert the DB update.
     if src.exists() {
-        // Ensure destination parent directory exists
-        if active {
-            if let Err(e) = fs::create_dir_all(&skills_dir) {
-                let _ = crate::db::update_workspace_skill_active(
-                    conn, skill_id, !active, &old_disk_path,
-                );
-                return Err(format!("Failed to create skills directory: {}", e));
-            }
-        } else {
-            if let Err(e) = fs::create_dir_all(&inactive_dir) {
-                let _ = crate::db::update_workspace_skill_active(
-                    conn, skill_id, !active, &old_disk_path,
-                );
-                return Err(format!("Failed to create .inactive directory: {}", e));
-            }
+        // Ensure destination parent directory exists (skills_dir when activating, .inactive when deactivating)
+        let dest_parent = if active { &skills_dir } else { &inactive_dir };
+        if let Err(e) = fs::create_dir_all(dest_parent) {
+            let _ = crate::db::update_workspace_skill_active(
+                conn, skill_id, !active, &old_disk_path,
+            );
+            return Err(format!("Failed to create destination directory: {}", e));
         }
 
         if let Err(move_err) = fs::rename(src, dst) {

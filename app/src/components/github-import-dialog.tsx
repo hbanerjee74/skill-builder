@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill, SkillSummary } from "@/lib/types"
-import { SKILL_TYPES } from "@/lib/types"
+import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
 const FALLBACK_MODEL_OPTIONS = [
@@ -67,12 +67,6 @@ interface EditFormState {
   disable_model_invocation: boolean
 }
 
-const PURPOSE_OPTIONS = [
-  { value: "test-context", label: "test-context" },
-  { value: "research", label: "research" },
-  { value: "validate", label: "validate" },
-  { value: "skill-building", label: "skill-building" },
-]
 
 export default function GitHubImportDialog({
   open,
