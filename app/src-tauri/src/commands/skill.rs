@@ -47,32 +47,8 @@ fn list_skills_inner(
     let names: Vec<String> = master_skills.iter().map(|s| s.name.clone()).collect();
     let tags_map = crate::db::get_tags_for_skills(conn, &names)?;
 
-    // Batch-fetch imported_skills metadata (for marketplace/imported skills)
-    // Maps skill_name -> (version, model, argument_hint, description, user_invocable, disable_model_invocation)
-    let imported_map: std::collections::HashMap<String, (Option<String>, Option<String>, Option<String>, Option<String>, Option<bool>, Option<bool>)> = {
-        let mut stmt = conn.prepare(
-            "SELECT skill_name, version, model, argument_hint, description, user_invocable, disable_model_invocation FROM imported_skills"
-        ).map_err(|e| {
-            log::error!("[list_skills_inner] Failed to prepare imported_skills query: {}", e);
-            e.to_string()
-        })?;
-        let rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<i32>>(5)?.map(|v| v != 0),
-                row.get::<_, Option<i32>>(6)?.map(|v| v != 0),
-            ))
-        }).map_err(|e| e.to_string())?;
-        rows.filter_map(|r| r.ok())
-            .map(|(name, version, model, argument_hint, description, user_invocable, disable_model_invocation)| {
-                (name, (version, model, argument_hint, description, user_invocable, disable_model_invocation))
-            })
-            .collect()
-    };
+    // Frontmatter fields (description, version, model, etc.) are now in the `skills` master table
+    // via migration 24. They come through master_skills (SkillMasterRow) for all skill sources.
 
     // Build SkillSummary list from master + optional workflow_runs
     let mut skills: Vec<SkillSummary> = master_skills
@@ -84,7 +60,8 @@ fn list_skills_inner(
                 .unwrap_or_default();
 
             if master.skill_source == "skill-builder" {
-                // For skill-builder: use workflow_runs data if available
+                // For skill-builder: workflow_runs provides step state and workflow-specific fields.
+                // Frontmatter fields come from skills master (canonical since migration 24).
                 if let Some(run) = runs_map.get(&master.name) {
                     return SkillSummary {
                         name: run.skill_name.clone(),
@@ -100,19 +77,18 @@ fn list_skills_inner(
                         intake_json: run.intake_json.clone(),
                         source: Some(run.source.clone()),
                         skill_source: Some(master.skill_source.clone()),
-                        description: run.description.clone(),
-                        version: run.version.clone(),
-                        model: run.model.clone(),
-                        argument_hint: run.argument_hint.clone(),
-                        user_invocable: run.user_invocable,
-                        disable_model_invocation: run.disable_model_invocation,
+                        description: master.description.clone(),
+                        version: master.version.clone(),
+                        model: master.model.clone(),
+                        argument_hint: master.argument_hint.clone(),
+                        user_invocable: master.user_invocable,
+                        disable_model_invocation: master.disable_model_invocation,
                     };
                 }
             }
 
             // For marketplace/imported skills (or skill-builder with no workflow_runs row):
-            // show as completed with master data + imported_skills metadata
-            let imported_meta = imported_map.get(&master.name);
+            // show as completed with master data. Frontmatter fields all come from skills master.
             SkillSummary {
                 name: master.name.clone(),
                 domain: master.domain.clone(),
@@ -127,12 +103,12 @@ fn list_skills_inner(
                 intake_json: None,
                 source: Some(master.skill_source.clone()),
                 skill_source: Some(master.skill_source.clone()),
-                description: imported_meta.and_then(|(_, _, _, d, _, _)| d.clone()),
-                version: imported_meta.and_then(|(v, _, _, _, _, _)| v.clone()),
-                model: imported_meta.and_then(|(_, m, _, _, _, _)| m.clone()),
-                argument_hint: imported_meta.and_then(|(_, _, a, _, _, _)| a.clone()),
-                user_invocable: imported_meta.and_then(|(_, _, _, _, u, _)| *u),
-                disable_model_invocation: imported_meta.and_then(|(_, _, _, _, _, d)| *d),
+                description: master.description.clone(),
+                version: master.version.clone(),
+                model: master.model.clone(),
+                argument_hint: master.argument_hint.clone(),
+                user_invocable: master.user_invocable,
+                disable_model_invocation: master.disable_model_invocation,
             }
         })
         .collect();
@@ -652,6 +628,8 @@ pub fn update_skill_metadata(
         || user_invocable.is_some()
         || disable_model_invocation.is_some()
     {
+        // set_skill_behaviour writes to skills master (canonical) + workflow_runs (dual-write).
+        // Works for all skill sources — marketplace/imported updates skills master directly.
         crate::db::set_skill_behaviour(
             &conn,
             &skill_name,
@@ -664,29 +642,6 @@ pub fn update_skill_metadata(
         ).map_err(|e| {
             log::error!("[update_skill_metadata] Failed to set behaviour fields: {}", e);
             e
-        })?;
-        // Also update imported_skills for marketplace/imported skills
-        conn.execute(
-            "UPDATE imported_skills SET
-                description = COALESCE(?2, description),
-                version = COALESCE(?3, version),
-                model = COALESCE(?4, model),
-                argument_hint = COALESCE(?5, argument_hint),
-                user_invocable = COALESCE(?6, user_invocable),
-                disable_model_invocation = COALESCE(?7, disable_model_invocation)
-             WHERE skill_name = ?1",
-            rusqlite::params![
-                skill_name,
-                description.as_deref(),
-                version.as_deref(),
-                model.as_deref(),
-                argument_hint.as_deref(),
-                user_invocable.map(|v| if v { 1i32 } else { 0i32 }),
-                disable_model_invocation.map(|v| if v { 1i32 } else { 0i32 }),
-            ],
-        ).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to update imported_skills behaviour: {}", e);
-            e.to_string()
         })?;
     }
     Ok(())

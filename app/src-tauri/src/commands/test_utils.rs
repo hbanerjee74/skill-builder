@@ -14,7 +14,13 @@ pub fn create_test_db() -> rusqlite::Connection {
             domain       TEXT,
             skill_type   TEXT,
             created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            description  TEXT,
+            version      TEXT,
+            model        TEXT,
+            argument_hint TEXT,
+            user_invocable INTEGER,
+            disable_model_invocation INTEGER
         );
         CREATE TABLE IF NOT EXISTS workflow_runs (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,

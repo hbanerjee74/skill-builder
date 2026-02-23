@@ -51,6 +51,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (21, run_workspace_skills_migration),
         (22, run_workflow_runs_id_migration),
         (23, run_fk_columns_migration),
+        (24, run_frontmatter_to_skills_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -765,6 +766,72 @@ fn run_fk_columns_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+/// Migration 24: Add SKILL.md frontmatter fields to the `skills` master table.
+/// These fields (description, version, model, argument_hint, user_invocable,
+/// disable_model_invocation) apply to ALL skill sources and belong in the canonical
+/// `skills` table rather than per-source tables (workflow_runs / imported_skills).
+/// Backfills from workflow_runs (skill-builder) and imported_skills (marketplace/imported).
+fn run_frontmatter_to_skills_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let existing_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for (col, def) in &[
+        ("description", "TEXT"),
+        ("version", "TEXT"),
+        ("model", "TEXT"),
+        ("argument_hint", "TEXT"),
+        ("user_invocable", "INTEGER"),
+        ("disable_model_invocation", "INTEGER"),
+    ] {
+        if !existing_cols.contains(&col.to_string()) {
+            conn.execute_batch(&format!("ALTER TABLE skills ADD COLUMN {} {};", col, def))?;
+        }
+    }
+
+    // Backfill from workflow_runs for skill-builder skills
+    conn.execute_batch(
+        "UPDATE skills
+         SET
+           description = COALESCE(skills.description, (
+               SELECT wr.description FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           version = COALESCE(skills.version, (
+               SELECT wr.version FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           model = COALESCE(skills.model, (
+               SELECT wr.model FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           argument_hint = COALESCE(skills.argument_hint, (
+               SELECT wr.argument_hint FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           user_invocable = COALESCE(skills.user_invocable, (
+               SELECT wr.user_invocable FROM workflow_runs wr WHERE wr.skill_name = skills.name)),
+           disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+               SELECT wr.disable_model_invocation FROM workflow_runs wr WHERE wr.skill_name = skills.name))
+         WHERE skill_source = 'skill-builder';",
+    )?;
+
+    // Backfill from imported_skills for marketplace/imported skills
+    // Note: description was dropped from imported_skills in migration 12; stays NULL here
+    conn.execute_batch(
+        "UPDATE skills
+         SET
+           version = COALESCE(skills.version, (
+               SELECT imp.version FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           model = COALESCE(skills.model, (
+               SELECT imp.model FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           argument_hint = COALESCE(skills.argument_hint, (
+               SELECT imp.argument_hint FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           user_invocable = COALESCE(skills.user_invocable, (
+               SELECT imp.user_invocable FROM imported_skills imp WHERE imp.skill_name = skills.name)),
+           disable_model_invocation = COALESCE(skills.disable_model_invocation, (
+               SELECT imp.disable_model_invocation FROM imported_skills imp WHERE imp.skill_name = skills.name))
+         WHERE skill_source IN ('marketplace', 'imported');",
+    )?;
+
+    log::info!("migration 24: added frontmatter fields to skills master, backfilled from workflow_runs and imported_skills");
+    Ok(())
+}
+
 fn run_rename_upload_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
     // Rename upload → imported
     conn.execute("UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'", [])?;
@@ -1414,7 +1481,8 @@ pub fn upsert_skill_with_source(
 pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at
+            "SELECT id, name, skill_source, domain, skill_type, created_at, updated_at,
+                    description, version, model, argument_hint, user_invocable, disable_model_invocation
              FROM skills ORDER BY name",
         )
         .map_err(|e| {
@@ -1432,6 +1500,12 @@ pub fn list_all_skills(conn: &Connection) -> Result<Vec<SkillMasterRow>, String>
                 skill_type: row.get(4)?,
                 created_at: row.get(5)?,
                 updated_at: row.get(6)?,
+                description: row.get(7)?,
+                version: row.get(8)?,
+                model: row.get(9)?,
+                argument_hint: row.get(10)?,
+                user_invocable: row.get::<_, Option<i32>>(11)?.map(|v| v != 0),
+                disable_model_invocation: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
             })
         })
         .map_err(|e| {
@@ -1575,6 +1649,32 @@ pub fn set_skill_behaviour(
 ) -> Result<(), String> {
     let user_invocable_i: Option<i32> = user_invocable.map(|v| if v { 1 } else { 0 });
     let disable_model_invocation_i: Option<i32> = disable_model_invocation.map(|v| if v { 1 } else { 0 });
+
+    // Write to skills master — canonical store for all skill sources
+    conn.execute(
+        "UPDATE skills SET
+            description = COALESCE(?2, description),
+            version = COALESCE(?3, version),
+            model = COALESCE(?4, model),
+            argument_hint = COALESCE(?5, argument_hint),
+            user_invocable = COALESCE(?6, user_invocable),
+            disable_model_invocation = COALESCE(?7, disable_model_invocation),
+            updated_at = datetime('now')
+         WHERE name = ?1",
+        rusqlite::params![
+            skill_name,
+            description,
+            version,
+            model,
+            argument_hint,
+            user_invocable_i,
+            disable_model_invocation_i,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Dual-write to workflow_runs for skill-builder skills (no-op for marketplace/imported).
+    // These columns will be dropped from workflow_runs in a future migration.
     conn.execute(
         "UPDATE workflow_runs SET
             description = COALESCE(?2, description),
@@ -1596,6 +1696,7 @@ pub fn set_skill_behaviour(
         ],
     )
     .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -1968,6 +2069,7 @@ pub fn insert_imported_skill(
 /// Upsert a marketplace-imported skill. Uses `INSERT OR REPLACE` so that re-importing
 /// (e.g. after the skills_path setting changed or files were manually deleted) always
 /// updates the existing record rather than failing with a UNIQUE constraint.
+/// Also mirrors frontmatter fields to the `skills` master table (canonical store).
 pub fn upsert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
@@ -2007,6 +2109,29 @@ pub fn upsert_imported_skill(
         ],
     )
     .map_err(|e| e.to_string())?;
+
+    // Mirror frontmatter fields to skills master — these values are the merged result
+    // (new frontmatter wins if non-empty, installed value as fallback) so we overwrite directly.
+    conn.execute(
+        "UPDATE skills SET
+            version = ?2,
+            model = ?3,
+            argument_hint = ?4,
+            user_invocable = ?5,
+            disable_model_invocation = ?6,
+            updated_at = datetime('now')
+         WHERE name = ?1",
+        rusqlite::params![
+            skill.skill_name,
+            skill.version,
+            skill.model,
+            skill.argument_hint,
+            skill.user_invocable.map(|v| v as i32),
+            skill.disable_model_invocation.map(|v| v as i32),
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
     Ok(())
 }
 
@@ -2709,6 +2834,7 @@ mod tests {
         run_workspace_skills_migration(&conn).unwrap();
         run_workflow_runs_id_migration(&conn).unwrap();
         run_fk_columns_migration(&conn).unwrap();
+        run_frontmatter_to_skills_migration(&conn).unwrap();
         conn
     }
 
@@ -3106,6 +3232,11 @@ mod tests {
         // Run the skills table + backfill migrations
         run_skills_table_migration(&conn).unwrap();
         run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
+        run_workspace_skills_migration(&conn).unwrap();
+        run_workflow_runs_id_migration(&conn).unwrap();
+        run_fk_columns_migration(&conn).unwrap();
+        run_frontmatter_to_skills_migration(&conn).unwrap();
 
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();
