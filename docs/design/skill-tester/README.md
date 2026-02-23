@@ -16,12 +16,12 @@ Each run is stateless: fresh agent processes, no prior conversation, no accumula
 
 Two plan agents run in parallel, then an evaluator runs after both complete.
 
-| Run | What the agent sees |
-|---|---|
-| **With skill** | skill-test context + your skill body |
-| **Without skill** | skill-test context only |
+| Run | Workspace | Prompt |
+|---|---|---|
+| **With skill** | `.claude/skills/skill-test/` + `.claude/skills/{skill_name}/` | wrapped: "You are a data engineer and the user is trying to do the following task: …" |
+| **Without skill** | `.claude/skills/skill-test/` only | same wrapped prompt |
 
-Both agents receive the same user prompt. The difference is entirely in the workspace context loaded by each agent. After both plans complete, a third evaluator agent compares them and scores the delta across the six rubric dimensions.
+Both plan agents receive the same wrapped prompt. The difference is entirely in what the SDK loads from each workspace. After both plans complete, a third evaluator agent compares them and scores the delta across the six rubric dimensions.
 
 ---
 
@@ -72,7 +72,7 @@ Three-zone layout: **prompt input → split plan panels → evaluator**.
 
 ## What the evaluator sees
 
-The evaluator receives the original prompt, the full with-skill plan, and the full without-skill plan. It does **not** receive the skill content itself — it judges the output, not the intent. If the skill didn't guide the agent toward better plans, the evaluator will say so.
+The evaluator runs in the **baseline** workspace (so it loads the `skill-test` Evaluation Rubric automatically). Its prompt embeds the raw user prompt (not the wrapped version) and the full output from both plan agents. It does **not** receive the skill content itself — it judges the output, not the intent. If the skill didn't guide the agent toward better plans, the evaluator will say so.
 
 ---
 
