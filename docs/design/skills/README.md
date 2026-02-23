@@ -129,3 +129,29 @@ The orchestrator checks for `scope_recommendation: true` in both `decisions.md` 
 ### Customization
 
 Marketplace replacement is extracted to `.claude/skills/validate-skill/`. Teams can customise: quality check criteria, test prompt categories and scoring rubric, companion recommendation scoring. Output file names and YAML frontmatter schemas are app-controlled contracts.
+
+---
+
+## Skill-Test Skill
+
+`skill-test` provides the test context and evaluation rubric injected into both workspaces during a skill test run. It contains no sub-agents and no references directory — it is a context-only skill consumed directly via workspace CLAUDE.md injection.
+
+Used by:
+- **Tauri app** — `prepare_skill_test()` reads its body and injects it into both temp workspaces before each test run
+
+### Structure
+
+```
+skills/skill-test/
+  SKILL.md     ← two sections: Test Context + Evaluation Rubric
+```
+
+### Sections
+
+**Test Context** — loaded by both plan agents. Orients the agent as an analytics engineer working in a dbt lakehouse in plan mode. Defines five focus areas the agent should orient toward: silver vs gold layer, dbt project structure, dbt tests, dbt contracts, and semantic model.
+
+**Evaluation Rubric** — loaded by the evaluator agent. Defines six scoring dimensions (silver vs gold, dbt project structure, dbt tests, unit test cases, dbt contracts, semantic model), scoring rules (comparative A vs B only, skip irrelevant dimensions, no surface observations), and output format (↑/↓ prefixed bullet points only).
+
+Both plan agents see the full SKILL.md in their workspace context but are only instructed to respond to the user prompt. The evaluator is explicitly asked to use the rubric via its prompt.
+
+See [skill-tester/PROMPTS.md](../skill-tester/PROMPTS.md) for how this content is assembled into workspace CLAUDE.md files and the evaluator prompt.
