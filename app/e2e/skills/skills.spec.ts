@@ -343,4 +343,115 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(marketplaceButton).toBeVisible();
     await expect(marketplaceButton).toBeDisabled();
   });
+
+  // ─── Dashboard list view CRUD tests ──────────────────────────────────────
+
+  const DASHBOARD_SKILLS_WITH_BUILDER = [
+    ...DASHBOARD_SKILLS,
+    {
+      name: "my-skill",
+      domain: "Engineering",
+      current_step: "Step 2/5",
+      status: "in_progress",
+      last_modified: "2025-01-13T08:00:00Z",
+      tags: [],
+      skill_type: "domain",
+      skill_source: "skill-builder",
+      author_login: null,
+      author_avatar: null,
+      intake_json: null,
+    },
+  ];
+
+  test("D1 — delete confirmation dialog opens for skill-builder skill", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, { ...DASHBOARD_MOCKS, list_skills: DASHBOARD_SKILLS_WITH_BUILDER, delete_skill: undefined });
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // Click the "Delete skill" button in the skill-builder skill's row
+    const builderRow = page.locator("tr").filter({ hasText: "my-skill" });
+    await builderRow.getByLabel("Delete skill").click();
+
+    // Confirmation dialog should appear
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("D2 — delete confirmation dialog opens for marketplace skill in list view", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, { ...DASHBOARD_MOCKS, delete_skill: undefined });
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // Click "Delete skill" on the data-analytics (marketplace) row
+    const dataAnalyticsRow = page.locator("tr").filter({ hasText: "data-analytics" });
+    await dataAnalyticsRow.getByLabel("Delete skill").click();
+
+    // Confirmation dialog should appear
+    await expect(page.getByRole("dialog")).toBeVisible();
+  });
+
+  test("D3 — edit workflow button only visible for skill-builder skills", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, { ...DASHBOARD_MOCKS, list_skills: DASHBOARD_SKILLS_WITH_BUILDER });
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // "Edit workflow" should appear exactly once (only for skill-builder skill)
+    const editWorkflowButtons = page.getByLabel("Edit workflow");
+    await expect(editWorkflowButtons).toBeVisible();
+    await expect(editWorkflowButtons).toHaveCount(1);
+  });
+
+  test("D4 — more actions dropdown only visible for skill-builder skills", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, { ...DASHBOARD_MOCKS, list_skills: DASHBOARD_SKILLS_WITH_BUILDER });
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // "More actions" should appear exactly once (only for skill-builder skill)
+    const moreActionsButtons = page.getByLabel("More actions");
+    await expect(moreActionsButtons).toHaveCount(1);
+  });
+
+  test("D5 — test and download buttons visible for marketplace skills in list view", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // data-analytics is marketplace — should show Test and Download buttons
+    const dataAnalyticsRow = page.locator("tr").filter({ hasText: "data-analytics" });
+    await expect(dataAnalyticsRow.getByRole("button", { name: /test skill/i })).toBeVisible();
+    await expect(dataAnalyticsRow.getByRole("button", { name: /download skill/i })).toBeVisible();
+  });
+
+  test("D6 — source filter shows only marketplace skills when filtered", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, DASHBOARD_MOCKS);
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: "List view" }).click();
+
+    // Click the "Source" filter dropdown (first one — in the filter bar)
+    await page.getByRole("button", { name: "Source" }).first().click();
+
+    // Select "Marketplace" option
+    await page.getByRole("option", { name: "Marketplace" }).click();
+
+    // data-analytics (marketplace) should be visible; api-design (imported) should not
+    await expect(page.getByText("data-analytics")).toBeVisible();
+    await expect(page.getByText("api-design")).not.toBeVisible();
+  });
 });
