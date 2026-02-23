@@ -91,7 +91,7 @@ The two modes differ in when overrides are applied:
 
 Before showing the browse dialog, skills already present in the app are marked so the user can see what's installed:
 
-- **Skill Library path**: queries `workflow_runs UNION imported_skills UNION workspace_skills` by skill name (via `get_all_installed_skill_names`). Skills found in any table are shown as "In library". Note: with the `skills` master table added in VD-859, this should migrate to `SELECT skill_name FROM skills` — the union query is a pre-VD-859 holdover.
+- **Skill Library path**: should query `workflow_runs UNION imported_skills` (the Skill Library tables) by skill name. The current implementation calls `get_all_installed_skill_names` which also unions `workspace_skills` — that is incorrect; a skill installed in Settings→Skills should not show as "In library" in the Skill Library browse. This is a known code defect: the query should be replaced with `SELECT skill_name FROM skills` (the master table added in VD-859).
 - **Settings→Skills path**: queries `workspace_skills` by name and version. Skills matching name + version are shown as "Already installed"; skills matching name but at an older version are shown as "Upgrade available".
 
 ---
