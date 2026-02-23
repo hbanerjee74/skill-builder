@@ -313,13 +313,13 @@ export default function DashboardPage() {
         return (
           <div className="flex flex-col gap-1">
             {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className={cn("grid items-center gap-x-3 rounded-md border px-3 py-2", LIST_ROW_GRID)}>
-                <Skeleton className="h-4 w-32" />
+              <div key={i} className={cn("grid items-center gap-x-4 rounded-md border px-4 py-2.5", LIST_ROW_GRID)}>
+                <div>
+                  <Skeleton className="h-4 w-32 mb-1" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
                 <Skeleton className="h-5 w-16 rounded-full" />
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-12" />
-                <Skeleton className="h-2 w-full" />
+                <Skeleton className="h-5 w-16 rounded-full" />
                 <div className="flex gap-1 justify-self-end">
                   <Skeleton className="size-6 rounded-md" />
                   <Skeleton className="size-6 rounded-md" />
@@ -395,13 +395,10 @@ export default function DashboardPage() {
       return (
         <div className="flex flex-col gap-1">
           {/* Table header */}
-          <div className={cn("hidden sm:grid items-center gap-x-3 px-3 py-1.5 text-xs font-medium text-muted-foreground border-b mb-1", LIST_ROW_GRID)}>
+          <div className={cn("hidden sm:grid items-center gap-x-4 px-4 py-1.5 text-xs font-medium text-muted-foreground border-b mb-1", LIST_ROW_GRID)}>
             <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Domain" column="domain" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Type" column="type" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <span>Tags</span>
-            <SortHeader label="Progress" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
             <span className="justify-self-end">Actions</span>
           </div>
           {sortedSkills.map((skill) => (
