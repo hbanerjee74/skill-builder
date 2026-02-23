@@ -50,6 +50,12 @@ function renderRow(
   const onEditWorkflow = vi.fn();
   const onRefine = vi.fn();
 
+  // SkillListRow renders a <tr>, so it must be mounted inside a valid table context.
+  const table = document.createElement("table");
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+  document.body.appendChild(table);
+
   render(
     <SkillListRow
       skill={skill}
@@ -60,7 +66,8 @@ function renderRow(
       onEditWorkflow={onEditWorkflow}
       onRefine={onRefine}
       {...overrides}
-    />
+    />,
+    { container: tbody }
   );
 
   return { onContinue, onDelete, onDownload, onEdit, onEditWorkflow, onRefine };
