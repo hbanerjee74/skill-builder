@@ -263,7 +263,8 @@ export default function DashboardPage() {
   }
 
   const handleEditWorkflow = (skill: SkillSummary) => {
-    useWorkflowStore.getState().setPendingUpdateMode(true)
+    console.log("[dashboard] edit workflow: skill=%s", skill.name)
+    useWorkflowStore.getState().setReviewMode(true)
     navigate({ to: "/skill/$skillName", params: { skillName: skill.name } })
   }
 
