@@ -287,6 +287,23 @@ export interface AvailableSkill {
   domain: string | null
   description: string | null
   skill_type: string | null
+  version: string | null
+  model: string | null
+  argument_hint: string | null
+  user_invocable: boolean | null
+  disable_model_invocation: boolean | null
+}
+
+export interface SkillMetadataOverride {
+  name: string
+  description: string
+  domain: string
+  skill_type: string
+  version?: string | null
+  model?: string | null
+  argument_hint?: string | null
+  user_invocable?: boolean | null
+  disable_model_invocation?: boolean | null
 }
 
 export interface MarketplaceImportResult {

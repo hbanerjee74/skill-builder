@@ -461,6 +461,29 @@ pub struct AvailableSkill {
     pub description: Option<String>,
     #[serde(default)]
     pub skill_type: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub argument_hint: Option<String>,
+    #[serde(default)]
+    pub user_invocable: Option<bool>,
+    #[serde(default)]
+    pub disable_model_invocation: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SkillMetadataOverride {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub domain: Option<String>,
+    pub skill_type: Option<String>,
+    pub version: Option<String>,
+    pub model: Option<String>,
+    pub argument_hint: Option<String>,
+    pub user_invocable: Option<bool>,
+    pub disable_model_invocation: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
