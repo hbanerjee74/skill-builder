@@ -269,7 +269,7 @@ export default function GitHubImportDialog({
                       >
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium truncate">{skill.name}</span>
+                            <span className={`text-sm font-medium truncate ${state === "exists" ? "text-muted-foreground" : ""}`}>{skill.name}</span>
                             {skill.domain && (
                               <Badge variant="secondary" className="text-xs shrink-0">
                                 {skill.domain}
