@@ -890,6 +890,8 @@ mod tests {
     #[test]
     fn test_update_imported_skill_active() {
         let conn = create_test_db();
+        // Skills master row required for FK-based update
+        crate::db::upsert_skill(&conn, "my-test-skill", "imported", "analytics", "domain").unwrap();
         let skill = make_test_skill();
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
@@ -2222,6 +2224,9 @@ domain: analytics
     #[test]
     fn test_upsert_bundled_skill_preserves_is_active() {
         let conn = create_test_db();
+
+        // Skills master row required for FK-based get/update operations
+        crate::db::upsert_skill(&conn, "upsert-test", "imported", "test", "domain").unwrap();
 
         // Create skill dirs on disk so hydration works
         let skill_tmp = tempdir().unwrap();

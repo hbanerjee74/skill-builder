@@ -23,7 +23,7 @@ Single `Mutex<Connection>` — all access is serialized. WAL mode enables concur
 
 ### Migration strategy
 
-20 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
+23 sequential migrations tracked in `schema_migrations`. Migrations run at startup before any commands are registered. Each migration is applied exactly once; version + `applied_at` are recorded.
 
 ### Schema overview
 
@@ -34,16 +34,17 @@ Skills Library (list_skills)             Settings→Skills (list_workspace_skill
 ─────────────────────────────            ──────────────────────────────────────
 skills  ← master                         workspace_skills  ← standalone
  ├─ workflow_runs        (skill_id FK → skills.id)
- │   ├─ workflow_steps     (skill_name)
- │   └─ workflow_artifacts (skill_name)
- ├─ imported_skills      (skill_name)
- ├─ workflow_sessions    (skill_name)
- │   └─ agent_runs       (workflow_session_id → workflow_sessions.session_id)
- ├─ skill_tags           (skill_name)
- └─ skill_locks          (skill_name)
+ │   ├─ workflow_steps     (workflow_run_id FK → workflow_runs.id)
+ │   └─ workflow_artifacts (workflow_run_id FK → workflow_runs.id)
+ ├─ imported_skills      (skill_master_id FK → skills.id)
+ ├─ workflow_sessions    (skill_id FK → skills.id)
+ │   └─ agent_runs       (workflow_session_id → workflow_sessions.session_id,
+ │                         workflow_run_id FK → workflow_runs.id)
+ ├─ skill_tags           (skill_id FK → skills.id)
+ └─ skill_locks          (skill_id FK → skills.id)
 ```
 
-`workflow_runs` is the only table with an enforced FK (`skill_id → skills.id`). All other tables link by `skill_name` convention. `agent_runs` is a child of `workflow_sessions` (joined via `workflow_session_id`); it also carries `skill_name` and `step_id` to identify which workflow run step it belongs to. `workspace_skills` is entirely separate — no relationship to `skills`.
+`workflow_runs` has `skill_id → skills.id`. All child tables now link by integer FK: `workflow_steps`, `workflow_artifacts`, and `agent_runs` use `workflow_run_id → workflow_runs.id`; `skill_tags`, `skill_locks`, `workflow_sessions`, and `imported_skills` use `skill_id`/`skill_master_id → skills.id`. FKs are declared via `REFERENCES` but enforcement requires `PRAGMA foreign_keys = ON` per connection. `skill_name TEXT` is retained in all tables for display and logging. `agent_runs` is a child of `workflow_sessions` (joined via `workflow_session_id`); it also carries `skill_name` and `step_id` to identify which workflow run step it belongs to. `workspace_skills` is entirely separate — no relationship to `skills`.
 
 ### Skills Library tables
 
@@ -57,19 +58,19 @@ skills  ← master                         workspace_skills  ← standalone
 
 **`workflow_runs`** — Child of `skills` for `skill-builder` skills. Stores build progress: current step, status, intake data, display metadata. FK `skill_id → skills.id`. One row per skill.
 
-**`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing.
+**`workflow_steps`** — Child of `workflow_runs`. Per-step status (`pending` / `in_progress` / `completed`) and timing. FK `workflow_run_id → workflow_runs.id`.
 
-**`workflow_artifacts`** — Child of `workflow_runs`. Step output files stored inline (content + size). Keyed by `(skill_name, step_id, relative_path)`.
+**`workflow_artifacts`** — Child of `workflow_runs`. Step output files stored inline (content + size). Keyed by `(skill_name, step_id, relative_path)`. FK `workflow_run_id → workflow_runs.id`.
 
-**`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. Linked to `skills` by `skill_name` (convention, not enforced FK).
+**`imported_skills`** — Child of `skills` for `marketplace` skills. Stores import-specific metadata: disk path, active/inactive state, skill type, version, model, argument hint. FK `skill_master_id → skills.id`.
 
-**`workflow_sessions`** — Child of `skills` (by `skill_name`). Tracks refine and workflow session lifetimes: start, end, PID. Includes `reset_marker` to soft-delete cancelled sessions.
+**`workflow_sessions`** — Child of `skills`. Tracks refine and workflow session lifetimes: start, end, PID. FK `skill_id → skills.id`. Includes `reset_marker` to soft-delete cancelled sessions.
 
-**`agent_runs`** — Child of `workflow_sessions` (via `workflow_session_id`). One row per agent invocation. Also carries `skill_name` and `step_id` to identify the workflow run step. Stores model, token counts, cost, duration, turn count, stop reason, compaction count.
+**`agent_runs`** — Child of `workflow_sessions` (via `workflow_session_id`). One row per agent invocation. Also carries `skill_name` and `step_id` to identify the workflow run step. FK `workflow_run_id → workflow_runs.id`. Stores model, token counts, cost, duration, turn count, stop reason, compaction count.
 
-**`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`.
+**`skill_tags`** — Many-to-many skill→tag, normalized to lowercase. Keyed by `(skill_name, tag)`. FK `skill_id → skills.id`.
 
-**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. Linked to `skills` by `skill_name`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
+**`skill_locks`** — Prevents two app instances from editing the same skill simultaneously. FK `skill_id → skills.id`. Stores `instance_id` and `pid`; stale locks (dead PID) are reclaimed automatically.
 
 ### Settings→Skills table
 
