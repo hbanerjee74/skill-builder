@@ -31,9 +31,6 @@ import type { SkillSummary, SkillType } from "@/lib/types"
 import { SKILL_TYPE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
-/** Shared 5-column grid — used by both the row and the table header in dashboard.tsx */
-export const LIST_ROW_GRID = "grid-cols-[1fr_auto] sm:grid-cols-[2fr_1fr_1fr_auto]"
-
 function getStatusLabel(skill: SkillSummary): string {
   if (skill.skill_source === "marketplace" || skill.skill_source === "imported" || isWorkflowComplete(skill)) {
     return "Completed"
@@ -71,15 +68,18 @@ export default function SkillListRow({
   const statusLabel = getStatusLabel(skill)
   const isComplete = statusLabel === "Completed"
 
+  const tdBase = cn(
+    "py-2.5 transition-colors",
+    isLocked ? "opacity-50" : "",
+  )
+
   const row = (
-    <div
-      role="button"
+    <tr
       tabIndex={isLocked ? -1 : 0}
       className={cn(
-        "grid items-center gap-x-4 rounded-md border px-4 py-2.5 transition-colors",
-        LIST_ROW_GRID,
+        "border-b transition-colors",
         isLocked
-          ? "opacity-50 cursor-not-allowed"
+          ? "cursor-not-allowed"
           : "cursor-pointer hover:bg-accent/50",
       )}
       onClick={() => !isLocked && onContinue(skill)}
@@ -91,102 +91,110 @@ export default function SkillListRow({
       }}
     >
       {/* Col 1: Name + Type subtitle */}
-      <div className={cn("min-w-0", isLocked && "flex items-center gap-1.5")}>
-        {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
-        <div className="truncate text-sm font-medium">{skill.name}</div>
-        <div className="hidden sm:block truncate text-xs text-muted-foreground">
-          {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+      <td className={cn(tdBase, "pl-4 min-w-0")}>
+        <div className={cn("min-w-0", isLocked && "flex items-center gap-1.5")}>
+          {isLocked && <Lock className="size-3.5 shrink-0 text-muted-foreground" />}
+          <div className="truncate text-sm font-medium">{skill.name}</div>
+          <div className="hidden sm:block truncate text-xs text-muted-foreground">
+            {skill.skill_type ? (SKILL_TYPE_LABELS[skill.skill_type as SkillType] || skill.skill_type) : ""}
+          </div>
         </div>
-      </div>
+      </td>
 
       {/* Col 2: Source */}
-      <div className="hidden sm:flex sm:items-center">
-        <SkillSourceBadge skillSource={skill.skill_source} />
-      </div>
+      <td className={cn(tdBase, "hidden sm:table-cell")}>
+        <div className="flex items-center">
+          <SkillSourceBadge skillSource={skill.skill_source} />
+        </div>
+      </td>
 
       {/* Col 3: Status */}
-      <div className="hidden sm:flex sm:items-center">
-        {isComplete ? (
-          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
-            Completed
-          </Badge>
-        ) : (
-          <Badge variant="secondary" className="text-xs px-1.5 py-0">
-            {statusLabel}
-          </Badge>
-        )}
-      </div>
+      <td className={cn(tdBase, "hidden sm:table-cell")}>
+        <div className="flex items-center">
+          {isComplete ? (
+            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
+              Completed
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-xs px-1.5 py-0">
+              {statusLabel}
+            </Badge>
+          )}
+        </div>
+      </td>
 
       {/* Mobile: status text */}
-      <div className="sm:hidden text-xs text-muted-foreground">
+      <td className={cn(tdBase, "sm:hidden text-xs text-muted-foreground")}>
         {statusLabel}
-      </div>
+      </td>
 
-      {/* Col 4: Actions — fixed width matches the header's Actions span so fr columns align */}
+      {/* Col 4: Actions */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex w-[160px] shrink-0 items-center gap-0.5 justify-self-end justify-end" onClick={(e) => e.stopPropagation()}>
-        {skill.skill_source === 'skill-builder' && (
+      <td className={cn(tdBase, "pr-4")} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-0.5 justify-end">
+          {skill.skill_source === 'skill-builder' && (
+            <IconAction
+              icon={<Pencil className="size-3" />}
+              label="Edit workflow"
+              tooltip="Edit workflow"
+              onClick={() => onEditWorkflow?.(skill)}
+            />
+          )}
+          {canDownload && onRefine && (
+            <IconAction
+              icon={<MessageSquare className="size-3" />}
+              label="Refine skill"
+              tooltip="Refine"
+              onClick={() => onRefine(skill)}
+            />
+          )}
+          {canDownload && (
+            <IconAction
+              icon={<FlaskConical className="size-3" />}
+              label="Test skill"
+              tooltip="Test"
+              onClick={() => onTest?.(skill)}
+            />
+          )}
+          {canDownload && onDownload && (
+            <IconAction
+              icon={<Download className="size-3" />}
+              label="Download skill"
+              tooltip="Download .skill"
+              onClick={() => onDownload(skill)}
+            />
+          )}
           <IconAction
-            icon={<Pencil className="size-3" />}
-            label="Edit workflow"
-            tooltip="Edit workflow"
-            onClick={() => onEditWorkflow?.(skill)}
+            icon={<Trash2 className="size-3" />}
+            label="Delete skill"
+            tooltip="Delete"
+            className="hover:text-destructive"
+            onClick={() => onDelete(skill)}
           />
-        )}
-        {canDownload && onRefine && (
-          <IconAction
-            icon={<MessageSquare className="size-3" />}
-            label="Refine skill"
-            tooltip="Refine"
-            onClick={() => onRefine(skill)}
-          />
-        )}
-        {canDownload && (
-          <IconAction
-            icon={<FlaskConical className="size-3" />}
-            label="Test skill"
-            tooltip="Test"
-            onClick={() => onTest?.(skill)}
-          />
-        )}
-        {canDownload && onDownload && (
-          <IconAction
-            icon={<Download className="size-3" />}
-            label="Download skill"
-            tooltip="Download .skill"
-            onClick={() => onDownload(skill)}
-          />
-        )}
-        <IconAction
-          icon={<Trash2 className="size-3" />}
-          label="Delete skill"
-          tooltip="Delete"
-          className="hover:text-destructive"
-          onClick={() => onDelete(skill)}
-        />
 
-        {skill.skill_source === 'skill-builder' && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="text-muted-foreground"
-                aria-label="More actions"
-              >
-                <MoreHorizontal className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
-                <SquarePen className="size-4" />
-                Edit details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
+          {skill.skill_source === 'skill-builder' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground"
+                  aria-label="More actions"
+                >
+                  <MoreHorizontal className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => onEdit?.(skill)}>
+                  <SquarePen className="size-4" />
+                  Edit details
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </td>
+    </tr>
   )
 
   if (isLocked) {

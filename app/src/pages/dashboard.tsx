@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import SkillCard from "@/components/skill-card"
-import SkillListRow, { LIST_ROW_GRID } from "@/components/skill-list-row"
+import SkillListRow from "@/components/skill-list-row"
 import { DashboardViewToggle, type ViewMode } from "@/components/dashboard-view-toggle"
 import SkillDialog from "@/components/skill-dialog"
 import DeleteSkillDialog from "@/components/delete-skill-dialog"
@@ -37,7 +37,7 @@ import { packageSkill, getLockedSkills } from "@/lib/tauri"
 import type { SkillSummary, AppSettings } from "@/lib/types"
 import { SKILL_TYPES, SKILL_TYPE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
-import { cn } from "@/lib/utils"
+
 
 function SortHeader({ label, column, sortBy, sortDir, onSort }: {
   label: string
@@ -316,23 +316,31 @@ export default function DashboardPage() {
     if (loading) {
       if (viewMode === "list") {
         return (
-          <div className="flex flex-col gap-1">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className={cn("grid items-center gap-x-4 rounded-md border px-4 py-2.5", LIST_ROW_GRID)}>
-                <div>
-                  <Skeleton className="h-4 w-32 mb-1" />
-                  <Skeleton className="h-3 w-16" />
-                </div>
-                <Skeleton className="h-5 w-16 rounded-full" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-                <div className="flex gap-1 justify-self-end">
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                  <Skeleton className="size-6 rounded-md" />
-                </div>
-              </div>
-            ))}
-          </div>
+          <table className="w-full table-auto border-collapse">
+            <tbody>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <tr key={i} className="border-b">
+                  <td className="py-2.5 pl-4">
+                    <Skeleton className="h-4 w-32 mb-1" />
+                    <Skeleton className="h-3 w-16" />
+                  </td>
+                  <td className="hidden sm:table-cell py-2.5">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </td>
+                  <td className="hidden sm:table-cell py-2.5">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </td>
+                  <td className="py-2.5 pr-4">
+                    <div className="flex gap-1 justify-end">
+                      <Skeleton className="size-6 rounded-md" />
+                      <Skeleton className="size-6 rounded-md" />
+                      <Skeleton className="size-6 rounded-md" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )
       }
       return (
@@ -398,18 +406,27 @@ export default function DashboardPage() {
 
     if (viewMode === "list") {
       return (
-        <div className="flex flex-col gap-1">
-          {/* Table header */}
-          <div className={cn("hidden sm:grid items-center gap-x-4 px-4 py-1.5 text-sm font-semibold text-muted-foreground border-b", LIST_ROW_GRID)}>
-            <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            <span className="w-[160px] justify-self-end text-right">Actions</span>
-          </div>
-          {sortedSkills.map((skill) => (
-            <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
-          ))}
-        </div>
+        <table className="w-full table-auto border-collapse">
+          <thead>
+            <tr className="hidden sm:table-row border-b text-sm font-semibold text-muted-foreground">
+              <th scope="col" className="pl-4 py-1.5 text-left font-semibold">
+                <SortHeader label="Name" column="name" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              </th>
+              <th scope="col" className="py-1.5 text-left font-semibold">
+                <SortHeader label="Source" column="source" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              </th>
+              <th scope="col" className="py-1.5 text-left font-semibold">
+                <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              </th>
+              <th scope="col" className="pr-4 py-1.5 text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedSkills.map((skill) => (
+              <SkillListRow key={skill.name} {...sharedSkillProps(skill)} />
+            ))}
+          </tbody>
+        </table>
       )
     }
 

@@ -277,7 +277,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Get the Source badge ELEMENT's left edge (not the text inside, which is offset by icon+padding).
     // Scope to the data-analytics row to avoid matching the top-bar "Marketplace" import button.
     const dataAnalyticsRow = page
-      .locator('[role="button"]')
+      .locator("tr")
       .filter({ hasText: "data-analytics" });
     // The Source badge is a <span> containing "Marketplace" text
     const sourceBadgeBox = await dataAnalyticsRow
