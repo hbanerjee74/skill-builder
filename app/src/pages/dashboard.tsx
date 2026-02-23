@@ -293,6 +293,7 @@ export default function DashboardPage() {
         toast.dismiss(toastId)
       }
     } catch (err) {
+      console.error("[dashboard] Download failed:", err)
       toast.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`, { id: toastId, duration: Infinity })
     }
   }, [workspacePath])
