@@ -111,7 +111,6 @@ export default function GitHubImportDialog({
         info.repo,
         info.branch,
         info.subpath ?? undefined,
-        mode === 'skill-library'
       )
       if (typeFilter && typeFilter.length > 0) {
         available = available.filter(

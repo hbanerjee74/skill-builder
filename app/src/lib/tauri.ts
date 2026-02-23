@@ -361,8 +361,8 @@ export const parseGitHubUrl = (url: string) =>
 export const checkMarketplaceUrl = (url: string) =>
   invoke<void>("check_marketplace_url", { url });
 
-export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string, showAll?: boolean) =>
-  invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null, showAll: showAll ?? false });
+export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
+  invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
 export const importGitHubSkills = (owner: string, repo: string, branch: string, skillPaths: string[]) =>
   invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillPaths });
