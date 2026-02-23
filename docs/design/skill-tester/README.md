@@ -25,51 +25,6 @@ Both plan agents receive the same wrapped prompt. The difference is entirely in 
 
 ---
 
-## Layout
-
-Three-zone layout: **prompt input → split plan panels → evaluator**.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  TEST SKILL                [PLAN MODE]  [● dbt-fabric-skill ▾] │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │ test prompt textarea (3 rows)                             │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                              [▶ Run Test]       │
-├──────────────────────────────┬──────────────────────────────────┤
-│  AGENT PLAN  [with skill]    │  AGENT PLAN  [no skill]          │
-│  ─────────────────────────   │  ───────────────────────────     │
-│  1  Step with Fabric-        │  1  Generic step                 │
-│     specific guidance        │  2  Generic step                 │
-│  2  Step with Salesforce-    │  3  Generic step                 │
-│     aware enum guard         │                                  │
-│  3  Incremental + lookback   │  Files: 2                        │
-│  4  Weekly reconciliation    │  ✎ models/silver/customer.sql    │
-│                              │  ✎ models/silver/schema.yml      │
-│  Files: 3                    │                                  │
-│  ✎ models/silver/customer.sql│                                  │
-│  ✎ models/silver/schema.yml  │                                  │
-│  + models/recon/customer.sql │                                  │
-├──────────────────────────────┴──────────────────────────────────┤  ← drag
-│  EVALUATOR                                                       │
-│  ─────────────────────────────────────────────────────────────  │
-│  ↑  Skill adds Fabric-specific context — lookback window and CDC lag handling absent from baseline.  │
-│  ↑  Step count higher with skill (4 vs 3) — reconciliation model is a production-relevant addition. │
-│  ↑  Enum guard is Salesforce-aware; baseline uses generic values that will miss real picklist values.│
-│  ↓  Neither plan addresses SCD Type 2 — customer table at silver often needs history tracking.      │
-│  ↓  Test severity levels (warn vs error) absent from both plans.                                    │
-├─────────────────────────────────────────────────────────────────┤
-│  ● completed · dbt-fabric-skill · plan mode · 2.3s              │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Plan panels** stream simultaneously. The vertical divider is draggable.
-
-**Evaluator** starts after both plan agents complete. `↑` = improvement the skill produced. `↓` = gap in both plans or regression. Followed by a Recommendations section with actionable suggestions for improving the skill.
-
----
-
 ## What the evaluator sees
 
 The evaluator runs in the **baseline** workspace (so it loads the `skill-test` Evaluation Rubric automatically). Its prompt embeds the raw user prompt (not the wrapped version) and the full output from both plan agents. It does **not** receive the skill content itself — it judges the output, not the intent. If the skill didn't guide the agent toward better plans, the evaluator will say so.
