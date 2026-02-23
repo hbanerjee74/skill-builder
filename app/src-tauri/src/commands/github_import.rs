@@ -798,6 +798,7 @@ fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -
     let skill_md_path = dest_dir.join("SKILL.md");
     let existing = fs::read_to_string(&skill_md_path)
         .map_err(|e| format!("Failed to read SKILL.md for rewrite: {}", e))?;
+    let existing = existing.replace("\r\n", "\n");
 
     // Extract body: find the closing --- that ends the frontmatter block.
     // Must be a standalone line (not embedded in content) to avoid truncating

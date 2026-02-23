@@ -469,6 +469,18 @@ pub fn toggle_skill_active(
     // When activating, auto-deactivate any other active skill with the same purpose
     if active {
         if let Some(ref purpose) = skill.purpose {
+            // Query siblings before the UPDATE so we can move them on disk afterward
+            let mut sibling_stmt = conn.prepare(
+                "SELECT skill_id, skill_name FROM workspace_skills WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1"
+            ).map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
+            let siblings: Vec<(String, String)> = sibling_stmt.query_map(rusqlite::params![purpose, skill_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Failed to query siblings: {}", e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to collect siblings: {}", e))?;
+            drop(sibling_stmt);
+
             let rows_affected = conn.execute(
                 "UPDATE workspace_skills SET is_active = 0 WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
                 rusqlite::params![purpose, skill_id],
@@ -481,6 +493,43 @@ pub fn toggle_skill_active(
                     "[toggle_skill_active] deactivated {} other skill(s) with purpose='{}'",
                     rows_affected, purpose
                 );
+            }
+
+            // Move deactivated siblings' directories from active to inactive on disk
+            let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
+            let inactive_dir = skills_dir.join(".inactive");
+            for (sibling_id, sibling_name) in &siblings {
+                let src = skills_dir.join(sibling_name);
+                let dst = inactive_dir.join(sibling_name);
+                if src.exists() {
+                    if let Err(e) = fs::create_dir_all(&inactive_dir) {
+                        log::error!(
+                            "[toggle_skill_active] failed to create .inactive dir for sibling '{}': {}",
+                            sibling_name, e
+                        );
+                        continue;
+                    }
+                    if let Err(e) = fs::rename(&src, &dst) {
+                        log::error!(
+                            "[toggle_skill_active] failed to move sibling '{}' to inactive: {}",
+                            sibling_name, e
+                        );
+                        // Don't fail the whole activation — DB is already updated
+                        continue;
+                    }
+                    // Update disk_path in DB to reflect the new location
+                    let new_disk_path = dst.to_string_lossy().to_string();
+                    if let Err(e) = crate::db::update_workspace_skill_active(&conn, sibling_id, false, &new_disk_path) {
+                        log::error!(
+                            "[toggle_skill_active] failed to update disk_path for sibling '{}': {}",
+                            sibling_name, e
+                        );
+                    }
+                    log::debug!(
+                        "[toggle_skill_active] moved sibling '{}' to inactive on disk",
+                        sibling_name
+                    );
+                }
             }
         }
     }

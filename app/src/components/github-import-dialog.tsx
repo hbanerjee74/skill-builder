@@ -352,14 +352,17 @@ export default function GitHubImportDialog({
 
   /** Proceed to purpose assignment step */
   const handleProceedToPurpose = useCallback(() => {
-    // Initialize purposeMap with null for all selected skills
+    // Initialize purposeMap with null for all selected skills,
+    // pre-populating existing purpose for upgrade re-imports
     const initial: Record<string, string | null> = {}
     for (const path of selectedPaths) {
-      initial[path] = purposeMap[path] ?? null
+      const skillName = skills.find((s) => s.path === path)?.name ?? null
+      const existingWs = skillName ? workspaceSkills.find((w) => w.skill_name === skillName) : null
+      initial[path] = purposeMap[path] ?? existingWs?.purpose ?? null
     }
     setPurposeMap(initial)
     setShowPurposeStep(true)
-  }, [selectedPaths, purposeMap])
+  }, [selectedPaths, purposeMap, skills, workspaceSkills])
 
   /** Execute the final import with purpose assignments */
   const handleConfirmImport = useCallback(async () => {
@@ -394,10 +397,12 @@ export default function GitHubImportDialog({
     }
   }, [repoInfo, selectedPaths, purposeMap, editOverrides, onImported])
 
-  /** Check if a purpose is already occupied by an active workspace skill */
-  function getPurposeConflict(purpose: string | null): WorkspaceSkill | null {
+  /** Check if a purpose is already occupied by an active workspace skill (excluding the skill being imported by name) */
+  function getPurposeConflict(purpose: string | null, excludeSkillName?: string | null): WorkspaceSkill | null {
     if (!purpose) return null
-    return workspaceSkills.find((w) => w.is_active && w.purpose === purpose) ?? null
+    return workspaceSkills.find(
+      (w) => w.is_active && w.purpose === purpose && w.skill_name !== excludeSkillName
+    ) ?? null
   }
 
   /** Determine if the confirm button should be disabled in purpose step */
@@ -405,7 +410,8 @@ export default function GitHubImportDialog({
     ? Array.from(selectedPaths)
         .map((path) => {
           const purpose = purposeMap[path] ?? null
-          const conflict = getPurposeConflict(purpose)
+          const skillName = skills.find((s) => s.path === path)?.name ?? null
+          const conflict = getPurposeConflict(purpose, skillName)
           return conflict ? { path, conflict, purpose } : null
         })
         .filter(Boolean)
@@ -622,7 +628,7 @@ export default function GitHubImportDialog({
                     const skill = skills.find((s) => s.path === path)
                     if (!skill) return null
                     const selectedPurpose = purposeMap[path] ?? null
-                    const conflict = getPurposeConflict(selectedPurpose)
+                    const conflict = getPurposeConflict(selectedPurpose, skill.name)
                     return (
                       <div key={path} className="flex flex-col gap-1.5 rounded-md border px-3 py-2.5">
                         <div className="flex items-center justify-between gap-2">
