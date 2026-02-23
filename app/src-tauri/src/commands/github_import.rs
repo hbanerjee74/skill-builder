@@ -1094,15 +1094,14 @@ pub(crate) async fn import_single_skill(
 
     // Rewrite SKILL.md with updated frontmatter if a metadata override was applied
     if metadata_override.is_some() {
+        log::info!("[import_single_skill] rewriting SKILL.md frontmatter for '{}'", skill_name);
         if let Err(e) = rewrite_skill_md(&dest_dir, &fm) {
-            log::error!(
-                "[import_single_skill] failed to rewrite SKILL.md for '{}': {}",
-                skill_name, e
-            );
-            if let Err(ce) = fs::remove_dir_all(&dest_dir) {
+            log::error!("[import_single_skill] failed to rewrite SKILL.md for '{}': {}", skill_name, e);
+            // Clean up the disk directory to avoid leaving orphaned files
+            if let Err(cleanup_err) = fs::remove_dir_all(&dest_dir) {
                 log::warn!(
-                    "[import_single_skill] rollback cleanup failed for '{}': {}",
-                    dest_dir.display(), ce
+                    "[import_single_skill] failed to clean up '{}' after rewrite failure: {}",
+                    dest_dir.display(), cleanup_err
                 );
             }
             return Err(e);
@@ -1754,5 +1753,41 @@ mod tests {
         // Rollback cleanup (mirrors import_single_skill on rewrite failure)
         fs::remove_dir_all(&dest_dir).unwrap();
         assert!(!dest_dir.exists(), "dest_dir should be gone after rollback");
+    }
+
+    /// Verify that rewrite_skill_md merges override fields with the original frontmatter:
+    /// - Override fields replace original values
+    /// - Fields absent from the override retain their original values
+    #[test]
+    fn test_rewrite_skill_md_preserves_unoverridden_fields() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().unwrap();
+        let skill_md = dir.path().join("SKILL.md");
+
+        // Original SKILL.md has version and model set
+        let original = "---\nname: original-name\ndescription: original-desc\ndomain: original-domain\ntype: domain\nversion: \"1.0.0\"\nmodel: claude-3-haiku\n---\n# Body content\n";
+        fs::write(&skill_md, original).unwrap();
+
+        // Simulate what import_single_skill does: parse original, then apply partial override
+        let mut fm = super::super::imported_skills::parse_frontmatter_full(original);
+        // Override only name and description; version and model not in override
+        fm.name = Some("overridden-name".to_string());
+        fm.description = Some("overridden-desc".to_string());
+
+        rewrite_skill_md(dir.path(), &fm).unwrap();
+        let result = fs::read_to_string(&skill_md).unwrap();
+
+        // Overridden fields must be updated
+        assert!(result.contains("name: \"overridden-name\""), "name not overridden: {}", result);
+        assert!(result.contains("description: \"overridden-desc\""), "description not overridden: {}", result);
+
+        // Non-overridden fields must be preserved from the original parse
+        assert!(result.contains("version: \"1.0.0\""), "version was lost: {}", result);
+        assert!(result.contains("model: \"claude-3-haiku\""), "model was lost: {}", result);
+
+        // Body must be preserved
+        assert!(result.contains("# Body content"), "body was lost: {}", result);
     }
 }
