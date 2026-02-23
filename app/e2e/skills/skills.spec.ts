@@ -454,4 +454,377 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("data-analytics")).toBeVisible();
     await expect(page.getByText("api-design")).not.toBeVisible();
   });
+
+  // ─── Version-aware marketplace import tests (settings-skills mode) ────────
+
+  /** Minimal mock set required for the Settings > Skills page and marketplace dialog to load. */
+  const MARKETPLACE_BASE_MOCKS = {
+    get_settings: {
+      anthropic_api_key: "sk-ant-test",
+      workspace_path: "/tmp/ws",
+      skills_path: "/tmp/skills",
+      marketplace_url: "https://github.com/test-owner/test-repo",
+    },
+    parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+    get_installed_skill_names: [],
+    list_skills: [],
+  };
+
+  test("T1 — shows Up to date badge when same name and same version installed (settings-skills mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...MARKETPLACE_BASE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/data-analytics",
+          name: "data-analytics",
+          version: "1.0.0",
+          description: "Analytics skill",
+          domain: "Data",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      list_workspace_skills: [
+        {
+          skill_id: "id-1",
+          skill_name: "data-analytics",
+          version: "1.0.0",
+          domain: "Data",
+          description: null,
+          is_active: true,
+          is_bundled: false,
+          disk_path: "/tmp/skills/data-analytics",
+          imported_at: "2025-01-01",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+    });
+
+    await navigateToSkillsLibrary(page);
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    // Skill row should be visible
+    await expect(page.getByText("data-analytics")).toBeVisible();
+
+    // "Up to date" badge must appear for the same-version skill
+    await expect(page.getByText("Up to date")).toBeVisible();
+
+    // The action button is replaced by a non-button checkmark icon — no importable button for this skill
+    const skillRow = page.locator("div").filter({ hasText: /^data-analytics/ }).first();
+    await expect(skillRow.getByRole("button")).not.toBeVisible();
+  });
+
+  test("T2 — shows Update available badge when same name but different version installed (settings-skills mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...MARKETPLACE_BASE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/data-analytics",
+          name: "data-analytics",
+          version: "2.0.0",
+          description: "Analytics skill",
+          domain: "Data",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      list_workspace_skills: [
+        {
+          skill_id: "id-1",
+          skill_name: "data-analytics",
+          version: "1.0.0",
+          domain: "Data",
+          description: null,
+          is_active: true,
+          is_bundled: false,
+          disk_path: "/tmp/skills/data-analytics",
+          imported_at: "2025-01-01",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+    });
+
+    await navigateToSkillsLibrary(page);
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("data-analytics")).toBeVisible();
+
+    // "Update available" badge must appear for the upgraded skill
+    await expect(page.getByText("Update available")).toBeVisible();
+
+    // The import button must be enabled (upgrade is allowed)
+    const dialog = page.getByRole("dialog");
+    const importButton = dialog.getByRole("button").last();
+    await expect(importButton).toBeEnabled();
+  });
+
+  test("T3 — fresh install has no version badge (settings-skills mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...MARKETPLACE_BASE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/new-skill",
+          name: "new-skill",
+          version: "1.0.0",
+          description: "A brand new skill",
+          domain: "General",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      list_workspace_skills: [],
+    });
+
+    await navigateToSkillsLibrary(page);
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("new-skill")).toBeVisible();
+
+    // Neither version badge should appear for a fresh install
+    await expect(page.getByText("Up to date")).not.toBeVisible();
+    await expect(page.getByText("Update available")).not.toBeVisible();
+
+    // Import button must be present and enabled
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("button").last()).toBeEnabled();
+  });
+
+  test("T4 — same null versions treated as same version, shows Up to date badge (settings-skills mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...MARKETPLACE_BASE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/no-version-skill",
+          name: "no-version-skill",
+          version: null,
+          description: "Skill without version",
+          domain: "General",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      list_workspace_skills: [
+        {
+          skill_id: "id-2",
+          skill_name: "no-version-skill",
+          version: null,
+          domain: "General",
+          description: null,
+          is_active: true,
+          is_bundled: false,
+          disk_path: "/tmp/skills/no-version-skill",
+          imported_at: "2025-01-01",
+          skill_type: null,
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+    });
+
+    await navigateToSkillsLibrary(page);
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("no-version-skill")).toBeVisible();
+
+    // Both null versions are treated as equal — "Up to date" must appear
+    await expect(page.getByText("Up to date")).toBeVisible();
+
+    // No enabled import button (replaced by checkmark)
+    const skillRow = page.locator("div").filter({ hasText: /^no-version-skill/ }).first();
+    await expect(skillRow.getByRole("button")).not.toBeVisible();
+  });
+
+  // ─── Edit form pre-population tests (skill-library mode via dashboard) ────
+
+  /** Mocks for the dashboard page with skill-library marketplace dialog. */
+  const SKILL_LIBRARY_MARKETPLACE_MOCKS = {
+    get_settings: {
+      anthropic_api_key: "sk-ant-test",
+      workspace_path: "/tmp/ws",
+      skills_path: "/tmp/skills",
+      marketplace_url: "https://github.com/test-owner/test-repo",
+      dashboard_view_mode: null,
+    },
+    parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+    get_installed_skill_names: [],
+    list_skills: [],
+    get_all_tags: [],
+    save_settings: undefined,
+    check_workspace_path: true,
+  };
+
+  test("T5 — edit form pre-populates installed description and domain when new version lacks them (skill-library mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...SKILL_LIBRARY_MARKETPLACE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/data-analytics",
+          name: "data-analytics",
+          version: "2.0.0",
+          description: null,
+          domain: null,
+          skill_type: "domain",
+          model: "claude-opus-4-6",
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      get_dashboard_skill_names: ["data-analytics"],
+      list_skills: [
+        {
+          name: "data-analytics",
+          domain: "Analytics",
+          current_step: null,
+          status: "completed",
+          last_modified: "2025-01-01T00:00:00Z",
+          tags: [],
+          skill_type: "domain",
+          skill_source: "marketplace",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+          description: "My custom description",
+          version: "1.0.0",
+          model: null,
+          argumentHint: null,
+          userInvocable: null,
+          disableModelInvocation: null,
+        },
+      ],
+    });
+
+    await navigateToDashboard(page);
+    // Open skill-library marketplace dialog via top-bar Marketplace button
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("data-analytics")).toBeVisible();
+    await expect(page.getByText("Update available")).toBeVisible();
+
+    // Click the edit & import button to open the edit form
+    const marketplaceDialog = page.getByRole("dialog").first();
+    await marketplaceDialog.getByRole("button").last().click();
+
+    // Edit & Import Skill dialog should open
+    await expect(page.getByText("Edit & Import Skill")).toBeVisible();
+
+    // Description falls back to installed value since new version has null
+    const descriptionField = page.getByLabel("Description");
+    await expect(descriptionField).toHaveValue("My custom description");
+
+    // Domain falls back to installed value since new version has null
+    const domainField = page.getByLabel("Domain");
+    await expect(domainField).toHaveValue("Analytics");
+
+    // Version is always the new version
+    const versionField = page.getByLabel(/Version/);
+    await expect(versionField).toHaveValue("2.0.0");
+  });
+
+  test("T6 — edit form shows new values when marketplace skill provides non-null description and domain (skill-library mode)", async ({ page }) => {
+    await page.addInitScript((mocks) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = mocks;
+    }, {
+      ...SKILL_LIBRARY_MARKETPLACE_MOCKS,
+      list_github_skills: [
+        {
+          path: "skills/data-analytics",
+          name: "data-analytics",
+          version: "2.0.0",
+          description: "New description from marketplace",
+          domain: "New Domain",
+          skill_type: "domain",
+          model: null,
+          argument_hint: null,
+          user_invocable: null,
+          disable_model_invocation: null,
+        },
+      ],
+      get_dashboard_skill_names: ["data-analytics"],
+      list_skills: [
+        {
+          name: "data-analytics",
+          domain: "Old Domain",
+          current_step: null,
+          status: "completed",
+          last_modified: "2025-01-01T00:00:00Z",
+          tags: [],
+          skill_type: "domain",
+          skill_source: "marketplace",
+          author_login: null,
+          author_avatar: null,
+          intake_json: null,
+          description: "Old custom description",
+          version: "1.0.0",
+          model: null,
+          argumentHint: null,
+          userInvocable: null,
+          disableModelInvocation: null,
+        },
+      ],
+    });
+
+    await navigateToDashboard(page);
+    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page.waitForTimeout(500);
+
+    await expect(page.getByText("data-analytics")).toBeVisible();
+    await expect(page.getByText("Update available")).toBeVisible();
+
+    // Click the edit & import button
+    const marketplaceDialog = page.getByRole("dialog").first();
+    await marketplaceDialog.getByRole("button").last().click();
+
+    await expect(page.getByText("Edit & Import Skill")).toBeVisible();
+
+    // New value wins over installed when new is non-null/non-empty
+    const descriptionField = page.getByLabel("Description");
+    await expect(descriptionField).toHaveValue("New description from marketplace");
+
+    const domainField = page.getByLabel("Domain");
+    await expect(domainField).toHaveValue("New Domain");
+  });
 });
