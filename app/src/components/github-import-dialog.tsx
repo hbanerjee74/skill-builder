@@ -19,7 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill, SkillSummary } from "@/lib/types"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
 import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
@@ -82,7 +82,6 @@ export default function GitHubImportDialog({
   const [skills, setSkills] = useState<AvailableSkill[]>([])
   const [error, setError] = useState<string | null>(null)
   const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
-  const [installedSkillSummaryMap, setInstalledSkillSummaryMap] = useState<Map<string, SkillSummary>>(new Map())
   const availableModels = useSettingsStore((s) => s.availableModels)
 
   // Edit form state for both skill-library and settings-skills modes
@@ -119,7 +118,6 @@ export default function GitHubImportDialog({
     setSkills([])
     setError(null)
     setSkillStates(new Map())
-    setInstalledSkillSummaryMap(new Map())
     closeEditForm()
     setEditOverrides({})
     setSelectedPaths(new Set())
@@ -180,7 +178,6 @@ export default function GitHubImportDialog({
             preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
           }
         }
-        setInstalledSkillSummaryMap(newSummaryMap)
       } else {
         // settings-skills: check workspace_skills table
         const installedSkills = await listWorkspaceSkills()
@@ -211,44 +208,27 @@ export default function GitHubImportDialog({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  const openEditForm = useCallback((skill: AvailableSkill, installedSkill?: WorkspaceSkill | null) => {
+  const openEditForm = useCallback((skill: AvailableSkill) => {
     setEditingSkill(skill)
-    // Pre-fill with any existing override first, then fall back to merge of new/installed values
+    // Priority: in-session edits → remote skill frontmatter → existing installed version (for upgrade/exists)
     const existing = editOverrides[skill.path]
+    const state = skillStates.get(skill.path)
+    const ws = (state === 'upgrade' || state === 'exists')
+      ? workspaceSkills.find((w) => w.skill_name === skill.name)
+      : undefined
     const isSettingsMode = mode === 'settings-skills'
-
-    if (existing) {
-      setEditForm({
-        name: existing.name ?? skill.name ?? '',
-        description: existing.description ?? skill.description ?? '',
-        domain: existing.domain ?? skill.domain ?? '',
-        skill_type: isSettingsMode ? 'skill-builder' : (existing.skill_type ?? skill.skill_type ?? ''),
-        version: existing.version ?? skill.version ?? (isSettingsMode ? '1.0.0' : ''),
-        model: existing.model ?? skill.model ?? '',
-        argument_hint: existing.argument_hint ?? skill.argument_hint ?? '',
-        user_invocable: (existing.user_invocable ?? skill.user_invocable) ?? false,
-        disable_model_invocation: (existing.disable_model_invocation ?? skill.disable_model_invocation) ?? false,
-      })
-    } else {
-      // Merge: new value wins if non-empty, else fall back to installed value
-      const str = (newVal: string | null | undefined, oldVal: string | null | undefined) =>
-        (newVal && newVal.trim()) ? newVal : (oldVal ?? '')
-      const bool = (newVal: boolean | null | undefined, oldVal: boolean | null | undefined) =>
-        newVal != null ? newVal : (oldVal ?? false)
-
-      setEditForm({
-        name: skill.name ?? installedSkill?.skill_name ?? '',
-        description: str(skill.description, installedSkill?.description),
-        domain: str(skill.domain, installedSkill?.domain),
-        skill_type: isSettingsMode ? 'skill-builder' : str(skill.skill_type, installedSkill?.skill_type),
-        version: skill.version ?? installedSkill?.version ?? (isSettingsMode ? '1.0.0' : ''),
-        model: (skill.model || installedSkill?.model) ? (skill.model || installedSkill?.model || APP_DEFAULT_MODEL) : APP_DEFAULT_MODEL,
-        argument_hint: str(skill.argument_hint, installedSkill?.argument_hint),
-        user_invocable: bool(skill.user_invocable, installedSkill?.user_invocable),
-        disable_model_invocation: bool(skill.disable_model_invocation, installedSkill?.disable_model_invocation),
-      })
-    }
-  }, [editOverrides, mode])
+    setEditForm({
+      name: existing?.name ?? skill.name ?? ws?.skill_name ?? '',
+      description: existing?.description ?? skill.description ?? ws?.description ?? '',
+      domain: existing?.domain ?? skill.domain ?? ws?.domain ?? '',
+      skill_type: isSettingsMode ? 'skill-builder' : (existing?.skill_type ?? skill.skill_type ?? ws?.skill_type ?? ''),
+      version: existing?.version ?? skill.version ?? ws?.version ?? '1.0.0',
+      model: existing?.model ?? skill.model ?? ws?.model ?? '',
+      argument_hint: existing?.argument_hint ?? skill.argument_hint ?? ws?.argument_hint ?? '',
+      user_invocable: (existing?.user_invocable ?? skill.user_invocable ?? ws?.user_invocable) ?? false,
+      disable_model_invocation: (existing?.disable_model_invocation ?? skill.disable_model_invocation ?? ws?.disable_model_invocation) ?? false,
+    })
+  }, [editOverrides, mode, skillStates, workspaceSkills])
 
   /** Handle marketplace import result, returning true if the import succeeded. */
   function handleMarketplaceResult(path: string, results: { success: boolean; error: string | null }[]): boolean {
@@ -563,23 +543,7 @@ export default function GitHubImportDialog({
                               disabled={isImporting}
                               onClick={() => {
                                 if (mode === 'skill-library') {
-                                  const installedSummary = isUpgrade ? installedSkillSummaryMap.get(skill.name) : null
-                                  openEditForm(skill, installedSummary ? {
-                                    skill_id: '',
-                                    skill_name: installedSummary.name,
-                                    description: installedSummary.description ?? null,
-                                    domain: installedSummary.domain ?? null,
-                                    skill_type: installedSummary.skill_type ?? null,
-                                    version: installedSummary.version ?? null,
-                                    model: installedSummary.model ?? null,
-                                    argument_hint: installedSummary.argumentHint ?? null,
-                                    user_invocable: installedSummary.userInvocable ?? null,
-                                    disable_model_invocation: installedSummary.disableModelInvocation ?? null,
-                                    is_active: true,
-                                    is_bundled: false,
-                                    disk_path: '',
-                                    imported_at: '',
-                                  } as WorkspaceSkill : null)
+                                  openEditForm(skill)
                                 } else {
                                   handleImport(skill)
                                 }
