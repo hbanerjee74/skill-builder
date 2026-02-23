@@ -100,6 +100,8 @@ export default function GitHubImportDialog({
   // Workspace skills for version comparison and conflict detection
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
 
+  const availableModels = useSettingsStore((s) => s.availableModels)
+
   function setSkillState(path: string, state: SkillState): void {
     setSkillStates((prev) => new Map(prev).set(path, state))
   }
@@ -419,7 +421,7 @@ export default function GitHubImportDialog({
   const hasPurposeConflict = purposeConflicts.length > 0
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.skill_type
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || (mode !== 'settings-skills' && !editForm.skill_type)
     : false
 
   const isSkillLibraryEditMode = mode === 'skill-library'
@@ -744,39 +746,50 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-skill-type">
-                    Skill Type <span className="text-destructive">*</span>
-                  </Label>
-                  <Select
-                    value={editForm.skill_type}
-                    onValueChange={(v) => updateField("skill_type", v)}
-                  >
-                    <SelectTrigger
-                      id="edit-skill-type"
-                      className={!editForm.skill_type ? "border-destructive focus-visible:ring-destructive" : ""}
-                    >
-                      <SelectValue placeholder="Select skill type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SKILL_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!editForm.skill_type && (
-                    <p className="text-xs text-destructive">Skill type is required</p>
+                  {mode === 'settings-skills' ? (
+                    <>
+                      <Label>Skill Type</Label>
+                      <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
+                        skill-builder
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Label htmlFor="edit-skill-type">
+                        Skill Type <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        value={editForm.skill_type}
+                        onValueChange={(v) => updateField("skill_type", v)}
+                      >
+                        <SelectTrigger
+                          id="edit-skill-type"
+                          className={!editForm.skill_type ? "border-destructive focus-visible:ring-destructive" : ""}
+                        >
+                          <SelectValue placeholder="Select skill type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SKILL_TYPES.map((t) => (
+                            <SelectItem key={t} value={t}>
+                              {t.charAt(0).toUpperCase() + t.slice(1).replace(/-/g, ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!editForm.skill_type && (
+                        <p className="text-xs text-destructive">Skill type is required</p>
+                      )}
+                    </>
                   )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label htmlFor="edit-version">Version</Label>
                   <Input
                     id="edit-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
-                    placeholder="e.g. 1.0.0"
+                    placeholder="1.0.0"
                   />
                 </div>
 
