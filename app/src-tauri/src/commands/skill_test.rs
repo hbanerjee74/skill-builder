@@ -135,7 +135,7 @@ pub fn prepare_skill_test(
     // User skills live in skills_path; bundled skills (like skill-test) live in workspace_path/.claude/skills/
     log::info!("[prepare_skill_test] copying skill '{}' into with-skill workspace", skill_name);
     copy_skill_dir(
-        &Path::new(&skills_path),
+        Path::new(&skills_path),
         &with_skill_skills_dir,
         &skill_name,
     )?;

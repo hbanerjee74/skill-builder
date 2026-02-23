@@ -36,6 +36,7 @@ pub(crate) struct Frontmatter {
 /// Parse YAML frontmatter from SKILL.md content.
 /// Extracts `name`, `description`, `domain`, and `skill_type` fields from YAML between `---` markers.
 /// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
+#[allow(dead_code)]
 pub(crate) fn parse_frontmatter(
     content: &str,
 ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {

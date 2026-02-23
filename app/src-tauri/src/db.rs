@@ -2118,6 +2118,7 @@ pub fn hydrate_skill_metadata(skill: &mut ImportedSkill) {
     }
 }
 
+#[allow(dead_code)]
 pub fn insert_imported_skill(
     conn: &Connection,
     skill: &ImportedSkill,
@@ -2223,6 +2224,7 @@ pub fn upsert_imported_skill(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn update_imported_skill_active(
     conn: &Connection,
     skill_name: &str,
@@ -2245,6 +2247,7 @@ pub fn update_imported_skill_active(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), String> {
     let s_id = match get_skill_master_id(conn, skill_name)? {
         Some(id) => id,
@@ -2318,6 +2321,7 @@ pub fn get_imported_skill(
     }
 }
 
+#[allow(dead_code)]
 pub fn list_active_skills(conn: &Connection) -> Result<Vec<ImportedSkill>, String> {
     let mut stmt = conn
         .prepare(
@@ -2596,8 +2600,7 @@ pub fn acquire_skill_lock(
     conn.execute_batch("BEGIN IMMEDIATE")
         .map_err(|e| e.to_string())?;
 
-    let skill_master_id = get_skill_master_id(conn, skill_name)
-        .map_err(|e| e)?
+    let skill_master_id = get_skill_master_id(conn, skill_name)?
         .ok_or_else(|| "Skill not found in skills master".to_string());
 
     let result = (|| -> Result<(), String> {
