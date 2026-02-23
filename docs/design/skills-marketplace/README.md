@@ -15,8 +15,6 @@ The marketplace is a one-way import layer — skills flow in from a GitHub repo,
 
 A data engineer installing a custom `research` skill in Settings→Skills is changing how the workflow itself runs. A data engineer importing a domain skill into the Skill Library is acquiring a finished knowledge package to deploy to their own Claude Code projects.
 
-The `skill_type` frontmatter field drives the routing: `skill-builder` type skills belong in Settings→Skills; `domain`, `platform`, `source`, and `data-engineering` skills belong in the Skill Library.
-
 ---
 
 ## Settings → Skills
@@ -27,11 +25,48 @@ Skills in this layer are loaded into the agent workspace and wired into CLAUDE.m
 
 1. **Bundled** — shipped with the app, seeded by `seed_bundled_skills` on startup. Always overwrite on seed; `is_active` state is preserved across re-seeds. Cannot be deleted — only deactivated.
 
-2. **Marketplace import** (Settings→Skills browse dialog) — scans the configured marketplace repo, filtered to `skill_type='skill-builder'`. Downloads to `workspace_path/.claude/skills/`, inserts into `imported_skills` only. No dashboard entry.
+2. **Marketplace import** (Settings→Skills browse dialog) — scans the configured marketplace repo. Any skill with a `SKILL.md` containing at least a `name` field is shown — no `skill_type` filter is applied here. Downloads to `workspace_path/.claude/skills/`, inserts into `workspace_skills`. No dashboard entry.
 
 3. **Zip upload** — extracts to `workspace_path/.claude/skills/`. Mandatory frontmatter: `name`, `domain`, `description`. Always forces `skill_type='skill-builder'` regardless of frontmatter.
 
 **Active/inactive toggle** — deactivating moves the skill directory from `skills/` to `skills/.inactive/`. The DB is updated first; if the file move fails, the DB update is rolled back. CLAUDE.md is rebuilt after every toggle.
+
+### Version-aware import guard
+
+Before import, the app compares the candidate skill against existing `workspace_skills` rows by name:
+
+| Condition | Status shown | Action |
+|---|---|---|
+| Same name + same version already in `workspace_skills` | "Already installed" | Import blocked |
+| Same name + newer version available | "Upgrade available" | Import allowed — overwrites existing directory on disk and updates the DB row, preserving `is_active` and `is_bundled` |
+| No name match | Available | Import proceeds normally |
+
+### Editable metadata at import
+
+When importing into Settings→Skills, an edit form is shown pre-populated with the skill's frontmatter values. The user can modify `name`, `description`, `domain`, `skill_type`, `version`, and `model` before confirming. The confirmed values are written to `SKILL.md` on disk and stored in the DB.
+
+**Frontmatter rewrite on disk**: when the user confirms, the YAML frontmatter block in `SKILL.MD` is rewritten with the user-supplied values. Body content below the closing `---` is preserved. If the rewrite fails, the import is rolled back — the skill directory is removed and no DB row is inserted — and the error is surfaced to the user.
+
+### Purpose slots
+
+Each workspace skill may hold a **purpose** — a named role the app resolves at runtime when selecting which skill to use for a given function. Purpose is a nullable DB-only field (`workspace_skills.purpose`); it is not written to frontmatter.
+
+**Bundled skill purposes** (hardcoded):
+
+| Skill | Purpose |
+|---|---|
+| `research` | `research` |
+| `skill-builder-practices` | `skill-building` |
+| `skill-test` | `test-context` |
+| `validate-skill` | `validate` |
+
+**Import-time assignment**: during marketplace import into Settings→Skills, the user can optionally assign a purpose to the incoming skill. If the selected purpose is already held by an active workspace skill, the import is blocked with the message "Purpose occupied by `{name}`".
+
+**Activation behaviour**: activating a workspace skill that has a purpose automatically deactivates any other active skill holding the same purpose. Only one active skill per purpose at a time.
+
+**Runtime resolution**: when the app needs a skill for a given purpose, it looks for an active workspace skill with a matching `purpose` value. If none is found, it falls back to the corresponding bundled skill.
+
+**UI**: workspace skill rows show a purpose badge when a purpose is assigned. Purpose can be edited after import.
 
 ---
 
@@ -43,7 +78,7 @@ Skills in this layer are the product of Skill Builder — domain knowledge packa
 
 1. **Built** — created via the full workflow (Research → Decisions → Generation → Validation). Tracked in `workflow_runs` with `source='created'`.
 
-2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills. Downloads to `skills_path/`, inserts into both `imported_skills` and `workflow_runs` with `source='marketplace'`, `status='completed'`. Appears in the dashboard immediately and qualifies for refinement.
+2. **Marketplace import** (dashboard browse dialog or skill creation prompt) — scans the configured marketplace repo, filtered to domain-type skills (`skill_type` values: `domain`, `platform`, `source`, `data-engineering`). Downloads to `skills_path/`, inserts into both `imported_skills` and `workflow_runs` with `source='marketplace'`, `status='completed'`. Appears in the dashboard immediately and qualifies for refinement.
 
 A marketplace-imported skill is "already completed" — it skips the generation workflow entirely but is otherwise identical to a built skill for refinement purposes.
 
@@ -63,7 +98,10 @@ The marketplace is a GitHub repository — any repo where each subdirectory cont
 
 **Discovery**: `list_github_skills` fetches the full recursive git tree, finds all `SKILL.md` blob entries, downloads each one, parses frontmatter, and returns `AvailableSkill` records. If a `subpath` is configured, only entries under that path are included.
 
-**Pre-marking**: Before showing the browse dialog, `get_all_installed_skill_names` queries a UNION of `workflow_runs` and `imported_skills` by skill name. Skills already in either table are shown as "In library" (greyed out) in the browse UI.
+**Pre-marking**: Before showing the browse dialog, skills already present in the app are marked so the user can see what's installed.
+
+- **Skill Library path**: queries a UNION of `workflow_runs` and `imported_skills` by skill name. Skills found in either table are shown as "In library".
+- **Settings→Skills path**: queries `workspace_skills` by name and version. Skills matching name + version are shown as "Already installed"; skills matching name but at an older version are shown as "Upgrade available".
 
 ---
 
@@ -97,10 +135,10 @@ disable-model-invocation: false
 | Field | Required | Description |
 |---|---|---|
 | `name` | Yes | Kebab-case identifier. Falls back to directory name if absent, but should always be set explicitly. Used as the primary key — two skills with the same name will conflict. |
-| `description` | Yes | Shown in the browse dialog, Skill Library, and wired into the workspace CLAUDE.md so Claude Code knows when to invoke the skill. Should follow the trigger-pattern format: what it does, when to use it. |
-| `domain` | Yes | The business or technical domain (e.g. `sales`, `dbt`, `fabric`). Shown as a badge in the skill list. |
-| `skill_type` | Yes | Routes the skill to the right layer. `domain`, `platform`, `source`, `data-engineering` → Skill Library. `skill-builder` → Settings→Skills (app infrastructure). |
-| `version` | No | Semantic version string. Stored for future update detection — not yet acted on by the app. |
+| `description` | No (Settings→Skills); Yes (Skill Library) | Shown in the browse dialog, Skill Library, and wired into the workspace CLAUDE.md so Claude Code knows when to invoke the skill. Should follow the trigger-pattern format: what it does, when to use it. |
+| `domain` | No (Settings→Skills); Yes (Skill Library) | The business or technical domain (e.g. `sales`, `dbt`, `fabric`). Shown as a badge in the skill list. |
+| `skill_type` | No | Categorises the skill (`domain`, `platform`, `source`, `data-engineering`, `skill-builder`). The Skill Library browse dialog filters to domain-type values. Settings→Skills browse shows all skills with a `SKILL.md` regardless of `skill_type`. |
+| `version` | No | Semantic version string. Used by the version-aware import guard in Settings→Skills. |
 | `model` | No | Preferred Claude model for this skill (`opus`, `sonnet`, `haiku`). Overrides the app default when the skill is invoked. |
 | `argument-hint` | No | Short hint shown to the user when invoking the skill (e.g. `"dbt model name"`). Helps the user know what to pass. |
 | `user-invocable` | No | `true` if the skill can be directly invoked by the user as a slash command. Defaults to `false`. |
