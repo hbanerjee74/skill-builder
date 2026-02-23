@@ -27,7 +27,9 @@ A data engineer installing a custom `research` skill in Settings→Skills is cha
 
 **Default branch resolution**: `parse_github_url` defaults to `"main"` for URLs without an explicit branch. All import functions call `get_default_branch` via the repos API after parsing to resolve the actual default — avoiding 404s on repos where the default branch is `"master"` or a custom name.
 
-**Discovery (Settings→Skills browse)**: `list_github_skills` fetches `.claude-plugin/marketplace.json` at the root of the configured branch. The manifest is a JSON object with a `plugins` array; each entry carries `name`, `source` (a relative path string or an object source type), and optional `description`, `version`, `author`, `category`, `tags`. Only path-string sources are processed — object sources (e.g. npm, pip, url) are skipped with a warning. Each resolved path is verified to have a `SKILL.md` present; entries without one are filtered out. If a `subpath` is configured, only paths under that prefix are included.
+**Discovery (Settings→Skills browse)**: `list_github_skills` fetches `.claude-plugin/marketplace.json` at the root of the configured branch. The manifest is a JSON object with a `plugins` array; each entry carries `name`, `source` (a relative path string or an object source type), and optional `description`, `version`, `author`, `category`, `tags`. Only path-string sources are processed — object sources (e.g. npm, pip, url) are skipped with a warning.
+
+After building the candidate list, the repo tree is fetched and each path is checked for a `SKILL.md` blob. Entries without a `SKILL.md` are filtered out. This is the explicit gate that excludes plugin packages (e.g. `./plugins/*`) that live alongside skills in the repo but are not importable as skills. If a `subpath` is configured, only paths under that prefix are included.
 
 **Discovery (Skill Library browse)**: `import_marketplace_to_library` uses the full recursive git tree + per-SKILL.md fetches — the marketplace.json optimization applies only to the Settings→Skills browse listing.
 
