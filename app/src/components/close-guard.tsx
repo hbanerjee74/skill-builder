@@ -13,6 +13,7 @@ import {
 import { gracefulShutdown, hasRunningAgents } from "@/lib/tauri";
 import { useWorkflowStore } from "@/stores/workflow-store";
 import { useRefineStore } from "@/stores/refine-store";
+import { useTestStore } from "@/stores/test-store";
 import { Loader2 } from "lucide-react";
 
 export function CloseGuard() {
@@ -40,7 +41,7 @@ export function CloseGuard() {
       // If we can't check, assume no agents and close
     }
 
-    if (agentsRunning || useRefineStore.getState().isRunning) {
+    if (agentsRunning || useRefineStore.getState().isRunning || useTestStore.getState().isRunning) {
       setShowDialog(true);
     } else {
       try {
