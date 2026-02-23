@@ -17,7 +17,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE TABLE IF NOT EXISTS workflow_runs (
-            skill_name TEXT PRIMARY KEY,
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            skill_name  TEXT UNIQUE NOT NULL,
             domain TEXT NOT NULL,
             current_step INTEGER NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'pending',
@@ -43,6 +44,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             status TEXT NOT NULL DEFAULT 'pending',
             started_at TEXT,
             completed_at TEXT,
+            workflow_run_id INTEGER REFERENCES workflow_runs(id),
             PRIMARY KEY (skill_name, step_id)
         );
         CREATE TABLE IF NOT EXISTS agent_runs (
@@ -57,6 +59,7 @@ pub fn create_test_db() -> rusqlite::Connection {
             session_id TEXT,
             started_at TEXT NOT NULL DEFAULT (datetime('now')),
             completed_at TEXT,
+            workflow_run_id INTEGER REFERENCES workflow_runs(id),
             PRIMARY KEY (agent_id, model)
         );
         CREATE TABLE IF NOT EXISTS workflow_artifacts (
@@ -67,12 +70,14 @@ pub fn create_test_db() -> rusqlite::Connection {
             size_bytes INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            workflow_run_id INTEGER REFERENCES workflow_runs(id),
             PRIMARY KEY (skill_name, step_id, relative_path)
         );
         CREATE TABLE IF NOT EXISTS skill_tags (
             skill_name TEXT NOT NULL,
             tag TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            skill_id INTEGER REFERENCES skills(id),
             PRIMARY KEY (skill_name, tag)
         );
         CREATE TABLE IF NOT EXISTS imported_skills (
@@ -89,7 +94,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             model TEXT,
             argument_hint TEXT,
             user_invocable INTEGER,
-            disable_model_invocation INTEGER
+            disable_model_invocation INTEGER,
+            skill_master_id INTEGER REFERENCES skills(id)
         );
         CREATE TABLE IF NOT EXISTS workspace_skills (
             skill_id     TEXT PRIMARY KEY,
@@ -105,13 +111,15 @@ pub fn create_test_db() -> rusqlite::Connection {
             model        TEXT,
             argument_hint TEXT,
             user_invocable INTEGER,
-            disable_model_invocation INTEGER
+            disable_model_invocation INTEGER,
+            skill_master_id INTEGER REFERENCES skills(id)
         );
         CREATE TABLE IF NOT EXISTS skill_locks (
             skill_name TEXT PRIMARY KEY,
             instance_id TEXT NOT NULL,
             pid INTEGER NOT NULL,
-            acquired_at TEXT NOT NULL DEFAULT (datetime('now'))
+            acquired_at TEXT NOT NULL DEFAULT (datetime('now')),
+            skill_id INTEGER REFERENCES skills(id)
         );
         CREATE TABLE IF NOT EXISTS workflow_sessions (
             session_id TEXT PRIMARY KEY,
@@ -119,7 +127,8 @@ pub fn create_test_db() -> rusqlite::Connection {
             pid INTEGER NOT NULL,
             started_at TEXT NOT NULL DEFAULT (datetime('now') || 'Z'),
             ended_at TEXT,
-            reset_marker TEXT
+            reset_marker TEXT,
+            skill_id INTEGER REFERENCES skills(id)
         );",
     )
     .unwrap();

@@ -198,7 +198,7 @@ pub fn run() {
             commands::workspace::create_workflow_session,
             commands::workspace::end_workflow_session,
             commands::imported_skills::upload_skill,
-            commands::imported_skills::list_imported_skills,
+            commands::imported_skills::list_workspace_skills,
             commands::imported_skills::toggle_skill_active,
             commands::imported_skills::delete_imported_skill,
             commands::imported_skills::get_skill_content,
