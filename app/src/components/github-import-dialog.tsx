@@ -16,16 +16,11 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
+import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill, SkillSummary } from "@/lib/types"
 import { SKILL_TYPES } from "@/lib/types"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useSettingsStore } from "@/stores/settings-store"
 
 const FALLBACK_MODEL_OPTIONS = [
@@ -41,8 +36,8 @@ interface GitHubImportDialogProps {
   /** The marketplace repository URL (from settings). Required — dialog auto-browses on open. */
   url: string
   /**
-   * When set, only skills whose skill_type is in this list are shown.
-   * Defaults to showing all skills.
+   * When set, only skills whose skill_type is in this list are shown (skill-library mode only).
+   * In settings-skills mode this filter is ignored — all skills with a name are shown.
    */
   typeFilter?: string[]
   /**
@@ -72,6 +67,13 @@ interface EditFormState {
   disable_model_invocation: boolean
 }
 
+const PURPOSE_OPTIONS = [
+  { value: "test-context", label: "test-context" },
+  { value: "research", label: "research" },
+  { value: "validate", label: "validate" },
+  { value: "skill-building", label: "skill-building" },
+]
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
@@ -89,9 +91,20 @@ export default function GitHubImportDialog({
   const [installedSkillSummaryMap, setInstalledSkillSummaryMap] = useState<Map<string, SkillSummary>>(new Map())
   const availableModels = useSettingsStore((s) => s.availableModels)
 
-  // Edit form state for skill-library mode
+  // Edit form state for both skill-library and settings-skills modes
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
+  // Per-skill edit overrides accumulated in settings-skills mode (path -> override)
+  const [editOverrides, setEditOverrides] = useState<Record<string, SkillMetadataOverride>>({})
+
+  // Multi-select state for settings-skills mode
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  // Purpose assignment step
+  const [showPurposeStep, setShowPurposeStep] = useState(false)
+  const [purposeMap, setPurposeMap] = useState<Record<string, string | null>>({})
+
+  // Workspace skills for version comparison and conflict detection
+  const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
 
   function setSkillState(path: string, state: SkillState): void {
     setSkillStates((prev) => new Map(prev).set(path, state))
@@ -114,6 +127,11 @@ export default function GitHubImportDialog({
     setSkillStates(new Map())
     setInstalledSkillSummaryMap(new Map())
     closeEditForm()
+    setEditOverrides({})
+    setSelectedPaths(new Set())
+    setShowPurposeStep(false)
+    setPurposeMap({})
+    setWorkspaceSkills([])
   }, [])
 
   const handleOpenChange = useCallback(
@@ -136,10 +154,15 @@ export default function GitHubImportDialog({
         info.branch,
         info.subpath ?? undefined,
       )
-      if (typeFilter && typeFilter.length > 0) {
+      // Apply typeFilter only for skill-library mode
+      if (mode === 'skill-library' && typeFilter && typeFilter.length > 0) {
         available = available.filter(
           (s) => s.skill_type != null && typeFilter.includes(s.skill_type)
         )
+      }
+      // For settings-skills mode: show all skills that have a name
+      if (mode === 'settings-skills') {
+        available = available.filter((s) => !!s.name)
       }
       if (available.length === 0) {
         setError("No skills found in this repository.")
@@ -167,6 +190,7 @@ export default function GitHubImportDialog({
       } else {
         // settings-skills: check workspace_skills table
         const installedSkills = await listWorkspaceSkills()
+        setWorkspaceSkills(installedSkills)
         const installedSet = new Set(installedSkills.map((s) => s.skill_name))
         const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
         for (const skill of available) {
@@ -195,24 +219,42 @@ export default function GitHubImportDialog({
 
   const openEditForm = useCallback((skill: AvailableSkill, installedSkill?: WorkspaceSkill | null) => {
     setEditingSkill(skill)
-    // Merge: new value wins if non-empty, else fall back to installed value
-    const str = (newVal: string | null | undefined, oldVal: string | null | undefined) =>
-      (newVal && newVal.trim()) ? newVal : (oldVal ?? '')
-    const bool = (newVal: boolean | null | undefined, oldVal: boolean | null | undefined) =>
-      newVal != null ? newVal : (oldVal ?? false)
+    // Pre-fill with any existing override first, then fall back to merge of new/installed values
+    const existing = editOverrides[skill.path]
+    const isSettingsMode = mode === 'settings-skills'
 
-    setEditForm({
-      name: skill.name ?? installedSkill?.skill_name ?? '',
-      description: str(skill.description, installedSkill?.description),
-      domain: str(skill.domain, installedSkill?.domain),
-      skill_type: str(skill.skill_type, installedSkill?.skill_type),
-      version: skill.version ?? installedSkill?.version ?? '1.0.0',  // always new version
-      model: (skill.model || installedSkill?.model) ? (skill.model || installedSkill?.model || APP_DEFAULT_MODEL) : APP_DEFAULT_MODEL,
-      argument_hint: str(skill.argument_hint, installedSkill?.argument_hint),
-      user_invocable: bool(skill.user_invocable, installedSkill?.user_invocable),
-      disable_model_invocation: bool(skill.disable_model_invocation, installedSkill?.disable_model_invocation),
-    })
-  }, [])
+    if (existing) {
+      setEditForm({
+        name: existing.name ?? skill.name ?? '',
+        description: existing.description ?? skill.description ?? '',
+        domain: existing.domain ?? skill.domain ?? '',
+        skill_type: isSettingsMode ? 'skill-builder' : (existing.skill_type ?? skill.skill_type ?? ''),
+        version: existing.version ?? skill.version ?? (isSettingsMode ? '1.0.0' : ''),
+        model: existing.model ?? skill.model ?? '',
+        argument_hint: existing.argument_hint ?? skill.argument_hint ?? '',
+        user_invocable: (existing.user_invocable ?? skill.user_invocable) ?? false,
+        disable_model_invocation: (existing.disable_model_invocation ?? skill.disable_model_invocation) ?? false,
+      })
+    } else {
+      // Merge: new value wins if non-empty, else fall back to installed value
+      const str = (newVal: string | null | undefined, oldVal: string | null | undefined) =>
+        (newVal && newVal.trim()) ? newVal : (oldVal ?? '')
+      const bool = (newVal: boolean | null | undefined, oldVal: boolean | null | undefined) =>
+        newVal != null ? newVal : (oldVal ?? false)
+
+      setEditForm({
+        name: skill.name ?? installedSkill?.skill_name ?? '',
+        description: str(skill.description, installedSkill?.description),
+        domain: str(skill.domain, installedSkill?.domain),
+        skill_type: isSettingsMode ? 'skill-builder' : str(skill.skill_type, installedSkill?.skill_type),
+        version: skill.version ?? installedSkill?.version ?? (isSettingsMode ? '1.0.0' : ''),
+        model: (skill.model || installedSkill?.model) ? (skill.model || installedSkill?.model || APP_DEFAULT_MODEL) : APP_DEFAULT_MODEL,
+        argument_hint: str(skill.argument_hint, installedSkill?.argument_hint),
+        user_invocable: bool(skill.user_invocable, installedSkill?.user_invocable),
+        disable_model_invocation: bool(skill.disable_model_invocation, installedSkill?.disable_model_invocation),
+      })
+    }
+  }, [editOverrides, mode])
 
   /** Handle marketplace import result, returning true if the import succeeded. */
   function handleMarketplaceResult(path: string, results: { success: boolean; error: string | null }[]): boolean {
@@ -258,6 +300,24 @@ export default function GitHubImportDialog({
     }
   }, [onImported])
 
+  /** Save edit form overrides for settings-skills mode (no immediate import) */
+  const handleSaveEditOverride = useCallback(() => {
+    if (!editingSkill || !editForm) return
+    const metadataOverride: SkillMetadataOverride = {
+      name: editForm.name,
+      description: editForm.description,
+      domain: editForm.domain,
+      skill_type: editForm.skill_type,
+      version: editForm.version || null,
+      model: editForm.model || null,
+      argument_hint: editForm.argument_hint || null,
+      user_invocable: editForm.user_invocable,
+      disable_model_invocation: editForm.disable_model_invocation,
+    }
+    setEditOverrides((prev) => ({ ...prev, [editingSkill.path]: metadataOverride }))
+    closeEditForm()
+  }, [editingSkill, editForm])
+
   const handleImport = useCallback(async (skill: AvailableSkill) => {
     if (!repoInfo) return
     setSkillState(skill.path, "importing")
@@ -266,7 +326,12 @@ export default function GitHubImportDialog({
         const results = await importMarketplaceToLibrary([skill.path])
         if (!handleMarketplaceResult(skill.path, results)) return
       } else {
-        await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, [skill.path])
+        const requests: WorkspaceSkillImportRequest[] = [{
+          path: skill.path,
+          purpose: null,
+          metadata_override: editOverrides[skill.path] ?? null,
+        }]
+        await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests)
       }
       setSkillState(skill.path, "imported")
       toast.success(`Imported "${skill.name}"`)
@@ -276,11 +341,88 @@ export default function GitHubImportDialog({
       setSkillState(skill.path, "idle")
       toast.error(err instanceof Error ? err.message : String(err))
     }
-  }, [repoInfo, onImported, mode])
+  }, [repoInfo, onImported, mode, editOverrides])
+
+  /** Toggle selection of a skill in settings-skills multi-select mode */
+  const toggleSkillSelected = useCallback((path: string) => {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+      return next
+    })
+  }, [])
+
+  /** Proceed to purpose assignment step */
+  const handleProceedToPurpose = useCallback(() => {
+    // Initialize purposeMap with null for all selected skills
+    const initial: Record<string, string | null> = {}
+    for (const path of selectedPaths) {
+      initial[path] = purposeMap[path] ?? null
+    }
+    setPurposeMap(initial)
+    setShowPurposeStep(true)
+  }, [selectedPaths, purposeMap])
+
+  /** Execute the final import with purpose assignments */
+  const handleConfirmImport = useCallback(async () => {
+    if (!repoInfo) return
+    const pathsToImport = Array.from(selectedPaths)
+
+    // Mark all as importing
+    for (const path of pathsToImport) {
+      setSkillState(path, "importing")
+    }
+    setShowPurposeStep(false)
+
+    try {
+      const requests: WorkspaceSkillImportRequest[] = pathsToImport.map((path) => ({
+        path,
+        purpose: purposeMap[path] ?? null,
+        metadata_override: editOverrides[path] ?? null,
+      }))
+      await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests)
+      for (const path of pathsToImport) {
+        setSkillState(path, "imported")
+      }
+      setSelectedPaths(new Set())
+      toast.success(`Imported ${pathsToImport.length} skill${pathsToImport.length !== 1 ? 's' : ''}`)
+      await onImported()
+    } catch (err) {
+      console.error("[github-import] Bulk import failed:", err)
+      for (const path of pathsToImport) {
+        setSkillState(path, "idle")
+      }
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+  }, [repoInfo, selectedPaths, purposeMap, editOverrides, onImported])
+
+  /** Check if a purpose is already occupied by an active workspace skill */
+  function getPurposeConflict(purpose: string | null): WorkspaceSkill | null {
+    if (!purpose) return null
+    return workspaceSkills.find((w) => w.is_active && w.purpose === purpose) ?? null
+  }
+
+  /** Determine if the confirm button should be disabled in purpose step */
+  const purposeConflicts = showPurposeStep
+    ? Array.from(selectedPaths)
+        .map((path) => {
+          const purpose = purposeMap[path] ?? null
+          const conflict = getPurposeConflict(purpose)
+          return conflict ? { path, conflict, purpose } : null
+        })
+        .filter(Boolean)
+    : []
+  const hasPurposeConflict = purposeConflicts.length > 0
 
   const isMandatoryMissing = editForm
     ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.skill_type
     : false
+
+  const isSkillLibraryEditMode = mode === 'skill-library'
 
   return (
     <>
@@ -301,12 +443,15 @@ export default function GitHubImportDialog({
             </div>
           )}
 
-          {!loading && skills.length > 0 && repoInfo && (
+          {!loading && skills.length > 0 && repoInfo && !showPurposeStep && (
             <>
               <DialogHeader>
                 <DialogTitle>Browse Marketplace</DialogTitle>
                 <DialogDescription>
                   {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
+                  {mode === 'settings-skills' && (
+                    <span className="ml-1">— select skills to import</span>
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <ScrollArea className="max-h-96">
@@ -316,20 +461,41 @@ export default function GitHubImportDialog({
                     const isImporting = state === "importing"
                     const isSameVersion = state === "same-version"
                     const isUpgrade = state === "upgrade"
-                    const isDimmed = state === "exists" || isSameVersion
-                    const ActionIcon = isImporting ? Loader2 : mode === 'skill-library' ? PencilLine : Download
+                    const isExists = state === "exists"
+                    const isDimmed = isExists || isSameVersion
+                    const isDisabled = isExists || isSameVersion
+                    const isSelected = selectedPaths.has(skill.path)
+                    const hasOverride = !!editOverrides[skill.path]
 
                     return (
                       <div
                         key={skill.path}
-                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${isDimmed ? "bg-muted" : ""}`}
+                        className={`flex items-start gap-3 rounded-md px-2 py-2.5 ${isDimmed ? "bg-muted" : ""} ${mode === 'settings-skills' && !isDisabled ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                        onClick={mode === 'settings-skills' && !isDisabled && !isImporting ? () => toggleSkillSelected(skill.path) : undefined}
                       >
+                        {mode === 'settings-skills' && (
+                          <div className="pt-0.5 shrink-0">
+                            <Checkbox
+                              checked={isSelected}
+                              disabled={isDisabled || isImporting}
+                              onCheckedChange={() => {
+                                if (!isDisabled && !isImporting) toggleSkillSelected(skill.path)
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                        )}
                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className={`text-sm font-medium truncate ${isDimmed ? "text-muted-foreground" : ""}`}>{skill.name}</span>
                             {skill.domain && (
                               <Badge variant="secondary" className={`text-xs shrink-0 ${isDimmed ? "text-muted-foreground" : ""}`}>
                                 {skill.domain}
+                              </Badge>
+                            )}
+                            {isExists && (
+                              <Badge variant="outline" className="text-xs shrink-0 text-muted-foreground">
+                                Already installed
                               </Badge>
                             )}
                             {isSameVersion && (
@@ -340,6 +506,11 @@ export default function GitHubImportDialog({
                             {isUpgrade && (
                               <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                                 Update available
+                              </Badge>
+                            )}
+                            {hasOverride && mode === 'settings-skills' && (
+                              <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
+                                Edited
                               </Badge>
                             )}
                             {mode === 'skill-library' && !skill.skill_type && !isSameVersion && (
@@ -357,15 +528,33 @@ export default function GitHubImportDialog({
                             <span className="text-xs text-amber-600">No description</span>
                           )}
                         </div>
-                        <div className="shrink-0 pt-0.5">
+                        <div className="shrink-0 pt-0.5 flex items-center gap-1">
                           {state === "imported" ? (
                             <div className="flex size-7 items-center justify-center rounded-md border">
                               <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                             </div>
-                          ) : state === "exists" || isSameVersion ? (
+                          ) : isExists || isSameVersion ? (
                             <div className="flex size-7 items-center justify-center rounded-md border bg-muted">
                               <CheckCheck className="size-3.5 text-muted-foreground" />
                             </div>
+                          ) : mode === 'settings-skills' ? (
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="size-7"
+                              disabled={isImporting}
+                              title="Edit metadata"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openEditForm(skill)
+                              }}
+                            >
+                              {isImporting ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <PencilLine className="size-3.5" />
+                              )}
+                            </Button>
                           ) : (
                             <Button
                               size="icon"
@@ -396,7 +585,13 @@ export default function GitHubImportDialog({
                                 }
                               }}
                             >
-                              <ActionIcon className={`size-3.5${isImporting ? ' animate-spin' : ''}`} />
+                              {isImporting ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : isSkillLibraryEditMode ? (
+                                <PencilLine className="size-3.5" />
+                              ) : (
+                                <Download className="size-3.5" />
+                              )}
                             </Button>
                           )}
                         </div>
@@ -405,6 +600,77 @@ export default function GitHubImportDialog({
                   })}
                 </div>
               </ScrollArea>
+              {mode === 'settings-skills' && (
+                <DialogFooter>
+                  <Button
+                    disabled={selectedPaths.size === 0}
+                    onClick={handleProceedToPurpose}
+                  >
+                    Next: Assign Purpose ({selectedPaths.size} selected)
+                  </Button>
+                </DialogFooter>
+              )}
+            </>
+          )}
+
+          {/* Purpose assignment step — settings-skills mode only */}
+          {!loading && showPurposeStep && repoInfo && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Assign Purpose (Optional)</DialogTitle>
+                <DialogDescription>
+                  Optionally assign a purpose to each skill before importing. Only one active skill per purpose is allowed.
+                </DialogDescription>
+              </DialogHeader>
+              <ScrollArea className="max-h-96">
+                <div className="flex flex-col gap-3 pr-3">
+                  {Array.from(selectedPaths).map((path) => {
+                    const skill = skills.find((s) => s.path === path)
+                    if (!skill) return null
+                    const selectedPurpose = purposeMap[path] ?? null
+                    const conflict = getPurposeConflict(selectedPurpose)
+                    return (
+                      <div key={path} className="flex flex-col gap-1.5 rounded-md border px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium truncate">{skill.name}</span>
+                          <Select
+                            value={selectedPurpose ?? "__none__"}
+                            onValueChange={(v) => {
+                              setPurposeMap((prev) => ({ ...prev, [path]: v === "__none__" ? null : v }))
+                            }}
+                          >
+                            <SelectTrigger className="w-44 h-7 text-xs">
+                              <SelectValue placeholder="No purpose" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">No purpose</SelectItem>
+                              {PURPOSE_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {conflict && (
+                          <p className="text-xs text-destructive">
+                            Purpose occupied by &ldquo;{conflict.skill_name}&rdquo;
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </ScrollArea>
+              <DialogFooter className="gap-2">
+                <Button variant="outline" onClick={() => setShowPurposeStep(false)}>
+                  Back
+                </Button>
+                <Button
+                  disabled={hasPurposeConflict}
+                  onClick={handleConfirmImport}
+                >
+                  Import {selectedPaths.size} skill{selectedPaths.size !== 1 ? 's' : ''}
+                </Button>
+              </DialogFooter>
             </>
           )}
 
@@ -416,7 +682,7 @@ export default function GitHubImportDialog({
         </DialogContent>
       </Dialog>
 
-      {/* Metadata edit dialog — shown on top when editing a skill in skill-library mode */}
+      {/* Metadata edit dialog — shown on top when editing a skill */}
       <Dialog open={editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -575,16 +841,25 @@ export default function GitHubImportDialog({
             >
               Cancel
             </Button>
-            <Button
-              disabled={isMandatoryMissing || editForm === null}
-              onClick={() => {
-                if (editingSkill && editForm) {
-                  handleImportWithMetadata(editingSkill, editForm)
-                }
-              }}
-            >
-              Confirm Import
-            </Button>
+            {mode === 'settings-skills' ? (
+              <Button
+                disabled={isMandatoryMissing || editForm === null}
+                onClick={handleSaveEditOverride}
+              >
+                Save Edits
+              </Button>
+            ) : (
+              <Button
+                disabled={isMandatoryMissing || editForm === null}
+                onClick={() => {
+                  if (editingSkill && editForm) {
+                    handleImportWithMetadata(editingSkill, editForm)
+                  }
+                }}
+              >
+                Confirm Import
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
