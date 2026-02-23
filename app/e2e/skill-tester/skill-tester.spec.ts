@@ -1,33 +1,46 @@
 import { test, expect } from "@playwright/test";
 import { waitForAppReady } from "../helpers/app-helpers";
 
+const BASE_OVERRIDES = {
+  get_settings: {
+    anthropic_api_key: "sk-ant-test",
+    workspace_path: "/tmp/test-workspace",
+    skills_path: "/tmp/test-skills",
+  },
+  list_models: [],
+  get_workspace_path: "/tmp/test-workspace",
+  list_refinable_skills: [
+    { name: "my-skill", domain: "Test Domain", skill_type: "domain" },
+  ],
+  has_running_agents: false,
+};
+
 test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
   test("runs test with wrapped prompt and workspace preparation", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_refinable_skills: [
-          { name: "my-skill", domain: "Test Domain", skill_type: "domain" },
-        ],
-        get_workspace_path: "/mock/workspace",
-        prepare_skill_test: {
-          test_id: "test-123",
-          baseline_cwd: "/tmp/skill-builder-test-123/baseline",
-          with_skill_cwd: "/tmp/skill-builder-test-123/with-skill",
-          transcript_log_dir: "/mock/workspace/my-skill/logs",
-        },
-        start_agent: "agent-id-mock",
-        has_running_agents: false,
-      };
+    await page.addInitScript((o) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
+    }, {
+      ...BASE_OVERRIDES,
+      prepare_skill_test: {
+        test_id: "test-123",
+        baseline_cwd: "/tmp/skill-builder-test-123/baseline",
+        with_skill_cwd: "/tmp/skill-builder-test-123/with-skill",
+        transcript_log_dir: "/tmp/test-workspace/my-skill/logs",
+      },
+      start_agent: "agent-id-mock",
     });
 
     await page.goto("/test");
     await waitForAppReady(page);
 
-    // Select skill — SkillPicker renders a Button trigger with "Select a skill..." placeholder
+    // Wait for skill picker to finish loading
+    await page.getByRole("button", { name: /select a skill/i }).waitFor({ timeout: 10_000 });
+
+    // Select skill
     await page.getByRole("button", { name: /select a skill/i }).click();
     await page.getByText("my-skill").click();
 
-    // Verify skill was selected (button now shows skill name)
+    // Verify skill was selected
     await expect(page.getByRole("button", { name: /my-skill/i })).toBeVisible();
 
     // Enter prompt
@@ -45,20 +58,17 @@ test.describe("Skill Tester", { tag: "@skill-tester" }, () => {
   });
 
   test("run test button is disabled without skill selected", async ({ page }) => {
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = {
-        list_refinable_skills: [
-          { name: "my-skill", domain: "Test Domain", skill_type: "domain" },
-        ],
-        get_workspace_path: "/mock/workspace",
-        has_running_agents: false,
-      };
-    });
+    await page.addInitScript((o) => {
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_OVERRIDES__ = o;
+    }, BASE_OVERRIDES);
 
     await page.goto("/test");
     await waitForAppReady(page);
 
-    // Run Test button should be disabled when no skill is selected and no prompt entered
+    // Wait for skill picker to finish loading
+    await page.getByRole("button", { name: /select a skill/i }).waitFor({ timeout: 10_000 });
+
+    // Run Test button should be disabled when no skill is selected
     const runButton = page.getByRole("button", { name: /run test/i });
     await expect(runButton).toBeDisabled();
 
