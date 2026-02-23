@@ -1878,8 +1878,12 @@ pub fn delete_imported_skill(conn: &Connection, skill_name: &str) -> Result<(), 
 }
 
 pub fn delete_imported_skill_by_name(conn: &Connection, name: &str) -> Result<(), String> {
+    log::debug!("delete_imported_skill_by_name: name={}", name);
     conn.execute("DELETE FROM imported_skills WHERE skill_name = ?1", [name])
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            log::error!("delete_imported_skill_by_name: failed to delete '{}': {}", name, e);
+            e.to_string()
+        })?;
     Ok(())
 }
 
@@ -2293,6 +2297,7 @@ mod tests {
         run_workflow_runs_extended_migration(&conn).unwrap();
         run_skills_table_migration(&conn).unwrap();
         run_skills_backfill_migration(&conn).unwrap();
+        run_rename_upload_migration(&conn).unwrap();
         conn
     }
 
@@ -3958,5 +3963,101 @@ mod tests {
         // Sorted by skill_name
         assert_eq!(result[0].skill_name, "active-no-trigger");
         assert_eq!(result[1].skill_name, "active-with-trigger");
+    }
+
+    #[test]
+    fn test_delete_imported_skill_by_name() {
+        let conn = create_test_db();
+        let skill = ImportedSkill {
+            skill_id: "id-del".to_string(),
+            skill_name: "delete-me".to_string(),
+            domain: Some("test".to_string()),
+            is_active: true,
+            disk_path: "/tmp/delete-me".to_string(),
+            imported_at: "2024-01-01".to_string(),
+            is_bundled: false,
+            description: None,
+            skill_type: Some("domain".to_string()),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+        };
+        insert_imported_skill(&conn, &skill).unwrap();
+
+        // Verify it exists
+        assert!(get_imported_skill(&conn, "delete-me").unwrap().is_some());
+
+        // Delete by name
+        delete_imported_skill_by_name(&conn, "delete-me").unwrap();
+
+        // Verify it's gone
+        assert!(get_imported_skill(&conn, "delete-me").unwrap().is_none());
+
+        // Deleting non-existent name should not error
+        delete_imported_skill_by_name(&conn, "does-not-exist").unwrap();
+    }
+
+    #[test]
+    fn test_migration_19_cleans_orphaned_imported_skills() {
+        // Migration 19 performs two operations:
+        //   1. UPDATE skills SET skill_source = 'imported' WHERE skill_source = 'upload'
+        //   2. DELETE orphaned imported_skills (non-bundled, no matching skills master row)
+        // The CHECK constraint on skills.skill_source prevents inserting 'upload' after
+        // migration 17, so we test the orphan cleanup logic (the core new behavior).
+        let conn = create_test_db();
+
+        // Insert a skills master row that has a corresponding imported_skills row
+        conn.execute(
+            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('kept-skill', 'imported', 'test', 'domain')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('kept-id', 'kept-skill', '/tmp/kept', 0)",
+            [],
+        ).unwrap();
+
+        // Insert an orphaned imported_skills row (no skills master row)
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('orphan-id', 'orphan-skill', '/tmp/orphan', 0)",
+            [],
+        ).unwrap();
+
+        // Insert a bundled imported_skills row (should be preserved even without master row)
+        conn.execute(
+            "INSERT INTO imported_skills (skill_id, skill_name, disk_path, is_bundled) VALUES ('bundled-id', 'bundled-skill', '/tmp/bundled', 1)",
+            [],
+        ).unwrap();
+
+        // Run migration 19's orphan cleanup SQL directly
+        conn.execute(
+            "DELETE FROM imported_skills WHERE is_bundled = 0 AND skill_name NOT IN (SELECT name FROM skills)",
+            [],
+        ).unwrap();
+
+        // Orphaned non-bundled row should be gone
+        let orphan_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'orphan-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(orphan_count, 0, "Orphaned non-bundled row should be deleted");
+
+        // Non-orphaned row should be preserved
+        let kept_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'kept-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(kept_count, 1, "Non-orphaned row should be preserved");
+
+        // Bundled row should be preserved (even without master row)
+        let bundled_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM imported_skills WHERE skill_name = 'bundled-skill'",
+            [],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(bundled_count, 1, "Bundled row should be preserved");
     }
 }

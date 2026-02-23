@@ -379,4 +379,50 @@ mod tests {
         assert!(path.ends_with(".vibedata"));
         assert!(path.starts_with('/'));
     }
+
+    #[test]
+    fn test_validate_path_within_rejects_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Create a directory outside parent that a traversal would reach
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+
+        // The traversal path "../outside" resolves to tmp/outside which is outside parent
+        // It must exist for canonicalize to work
+        let result = validate_path_within(&parent, "../outside", "test");
+        assert!(result.is_err(), "Path traversal should be rejected");
+        assert!(
+            result.unwrap_err().contains("path traversal not allowed"),
+            "Error should mention path traversal"
+        );
+    }
+
+    #[test]
+    fn test_validate_path_within_accepts_valid_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Create a valid child directory
+        let child = parent.join("valid-skill");
+        std::fs::create_dir_all(&child).unwrap();
+
+        // Should succeed
+        let result = validate_path_within(&parent, "valid-skill", "test");
+        assert!(result.is_ok(), "Valid path should be accepted");
+    }
+
+    #[test]
+    fn test_validate_path_within_skips_nonexistent_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("parent");
+        std::fs::create_dir_all(&parent).unwrap();
+
+        // Non-existent child: no validation happens (path doesn't exist yet)
+        let result = validate_path_within(&parent, "does-not-exist", "test");
+        assert!(result.is_ok(), "Non-existent path should be accepted (not yet created)");
+    }
 }

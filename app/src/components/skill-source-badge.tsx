@@ -9,7 +9,7 @@ const SOURCE_CONFIG: Record<string, {
 }> = {
   "skill-builder": {
     icon: Hammer,
-    label: "Built",
+    label: "Skill Builder",
     colors: "bg-muted text-muted-foreground",
   },
   marketplace: {
