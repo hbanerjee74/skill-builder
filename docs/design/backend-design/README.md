@@ -14,47 +14,6 @@ The backend bridges the React frontend and the Node.js agent sidecar. It owns al
 
 ---
 
-## Module Structure
-
-```
-src/
-├── lib.rs                  # Tauri builder, app setup, command registration
-├── main.rs                 # Mobile entry point (minimal)
-├── types.rs                # All serializable structs (AppSettings, SkillSummary, etc.)
-├── db.rs                   # All SQLite queries + 20 migrations
-│
-├── commands/               # One file per domain group (~20 files, 47 commands total)
-│   ├── agent.rs
-│   ├── clarification.rs
-│   ├── feedback.rs
-│   ├── files.rs
-│   ├── git.rs
-│   ├── github_auth.rs
-│   ├── github_import.rs
-│   ├── imported_skills.rs
-│   ├── lifecycle.rs
-│   ├── node.rs
-│   ├── refine.rs
-│   ├── settings.rs
-│   ├── skill.rs
-│   ├── skill_test.rs
-│   ├── usage.rs
-│   ├── workflow.rs
-│   └── workspace.rs
-│
-├── agents/
-│   ├── sidecar_pool.rs     # Lifecycle management for spawned sidecar processes
-│   ├── sidecar.rs          # SidecarConfig, spawn/wait logic
-│   └── events.rs           # Tauri event emission to frontend
-│
-├── reconciliation.rs       # Orphan/discovery detection at startup
-├── git.rs                  # git2 wrapper (commit, diff, restore)
-├── logging.rs              # Log plugin setup, level control, transcript pruning
-├── fs_validation.rs        # Path validation (directory traversal prevention)
-└── cleanup.rs              # Cleanup on shutdown
-```
-
----
 
 ## Database Design
 
@@ -149,13 +108,15 @@ On each app launch, `reconcile_startup` scans the workspace directory and compar
 
 This tolerates workspace moves, manual edits, and multi-instance scenarios.
 
-### Skill ingestion paths
+### Skill ingestion — Settings→Skills
 
-**ZIP upload** (Settings→Skills): `upload_skill` extracts the archive, parses SKILL.md frontmatter, and inserts into `workspace_skills`. No `skills` master row is created.
+**ZIP upload**: `upload_skill` extracts the archive, parses SKILL.md frontmatter, and inserts into `workspace_skills`. No `skills` master row is created.
 
-**GitHub import** (Settings→Skills): `import_github_skills` fetches the repo tree, downloads selected skill directories, parses SKILL.md, and inserts into `workspace_skills`. No `skills` master row is created.
+**GitHub import**: `import_github_skills` fetches the repo tree, downloads selected skill directories, parses SKILL.md, and inserts into `workspace_skills`. No `skills` master row is created.
 
-**Marketplace bulk import** (Skills Library): `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`). These skills appear in the Skills Library, not Settings→Skills.
+### Skill ingestion — Skills Library
+
+**Marketplace bulk import**: `import_marketplace_to_library` walks the marketplace repo, downloads all skills, and writes to both `imported_skills` (disk metadata) and `skills` master (`skill_source='marketplace'`).
 
 **Plugin skills are intentionally excluded.** `{workspace_path}/.claude/skills` (skills bundled with the workspace for the Claude Code plugin) is not scanned during reconciliation. Only `skills_path` (the user-configured output directory) is reconciled.
 
