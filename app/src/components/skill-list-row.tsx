@@ -31,6 +31,21 @@ import type { SkillSummary, Purpose } from "@/lib/types"
 import { PURPOSE_LABELS } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
+function formatRelativeDate(isoDate: string): string {
+  const date = new Date(isoDate)
+  if (isNaN(date.getTime())) return isoDate
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  if (diffMins < 1) return "just now"
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
+
 function getStatusLabel(skill: SkillSummary): string {
   if (skill.skill_source === "marketplace" || skill.skill_source === "imported" || isWorkflowComplete(skill)) {
     return "Completed"
@@ -121,6 +136,11 @@ export default function SkillListRow({
             </Badge>
           )}
         </div>
+      </td>
+
+      {/* Col 4: Updated */}
+      <td className={cn(tdBase, "hidden md:table-cell text-xs text-muted-foreground")}>
+        {skill.last_modified ? formatRelativeDate(skill.last_modified) : "—"}
       </td>
 
       {/* Mobile: status text */}

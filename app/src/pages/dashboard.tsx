@@ -72,8 +72,8 @@ export default function DashboardPage() {
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [selectedSources, setSelectedSources] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'in-progress'>('all')
-  const [sortBy, setSortBy] = useState<string>('name')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortBy, setSortBy] = useState<string>('updated')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
@@ -245,6 +245,12 @@ export default function DashboardPage() {
           cmp = Number(aComplete) - Number(bComplete)
           break
         }
+        case 'updated': {
+          const aDate = a.last_modified || ''
+          const bDate = b.last_modified || ''
+          cmp = aDate.localeCompare(bDate)
+          break
+        }
       }
       return sortDir === 'asc' ? cmp : -cmp
     })
@@ -337,6 +343,9 @@ export default function DashboardPage() {
                     <td className="hidden sm:table-cell py-2.5 border-b">
                       <Skeleton className="h-5 w-16 rounded-full" />
                     </td>
+                    <td className="hidden md:table-cell py-2.5 border-b">
+                      <Skeleton className="h-4 w-12" />
+                    </td>
                     <td className="py-2.5 pr-4 border-b">
                       <div className="flex gap-1 justify-end">
                         <Skeleton className="size-6 rounded-md" />
@@ -426,6 +435,9 @@ export default function DashboardPage() {
                 </th>
                 <th scope="col" className="py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
                   <SortHeader label="Status" column="status" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+                </th>
+                <th scope="col" className="hidden md:table-cell py-1.5 text-left text-sm font-semibold text-muted-foreground border-b-2 border-border">
+                  <SortHeader label="Updated" column="updated" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
                 </th>
                 <th scope="col" className="pr-4 py-1.5 text-right text-sm font-semibold text-muted-foreground border-b-2 border-border">Actions</th>
               </tr>
