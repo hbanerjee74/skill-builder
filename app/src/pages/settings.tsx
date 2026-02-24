@@ -201,6 +201,7 @@ export default function SettingsPage() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
+      console.error("settings: auto-save failed", err)
       toast.error(`Failed to save: ${err}`, { duration: Infinity })
     }
   }
@@ -218,6 +219,7 @@ export default function SettingsPage() {
       toast.success("API key is valid")
       fetchModels(apiKey)
     } catch (err) {
+      console.error("settings: API key test failed", err)
       setApiKeyValid(false)
       toast.error(
         err instanceof Error ? err.message : String(err),
@@ -238,6 +240,7 @@ export default function SettingsPage() {
       setUrlCheckState("valid")
       toast.success("Marketplace is accessible")
     } catch (err) {
+      console.error("settings: marketplace test failed", err)
       setMarketplaceValid(false)
       setUrlCheckState("invalid")
       toast.error(
@@ -273,6 +276,7 @@ export default function SettingsPage() {
       await invoke("clear_workspace")
       toast.success("Workspace cleared", { duration: 1500 })
     } catch (err) {
+      console.error("settings: clear workspace failed", err)
       toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
     } finally {
       setClearing(false)

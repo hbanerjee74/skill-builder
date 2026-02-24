@@ -1133,6 +1133,7 @@ pub async fn package_skill(
     let source_dir = Path::new(&skills_path).join(&skill_name);
 
     if !source_dir.exists() {
+        log::error!("package_skill: skill directory not found: {}", source_dir.display());
         return Err(format!(
             "Skill directory not found: {}",
             source_dir.display()
@@ -1145,7 +1146,11 @@ pub async fn package_skill(
         create_skill_zip(&source_dir, &output_path)
     })
     .await
-    .map_err(|e| format!("Packaging task failed: {}", e))??;
+    .map_err(|e| {
+        let msg = format!("Packaging task failed: {}", e);
+        log::error!("package_skill: {}", msg);
+        msg
+    })??;
 
     Ok(result)
 }
