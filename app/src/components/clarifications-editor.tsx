@@ -418,7 +418,7 @@ function QuestionCard({
                 ...q,
                 answer_text: text,
                 // If typing freely, mark as custom unless it matches a choice
-                answer_choice: q.answer_choice === null && text.trim() !== "" ? "custom" : q.answer_choice,
+                answer_choice: text.trim() !== "" ? (q.answer_choice ?? "custom") : null,
               }));
             }}
             readOnly={readOnly}
