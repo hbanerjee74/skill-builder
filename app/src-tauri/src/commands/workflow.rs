@@ -575,9 +575,10 @@ pub fn format_user_context(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Option<String> {
-    let mut parts: Vec<String> = Vec::new();
+    let mut sections: Vec<String> = Vec::new();
 
-    // Purpose (full label)
+    // --- Skill identity ---
+    let mut skill_parts: Vec<String> = Vec::new();
     if let Some(p) = purpose {
         if !p.is_empty() {
             let label = match p {
@@ -587,82 +588,91 @@ pub fn format_user_context(
                 "platform" => "Organization specific Azure or Fabric standards",
                 other => other,
             };
-            parts.push(format!("- **Purpose**: {}", label));
+            skill_parts.push(format!("**Purpose**: {}", label));
         }
     }
-
-    // Description
     if let Some(desc) = description {
         if !desc.is_empty() {
-            parts.push(format!("- **Description**: {}", desc));
+            skill_parts.push(format!("**Description**: {}", desc));
         }
     }
+    if !skill_parts.is_empty() {
+        sections.push(format!("### Skill\n{}", skill_parts.join("\n")));
+    }
 
-    // User profile
+    // --- User profile ---
+    let mut profile_parts: Vec<String> = Vec::new();
     if let Some(ind) = industry {
         if !ind.is_empty() {
-            parts.push(format!("- **Industry**: {}", ind));
+            profile_parts.push(format!("**Industry**: {}", ind));
         }
     }
     if let Some(fr) = function_role {
         if !fr.is_empty() {
-            parts.push(format!("- **Function**: {}", fr));
+            profile_parts.push(format!("**Function**: {}", fr));
         }
     }
+    if !profile_parts.is_empty() {
+        sections.push(format!("### About You\n{}", profile_parts.join("\n")));
+    }
 
-    // Intake — new unified field ("context") + legacy fields for backwards compat
+    // --- Intake: What Claude needs to know ---
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
-            // New: unified "What Claude needs to know" field
+            // New unified field
             if let Some(v) = intake.get("context").and_then(|v| v.as_str()) {
                 if !v.is_empty() {
-                    parts.push(format!("- **What Claude Needs to Know**: {}", v));
+                    sections.push(format!("### What Claude Needs to Know\n{}", v));
                 }
             }
-            // Legacy fields (for existing skills with old intake_json)
+            // Legacy fields (backwards compat for existing skills)
             for (key, label) in [
-                ("audience", "Target Audience"),
-                ("challenges", "Key Challenges"),
-                ("scope", "Scope"),
                 ("unique_setup", "What Makes This Setup Unique"),
                 ("claude_mistakes", "What Claude Gets Wrong"),
+                ("scope", "Scope"),
+                ("challenges", "Key Challenges"),
+                ("audience", "Target Audience"),
             ] {
                 if let Some(v) = intake.get(key).and_then(|v| v.as_str()) {
                     if !v.is_empty() {
-                        parts.push(format!("- **{}**: {}", label, v));
+                        sections.push(format!("### {}\n{}", label, v));
                     }
                 }
             }
         }
     }
 
-    // Behaviour settings
+    // --- Configuration ---
+    let mut config_parts: Vec<String> = Vec::new();
     if let Some(ver) = version {
         if !ver.is_empty() {
-            parts.push(format!("- **Version**: {}", ver));
+            config_parts.push(format!("**Version**: {}", ver));
         }
     }
     if let Some(m) = skill_model {
         if !m.is_empty() && m != "inherit" {
-            parts.push(format!("- **Preferred Model**: {}", m));
+            config_parts.push(format!("**Preferred Model**: {}", m));
         }
     }
     if let Some(hint) = argument_hint {
         if !hint.is_empty() {
-            parts.push(format!("- **Argument Hint**: {}", hint));
+            config_parts.push(format!("**Argument Hint**: {}", hint));
         }
     }
     if let Some(inv) = user_invocable {
-        parts.push(format!("- **User Invocable**: {}", inv));
+        config_parts.push(format!("**User Invocable**: {}", inv));
     }
     if let Some(dmi) = disable_model_invocation {
-        parts.push(format!("- **Disable Model Invocation**: {}", dmi));
+        config_parts.push(format!("**Disable Model Invocation**: {}", dmi));
+    }
+    if !config_parts.is_empty() {
+        sections.push(format!("### Configuration\n{}", config_parts.join("\n")));
     }
 
-    if parts.is_empty() {
+    if sections.is_empty() {
         None
     } else {
-        Some(format!("## User Context\n{}", parts.join("\n")))
+        Some(format!("## User Context\n\n{}", sections.join("\n\n")))
     }
 }
 
@@ -702,7 +712,7 @@ pub fn write_user_context_file(
     let file_path = workspace_dir.join("user-context.md");
     let content = format!(
         "# User Context\n\n{}\n",
-        ctx.strip_prefix("## User Context\n").unwrap_or(&ctx)
+        ctx.strip_prefix("## User Context\n\n").unwrap_or(&ctx)
     );
 
     match std::fs::write(&file_path, &content) {
@@ -2538,11 +2548,15 @@ mod tests {
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("# User Context"));
+        assert!(content.contains("### About You"));
         assert!(content.contains("**Industry**: Healthcare"));
         assert!(content.contains("**Function**: Analytics Lead"));
-        assert!(content.contains("**Target Audience**: Data engineers"));
-        assert!(content.contains("**Key Challenges**: Legacy systems"));
-        assert!(content.contains("**Scope**: ETL pipelines"));
+        assert!(content.contains("### Target Audience"));
+        assert!(content.contains("Data engineers"));
+        assert!(content.contains("### Key Challenges"));
+        assert!(content.contains("Legacy systems"));
+        assert!(content.contains("### Scope"));
+        assert!(content.contains("ETL pipelines"));
     }
 
     #[test]
