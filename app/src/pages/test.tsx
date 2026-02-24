@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Play, Square } from "lucide-react";
+import { AlertTriangle, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { useSettingsStore } from "@/stores/settings-store";
 import {
   listRefinableSkills,
   getWorkspacePath,
+  getDisabledSteps,
   startAgent,
   cleanupSkillSidecar,
   prepareSkillTest,
@@ -288,6 +289,9 @@ export default function TestPage() {
   // --- Test state ---
   const [state, setState] = useState<TestState>(INITIAL_STATE);
 
+  // --- Scope recommendation guard ---
+  const [scopeBlocked, setScopeBlocked] = useState(false);
+
   // --- Elapsed timer ---
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -346,6 +350,20 @@ export default function TestPage() {
       setState((prev) => ({ ...prev, selectedSkill: match }));
     }
   }, [skillParam, skills]);
+
+  // ---------------------------------------------------------------------------
+  // Scope recommendation guard
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!state.selectedSkill) {
+      setScopeBlocked(false);
+      return;
+    }
+    getDisabledSteps(state.selectedSkill.name)
+      .then((disabled) => setScopeBlocked(disabled.length > 0))
+      .catch(() => setScopeBlocked(false));
+  }, [state.selectedSkill]);
 
   // ---------------------------------------------------------------------------
   // Draggable dividers
@@ -818,6 +836,12 @@ export default function TestPage() {
             onSelect={handleSelectSkill}
           />
         </div>
+        {scopeBlocked && (
+          <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+            <AlertTriangle className="size-4 shrink-0" />
+            Scope recommendation active — the skill scope is too broad. Testing is blocked until the scope is resolved.
+          </div>
+        )}
         <div className="flex gap-2">
           <Textarea
             rows={3}
@@ -826,12 +850,12 @@ export default function TestPage() {
             onChange={(e) =>
               setState((prev) => ({ ...prev, prompt: e.target.value }))
             }
-            disabled={isRunning}
+            disabled={isRunning || scopeBlocked}
             className="min-h-[unset] resize-none font-sans text-sm"
           />
           <Button
             onClick={handleRunTest}
-            disabled={isRunning || !state.selectedSkill || !state.prompt.trim()}
+            disabled={isRunning || scopeBlocked || !state.selectedSkill || !state.prompt.trim()}
             className="h-auto shrink-0 self-start px-4"
           >
             {isRunning ? (
