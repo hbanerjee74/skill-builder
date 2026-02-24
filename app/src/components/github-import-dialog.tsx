@@ -29,7 +29,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill } from "@/lib/types"
 import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
@@ -151,6 +151,8 @@ export default function GitHubImportDialog({
 
   // Workspace skills for version comparison and purpose conflict detection (settings-skills only)
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
+  // Installed library skills for edit form pre-population fallback (skill-library only)
+  const [installedLibrarySkills, setInstalledLibrarySkills] = useState<Map<string, SkillSummary>>(new Map())
 
   // Customization warning state (settings-skills upgrade path)
   const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
@@ -177,6 +179,7 @@ export default function GitHubImportDialog({
     setSkillStates(new Map())
     closeEditForm()
     setWorkspaceSkills([])
+    setInstalledLibrarySkills(new Map())
     setPendingUpgradeSkill(null)
     setShowCustomizationWarning(false)
   }, [])
@@ -228,6 +231,7 @@ export default function GitHubImportDialog({
         // not yet loaded (e.g. dialog opened before settings async load completes).
         const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
+        setInstalledLibrarySkills(newSummaryMap)
         for (const skill of available) {
           if (dashboardSet.has(skill.name)) {
             const installedSummary = newSummaryMap.get(skill.name)
@@ -267,14 +271,20 @@ export default function GitHubImportDialog({
     setEditingSkill(skill)
     // Priority: remote skill frontmatter → existing installed version (for upgrade/exists)
     const state = skillStates.get(skill.path)
-    const ws = (state === 'upgrade' || state === 'exists')
+    const isUpgradeOrExists = state === 'upgrade' || state === 'exists'
+    // settings-skills mode: fall back to workspace_skills row
+    const ws = isUpgradeOrExists
       ? workspaceSkills.find((w) => w.skill_name === skill.name)
+      : undefined
+    // skill-library mode: fall back to installed SkillSummary for description/domain
+    const lib = mode === 'skill-library' && isUpgradeOrExists
+      ? installedLibrarySkills.get(skill.name)
       : undefined
     const isSettingsMode = mode === 'settings-skills'
     setEditForm({
       name: skill.name ?? ws?.skill_name ?? '',
-      description: skill.description ?? ws?.description ?? '',
-      domain: skill.domain ?? ws?.domain ?? '',
+      description: skill.description ?? lib?.description ?? ws?.description ?? '',
+      domain: skill.domain ?? lib?.domain ?? ws?.domain ?? '',
       skill_type: isSettingsMode ? 'skill-builder' : (skill.skill_type ?? ws?.skill_type ?? ''),
       version: skill.version ?? ws?.version ?? '1.0.0',
       model: skill.model ?? ws?.model ?? '',
@@ -283,7 +293,7 @@ export default function GitHubImportDialog({
       disable_model_invocation: (skill.disable_model_invocation ?? ws?.disable_model_invocation) ?? false,
       purpose: ws?.purpose ?? null,
     })
-  }, [mode, skillStates, workspaceSkills])
+  }, [mode, skillStates, workspaceSkills, installedLibrarySkills])
 
   /** Handle marketplace import result, returning true if the import succeeded. */
   function handleMarketplaceResult(path: string, results: { success: boolean; error: string | null }[]): boolean {

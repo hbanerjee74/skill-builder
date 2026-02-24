@@ -172,7 +172,7 @@ export default function SkillListRow({
             onClick={() => onDelete(skill)}
           />
 
-          {!isMarketplace && (
+          {skill.skill_source === 'skill-builder' && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
