@@ -33,7 +33,7 @@ describe("WorkspaceSkillCard", () => {
     expect(screen.getByText("sales-analytics")).toBeInTheDocument();
   });
 
-  it("renders domain badge when domain is present", () => {
+  it("renders description badge when description is present", () => {
     render(
       <WorkspaceSkillCard
         skill={baseSkill}
@@ -42,11 +42,11 @@ describe("WorkspaceSkillCard", () => {
         onPreview={vi.fn()}
       />
     );
-    expect(screen.getByText("sales")).toBeInTheDocument();
+    expect(screen.getByText("Analytics skill for sales data pipelines")).toBeInTheDocument();
   });
 
-  it("does not render domain badge when domain is null", () => {
-    const skill = { ...baseSkill, domain: null };
+  it("does not render description badge when description is null", () => {
+    const skill = { ...baseSkill, description: null };
     render(
       <WorkspaceSkillCard
         skill={skill}
@@ -55,7 +55,7 @@ describe("WorkspaceSkillCard", () => {
         onPreview={vi.fn()}
       />
     );
-    expect(screen.queryByText("sales")).not.toBeInTheDocument();
+    expect(screen.queryByText("Analytics skill for sales data pipelines")).not.toBeInTheDocument();
   });
 
   it("renders description fallback when no trigger text", () => {
