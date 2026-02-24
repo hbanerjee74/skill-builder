@@ -387,11 +387,12 @@ describe("useWorkflowStore", () => {
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
 
-    it("resetToStep(n > 0) preserves disabledSteps", () => {
+    it("resetToStep(n > 0) also clears disabledSteps", () => {
       useWorkflowStore.getState().setDisabledSteps([5]);
-      useWorkflowStore.getState().resetToStep(2);
-      // Disabled steps from scope/contradictory guard stay — scope hasn't changed
-      expect(useWorkflowStore.getState().disabledSteps).toEqual([5]);
+      useWorkflowStore.getState().resetToStep(3);
+      // Guards are re-evaluated from disk after each step completes — stale guards
+      // (e.g. contradictory_inputs from old decisions.md) must not persist across resets
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
   });
 });

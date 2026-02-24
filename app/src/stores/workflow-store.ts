@@ -190,8 +190,10 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       steps: state.steps.map((s) =>
         s.id >= stepId ? { ...s, status: "pending" as const } : s
       ),
-      // Clear disabled steps when resetting to the beginning (scope may change)
-      ...(stepId === 0 ? { disabledSteps: [] } : {}),
+      // Always clear disabled steps — guards are re-evaluated from disk after each step completes.
+      // Stale guards from a previous run (e.g. contradictory_inputs from old decisions.md) must not
+      // persist across resets.
+      disabledSteps: [],
     })),
 
   loadWorkflowState: (completedStepIds, savedCurrentStep) =>
