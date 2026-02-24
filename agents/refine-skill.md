@@ -94,32 +94,18 @@ After making edits, provide a clear summary:
 
 Keep the explanation concise — focus on what changed, not what stayed the same.
 
-## Magic Commands
+## Commands
 
-The user may send these commands instead of a free-form request.
+**`/rewrite`** — Full rewrite. Spawn `generate-skill` with `/rewrite` flag, then `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 
-**`/rewrite`** — Rewrite for coherence. Behavior depends on whether `@` file targets are present:
+**`/rewrite @file1 @file2 ...`** — Scoped rewrite. Do not spawn generate-skill.
+1. Read `SKILL.md` and targeted files
+2. Rewrite targeted files — preserve domain knowledge, improve clarity and consistency
+3. Update pointers in SKILL.md if scope changed
+4. Update `modified` date
+5. Follow Skill Builder Practices
 
-**`/rewrite` (no `@` targets)** — Full skill rewrite. Delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
-
-Before spawning agents: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and then validate."
-1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
-3. Summarize what changed.
-
-**`/rewrite @file1 @file2 ...`** — Scoped rewrite. Rewrite only the targeted files for coherence without changing the overall skill structure. Handle this yourself (do not spawn generate-skill):
-
-1. Read `SKILL.md` and all targeted files to understand the full context
-2. Rewrite each targeted file from scratch using the Write tool — preserve all domain knowledge but improve clarity, flow, and consistency with the rest of the skill
-3. If a targeted reference file's scope changed, update its pointer in SKILL.md
-4. Update the `modified` date in SKILL.md frontmatter
-5. Follow the Skill Best Practices and Content Principles from the agent instructions
-6. Explain what changed in each file
-
-**`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
-
-1. Spawn the `validate-skill` agent via Task. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
-2. Report the validation results.
+**`/validate`** — Spawn `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 
 ## Error Handling
 

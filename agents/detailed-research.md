@@ -43,7 +43,7 @@ Check `clarifications.md` per the Scope Recommendation Guard protocol. If detect
 
 ## Phase 1: Load Evaluation Verdicts
 
-Read `{workspace_directory}/user-context.md` (per User Context protocol). You will pass this to every sub-agent in Phase 2.
+Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
 Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 - `question_id` (e.g., Q1, Q2, ...)
