@@ -370,7 +370,7 @@ describe("AppLayout", () => {
         if (cmd === "list_models") return Promise.reject(new Error("not needed"));
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
-          library: [{ name: "sales-skill", path: "skills/sales-skill" }],
+          library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
           workspace: [],
         });
         return Promise.resolve(undefined);
@@ -394,7 +394,7 @@ describe("AppLayout", () => {
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [],
-          workspace: [{ name: "hr-skill", path: "skills/hr-skill" }],
+          workspace: [{ name: "hr-skill", path: "skills/hr-skill", version: "1.1.0" }],
         });
         return Promise.resolve(undefined);
       });
@@ -416,7 +416,7 @@ describe("AppLayout", () => {
         if (cmd === "list_models") return Promise.reject(new Error("not needed"));
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
-          library: [{ name: "sales-skill", path: "skills/sales-skill" }],
+          library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
           workspace: [],
         });
         if (cmd === "check_skill_customized") return Promise.resolve(false);
@@ -442,8 +442,8 @@ describe("AppLayout", () => {
         if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
         if (cmd === "check_marketplace_updates") return Promise.resolve({
           library: [
-            { name: "customized-skill", path: "skills/customized-skill" },
-            { name: "stock-skill", path: "skills/stock-skill" },
+            { name: "customized-skill", path: "skills/customized-skill", version: "1.1.0" },
+            { name: "stock-skill", path: "skills/stock-skill", version: "1.1.0" },
           ],
           workspace: [],
         });

@@ -46,6 +46,7 @@ export interface AppSettings {
 export interface SkillUpdateInfo {
   name: string
   path: string
+  version: string
 }
 
 export interface DeviceFlowResponse {

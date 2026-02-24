@@ -8,6 +8,7 @@ export interface WorkspaceSkillImportRequest {
   path: string;
   purpose: string | null;
   metadata_override: SkillMetadataOverride | null;
+  version: string | null;
 }
 
 // --- Settings ---

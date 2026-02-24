@@ -654,6 +654,7 @@ mod tests {
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
             dashboard_view_mode: Some("grid".to_string()),
+            auto_update: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();

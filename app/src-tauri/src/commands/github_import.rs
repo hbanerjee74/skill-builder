@@ -5,11 +5,11 @@ use std::fs;
 use std::path::Path;
 
 /// Returns true if `marketplace` is strictly newer than `installed` by semver rules.
-/// Falls back to string inequality if either value fails to parse.
+/// Returns false if either value fails to parse (avoids false positives for non-standard version strings).
 fn semver_gt(marketplace: &str, installed: &str) -> bool {
     match (semver::Version::parse(marketplace), semver::Version::parse(installed)) {
         (Ok(mp), Ok(inst)) => mp > inst,
-        _ => marketplace != installed,
+        _ => false,
     }
 }
 
@@ -526,6 +526,11 @@ pub struct WorkspaceSkillImportRequest {
     pub path: String,
     pub purpose: Option<String>,
     pub metadata_override: Option<crate::types::SkillMetadataOverride>,
+    /// Caller-supplied marketplace version — used for the pre-download version guard.
+    /// When present and the installed version is already >= this value, the skill is
+    /// skipped before any disk operation (prevents the directory from being deleted
+    /// and re-downloaded only to be thrown away).
+    pub version: Option<String>,
 }
 
 /// Import selected skills from a GitHub repo into the local workspace.
@@ -586,6 +591,21 @@ pub async fn import_github_skills(
             let conn = db.0.lock().map_err(|e| e.to_string())?;
             crate::db::get_workspace_skill_by_name(&conn, dir_name)?
         };
+
+        // Pre-download version guard: if the caller supplied the marketplace version and an
+        // existing install is found, skip before touching the disk at all. This avoids the
+        // directory being deleted and re-downloaded only to be thrown away post-import.
+        if let (Some(ref existing_skill), Some(ref mp_ver)) = (&existing, &req.version) {
+            let inst_ver = existing_skill.version.as_deref().unwrap_or("");
+            if !semver_gt(mp_ver, inst_ver) {
+                log::info!(
+                    "[import_github_skills] {} already at version {:?}, skipping (pre-download guard)",
+                    dir_name, existing_skill.version
+                );
+                skipped.push(dir_name.to_string());
+                continue;
+            }
+        }
 
         // Overwrite the on-disk directory if an existing installation is found.
         let should_overwrite = existing.is_some();
@@ -1266,11 +1286,13 @@ pub(crate) fn compute_skill_content_hash(disk_path: &str) -> Option<String> {
 // check_marketplace_updates
 // ---------------------------------------------------------------------------
 
-/// Name and repo path for a skill that has an available update.
+/// Name, repo path, and marketplace version for a skill that has an available update.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SkillUpdateInfo {
     pub name: String,
     pub path: String,
+    /// The marketplace version that triggered this update entry.
+    pub version: String,
 }
 
 /// Separate update lists for each registry source.
@@ -1323,21 +1345,21 @@ pub async fn check_marketplace_updates(
                 continue;
             }
 
-            // Check workspace_skills independently
+            // Check workspace_skills independently.
+            // Treat a missing installed version as "" so skills imported before version
+            // tracking was added are still surfaced rather than silently excluded.
             if let Some(ws) = crate::db::get_workspace_skill_by_name(&conn, &skill.name)? {
-                if let Some(inst_ver) = ws.version {
-                    if semver_gt(marketplace_ver, &inst_ver) {
-                        workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone() });
-                    }
+                let inst_ver = ws.version.as_deref().unwrap_or("");
+                if semver_gt(marketplace_ver, inst_ver) {
+                    workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
                 }
             }
 
-            // Check imported_skills independently
+            // Check imported_skills independently.
             if let Some(imp) = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None) {
-                if let Some(inst_ver) = imp.version {
-                    if semver_gt(marketplace_ver, &inst_ver) {
-                        library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone() });
-                    }
+                let inst_ver = imp.version.as_deref().unwrap_or("");
+                if semver_gt(marketplace_ver, inst_ver) {
+                    library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
                 }
             }
         }
@@ -1387,7 +1409,16 @@ pub fn check_skill_customized(
     // This guards against a tampered DB row pointing outside the app's data directories.
     {
         let settings = crate::db::read_settings_hydrated(&conn)?;
-        let canonical_disk = std::fs::canonicalize(&disk_path).unwrap_or_default();
+        let canonical_disk = match std::fs::canonicalize(&disk_path) {
+            Ok(p) => p,
+            Err(_) => {
+                log::warn!(
+                    "[check_skill_customized] disk_path '{}' for '{}' does not exist on disk — treating as unmodified",
+                    disk_path, skill_name
+                );
+                return Ok(false);
+            }
+        };
 
         let workspace_root_ok = settings.workspace_path.as_ref().map(|wp| {
             let expected = Path::new(wp).join(".claude").join("skills");

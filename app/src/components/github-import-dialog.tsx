@@ -118,7 +118,9 @@ function UpgradeBanner({
 }): React.ReactElement | null {
   if (!editingSkill || !editForm) return null
   if (skillStates.get(editingSkill.path) !== "upgrade") return null
-  const installedVersion = workspaceSkills.find((w) => w.skill_name === editingSkill.name)?.version
+  const installedVersion = workspaceSkills.find(
+    (w) => w.skill_name === editingSkill.name || w.skill_name === editForm.name
+  )?.version
   const newVersion = editingSkill.version
   if (!installedVersion || !newVersion || installedVersion === newVersion) return null
   return (
@@ -346,6 +348,7 @@ export default function GitHubImportDialog({
       const requests: WorkspaceSkillImportRequest[] = [{
         path: skillPath,
         purpose: editForm.purpose ?? null,
+        version: editingSkill.version ?? null,
         metadata_override: {
           name: editForm.name,
           description: editForm.description,

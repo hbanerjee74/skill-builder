@@ -90,7 +90,7 @@ export function AppLayout() {
                 wsFiltered.length > 0
                   ? importGitHubSkills(
                       info.owner, info.repo, info.branch,
-                      wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null }))
+                      wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version }))
                     ).catch((err) =>
                       console.warn("[app-layout] Auto-update workspace failed:", err)
                     )
@@ -114,11 +114,21 @@ export function AppLayout() {
                 );
               }
             } else {
-              // Manual update: show persistent badge toasts with action buttons
-              if (library.length > 0) {
-                const names = library.map((s) => s.name);
+              // Manual update: show persistent toasts only for versions not yet notified.
+              // Suppresses repeated toasts on every cold launch for the same available version.
+              const NOTIFIED_KEY = "marketplace_notified_versions";
+              const notified: Record<string, string> = (() => {
+                try { return JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? "{}"); }
+                catch { return {}; }
+              })();
+
+              const libNew = library.filter((s) => notified[`lib:${s.name}`] !== s.version);
+              const wsNew = workspace.filter((s) => notified[`ws:${s.name}`] !== s.version);
+
+              if (libNew.length > 0) {
+                const names = libNew.map((s) => s.name);
                 toast.info(
-                  `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+                  `Skills Library: update available for ${libNew.length} skill${libNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
                   {
                     duration: Infinity,
                     action: {
@@ -131,10 +141,10 @@ export function AppLayout() {
                   }
                 );
               }
-              if (workspace.length > 0) {
-                const names = workspace.map((s) => s.name);
+              if (wsNew.length > 0) {
+                const names = wsNew.map((s) => s.name);
                 toast.info(
-                  `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+                  `Settings \u2192 Skills: update available for ${wsNew.length} skill${wsNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
                   {
                     duration: Infinity,
                     action: {
@@ -146,6 +156,14 @@ export function AppLayout() {
                     },
                   }
                 );
+              }
+
+              // Persist notified versions so the same update doesn't toast on next launch.
+              if (libNew.length > 0 || wsNew.length > 0) {
+                const updated = { ...notified };
+                for (const s of libNew) updated[`lib:${s.name}`] = s.version;
+                for (const s of wsNew) updated[`ws:${s.name}`] = s.version;
+                try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
               }
             }
           })

@@ -3063,6 +3063,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -3096,6 +3097,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -3125,6 +3127,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -3147,6 +3150,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &v2).unwrap();
 
