@@ -577,63 +577,55 @@ pub fn format_user_context(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) -> Option<String> {
+    /// Push `**label**: value` to `parts` when `opt` is non-empty.
+    fn push_field(parts: &mut Vec<String>, label: &str, opt: Option<&str>) {
+        if let Some(v) = opt.filter(|s| !s.is_empty()) {
+            parts.push(format!("**{}**: {}", label, v));
+        }
+    }
+
+    /// Build a markdown subsection from `parts`, or return None if empty.
+    fn build_subsection(heading: &str, parts: Vec<String>) -> Option<String> {
+        if parts.is_empty() {
+            None
+        } else {
+            Some(format!("### {}\n{}", heading, parts.join("\n")))
+        }
+    }
+
     let mut sections: Vec<String> = Vec::new();
 
     // --- Skill identity ---
     let mut skill_parts: Vec<String> = Vec::new();
-    if let Some(n) = name {
-        if !n.is_empty() {
-            skill_parts.push(format!("**Name**: {}", n));
-        }
+    push_field(&mut skill_parts, "Name", name);
+    if let Some(p) = purpose.filter(|s| !s.is_empty()) {
+        let label = match p {
+            "domain" => "Business process knowledge",
+            "source" => "Source system customizations",
+            "data-engineering" => "Organization specific data engineering standards",
+            "platform" => "Organization specific Azure or Fabric standards",
+            other => other,
+        };
+        skill_parts.push(format!("**Purpose**: {}", label));
     }
-    if let Some(p) = purpose {
-        if !p.is_empty() {
-            let label = match p {
-                "domain" => "Business process knowledge",
-                "source" => "Source system customizations",
-                "data-engineering" => "Organization specific data engineering standards",
-                "platform" => "Organization specific Azure or Fabric standards",
-                other => other,
-            };
-            skill_parts.push(format!("**Purpose**: {}", label));
-        }
-    }
-    if let Some(desc) = description {
-        if !desc.is_empty() {
-            skill_parts.push(format!("**Description**: {}", desc));
-        }
-    }
+    push_field(&mut skill_parts, "Description", description);
     if !tags.is_empty() {
         skill_parts.push(format!("**Tags**: {}", tags.join(", ")));
     }
-    if !skill_parts.is_empty() {
-        sections.push(format!("### Skill\n{}", skill_parts.join("\n")));
-    }
+    sections.extend(build_subsection("Skill", skill_parts));
 
     // --- User profile ---
     let mut profile_parts: Vec<String> = Vec::new();
-    if let Some(ind) = industry {
-        if !ind.is_empty() {
-            profile_parts.push(format!("**Industry**: {}", ind));
-        }
-    }
-    if let Some(fr) = function_role {
-        if !fr.is_empty() {
-            profile_parts.push(format!("**Function**: {}", fr));
-        }
-    }
-    if !profile_parts.is_empty() {
-        sections.push(format!("### About You\n{}", profile_parts.join("\n")));
-    }
+    push_field(&mut profile_parts, "Industry", industry);
+    push_field(&mut profile_parts, "Function", function_role);
+    sections.extend(build_subsection("About You", profile_parts));
 
     // --- Intake: What Claude needs to know ---
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
             // New unified field
-            if let Some(v) = intake.get("context").and_then(|v| v.as_str()) {
-                if !v.is_empty() {
-                    sections.push(format!("### What Claude Needs to Know\n{}", v));
-                }
+            if let Some(v) = intake.get("context").and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                sections.push(format!("### What Claude Needs to Know\n{}", v));
             }
             // Legacy fields (backwards compat for existing skills)
             for (key, label) in [
@@ -643,10 +635,8 @@ pub fn format_user_context(
                 ("challenges", "Key Challenges"),
                 ("audience", "Target Audience"),
             ] {
-                if let Some(v) = intake.get(key).and_then(|v| v.as_str()) {
-                    if !v.is_empty() {
-                        sections.push(format!("### {}\n{}", label, v));
-                    }
+                if let Some(v) = intake.get(key).and_then(|v| v.as_str()).filter(|v| !v.is_empty()) {
+                    sections.push(format!("### {}\n{}", label, v));
                 }
             }
         }
@@ -654,30 +644,18 @@ pub fn format_user_context(
 
     // --- Configuration ---
     let mut config_parts: Vec<String> = Vec::new();
-    if let Some(ver) = version {
-        if !ver.is_empty() {
-            config_parts.push(format!("**Version**: {}", ver));
-        }
+    push_field(&mut config_parts, "Version", version);
+    if let Some(m) = skill_model.filter(|s| !s.is_empty() && *s != "inherit") {
+        config_parts.push(format!("**Preferred Model**: {}", m));
     }
-    if let Some(m) = skill_model {
-        if !m.is_empty() && m != "inherit" {
-            config_parts.push(format!("**Preferred Model**: {}", m));
-        }
-    }
-    if let Some(hint) = argument_hint {
-        if !hint.is_empty() {
-            config_parts.push(format!("**Argument Hint**: {}", hint));
-        }
-    }
+    push_field(&mut config_parts, "Argument Hint", argument_hint);
     if let Some(inv) = user_invocable {
         config_parts.push(format!("**User Invocable**: {}", inv));
     }
     if let Some(dmi) = disable_model_invocation {
         config_parts.push(format!("**Disable Model Invocation**: {}", dmi));
     }
-    if !config_parts.is_empty() {
-        sections.push(format!("### Configuration\n{}", config_parts.join("\n")));
-    }
+    sections.extend(build_subsection("Configuration", config_parts));
 
     if sections.is_empty() {
         None
@@ -686,8 +664,8 @@ pub fn format_user_context(
     }
 }
 
-/// spawned by orchestrator agents can read it from disk.
-/// This file captures purpose, description, user context, industry, function/role,
+/// Write `user-context.md` to the workspace so sub-agents can read it from disk.
+/// Captures purpose, description, user context, industry, function/role,
 /// and behaviour settings provided by the user.
 /// Non-fatal: logs a warning on failure rather than blocking the workflow.
 #[allow(clippy::too_many_arguments)]
@@ -744,24 +722,13 @@ pub fn write_user_context_file(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
     skills_path: &str,
-    _purpose: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
-    _industry: Option<&str>,
-    _function_role: Option<&str>,
-    _intake_json: Option<&str>,
-    _description: Option<&str>,
-    _version: Option<&str>,
-    _skill_model: Option<&str>,
-    _argument_hint: Option<&str>,
-    _user_invocable: Option<bool>,
-    _disable_model_invocation: Option<bool>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
@@ -820,7 +787,7 @@ pub fn build_betas(thinking_budget: Option<u32>, model: &str) -> Option<Vec<Stri
     if betas.is_empty() { None } else { Some(betas) }
 }
 
-/// Return the default model for a given step (from agent front matter).
+/// Generate a unique agent ID from skill name, label, and timestamp.
 fn make_agent_id(skill_name: &str, label: &str) -> String {
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -951,7 +918,6 @@ fn read_workflow_settings(
 /// constructs the sidecar config, and spawns the agent. Returns the agent_id.
 ///
 /// Used by `run_workflow_step` to avoid duplicating step logic.
-#[allow(clippy::too_many_arguments)]
 async fn run_workflow_step_inner(
     app: &tauri::AppHandle,
     pool: &SidecarPool,
@@ -988,19 +954,9 @@ async fn run_workflow_step_inner(
         skill_name,
         workspace_path,
         &settings.skills_path,
-        &settings.purpose,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
         settings.max_dimensions,
-        settings.industry.as_deref(),
-        settings.function_role.as_deref(),
-        settings.intake_json.as_deref(),
-        settings.description.as_deref(),
-        settings.version.as_deref(),
-        settings.skill_model.as_deref(),
-        settings.argument_hint.as_deref(),
-        settings.user_invocable,
-        settings.disable_model_invocation,
     );
     log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
@@ -1117,7 +1073,6 @@ pub async fn run_workflow_step(
     )
     .await
 }
-
 
 #[tauri::command]
 pub async fn package_skill(
@@ -1897,21 +1852,10 @@ mod tests {
             "my-skill",
             "/home/user/.vibedata",
             "/home/user/my-skills",
-            "domain",
             None,
             None,
             5,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
         );
-        // domain no longer in prompt
         assert!(prompt.contains("my-skill"));
         // 3 distinct paths in prompt
         assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
@@ -1925,19 +1869,9 @@ mod tests {
             "my-skill",
             "/home/user/.vibedata",
             "/home/user/my-skills",
-            "platform",
             None,
             None,
             5,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
         );
         // Purpose is now in user-context.md, read by the agent
         assert!(prompt.contains("user-context.md"));
@@ -1949,19 +1883,9 @@ mod tests {
             "my-skill",
             "/home/user/.vibedata",
             "/home/user/my-skills",
-            "domain",
             Some("octocat"),
             Some("2025-06-15T12:00:00Z"),
             5,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
         );
         assert!(prompt.contains("The author of this skill is: octocat."));
         assert!(prompt.contains("The skill was created on: 2025-06-15."));
@@ -1974,19 +1898,9 @@ mod tests {
             "my-skill",
             "/home/user/.vibedata",
             "/home/user/my-skills",
-            "domain",
             None,
             None,
             5,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
         );
         assert!(!prompt.contains("The author of this skill is:"));
         assert!(!prompt.contains("The skill was created on:"));
@@ -2849,70 +2763,21 @@ mod tests {
     }
 
     // --- build_prompt user context integration tests ---
+    // User context fields (industry, intake, behaviour) are now in user-context.md,
+    // not inlined in the prompt. These tests verify the prompt references the file.
 
     #[test]
     fn test_build_prompt_includes_user_context_md_instruction() {
-        // User context is now read from user-context.md by the agent, not inlined in prompt
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, Some("Healthcare"), Some("Analytics Lead"), None,
-            None, None, None, None, None, None,
-        );
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", None, None, 5);
         assert!(prompt.contains("user-context.md"));
         assert!(prompt.contains("test-skill"));
     }
 
     #[test]
     fn test_build_prompt_without_user_context() {
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, None, None, None,
-            None, None, None, None, None, None,
-        );
-        // Prompt instructs agent to read user-context.md
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", None, None, 5);
         assert!(prompt.contains("user-context.md"));
         assert!(prompt.contains("test-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_only_industry() {
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, Some("Fintech"), None, None,
-            None, None, None, None, None, None,
-        );
-        // User context is delegated to user-context.md
-        assert!(prompt.contains("user-context.md"));
-        assert!(prompt.contains("test-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_only_intake() {
-        let intake = r#"{"audience":"Analysts"}"#;
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, None, None, Some(intake),
-            None, None, None, None, None, None,
-        );
-        // User context is delegated to user-context.md
-        assert!(prompt.contains("user-context.md"));
-        assert!(prompt.contains("test-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_with_behaviour_fields() {
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, None, None, None,
-            Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
-        );
-        // Behaviour fields are now in user-context.md, not inlined in prompt
-        assert!(prompt.contains("user-context.md"));
-        assert!(prompt.contains("test-skill"));
-    }
-
-    #[test]
-    fn test_build_prompt_inherit_model_not_in_prompt() {
-        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, None, None, None,
-            None, None, Some("inherit"), None, None, None,
-        );
-        assert!(!prompt.contains("The preferred model is:"));
     }
 
     // --- VD-801: parse_decisions_guard tests ---
