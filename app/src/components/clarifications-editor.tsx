@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { ChevronRight, AlertTriangle, Info, Clock, RotateCcw } from "lucide-react";
+import { ChevronRight, AlertTriangle, Info, Clock, RotateCcw, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   type ClarificationsFile,
@@ -36,6 +36,8 @@ function resolveNoteIcon(type: Note["type"]): typeof AlertTriangle {
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
+export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
+
 interface ClarificationsEditorProps {
   data: ClarificationsFile;
   onChange: (updated: ClarificationsFile) => void;
@@ -43,6 +45,7 @@ interface ClarificationsEditorProps {
   onContinue?: () => void;
   readOnly?: boolean;
   filePath?: string;
+  saveStatus?: SaveStatus;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -54,6 +57,7 @@ export function ClarificationsEditor({
   onContinue,
   readOnly = false,
   filePath,
+  saveStatus = "idle",
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const { answered, total, mustUnanswered } = getTotalCounts(data);
@@ -156,7 +160,7 @@ export function ClarificationsEditor({
 
       {/* Bottom bar */}
       <div className="flex shrink-0 items-center justify-between border-t px-5 py-3">
-        <p className="text-xs text-muted-foreground">Answers save automatically as you type.</p>
+        <SaveIndicator status={saveStatus} />
         <div className="flex items-center gap-2">
           {onReload && (
             <Button variant="outline" size="sm" onClick={onReload}>
@@ -587,4 +591,36 @@ function NoteCard({ note }: { note: Note }) {
       <p className="text-xs leading-relaxed text-muted-foreground">{note.body}</p>
     </div>
   );
+}
+
+// ─── Save Indicator ───────────────────────────────────────────────────────────
+
+function SaveIndicator({ status }: { status: SaveStatus }) {
+  switch (status) {
+    case "dirty":
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <span className="size-1.5 rounded-full bg-amber-500" />
+          Unsaved changes
+        </div>
+      );
+    case "saving":
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" />
+          Saving...
+        </div>
+      );
+    case "saved":
+      return (
+        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+          <Check className="size-3" />
+          Saved
+        </div>
+      );
+    default:
+      return (
+        <p className="text-xs text-muted-foreground">Answers save automatically as you type.</p>
+      );
+  }
 }

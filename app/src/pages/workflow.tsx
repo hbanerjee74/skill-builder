@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
-import { ClarificationsEditor } from "@/components/clarifications-editor";
+import { ClarificationsEditor, type SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile } from "@/lib/clarifications-types";
 import {
   Loader2,
@@ -218,6 +218,8 @@ export default function WorkflowPage() {
   // Explicit dirty flag — set on user edits, cleared on save/reload/load
   const [editorDirty, setEditorDirty] = useState(false);
   const hasUnsavedChanges = editorDirty;
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
   // Scoped to human review steps so it doesn't block on non-review steps.
@@ -913,6 +915,8 @@ export default function WorkflowPage() {
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
     setClarificationsData(updated);
     setEditorDirty(true);
+    setSaveStatus("dirty");
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
   }, []);
 
   // Save editor content to skills path (required — no workspace fallback).
@@ -921,6 +925,7 @@ export default function WorkflowPage() {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
+    setSaveStatus("saving");
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
@@ -928,9 +933,14 @@ export default function WorkflowPage() {
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
       setReviewContent(content);
       setEditorDirty(false);
+      setSaveStatus("saved");
+      // Show "Saved" for 2s, then return to idle
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
       if (!silent) toast.success("Saved");
       return true;
     } catch (err) {
+      setSaveStatus("dirty"); // Revert to dirty on failure
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
@@ -1013,6 +1023,7 @@ export default function WorkflowPage() {
           onReload={handleReviewReload}
           onContinue={() => handleReviewContinue()}
           filePath={reviewFilePath}
+          saveStatus={saveStatus}
         />
       );
     }
