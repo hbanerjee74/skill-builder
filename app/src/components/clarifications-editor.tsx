@@ -16,7 +16,6 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Build an updater that sets answer_text and answer_choice for a question. */
 function makeAnswerUpdater(text: string): (q: Question) => Question {
   return (q) => ({
     ...q,
@@ -25,7 +24,6 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
   });
 }
 
-/** Resolve which icon to use for a note based on its type. */
 function resolveNoteIcon(type: Note["type"]): typeof AlertTriangle {
   switch (type) {
     case "blocked": return AlertTriangle;
@@ -76,7 +74,6 @@ export function ClarificationsEditor({
     });
   }, []);
 
-  // Deep-update a question anywhere in the tree by ID
   const updateQuestion = useCallback(
     (questionId: string, updater: (q: Question) => Question) => {
       function walkQuestions(questions: Question[]): Question[] {
@@ -88,7 +85,6 @@ export function ClarificationsEditor({
           return q;
         });
       }
-
       const updated: ClarificationsFile = {
         ...data,
         sections: data.sections.map((s) => ({
@@ -103,48 +99,57 @@ export function ClarificationsEditor({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Toolbar */}
-      <div className="flex shrink-0 items-center gap-3 border-b bg-muted px-5 py-2">
+      {/* ── Toolbar ── */}
+      <div className="flex shrink-0 items-center gap-3 border-b bg-muted/60 px-6 py-2">
         <div className="flex flex-1 items-center gap-3">
-          {/* Progress bar */}
           <div className="h-1 w-28 overflow-hidden rounded-full bg-border">
             <div
-              className={`h-full rounded-full transition-all duration-300 ${isComplete ? "bg-emerald-500" : "bg-amber-500"}`}
-              style={{ width: `${progressPct}%` }}
+              className="h-full rounded-full transition-all duration-200"
+              style={{
+                width: `${progressPct}%`,
+                background: isComplete ? "var(--color-seafoam)" : "var(--color-pacific)",
+              }}
             />
           </div>
-          <span className={`text-[11px] font-semibold whitespace-nowrap ${isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+          <span
+            className="text-xs font-medium whitespace-nowrap tracking-wide"
+            style={{ color: isComplete ? "var(--color-seafoam)" : "var(--color-pacific)" }}
+          >
             {answered} / {total} answered
           </span>
           {mustUnanswered > 0 && (
             <>
-              <span className="text-[11px] text-muted-foreground">·</span>
-              <span className="text-[11px] text-destructive">
+              <span className="text-xs text-muted-foreground">·</span>
+              <span className="text-xs text-destructive font-medium">
                 {total - answered} unanswered (incl. {mustUnanswered} MUST ANSWER)
               </span>
             </>
           )}
         </div>
         {filePath && (
-          <span className="text-[10px] font-mono text-muted-foreground">{filePath}</span>
+          <span className="text-[11px] font-mono text-muted-foreground">{filePath}</span>
         )}
       </div>
 
-      {/* Scrollable document */}
-      <div className="min-h-0 flex-1 overflow-y-auto pb-10">
-        {/* Metadata block */}
+      {/* ── Scrollable document ── */}
+      <div className="min-h-0 flex-1 overflow-y-auto pb-12">
         <MetadataBlock data={data} />
 
-        {/* Document title */}
-        <div className="px-6 pt-3.5 pb-1 text-base font-bold text-foreground">
+        <div className="px-6 pt-4 pb-1 text-base font-semibold tracking-tight text-foreground">
           {data.metadata.title}
         </div>
-        <div className="mx-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          Questions marked <strong>MUST ANSWER</strong> block skill generation. All others refine
-          quality but have reasonable defaults.
+        <div
+          className="mx-6 rounded-md border px-3 py-2 text-xs leading-relaxed"
+          style={{
+            borderColor: "color-mix(in oklch, var(--color-pacific), transparent 70%)",
+            background: "color-mix(in oklch, var(--color-pacific), transparent 92%)",
+            color: "var(--color-pacific)",
+          }}
+        >
+          Questions marked <strong className="font-semibold">MUST ANSWER</strong> block skill generation.
+          All others refine quality but have reasonable defaults.
         </div>
 
-        {/* Sections */}
         {data.sections.map((section) => (
           <SectionBlock
             key={section.id}
@@ -156,12 +161,11 @@ export function ClarificationsEditor({
           />
         ))}
 
-        {/* Notes / Needs Clarification */}
         {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
       </div>
 
-      {/* Bottom bar */}
-      <div className="flex shrink-0 items-center justify-between border-t px-5 py-3">
+      {/* ── Bottom bar ── */}
+      <div className="flex shrink-0 items-center justify-between border-t px-6 py-3">
         <SaveIndicator status={saveStatus} />
         <div className="flex items-center gap-2">
           {onReload && (
@@ -201,26 +205,22 @@ export function ClarificationsEditor({
 function MetadataBlock({ data }: { data: ClarificationsFile }) {
   const m = data.metadata;
   return (
-    <div className="mx-6 mt-3 flex flex-wrap gap-x-5 gap-y-1 rounded-md border bg-muted px-3 py-2 font-mono text-[11px]">
+    <div className="mx-6 mt-4 flex flex-wrap gap-x-6 gap-y-1 rounded-lg border bg-muted/40 px-4 py-2.5 font-mono text-xs">
       <span>
-        <span className="text-muted-foreground">questions</span>
-        {": "}
-        <span className="text-primary">{m.question_count}</span>
+        <span className="text-muted-foreground">questions</span>{": "}
+        <span style={{ color: "var(--color-pacific)" }}>{m.question_count}</span>
       </span>
       <span>
-        <span className="text-muted-foreground">sections</span>
-        {": "}
-        <span className="text-primary">{m.section_count}</span>
+        <span className="text-muted-foreground">sections</span>{": "}
+        <span style={{ color: "var(--color-pacific)" }}>{m.section_count}</span>
       </span>
       <span>
-        <span className="text-muted-foreground">refinements</span>
-        {": "}
-        <span className="text-primary">{m.refinement_count}</span>
+        <span className="text-muted-foreground">refinements</span>{": "}
+        <span style={{ color: "var(--color-pacific)" }}>{m.refinement_count}</span>
       </span>
       {m.priority_questions.length > 0 && (
         <span>
-          <span className="text-muted-foreground">priority</span>
-          {": "}
+          <span className="text-muted-foreground">priority</span>{": "}
           <span className="text-amber-600 dark:text-amber-400">
             [{m.priority_questions.join(", ")}]
           </span>
@@ -233,11 +233,7 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
 // ─── Section Band ─────────────────────────────────────────────────────────────
 
 function SectionBlock({
-  section,
-  expandedCards,
-  toggleCard,
-  updateQuestion,
-  readOnly,
+  section, expandedCards, toggleCard, updateQuestion, readOnly,
 }: {
   section: Section;
   expandedCards: Set<string>;
@@ -250,20 +246,28 @@ function SectionBlock({
 
   return (
     <div>
-      {/* Sticky section band */}
-      <div className="sticky top-0 z-10 mt-5 flex items-center gap-2.5 border-t-2 border-primary bg-primary/10 px-6 pt-2.5 pb-2 backdrop-blur-sm">
-        <span className="flex-1 text-[13px] font-bold text-primary">{section.title}</span>
+      <div
+        className="sticky top-0 z-10 mt-6 flex items-center gap-3 px-6 py-2.5 backdrop-blur-sm"
+        style={{
+          borderTop: "2px solid var(--color-pacific)",
+          background: "color-mix(in oklch, var(--color-pacific), transparent 90%)",
+        }}
+      >
+        <span
+          className="flex-1 text-sm font-semibold tracking-tight"
+          style={{ color: "var(--color-pacific)" }}
+        >
+          {section.title}
+        </span>
         <StatusChip status={status} answered={answered} total={total} />
       </div>
 
-      {/* Section description */}
       {section.description && (
-        <div className="border-b bg-muted/50 px-6 pt-1 pb-2.5 text-xs text-muted-foreground italic">
+        <div className="border-b bg-muted/30 px-6 py-2 text-xs text-muted-foreground italic leading-relaxed">
           {section.description}
         </div>
       )}
 
-      {/* Question cards */}
       {section.questions.map((question) => (
         <QuestionCard
           key={question.id}
@@ -280,23 +284,31 @@ function SectionBlock({
 
 // ─── Status Chip ──────────────────────────────────────────────────────────────
 
-const chipClasses: Record<SectionStatus, string> = {
-  complete: "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-400",
-  partial: "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400",
-  blocked: "bg-destructive/15 border-destructive/40 text-destructive",
-};
+function StatusChip({ status, answered, total }: { status: SectionStatus; answered: number; total: number }) {
+  const chipStyles: Record<SectionStatus, { bg: string; border: string; color: string }> = {
+    complete: {
+      bg: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+      border: "color-mix(in oklch, var(--color-seafoam), transparent 50%)",
+      color: "var(--color-seafoam)",
+    },
+    partial: {
+      bg: "color-mix(in oklch, var(--color-pacific), transparent 85%)",
+      border: "color-mix(in oklch, var(--color-pacific), transparent 50%)",
+      color: "var(--color-pacific)",
+    },
+    blocked: {
+      bg: "color-mix(in oklch, var(--destructive), transparent 85%)",
+      border: "color-mix(in oklch, var(--destructive), transparent 50%)",
+      color: "var(--destructive)",
+    },
+  };
+  const s = chipStyles[status];
 
-function StatusChip({
-  status,
-  answered,
-  total,
-}: {
-  status: SectionStatus;
-  answered: number;
-  total: number;
-}) {
   return (
-    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${chipClasses[status]}`}>
+    <span
+      className="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+      style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.color }}
+    >
       {answered} / {total} answered
     </span>
   );
@@ -305,11 +317,7 @@ function StatusChip({
 // ─── Question Card ────────────────────────────────────────────────────────────
 
 function QuestionCard({
-  question,
-  isExpanded,
-  toggleCard,
-  updateQuestion,
-  readOnly,
+  question, isExpanded, toggleCard, updateQuestion, readOnly,
 }: {
   question: Question;
   isExpanded: boolean;
@@ -320,35 +328,44 @@ function QuestionCard({
   const answered = isQuestionAnswered(question);
 
   return (
-    <div className={`mx-6 mt-2.5 overflow-hidden rounded-[7px] border border-l-[3px] ${answered ? "border-l-emerald-500" : "border-l-amber-500"}`}>
-      {/* Card header — always visible */}
+    <div
+      className="mx-6 mt-3 overflow-hidden rounded-lg border shadow-sm transition-shadow duration-150 hover:shadow"
+      style={{
+        borderLeftWidth: "3px",
+        borderLeftColor: answered ? "var(--color-seafoam)" : "var(--color-pacific)",
+      }}
+    >
+      {/* Header */}
       <button
         type="button"
-        className="flex w-full cursor-pointer items-start gap-2.5 bg-muted/50 px-3.5 py-2.5 text-left select-none hover:bg-muted"
+        className="flex w-full cursor-pointer items-start gap-3 bg-muted/40 px-4 py-3 text-left select-none transition-colors duration-150 hover:bg-muted/70"
         onClick={() => toggleCard(question.id)}
       >
-        <span className="mt-0.5 shrink-0 font-mono text-[10px] font-bold text-muted-foreground">
+        <span className="mt-0.5 shrink-0 font-mono text-[11px] font-medium text-muted-foreground tabular-nums">
           {question.id}
         </span>
-        <span className="flex-1 text-[13px] font-semibold leading-snug text-foreground">
+        <span className="flex-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
           {question.title}
         </span>
         {question.must_answer && <MustBadge />}
         <ChevronRight
-          className="mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform duration-200"
+          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
           style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
         />
       </button>
 
-      {/* Collapsed answer preview */}
+      {/* Collapsed preview */}
       {!isExpanded && (
-        <div className="flex items-center gap-2 bg-muted/50 px-3.5 pb-2">
+        <div className="flex items-center gap-2 bg-muted/40 px-4 pb-2.5">
           {answered ? (
-            <span className="flex-1 truncate text-[11.5px] italic text-emerald-600 dark:text-emerald-400">
+            <span
+              className="flex-1 truncate text-xs italic"
+              style={{ color: "var(--color-seafoam)" }}
+            >
               {question.answer_text || `Choice ${question.answer_choice}`}
             </span>
           ) : (
-            <span className="text-[11.5px] italic text-amber-600 dark:text-amber-400">
+            <span className="text-xs italic text-muted-foreground">
               Not yet answered
             </span>
           )}
@@ -357,13 +374,11 @@ function QuestionCard({
 
       {/* Expanded body */}
       {isExpanded && (
-        <div className="border-t bg-card p-3.5">
-          {/* Question text */}
-          <p className="mb-2.5 text-[12.5px] leading-relaxed text-foreground">
+        <div className="border-t bg-card p-4">
+          <p className="mb-3 text-sm leading-relaxed text-foreground/90">
             {question.text}
           </p>
 
-          {/* Choices */}
           {question.choices.length > 0 && (
             <ChoiceList
               choices={question.choices}
@@ -379,14 +394,12 @@ function QuestionCard({
             />
           )}
 
-          {/* Consolidated from */}
           {question.consolidated_from && question.consolidated_from.length > 0 && (
-            <p className="mb-2 text-[10.5px] italic text-muted-foreground">
+            <p className="mb-2 text-[11px] italic text-muted-foreground">
               Consolidated from: {question.consolidated_from.join(", ")}
             </p>
           )}
 
-          {/* Answer textarea */}
           <AnswerField
             value={question.answer_text ?? ""}
             onChange={(text) => {
@@ -396,7 +409,6 @@ function QuestionCard({
             readOnly={readOnly}
           />
 
-          {/* Refinements */}
           {question.refinements.length > 0 && (
             <RefinementsBlock
               refinements={question.refinements}
@@ -414,7 +426,7 @@ function QuestionCard({
 
 function MustBadge() {
   return (
-    <span className="shrink-0 rounded-sm border border-destructive/50 bg-destructive/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-destructive">
+    <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-destructive">
       must
     </span>
   );
@@ -423,30 +435,36 @@ function MustBadge() {
 // ─── Choice List ──────────────────────────────────────────────────────────────
 
 function ChoiceList({
-  choices,
-  selectedId,
-  onSelect,
+  choices, selectedId, onSelect,
 }: {
   choices: Choice[];
   selectedId: string | null;
   onSelect: (id: string, text: string) => void;
 }) {
   return (
-    <div className="mb-2.5 flex flex-col gap-0.5">
+    <div className="mb-3 flex flex-col gap-1">
       {choices.map((choice) => {
         const isSelected = selectedId === choice.id;
         return (
           <button
             type="button"
             key={choice.id}
-            className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs leading-snug transition-all duration-100 ${
-              isSelected
-                ? "border-primary/40 bg-primary/10 text-primary"
-                : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
+            className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left text-xs leading-snug transition-all duration-150"
+            style={{
+              background: isSelected
+                ? "color-mix(in oklch, var(--color-seafoam), transparent 88%)"
+                : "transparent",
+              borderColor: isSelected
+                ? "color-mix(in oklch, var(--color-seafoam), transparent 50%)"
+                : "transparent",
+              color: isSelected ? "var(--color-seafoam)" : "var(--muted-foreground)",
+            }}
             onClick={() => onSelect(choice.id, choice.is_other ? "" : choice.text)}
           >
-            <span className={`mt-px shrink-0 font-mono text-[10px] font-bold ${isSelected ? "text-primary" : "text-muted-foreground"}`}>
+            <span
+              className="mt-px shrink-0 font-mono text-[11px] font-semibold tabular-nums"
+              style={{ color: isSelected ? "var(--color-seafoam)" : "var(--muted-foreground)" }}
+            >
               {choice.id}.
             </span>
             <span className="flex-1">{choice.text}</span>
@@ -460,10 +478,7 @@ function ChoiceList({
 // ─── Answer Field ─────────────────────────────────────────────────────────────
 
 function AnswerField({
-  value,
-  onChange,
-  readOnly,
-  compact = false,
+  value, onChange, readOnly, compact = false,
 }: {
   value: string;
   onChange: (text: string) => void;
@@ -472,7 +487,6 @@ function AnswerField({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-resize
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
@@ -483,7 +497,10 @@ function AnswerField({
   return (
     <div className="mt-1 overflow-hidden rounded-md border border-input transition-colors duration-150 focus-within:border-ring focus-within:ring-[2px] focus-within:ring-ring/20">
       {!compact && (
-        <div className="flex items-center justify-between border-b bg-muted px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-primary">
+        <div
+          className="flex items-center justify-between border-b bg-muted/50 px-3 py-1.5 font-mono text-[11px] font-medium uppercase tracking-wide"
+          style={{ color: "var(--color-pacific)" }}
+        >
           Answer
           <span className="font-normal normal-case tracking-normal text-muted-foreground">
             type freely or reference a choice above
@@ -497,11 +514,12 @@ function AnswerField({
         readOnly={readOnly}
         rows={compact ? 1 : 2}
         placeholder={compact ? "Type your answer..." : "Type your answer here..."}
-        className="w-full resize-none border-none bg-background px-2.5 font-sans text-emerald-700 outline-none placeholder:text-muted-foreground dark:text-emerald-400"
+        className="w-full resize-none border-none bg-background px-3 font-sans outline-none placeholder:text-muted-foreground"
         style={{
-          padding: compact ? "6px 10px" : "8px 10px",
-          fontSize: compact ? "12px" : "12.5px",
-          lineHeight: "1.55",
+          padding: compact ? "6px 12px" : "8px 12px",
+          fontSize: compact ? "12px" : "13px",
+          color: "var(--color-seafoam)",
+          lineHeight: "1.6",
           minHeight: compact ? "28px" : "36px",
         }}
       />
@@ -512,17 +530,27 @@ function AnswerField({
 // ─── Refinements Block ────────────────────────────────────────────────────────
 
 function RefinementsBlock({
-  refinements,
-  updateQuestion,
-  readOnly,
+  refinements, updateQuestion, readOnly,
 }: {
   refinements: Question[];
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
 }) {
   return (
-    <div className="mt-2.5 ml-3.5 overflow-hidden rounded-r-md border border-l-2 border-l-violet-500">
-      <div className="border-b bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">
+    <div
+      className="mt-3 ml-4 overflow-hidden rounded-r-lg border"
+      style={{
+        borderLeftWidth: "2px",
+        borderLeftColor: "var(--color-ocean)",
+      }}
+    >
+      <div
+        className="border-b px-3 py-1.5 font-mono text-[11px] font-medium uppercase tracking-widest"
+        style={{
+          background: "color-mix(in oklch, var(--color-ocean), transparent 90%)",
+          color: "var(--color-ocean)",
+        }}
+      >
         Refinements
       </div>
       {refinements.map((ref) => (
@@ -533,9 +561,7 @@ function RefinementsBlock({
 }
 
 function RefinementItem({
-  refinement,
-  updateQuestion,
-  readOnly,
+  refinement, updateQuestion, readOnly,
 }: {
   refinement: Question;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
@@ -544,11 +570,21 @@ function RefinementItem({
   const answered = isQuestionAnswered(refinement);
 
   return (
-    <div className={`border-b p-2.5 last:border-b-0 ${answered ? "border-l-2 -ml-[2px] border-l-emerald-500" : "border-l-2 -ml-[2px] border-l-violet-500/50"}`}>
-      <div className="mb-0.5 font-mono text-[10px] font-bold text-violet-600 dark:text-violet-400">
+    <div
+      className="border-b p-3 last:border-b-0"
+      style={{
+        borderLeftWidth: "2px",
+        borderLeftColor: answered ? "var(--color-seafoam)" : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
+        marginLeft: "-2px",
+      }}
+    >
+      <div
+        className="mb-1 font-mono text-[11px] font-medium"
+        style={{ color: "var(--color-ocean)" }}
+      >
         {refinement.id}
       </div>
-      <div className="mb-1.5 text-xs font-semibold leading-snug text-foreground">
+      <div className="mb-2 text-xs font-semibold leading-snug text-foreground">
         {refinement.title}
         {refinement.text && refinement.text !== refinement.title && (
           <span className="font-normal text-muted-foreground">
@@ -574,9 +610,9 @@ function RefinementItem({
 function NotesBlock({ notes }: { notes: Note[] }) {
   return (
     <div>
-      <div className="mt-5 flex items-center gap-2.5 border-t-2 border-amber-500 bg-amber-500/10 px-6 pt-2.5 pb-2">
-        <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
-        <span className="flex-1 text-[13px] font-bold text-amber-600 dark:text-amber-400">
+      <div className="mt-6 flex items-center gap-2.5 border-t-2 border-amber-500 bg-amber-500/10 px-6 py-2.5">
+        <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+        <span className="flex-1 text-sm font-semibold tracking-tight text-amber-600 dark:text-amber-400">
           Needs Clarification
         </span>
       </div>
@@ -589,14 +625,13 @@ function NotesBlock({ notes }: { notes: Note[] }) {
 
 function NoteCard({ note }: { note: Note }) {
   const isBlocked = note.type === "blocked";
-
   const Icon = resolveNoteIcon(note.type);
 
   return (
-    <div className={`mx-6 mt-2.5 rounded-md border p-3.5 ${isBlocked ? "border-destructive/30 bg-destructive/10" : "border-amber-500/30 bg-amber-500/10"}`}>
-      <div className="mb-1 flex items-center gap-1.5">
-        <Icon className={`size-3 ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`} />
-        <span className={`text-[12.5px] font-semibold ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
+    <div className={`mx-6 mt-3 rounded-lg border p-4 ${isBlocked ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      <div className="mb-1.5 flex items-center gap-2">
+        <Icon className={`size-3.5 ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`} />
+        <span className={`text-xs font-semibold ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
           {note.title}
         </span>
       </div>
@@ -611,7 +646,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
   switch (status) {
     case "dirty":
       return (
-        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
           <span className="size-1.5 rounded-full bg-amber-500" />
           Unsaved changes
         </div>
@@ -625,7 +660,7 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
       );
     case "saved":
       return (
-        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+        <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
           <Check className="size-3" />
           Saved
         </div>
