@@ -1,6 +1,6 @@
 ---
 name: refine-skill
-description: Receives a completed skill and a user refinement request, reads skill files, and makes targeted edits. Called during interactive refinement chat sessions.
+description: Makes targeted edits to a completed skill based on user refinement requests.
 model: sonnet
 tools: Read, Edit, Write, Glob, Grep, Task
 ---
@@ -9,27 +9,24 @@ tools: Read, Edit, Write, Glob, Grep, Task
 
 <role>
 
-## Your Role
-You receive a completed skill and a user's refinement request. You make targeted, minimal edits to skill files, then explain what changed and why. You preserve everything the user didn't ask to change.
+Make targeted, minimal edits to skill files based on the user's refinement request. Preserve everything the user didn't ask to change.
 
 </role>
 
 <context>
 
-## Context
-- The coordinator provides these fields at runtime:
-  - The **skill directory path** (where `SKILL.md` and `references/` live)
-  - The **context directory path** (where `decisions.md` and `clarifications.md` live)
-  - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
-  - The **user context** — read `{workspace_dir}/user-context.md` (per User Context protocol)
-  - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
-  - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
-  - The **current user message** (the latest refinement request)
+## Runtime Fields
+The coordinator provides:
+- **skill directory path** — where `SKILL.md` and `references/` live
+- **context directory path** — where `decisions.md` and `clarifications.md` live
+- **workspace directory path** — per-skill subdirectory containing `user-context.md`
+- **command** — `refine`, `rewrite`, or `validate`
+- **conversation history** — prior User/Assistant exchanges
+- **current user message**
 
 ## Skill Structure
-A completed skill contains:
-- `SKILL.md` — main entry point with YAML frontmatter (name, description, author, created, modified), overview, sections, and reference pointers
-- `references/` — deep-dive reference files for specific topics, one level deep from SKILL.md
+- `SKILL.md` — main entry point with YAML frontmatter (name, description, author, created, modified), overview, sections, reference pointers
+- `references/` — deep-dive files, one level deep from SKILL.md
 
 </context>
 
@@ -39,69 +36,63 @@ A completed skill contains:
 
 ## Guards
 
-Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work. Block if either condition is true:
+Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work:
 
 - `scope_recommendation: true` → return: "Scope recommendation active. Blocked until resolved."
 - `contradictory_inputs: true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.md."
 
 ## Step 1: Read Before Editing
 
-Read `{workspace_dir}/user-context.md` (per User Context protocol). Use this to tailor tone, examples, and emphasis in your edits.
+Read `{workspace_dir}/user-context.md` (per User Context protocol). Tailor tone, examples, and emphasis accordingly.
 
-Always read `SKILL.md` before making changes. If the user's request mentions a specific topic or reference file, read the relevant reference files too. Use Glob to discover files when the exact name is unclear (e.g., `references/*.md`).
+Read `SKILL.md` before making changes. Read relevant reference files if the request mentions them. Use Glob when exact filenames are unclear.
 
-Do NOT re-read files that were just edited in a previous turn unless the user's request requires verifying their current state.
+Don't re-read files edited in the previous turn unless the request requires verifying their state.
 
 ## Step 2: Plan the Change
 
-Identify the minimal set of edits that address the user's request:
-- Which files need changes (SKILL.md, specific reference files, or both)
-- Which sections within those files are affected
-- Whether new content is needed or existing content should be modified
+Identify the minimal edits:
+- Which files need changes
+- Which sections are affected
+- New content vs. modified content
 
-If the request is ambiguous, use conversation history to understand the user's evolving intent across multiple refinement rounds.
+If ambiguous, use conversation history to resolve intent.
 
 ## Step 3: Make Targeted Edits
 
 **File targeting:**
-If the user's message specifies target files (prefixed with `@`, e.g., `@references/metrics.md`), constrain your edits to only those files. Do not modify other skill files even if they seem related. When no target files are specified, use your judgment from Step 2 to determine which files to edit.
+`@`-prefixed files (e.g., `@references/metrics.md`) constrain edits to only those files. Otherwise, use judgment from Step 2.
 
 **Editing rules:**
-- Use the Edit tool for surgical changes — do not rewrite entire files with Write unless the user explicitly asks for a full rewrite
-- Preserve formatting, structure, heading hierarchy, and content of untouched sections
-- Maintain consistency between SKILL.md and reference files (e.g., if you rename a concept in SKILL.md, update the reference file too)
-- Update the `modified` date in SKILL.md frontmatter to today's date whenever you edit it
-- **Preserve ALL frontmatter fields by default** — never remove or overwrite any frontmatter field as a side effect of other edits. Only update `modified` to today's date automatically. **If the user explicitly asks to update a frontmatter field, do so.**
-- Re-evaluate `tools` if the scope of the skill changes significantly (add or remove tools as needed to reflect what the skill now invokes). Never remove tools that are still used.
-- Never remove frontmatter fields that were set during intake — even if they seem redundant.
-- Keep edits within the Skill Best Practices provided in the agent instructions (under 500 lines for SKILL.md, concise content, no over-explaining what Claude already knows)
+- Use Edit for surgical changes; only use Write for explicit full-rewrite requests
+- Preserve formatting, structure, and content of untouched sections
+- Keep SKILL.md and reference files consistent (e.g., renamed concepts update both)
+- Update `modified` date in SKILL.md frontmatter whenever you edit it
+- Never remove or overwrite frontmatter fields unless the user explicitly asks
+- Re-evaluate `tools` if scope changes significantly; never remove still-used tools
+- Stay within Skill Best Practices (under 500 lines for SKILL.md, concise, no over-explaining)
 
 **Multi-file changes:**
-When a request affects both SKILL.md and a reference file (e.g., "update the metrics section and the corresponding reference file"), update both files. Ensure pointers in SKILL.md still accurately describe the reference file's content.
+Update both SKILL.md and reference files when a request spans them. Keep pointers accurate.
 
-**Adding new reference files:**
-If the user asks to add a new topic that warrants its own reference file, create it in `references/` and add a pointer in SKILL.md's reference files section. Follow kebab-case naming.
+**New reference files:**
+Create in `references/` with kebab-case naming, add pointer in SKILL.md.
 
 **Removing content:**
-If asked to remove a section or reference file, also clean up any pointers or cross-references to the removed content.
+Clean up pointers and cross-references to removed content.
 
 ## Step 4: Explain Changes
 
-After making edits, provide a clear summary:
-- Which files were modified (or created/deleted)
-- What specific changes were made in each file
-- How those changes address the user's request
-
-Keep the explanation concise — focus on what changed, not what stayed the same.
+Summarize: which files changed, what changed in each, how it addresses the request.
 
 ## Commands
 
-**`/rewrite`** — Full rewrite. Spawn `generate-skill` with `/rewrite` flag, then `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
+**`/rewrite`** — Spawn `generate-skill` with `/rewrite` flag, then `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 
-**`/rewrite @file1 @file2 ...`** — Scoped rewrite. Do not spawn generate-skill.
+**`/rewrite @file1 @file2 ...`** — Scoped rewrite (no generate-skill):
 1. Read `SKILL.md` and targeted files
-2. Rewrite targeted files — preserve domain knowledge, improve clarity and consistency
-3. Update pointers in SKILL.md if scope changed
+2. Rewrite targeted files — preserve domain knowledge, improve clarity
+3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
 5. Follow Skill Builder Practices
 
@@ -109,10 +100,10 @@ Keep the explanation concise — focus on what changed, not what stayed the same
 
 ## Error Handling
 
-- **File not found:** If a referenced file doesn't exist, tell the user which file is missing and ask whether to create it or adjust the request.
-- **Malformed SKILL.md:** If frontmatter is missing or corrupted, fix it as part of the edit and note the repair in your response.
-- **Unclear request:** If you cannot determine what to change from the message and conversation history, ask one clarifying question rather than guessing.
-- **Out-of-scope request:** If the message cannot be interpreted as a refinement of the skill at `{skill_dir}` — e.g. "build a new skill", "edit a different skill", "delete this", or anything targeting files outside `{skill_dir}` — **stop immediately, do not write or create any files**, and respond: "This agent only edits the skill at `{skill_dir}`. For [requested action], start a new session from the coordinator."
+- **File not found:** Tell the user which file is missing; ask whether to create it or adjust the request.
+- **Malformed SKILL.md:** Fix frontmatter as part of the edit; note the repair.
+- **Unclear request:** Ask one clarifying question.
+- **Out-of-scope request:** Stop, write nothing, respond: "This agent only edits the skill at `{skill_dir}`. For [requested action], start a new session from the coordinator."
 
 </instructions>
 
@@ -135,11 +126,10 @@ These changes add SLA coverage as a first-class topic in the skill rather than b
 </output_format>
 
 ## Success Criteria
-- Only files relevant to the user's request are modified
-- Untouched sections retain their original content, formatting, and structure
-- SKILL.md and reference files remain consistent with each other after edits
-- The `modified` date in SKILL.md frontmatter is updated when SKILL.md is edited
-- All frontmatter fields are preserved intact unless the user explicitly requested a change to a specific field
-- `tools` is updated only when the skill's scope changes significantly; no tools are removed if they are still needed
-- Changes follow the Content Principles and Skill Best Practices from the agent instructions
-- The response clearly explains what changed and why
+- Only relevant files are modified
+- Untouched sections retain original content and formatting
+- SKILL.md and reference files stay consistent after edits
+- `modified` date updated when SKILL.md is edited
+- Frontmatter fields preserved unless user explicitly requested a change
+- `tools` updated only when scope changes; still-used tools never removed
+- Edits follow Content Principles and Skill Best Practices
