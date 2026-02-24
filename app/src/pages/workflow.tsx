@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/markdown-link";
-import MDEditor from "@uiw/react-md-editor";
+import { ClarificationsEditor } from "@/components/clarifications-editor";
+import { type ClarificationsFile } from "@/lib/clarifications-types";
 import {
   Loader2,
   Play,
-  FileText,
   AlertCircle,
   RotateCcw,
-  CheckCircle2,
-  Save,
-  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import {
   Dialog,
   DialogContent,
@@ -25,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
@@ -69,9 +63,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.md"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
+  2: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet" },
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -79,8 +73,8 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
-  1: { relativePath: "context/clarifications.md" },
-  3: { relativePath: "context/clarifications.md" },
+  1: { relativePath: "context/clarifications.json" },
+  3: { relativePath: "context/clarifications.json" },
 };
 
 
@@ -209,11 +203,12 @@ export default function WorkflowPage() {
 
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
+  const [clarificationsData, setClarificationsData] = useState<ClarificationsFile | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
   // Markdown editor state
   const [editorContent, setEditorContent] = useState<string>("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [, setIsSaving] = useState(false);
   // Explicit dirty flag — set on user edits, cleared on save/reload/load
   const [editorDirty, setEditorDirty] = useState(false);
   const hasUnsavedChanges = editorDirty;
@@ -448,8 +443,22 @@ export default function WorkflowPage() {
     setLoadingReview(true);
 
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
-      .then((content) => setReviewContent(content ?? null))
-      .catch(() => setReviewContent(null))
+      .then((content) => {
+        setReviewContent(content ?? null);
+        if (content) {
+          try {
+            setClarificationsData(JSON.parse(content));
+          } catch {
+            setClarificationsData(null); // legacy markdown file
+          }
+        } else {
+          setClarificationsData(null);
+        }
+      })
+      .catch(() => {
+        setReviewContent(null);
+        setClarificationsData(null);
+      })
       .finally(() => setLoadingReview(false));
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
@@ -719,7 +728,9 @@ export default function WorkflowPage() {
     const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
     if (config && reviewContent !== null && skillsPath && filename) {
       try {
-        const content = editorDirty ? editorContent : (reviewContent ?? "");
+        const content = clarificationsData
+          ? JSON.stringify(clarificationsData, null, 2)
+          : (editorDirty ? editorContent : (reviewContent ?? ""));
         await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
         setReviewContent(content);
       } catch (err) {
@@ -892,14 +903,29 @@ export default function WorkflowPage() {
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
-        if (!content) toast.error("Failed to reload file", { duration: Infinity });
+        if (content) {
+          try {
+            setClarificationsData(JSON.parse(content));
+          } catch {
+            setClarificationsData(null);
+          }
+        } else {
+          setClarificationsData(null);
+          toast.error("Failed to reload file", { duration: Infinity });
+        }
       })
       .catch(() => {
         setReviewContent(null);
+        setClarificationsData(null);
         toast.error("Failed to reload file", { duration: Infinity });
       })
       .finally(() => setLoadingReview(false));
   };
+
+  const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
+    setClarificationsData(updated);
+    setEditorDirty(true);
+  }, []);
 
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
@@ -909,8 +935,11 @@ export default function WorkflowPage() {
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
     setIsSaving(true);
     try {
-      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
-      setReviewContent(editorContent);
+      const content = clarificationsData
+        ? JSON.stringify(clarificationsData, null, 2)
+        : editorContent;
+      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
+      setReviewContent(content);
       setEditorDirty(false);
       if (!silent) toast.success("Saved");
       return true;
@@ -920,7 +949,7 @@ export default function WorkflowPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [currentStep, skillsPath, editorContent, skillName]);
+  }, [currentStep, skillsPath, editorContent, clarificationsData, skillName]);
 
   // Debounce autosave — fires 1500ms after the last edit on a human review step.
   // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
@@ -932,7 +961,7 @@ export default function WorkflowPage() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [editorContent, editorDirty, isHumanReviewStep, handleSave]);
+  }, [editorContent, clarificationsData, editorDirty, isHumanReviewStep, handleSave]);
 
   const currentStepDef = steps[currentStep];
 
@@ -982,7 +1011,7 @@ export default function WorkflowPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
           <div className="text-center">
-            <p className="font-medium text-destructive">Missing clarification file</p>
+            <p className="font-medium text-destructive">Missing clarifications file</p>
             <p className="mt-1 text-sm">
               Expected <code className="text-xs">{HUMAN_REVIEW_STEPS[currentStep]?.relativePath}</code> but it was not found.
               The previous step may not have completed successfully.
@@ -992,114 +1021,30 @@ export default function WorkflowPage() {
       );
     }
 
-    // Review mode (or completed in any mode): read-only markdown preview
-    if (reviewMode) {
+    // JSON clarifications data — render the structured editor
+    if (clarificationsData) {
       return (
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between pb-3">
-            <p className="text-xs text-muted-foreground font-mono">
-              {reviewFilePath}
-            </p>
-          </div>
-          <ScrollArea className="min-h-0 flex-1 rounded-md border">
-            <div className="markdown-body compact max-w-none p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {reviewContent}
-              </ReactMarkdown>
-            </div>
-          </ScrollArea>
-        </div>
+        <ClarificationsEditor
+          data={clarificationsData}
+          onChange={handleClarificationsChange}
+          onReload={handleReviewReload}
+          onContinue={() => handleReviewContinue()}
+          filePath={reviewFilePath}
+        />
       );
     }
 
-    // Update mode: MDEditor
-    const isCompleted = currentStepDef?.status === "completed";
-    const nextStepAfterReview = currentStep + 1;
-    const isReviewHalted = disabledSteps.includes(nextStepAfterReview);
-
+    // Fallback: file exists but is not valid JSON (legacy .md file)
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-3">
-          <p className="text-xs text-muted-foreground font-mono">
-            {reviewFilePath}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+        <AlertCircle className="size-8 text-yellow-500/50" />
+        <div className="text-center max-w-md">
+          <p className="font-medium">Incompatible clarifications format</p>
+          <p className="mt-1 text-sm">
+            The clarifications file is not in JSON format. Reset the previous step to regenerate it
+            in the new structured format.
           </p>
         </div>
-        <div className="min-h-0 flex-1" data-color-mode="dark">
-          <MDEditor
-            value={editorContent}
-            onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
-            height="100%"
-            visibleDragbar={false}
-          />
-        </div>
-        {isReviewHalted ? (
-          <div className="border-t pt-4">
-            <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle2 className="size-8 text-green-500" />
-              <div className="text-center max-w-md">
-                <p className="text-base font-medium">Scope Too Broad</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  The research phase determined this skill topic is too broad for a single skill.
-                  Review the scope recommendations above, then start a new workflow with a narrower focus.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => navigate({ to: "/" })}
-              >
-                <Home className="size-3.5" />
-                Return to Dashboard
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between border-t px-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              {isCompleted ? "Step completed. You can still edit and save." : "Edit the markdown above, then save and continue."}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSave()}
-                disabled={!hasUnsavedChanges || isSaving}
-              >
-                {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                Save
-                {hasUnsavedChanges && (
-                  <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReviewReload}
-              >
-                <RotateCcw className="size-3.5" />
-                Reload
-              </Button>
-              {!isCompleted && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (hasUnsavedChanges) {
-                      setShowUnsavedDialog(true);
-                    } else {
-                      handleReviewContinue();
-                    }
-                  }}
-                  disabled={gateLoading}
-                >
-                  {gateLoading
-                    ? <Loader2 className="size-3.5 animate-spin" />
-                    : <CheckCircle2 className="size-3.5" />}
-                  {gateLoading ? "Evaluating..." : "Complete Step"}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -1387,18 +1332,12 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {isHumanReviewStep && (
-                <Badge variant="outline" className="gap-1">
-                  <FileText className="size-3" />
-                  Q&A Review
-                </Badge>
-              )}
             </div>
           </div>
 
-          {/* Content area — agent output panel manages its own padding */}
+          {/* Content area — agent output panel and ClarificationsEditor manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            activeAgentId && !isHumanReviewStep ? "" : "p-4"
+            (activeAgentId && !isHumanReviewStep) || (isHumanReviewStep && clarificationsData) ? "" : "p-4"
           }`}>
             {renderContent()}
           </div>
