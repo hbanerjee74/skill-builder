@@ -127,7 +127,7 @@ export default function SkillListRow({
       <td className={cn(tdBase, "hidden sm:table-cell")}>
         <div className="flex items-center">
           {isComplete ? (
-            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs px-1.5 py-0">
+            <Badge className="text-xs px-1.5 py-0" style={{ background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)", color: "var(--color-seafoam)" }}>
               Completed
             </Badge>
           ) : (

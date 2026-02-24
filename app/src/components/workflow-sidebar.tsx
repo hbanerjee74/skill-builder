@@ -15,11 +15,11 @@ function StepStatusIcon({ status, isDisabled }: { status: WorkflowStep["status"]
   }
   switch (status) {
     case "completed":
-      return <CheckCircle2 className="size-4 text-green-500" />;
+      return <CheckCircle2 className="size-4" style={{ color: "var(--color-seafoam)" }} />;
     case "in_progress":
       return <Loader2 className="size-4 animate-spin text-primary" />;
     case "waiting_for_user":
-      return <Clock className="size-4 text-yellow-500" />;
+      return <Clock className="size-4" style={{ color: "var(--color-pacific)" }} />;
     case "error":
       return <AlertCircle className="size-4 text-destructive" />;
     default:
