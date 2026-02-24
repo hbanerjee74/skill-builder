@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearch, useBlocker } from "@tanstack/react-router";
+import { AlertTriangle } from "lucide-react";
+import { useNavigate, useSearch, useBlocker } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -61,6 +62,7 @@ async function loadSkillFiles(basePath: string, skillName: string): Promise<Skil
 
 export default function RefinePage() {
   const { skill: skillParam } = useSearch({ from: "/refine" });
+  const navigate = useNavigate();
 
   const workspacePath = useSettingsStore((s) => s.workspacePath);
   const preferredModel = useSettingsStore((s) => s.preferredModel);
@@ -405,6 +407,19 @@ export default function RefinePage() {
         />
       </div>
 
+      {scopeBlocked && selectedSkill && (
+        <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>Scope recommendation active — refine is blocked until resolved.</span>
+          <button
+            className="ml-auto shrink-0 underline underline-offset-2"
+            onClick={() => navigate({ to: "/skill/$skillName", params: { skillName: selectedSkill.name } })}
+          >
+            Go to Workflow →
+          </button>
+        </div>
+      )}
+
       {/* Main split pane */}
       <div className="min-h-0 flex-1">
         <ResizableSplitPane
@@ -425,20 +440,20 @@ export default function RefinePage() {
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
           <div className={`size-[5px] rounded-full ${dotClass}`} />
-          <span className="text-[10.5px] text-muted-foreground/60">{statusLabel}</span>
+          <span className="text-xs text-muted-foreground/60">{statusLabel}</span>
         </div>
         {selectedSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">{selectedSkill.name}</span>
+            <span className="text-xs text-muted-foreground/60">{selectedSkill.name}</span>
           </>
         )}
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
+        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
         {isRunning && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
+            <span className="text-xs text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
           </>
         )}
       </div>
