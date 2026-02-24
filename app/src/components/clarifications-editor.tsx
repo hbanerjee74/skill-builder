@@ -59,6 +59,7 @@ export function ClarificationsEditor({
   const { answered, total, mustUnanswered } = getTotalCounts(data);
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
+  const isComplete = answered === total;
 
   const toggleCard = useCallback((id: string) => {
     setExpandedCards((prev) => {
@@ -97,30 +98,22 @@ export function ClarificationsEditor({
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex shrink-0 items-center gap-3 border-b px-5 py-2" style={{ background: "oklch(0.185 0.004 270)" }}>
+      <div className="flex shrink-0 items-center gap-3 border-b bg-muted px-5 py-2">
         <div className="flex flex-1 items-center gap-3">
           {/* Progress bar */}
-          <div className="h-1 w-28 overflow-hidden rounded-full" style={{ background: "oklch(0.290 0.006 260)" }}>
+          <div className="h-1 w-28 overflow-hidden rounded-full bg-border">
             <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{
-                width: `${progressPct}%`,
-                background: answered === total ? "oklch(0.640 0.130 145)" : "oklch(0.700 0.140 55)",
-              }}
+              className={`h-full rounded-full transition-all duration-300 ${isComplete ? "bg-emerald-500" : "bg-amber-500"}`}
+              style={{ width: `${progressPct}%` }}
             />
           </div>
-          <span
-            className="text-[11px] font-semibold whitespace-nowrap"
-            style={{ color: answered === total ? "oklch(0.640 0.130 145)" : "oklch(0.700 0.140 55)" }}
-          >
+          <span className={`text-[11px] font-semibold whitespace-nowrap ${isComplete ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
             {answered} / {total} answered
           </span>
           {mustUnanswered > 0 && (
             <>
-              <span className="text-[11px]" style={{ color: "oklch(0.450 0.010 260)" }}>
-                ·
-              </span>
-              <span className="text-[11px]" style={{ color: "oklch(0.620 0.160 25)" }}>
+              <span className="text-[11px] text-muted-foreground">·</span>
+              <span className="text-[11px] text-destructive">
                 {total - answered} unanswered (incl. {mustUnanswered} MUST ANSWER)
               </span>
             </>
@@ -140,14 +133,7 @@ export function ClarificationsEditor({
         <div className="px-6 pt-3.5 pb-1 text-base font-bold text-foreground">
           {data.metadata.title}
         </div>
-        <div
-          className="mx-6 rounded-md border px-3 py-1.5 text-xs"
-          style={{
-            background: "oklch(0.230 0.035 55 / 0.3)",
-            borderColor: "oklch(0.430 0.080 55)",
-            color: "oklch(0.820 0.080 55)",
-          }}
-        >
+        <div className="mx-6 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           Questions marked <strong>MUST ANSWER</strong> block skill generation. All others refine
           quality but have reasonable defaults.
         </div>
@@ -199,33 +185,27 @@ export function ClarificationsEditor({
 function MetadataBlock({ data }: { data: ClarificationsFile }) {
   const m = data.metadata;
   return (
-    <div
-      className="mx-6 mt-3 flex flex-wrap gap-x-5 gap-y-1 rounded-md border px-3 py-2 font-mono text-[11px]"
-      style={{
-        background: "oklch(0.200 0.008 260)",
-        borderColor: "oklch(0.300 0.012 260)",
-      }}
-    >
+    <div className="mx-6 mt-3 flex flex-wrap gap-x-5 gap-y-1 rounded-md border bg-muted px-3 py-2 font-mono text-[11px]">
       <span>
-        <span style={{ color: "oklch(0.620 0.050 270)" }}>questions</span>
+        <span className="text-muted-foreground">questions</span>
         {": "}
-        <span style={{ color: "oklch(0.580 0.080 145)" }}>{m.question_count}</span>
+        <span className="text-primary">{m.question_count}</span>
       </span>
       <span>
-        <span style={{ color: "oklch(0.620 0.050 270)" }}>sections</span>
+        <span className="text-muted-foreground">sections</span>
         {": "}
-        <span style={{ color: "oklch(0.580 0.080 145)" }}>{m.section_count}</span>
+        <span className="text-primary">{m.section_count}</span>
       </span>
       <span>
-        <span style={{ color: "oklch(0.620 0.050 270)" }}>refinements</span>
+        <span className="text-muted-foreground">refinements</span>
         {": "}
-        <span style={{ color: "oklch(0.580 0.080 145)" }}>{m.refinement_count}</span>
+        <span className="text-primary">{m.refinement_count}</span>
       </span>
       {m.priority_questions.length > 0 && (
         <span>
-          <span style={{ color: "oklch(0.620 0.050 270)" }}>priority</span>
+          <span className="text-muted-foreground">priority</span>
           {": "}
-          <span style={{ color: "oklch(0.700 0.090 55)" }}>
+          <span className="text-amber-600 dark:text-amber-400">
             [{m.priority_questions.join(", ")}]
           </span>
         </span>
@@ -255,27 +235,14 @@ function SectionBlock({
   return (
     <div>
       {/* Sticky section band */}
-      <div
-        className="sticky top-0 z-10 mt-5 flex items-center gap-2.5 px-6 pt-2.5 pb-2"
-        style={{
-          background: "oklch(0.210 0.012 210 / 0.5)",
-          borderTop: "2px solid var(--color-primary, oklch(0.750 0.120 210))",
-          backdropFilter: "blur(4px)",
-        }}
-      >
+      <div className="sticky top-0 z-10 mt-5 flex items-center gap-2.5 border-t-2 border-primary bg-primary/10 px-6 pt-2.5 pb-2 backdrop-blur-sm">
         <span className="flex-1 text-[13px] font-bold text-primary">{section.title}</span>
         <StatusChip status={status} answered={answered} total={total} />
       </div>
 
       {/* Section description */}
       {section.description && (
-        <div
-          className="border-b px-6 pt-1 pb-2.5 text-xs text-muted-foreground italic"
-          style={{
-            background: "oklch(0.205 0.008 215 / 0.3)",
-            borderColor: "oklch(0.255 0.008 235)",
-          }}
-        >
+        <div className="border-b bg-muted/50 px-6 pt-1 pb-2.5 text-xs text-muted-foreground italic">
           {section.description}
         </div>
       )}
@@ -297,6 +264,12 @@ function SectionBlock({
 
 // ─── Status Chip ──────────────────────────────────────────────────────────────
 
+const chipClasses: Record<SectionStatus, string> = {
+  complete: "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-400",
+  partial: "bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-400",
+  blocked: "bg-destructive/15 border-destructive/40 text-destructive",
+};
+
 function StatusChip({
   status,
   answered,
@@ -306,30 +279,8 @@ function StatusChip({
   answered: number;
   total: number;
 }) {
-  const styles: Record<SectionStatus, { bg: string; border: string; color: string }> = {
-    complete: {
-      bg: "oklch(0.250 0.030 145 / 0.3)",
-      border: "oklch(0.400 0.080 145)",
-      color: "oklch(0.640 0.130 145)",
-    },
-    partial: {
-      bg: "oklch(0.240 0.040 55 / 0.25)",
-      border: "oklch(0.450 0.080 55)",
-      color: "oklch(0.700 0.140 55)",
-    },
-    blocked: {
-      bg: "oklch(0.240 0.050 25 / 0.3)",
-      border: "oklch(0.480 0.130 25)",
-      color: "oklch(0.700 0.140 25)",
-    },
-  };
-  const s = styles[status];
-
   return (
-    <span
-      className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-      style={{ background: s.bg, border: `1px solid ${s.border}`, color: s.color }}
-    >
+    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${chipClasses[status]}`}>
       {answered} / {total} answered
     </span>
   );
@@ -353,18 +304,11 @@ function QuestionCard({
   const answered = isQuestionAnswered(question);
 
   return (
-    <div
-      className="mx-6 mt-2.5 overflow-hidden rounded-[7px] border"
-      style={{
-        borderLeftWidth: "3px",
-        borderLeftColor: answered ? "oklch(0.500 0.120 145)" : "oklch(0.600 0.120 55)",
-      }}
-    >
+    <div className={`mx-6 mt-2.5 overflow-hidden rounded-[7px] border border-l-[3px] ${answered ? "border-l-emerald-500" : "border-l-amber-500"}`}>
       {/* Card header — always visible */}
       <button
         type="button"
-        className="flex w-full cursor-pointer items-start gap-2.5 px-3.5 py-2.5 text-left select-none hover:brightness-110"
-        style={{ background: "oklch(0.210 0.005 265)" }}
+        className="flex w-full cursor-pointer items-start gap-2.5 bg-muted/50 px-3.5 py-2.5 text-left select-none hover:bg-muted"
         onClick={() => toggleCard(question.id)}
       >
         <span className="mt-0.5 shrink-0 font-mono text-[10px] font-bold text-muted-foreground">
@@ -382,16 +326,13 @@ function QuestionCard({
 
       {/* Collapsed answer preview */}
       {!isExpanded && (
-        <div className="flex items-center gap-2 px-3.5 pb-2" style={{ background: "oklch(0.210 0.005 265)" }}>
+        <div className="flex items-center gap-2 bg-muted/50 px-3.5 pb-2">
           {answered ? (
-            <span
-              className="flex-1 truncate text-[11.5px] italic"
-              style={{ color: "oklch(0.720 0.090 145)" }}
-            >
+            <span className="flex-1 truncate text-[11.5px] italic text-emerald-600 dark:text-emerald-400">
               {question.answer_text || `Choice ${question.answer_choice}`}
             </span>
           ) : (
-            <span className="text-[11.5px] italic" style={{ color: "oklch(0.560 0.070 55)" }}>
+            <span className="text-[11.5px] italic text-amber-600 dark:text-amber-400">
               Not yet answered
             </span>
           )}
@@ -400,9 +341,9 @@ function QuestionCard({
 
       {/* Expanded body */}
       {isExpanded && (
-        <div className="border-t p-3.5" style={{ background: "oklch(0.197 0.005 268)", borderColor: "oklch(0.255 0.006 265)" }}>
+        <div className="border-t bg-card p-3.5">
           {/* Question text */}
-          <p className="mb-2.5 text-[12.5px] leading-relaxed" style={{ color: "oklch(0.820 0.004 90)" }}>
+          <p className="mb-2.5 text-[12.5px] leading-relaxed text-foreground">
             {question.text}
           </p>
 
@@ -424,7 +365,7 @@ function QuestionCard({
 
           {/* Consolidated from */}
           {question.consolidated_from && question.consolidated_from.length > 0 && (
-            <p className="mb-2 text-[10.5px] italic" style={{ color: "oklch(0.450 0.012 260)" }}>
+            <p className="mb-2 text-[10.5px] italic text-muted-foreground">
               Consolidated from: {question.consolidated_from.join(", ")}
             </p>
           )}
@@ -457,14 +398,7 @@ function QuestionCard({
 
 function MustBadge() {
   return (
-    <span
-      className="shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider"
-      style={{
-        background: "oklch(0.250 0.060 25 / 0.5)",
-        border: "1px solid oklch(0.500 0.150 25)",
-        color: "oklch(0.700 0.160 25)",
-      }}
-    >
+    <span className="shrink-0 rounded-sm border border-destructive/50 bg-destructive/15 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-destructive">
       must
     </span>
   );
@@ -489,18 +423,14 @@ function ChoiceList({
           <button
             type="button"
             key={choice.id}
-            className="flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs leading-snug transition-all duration-100"
-            style={{
-              background: isSelected ? "oklch(0.230 0.030 155 / 0.4)" : "transparent",
-              borderColor: isSelected ? "oklch(0.460 0.090 150)" : "transparent",
-              color: isSelected ? "oklch(0.840 0.070 150)" : "oklch(0.680 0.005 85)",
-            }}
+            className={`flex cursor-pointer items-start gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs leading-snug transition-all duration-100 ${
+              isSelected
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
             onClick={() => onSelect(choice.id, choice.is_other ? "" : choice.text)}
           >
-            <span
-              className="mt-px shrink-0 font-mono text-[10px] font-bold"
-              style={{ color: isSelected ? "oklch(0.680 0.090 150)" : "oklch(0.540 0.030 260)" }}
-            >
+            <span className={`mt-px shrink-0 font-mono text-[10px] font-bold ${isSelected ? "text-primary" : "text-muted-foreground"}`}>
               {choice.id}.
             </span>
             <span className="flex-1">{choice.text}</span>
@@ -535,21 +465,11 @@ function AnswerField({
   }, [value]);
 
   return (
-    <div
-      className="mt-1 overflow-hidden rounded-md border transition-colors duration-150 focus-within:shadow-[0_0_0_2px_oklch(0.740_0.115_180_/_0.15)]"
-      style={{ borderColor: "oklch(0.310 0.010 260)" }}
-    >
+    <div className="mt-1 overflow-hidden rounded-md border border-input transition-colors duration-150 focus-within:border-ring focus-within:ring-[2px] focus-within:ring-ring/20">
       {!compact && (
-        <div
-          className="flex items-center justify-between border-b px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide"
-          style={{
-            background: "oklch(0.200 0.008 260)",
-            borderColor: "oklch(0.265 0.008 260)",
-            color: "oklch(0.580 0.050 190)",
-          }}
-        >
+        <div className="flex items-center justify-between border-b bg-muted px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-primary">
           Answer
-          <span className="font-normal normal-case tracking-normal" style={{ color: "oklch(0.440 0.008 260)" }}>
+          <span className="font-normal normal-case tracking-normal text-muted-foreground">
             type freely or reference a choice above
           </span>
         </div>
@@ -561,13 +481,10 @@ function AnswerField({
         readOnly={readOnly}
         rows={compact ? 1 : 2}
         placeholder={compact ? "Type your answer..." : "Type your answer here..."}
-        className="w-full resize-none border-none outline-none"
+        className="w-full resize-none border-none bg-background px-2.5 font-sans text-emerald-700 outline-none placeholder:text-muted-foreground dark:text-emerald-400"
         style={{
           padding: compact ? "6px 10px" : "8px 10px",
-          background: "oklch(0.195 0.004 268)",
-          fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
           fontSize: compact ? "12px" : "12.5px",
-          color: "oklch(0.820 0.070 145)",
           lineHeight: "1.55",
           minHeight: compact ? "28px" : "36px",
         }}
@@ -588,22 +505,8 @@ function RefinementsBlock({
   readOnly: boolean;
 }) {
   return (
-    <div
-      className="mt-2.5 ml-3.5 overflow-hidden rounded-r-md border"
-      style={{
-        borderLeftWidth: "2px",
-        borderLeftColor: "oklch(0.500 0.060 275)",
-        borderColor: "oklch(0.265 0.012 265)",
-      }}
-    >
-      <div
-        className="border-b px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest"
-        style={{
-          background: "oklch(0.200 0.010 270 / 0.7)",
-          borderColor: "oklch(0.255 0.010 270)",
-          color: "oklch(0.580 0.050 275)",
-        }}
-      >
+    <div className="mt-2.5 ml-3.5 overflow-hidden rounded-r-md border border-l-2 border-l-violet-500">
+      <div className="border-b bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">
         Refinements
       </div>
       {refinements.map((ref) => (
@@ -625,22 +528,14 @@ function RefinementItem({
   const answered = isQuestionAnswered(refinement);
 
   return (
-    <div
-      className="border-b p-2.5 last:border-b-0"
-      style={{
-        borderColor: "oklch(0.240 0.007 265)",
-        borderLeftWidth: "2px",
-        borderLeftColor: answered ? "oklch(0.450 0.090 145)" : "oklch(0.490 0.055 275)",
-        marginLeft: "-2px",
-      }}
-    >
-      <div className="mb-0.5 font-mono text-[10px] font-bold" style={{ color: "oklch(0.560 0.050 275)" }}>
+    <div className={`border-b p-2.5 last:border-b-0 ${answered ? "border-l-2 -ml-[2px] border-l-emerald-500" : "border-l-2 -ml-[2px] border-l-violet-500/50"}`}>
+      <div className="mb-0.5 font-mono text-[10px] font-bold text-violet-600 dark:text-violet-400">
         {refinement.id}
       </div>
-      <div className="mb-1.5 text-xs font-semibold leading-snug" style={{ color: "oklch(0.780 0.035 280)" }}>
+      <div className="mb-1.5 text-xs font-semibold leading-snug text-foreground">
         {refinement.title}
         {refinement.text && refinement.text !== refinement.title && (
-          <span className="font-normal" style={{ color: "oklch(0.600 0.020 270)" }}>
+          <span className="font-normal text-muted-foreground">
             {" "}&mdash; {refinement.text}
           </span>
         )}
@@ -663,15 +558,9 @@ function RefinementItem({
 function NotesBlock({ notes }: { notes: Note[] }) {
   return (
     <div>
-      <div
-        className="mt-5 flex items-center gap-2.5 px-6 pt-2.5 pb-2"
-        style={{
-          background: "oklch(0.210 0.020 55 / 0.25)",
-          borderTop: "2px solid oklch(0.700 0.140 55)",
-        }}
-      >
-        <AlertTriangle className="size-3.5" style={{ color: "oklch(0.700 0.140 55)" }} />
-        <span className="flex-1 text-[13px] font-bold" style={{ color: "oklch(0.700 0.140 55)" }}>
+      <div className="mt-5 flex items-center gap-2.5 border-t-2 border-amber-500 bg-amber-500/10 px-6 pt-2.5 pb-2">
+        <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" />
+        <span className="flex-1 text-[13px] font-bold text-amber-600 dark:text-amber-400">
           Needs Clarification
         </span>
       </div>
@@ -688,19 +577,10 @@ function NoteCard({ note }: { note: Note }) {
   const Icon = resolveNoteIcon(note.type);
 
   return (
-    <div
-      className="mx-6 mt-2.5 rounded-md border p-3.5"
-      style={{
-        background: isBlocked ? "oklch(0.210 0.030 25 / 0.2)" : "oklch(0.205 0.015 55 / 0.2)",
-        borderColor: isBlocked ? "oklch(0.420 0.100 25 / 0.5)" : "oklch(0.360 0.060 55 / 0.5)",
-      }}
-    >
+    <div className={`mx-6 mt-2.5 rounded-md border p-3.5 ${isBlocked ? "border-destructive/30 bg-destructive/10" : "border-amber-500/30 bg-amber-500/10"}`}>
       <div className="mb-1 flex items-center gap-1.5">
-        <Icon className="size-3" style={{ color: isBlocked ? "oklch(0.750 0.130 25)" : "oklch(0.800 0.070 55)" }} />
-        <span
-          className="text-[12.5px] font-semibold"
-          style={{ color: isBlocked ? "oklch(0.750 0.130 25)" : "oklch(0.800 0.070 55)" }}
-        >
+        <Icon className={`size-3 ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`} />
+        <span className={`text-[12.5px] font-semibold ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
           {note.title}
         </span>
       </div>
