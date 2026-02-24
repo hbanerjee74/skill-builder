@@ -35,8 +35,7 @@ export const updateSkillTags = (skillName: string, tags: string[]) =>
 
 export const updateSkillMetadata = (
   skillName: string,
-  domain: string | null,
-  skillType: string | null,
+  purpose: string | null,
   tags: string[] | null,
   intakeJson: string | null,
   description?: string | null,
@@ -47,8 +46,7 @@ export const updateSkillMetadata = (
   disableModelInvocation?: boolean | null,
 ) => invoke("update_skill_metadata", {
   skillName,
-  domain,
-  skillType,
+  purpose,
   tags,
   intakeJson,
   description: description ?? null,
@@ -72,14 +70,16 @@ export interface FieldSuggestions {
   scope: string;
   unique_setup: string;
   claude_mistakes: string;
+  context_questions: string;
 }
 
 export const generateSuggestions = (
   skillName: string,
-  skillType: string,
+  purpose: string,
   opts?: {
     industry?: string | null;
     functionRole?: string | null;
+    purposeLabel?: string;
     domain?: string;
     scope?: string;
     audience?: string;
@@ -88,7 +88,7 @@ export const generateSuggestions = (
   },
 ) => invoke<FieldSuggestions>("generate_suggestions", {
   skillName,
-  skillType,
+  purpose,
   industry: opts?.industry ?? null,
   functionRole: opts?.functionRole ?? null,
   domain: opts?.domain ?? null,
@@ -162,7 +162,7 @@ interface WorkflowRunRow {
   domain: string;
   current_step: number;
   status: string;
-  skill_type: string;
+  purpose: string;
   created_at: string;
   updated_at: string;
 }
@@ -194,8 +194,8 @@ export const saveWorkflowState = (
   currentStep: number,
   status: string,
   stepStatuses: StepStatusUpdate[],
-  skillType?: string,
-) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses, skillType: skillType ?? "domain" });
+  purpose?: string,
+) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
 
 // --- Files ---
 

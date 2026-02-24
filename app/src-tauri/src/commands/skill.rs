@@ -806,6 +806,7 @@ pub struct FieldSuggestions {
     pub scope: String,
     pub unique_setup: String,
     pub claude_mistakes: String,
+    pub context_questions: String,
 }
 
 /// Call Haiku to generate field suggestions in cascading groups.
