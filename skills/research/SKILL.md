@@ -2,18 +2,16 @@
 name: research
 description: >
   Runs the research phase for a skill. Use when researching dimensions and producing
-  clarifications for a skill type and domain. Returns a scored dimension table and
+  clarifications for a purpose and domain. Returns a scored dimension table and
   complete clarifications.md content as inline text with === RESEARCH PLAN === and
   === CLARIFICATIONS === delimiters.
-domain: Skill Builder
-type: skill-builder
 ---
 
 # Research Skill
 
 ## What This Skill Does
 
-Given a `skill_type` and `domain`, this skill produces two outputs as inline text:
+Given a `purpose` and `domain`, this skill produces two outputs as inline text:
 
 1. A scored dimension table (becomes `research-plan.md`)
 2. Complete `clarifications.md` content in canonical format (becomes the clarifications file)
@@ -26,7 +24,7 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 
 | Input | Values | Example |
 |-------|--------|---------|
-| `skill_type` | `domain` \| `platform` \| `source` \| `data-engineering` | `domain` |
+| `purpose` | `domain` \| `platform` \| `source` \| `data-engineering` | `domain` |
 | `domain` | Free text domain name | `"Sales Pipeline Analytics"` |
 
 ---
@@ -35,7 +33,7 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 
 Read `references/dimension-sets.md`.
 
-Based on `skill_type`, identify the 5–6 candidate dimensions for this skill type. The file contains four named sections (Domain Dimensions, Data-Engineering Dimensions, Platform Dimensions, Source Dimensions) each with a table of slugs and dimension names.
+Based on `purpose`, identify the 5–6 candidate dimensions for this purpose. The file contains four named sections (Domain Dimensions, Data-Engineering Dimensions, Platform Dimensions, Source Dimensions) each with a table of slugs and dimension names.
 
 Note the dimension slugs — you will use them in Step 3 to locate dimension spec files at `references/dimensions/{slug}.md`.
 
@@ -49,7 +47,7 @@ Use **extended thinking** for this step. Score each candidate dimension against 
 
 ### Pre-check: topic relevance
 
-Before scoring, determine whether the domain is a legitimate topic for the skill type. If clearly not relevant (e.g., a non-data topic for any skill type), produce a `=== RESEARCH PLAN ===` section with `topic_relevance: not_relevant` and an empty selected list, then stop. Do not proceed to Steps 3 or 4.
+Before scoring, determine whether the domain is a legitimate topic for the purpose. If clearly not relevant (e.g., a non-data topic for any purpose), produce a `=== RESEARCH PLAN ===` section with `topic_relevance: not_relevant` and an empty selected list, then stop. Do not proceed to Steps 3 or 4.
 
 ### Scoring
 
@@ -68,7 +66,7 @@ For each selected dimension, read the full content of `references/dimensions/{sl
 Then spawn a Task sub-agent for that dimension. Construct the Task prompt as follows:
 
 ```
-You are researching the {dimension_name} dimension for a {skill_type} skill about {domain}.
+You are researching the {dimension_name} dimension for a {purpose} skill about {domain}.
 
 {full content of references/dimensions/{slug}.md}
 
@@ -96,7 +94,7 @@ Return inline text with two clearly delimited sections. The delimiter lines must
 ```
 === RESEARCH PLAN ===
 ---
-skill_type: [skill_type]
+purpose: [purpose]
 domain: [domain name]
 topic_relevance: relevant
 dimensions_evaluated: [count]
@@ -104,7 +102,7 @@ dimensions_selected: [count]
 ---
 # Research Plan
 
-## Skill: [domain name] ([skill_type])
+## Skill: [domain name] ([purpose])
 
 ## Dimension Scores
 
@@ -141,7 +139,7 @@ Both sections must be present. Both must be well-formed per their respective can
 
 ## Error Handling
 
-**Topic not relevant**: Return `=== RESEARCH PLAN ===` with `topic_relevance: not_relevant` and an empty selected list. Return `=== CLARIFICATIONS ===` with a minimal frontmatter (`question_count: 0`, `sections: 0`, `duplicates_removed: 0`, `refinement_count: 0`, `scope_recommendation: true`) and a single section explaining the domain is not applicable for this skill type.
+**Topic not relevant**: Return `=== RESEARCH PLAN ===` with `topic_relevance: not_relevant` and an empty selected list. Return `=== CLARIFICATIONS ===` with a minimal frontmatter (`question_count: 0`, `sections: 0`, `duplicates_removed: 0`, `refinement_count: 0`, `scope_recommendation: true`) and a single section explaining the domain is not applicable for this purpose.
 
 **Dimension Task failure**: Proceed with available outputs. Note any failed dimensions in the scored table with `score: 0` and reason `"Research task failed"`. Do not include them in selected dimensions.
 

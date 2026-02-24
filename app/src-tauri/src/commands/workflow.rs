@@ -549,7 +549,7 @@ fn parse_decisions_guard(decisions_path: &Path) -> bool {
 /// Reads the deployed agent file's frontmatter `name:` field (the SDK uses
 /// this to register the agent). Falls back to the phase name if the
 /// file is missing or has no name field.
-fn derive_agent_name(workspace_path: &str, _skill_type: &str, prompt_template: &str) -> String {
+fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str) -> String {
     let phase = prompt_template.trim_end_matches(".md");
     if let Some(name) = read_agent_frontmatter_name(workspace_path, phase) {
         return name;
@@ -684,7 +684,7 @@ fn build_prompt(
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         domain,
         skill_name,
-        skill_type,
+        purpose,
         workspace_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -804,7 +804,7 @@ struct WorkflowSettings {
     api_key: String,
     preferred_model: String,
     extended_thinking: bool,
-    skill_type: String,
+    purpose: String,
     author_login: Option<String>,
     created_at: Option<String>,
     max_dimensions: u32,
@@ -848,7 +848,7 @@ fn read_workflow_settings(
     }
 
     // Get skill type
-    let skill_type = crate::db::get_skill_type(&conn, skill_name)?;
+    let skill_type = crate::db::get_purpose(&conn, skill_name)?;
 
     // Read author info and intake data from workflow run
     let run_row = crate::db::get_workflow_run(&conn, skill_name)
@@ -869,7 +869,7 @@ fn read_workflow_settings(
         api_key,
         preferred_model,
         extended_thinking,
-        skill_type,
+        purpose,
         author_login,
         created_at,
         max_dimensions,
@@ -920,7 +920,7 @@ async fn run_workflow_step_inner(
         domain,
         workspace_path,
         &settings.skills_path,
-        &settings.skill_type,
+        &settings.purpose,
         settings.author_login.as_deref(),
         settings.created_at.as_deref(),
         settings.max_dimensions,
@@ -936,7 +936,7 @@ async fn run_workflow_step_inner(
     );
     log::debug!("[run_workflow_step] prompt for step {}: {}", step_id, prompt);
 
-    let agent_name = derive_agent_name(workspace_path, &settings.skill_type, &step.prompt_template);
+    let agent_name = derive_agent_name(workspace_path, &settings.purpose, &step.prompt_template);
     let agent_id = make_agent_id(skill_name, &format!("step{}", step_id));
     log::info!("run_workflow_step: skill={} step={} model={}", skill_name, step_id, settings.preferred_model);
 
@@ -997,7 +997,7 @@ pub async fn run_workflow_step(
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
         "[run_workflow_step] settings: skills_path={} skill_type={} intake={} industry={:?} function={:?}",
-        settings.skills_path, settings.skill_type,
+        settings.skills_path, settings.purpose,
         settings.intake_json.is_some(),
         settings.industry, settings.function_role,
     );
@@ -1211,7 +1211,7 @@ pub fn save_workflow_state(
     domain: String,
     current_step: i32,
     status: String,
-    skill_type: String,
+    purpose: String,
     step_statuses: Vec<StepStatusUpdate>,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
@@ -1241,7 +1241,7 @@ pub fn save_workflow_state(
         status
     };
 
-    crate::db::save_workflow_run(&conn, &skill_name, &domain, current_step, &effective_status, &skill_type)?;
+    crate::db::save_workflow_run(&conn, &skill_name, current_step, &effective_status, &purpose)?;
     for step in &step_statuses {
         crate::db::save_workflow_step(&conn, &skill_name, step.step_id, &step.status)?;
     }
@@ -1711,13 +1711,9 @@ pub fn reset_workflow_step(
 
     // Update the workflow run's current step
     if let Some(run) = crate::db::get_workflow_run(&conn, &skill_name)? {
-        crate::db::save_workflow_run(
-            &conn,
-            &skill_name,
-            &run.domain,
-            from_step_id as i32,
+        crate::db::save_workflow_run(&conn, &skill_name, from_step_id as i32,
             "pending",
-            &run.skill_type,
+            &run.purpose,
         )?;
     }
 
@@ -3236,7 +3232,7 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: Some("Skill structure rules.".to_string()),
-            skill_type: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
@@ -3268,7 +3264,7 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: None,
-            skill_type: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
@@ -3308,7 +3304,7 @@ mod tests {
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             description: Some("Skill structure rules.".to_string()),
-            skill_type: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
@@ -3325,7 +3321,7 @@ mod tests {
             imported_at: "2025-01-15T10:00:00Z".to_string(),
             is_bundled: false,
             description: Some("Analytics patterns.".to_string()),
-            skill_type: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,
@@ -3377,7 +3373,7 @@ mod tests {
             imported_at: "2025-01-01T00:00:00Z".to_string(),
             is_bundled: false,
             description: Some("Skill description here.".to_string()),
-            skill_type: None,
+            purpose: None,
             version: None,
             model: None,
             argument_hint: None,

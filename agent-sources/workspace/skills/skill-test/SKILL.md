@@ -6,8 +6,6 @@ description: >
   agents reason about silver/gold layer assignment, model placement in the dbt project,
   test strategy, contract definitions, and semantic layer additions when a skill is
   loaded versus not.
-domain: Skill Builder
-type: skill-builder
 version: 1.0.0
 model: sonnet
 argument-hint: ""

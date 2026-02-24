@@ -348,13 +348,9 @@ fn reconcile_skill_builder(
                     "[reconcile] '{}': skill_source=skill-builder, action=reset (step {} to {}, disk does not confirm {:?})",
                     name, run.current_step, disk_step, last_expected_detectable
                 );
-                crate::db::save_workflow_run(
-                    conn,
-                    name,
-                    &run.domain,
-                    disk_step,
+                crate::db::save_workflow_run(conn, name, disk_step,
                     "pending",
-                    &run.skill_type,
+                    &run.purpose,
                 )?;
                 crate::db::reset_workflow_steps_from(conn, name, disk_step)?;
                 did_reset = true;
@@ -369,13 +365,9 @@ fn reconcile_skill_builder(
                 "[reconcile] '{}': skill_source=skill-builder, action=advance (step {} to {})",
                 name, run.current_step, disk_step
             );
-            crate::db::save_workflow_run(
-                conn,
-                name,
-                &run.domain,
-                disk_step,
+            crate::db::save_workflow_run(conn, name, disk_step,
                 "pending",
-                &run.skill_type,
+                &run.purpose,
             )?;
             notifications.push(format!(
                 "'{}' was advanced from step {} to step {} (disk state ahead of DB)",
@@ -412,13 +404,9 @@ fn reconcile_skill_builder(
                 name, disk_step
             );
             let effective_step = std::cmp::max(disk_step, run.current_step);
-            crate::db::save_workflow_run(
-                conn,
-                name,
-                &run.domain,
-                effective_step,
+            crate::db::save_workflow_run(conn, name, effective_step,
                 "completed",
-                &run.skill_type,
+                &run.purpose,
             )?;
         }
 
@@ -430,13 +418,9 @@ fn reconcile_skill_builder(
             "[reconcile] '{}': skill_source=skill-builder, action=reset_to_zero (step {} to 0, no output files)",
             name, run.current_step
         );
-        crate::db::save_workflow_run(
-            conn,
-            name,
-            &run.domain,
-            0,
+        crate::db::save_workflow_run(conn, name, 0,
             "pending",
-            &run.skill_type,
+            &run.purpose,
         )?;
         crate::db::reset_workflow_steps_from(conn, name, 0)?;
         cleanup_future_steps(workspace_path, name, -1, skills_path);
@@ -523,13 +507,9 @@ pub fn resolve_orphan(
         "keep" => {
             // Reset workflow to step 0, pending — preserve skill output files
             if let Some(run) = crate::db::get_workflow_run(conn, skill_name)? {
-                crate::db::save_workflow_run(
-                    conn,
-                    skill_name,
-                    &run.domain,
-                    0,
+                crate::db::save_workflow_run(conn, skill_name, 0,
                     "pending",
-                    &run.skill_type,
+                    &run.purpose,
                 )?;
                 crate::db::reset_workflow_steps_from(conn, skill_name, 0)?;
             }
@@ -1832,8 +1812,8 @@ mod tests {
         assert!(result.notifications[0].contains("new-skill"));
 
         let run = crate::db::get_workflow_run(&conn, "new-skill").unwrap().unwrap();
-        assert_eq!(run.domain, "unknown"); // domain defaults to "unknown" when workflow_runs row is recreated
-        assert_eq!(run.skill_type, "domain"); // conservative default
+        assert_eq!(run.purpose, "unknown"); // domain defaults to "unknown" when workflow_runs row is recreated
+        assert_eq!(run.purpose, "domain"); // conservative default
         assert_eq!(run.current_step, 0);
         assert_eq!(run.status, "pending");
     }

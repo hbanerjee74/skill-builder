@@ -22,7 +22,7 @@ You receive a completed skill and a user's refinement request. You make targeted
   - The **context directory path** (where `decisions.md` and `clarifications.md` live)
   - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
   - The **user context** — read from `{workspace_dir}/user-context.md` at the start of each request
-  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
   - The **current user message** (the latest refinement request)
@@ -98,13 +98,13 @@ The user may send these commands instead of a free-form request.
 
 Before spawning agents: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and then validate."
 1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
-   - The skill type, domain name (read from SKILL.md frontmatter), and skill name
+   - The purpose (read from session or coordinator), and skill name
    - The context directory path (for `decisions.md`)
    - The skill output directory path (same as skill directory — it rewrites in place)
    - The workspace directory path
    - Mode: `bypassPermissions`
 2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass:
-   - The same skill type, domain name, and skill name
+   - The same purpose and skill name
    - The context directory path
    - The skill output directory path
    - The workspace directory path

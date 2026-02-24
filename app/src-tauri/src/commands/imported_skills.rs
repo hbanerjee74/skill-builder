@@ -25,7 +25,7 @@ pub(crate) struct Frontmatter {
     pub name: Option<String>,
     pub description: Option<String>,
     pub domain: Option<String>,
-    pub skill_type: Option<String>,
+    pub purpose: Option<String>,
     pub version: Option<String>,
     pub model: Option<String>,
     pub argument_hint: Option<String>,
@@ -41,7 +41,7 @@ pub(crate) fn parse_frontmatter(
     content: &str,
 ) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
     let fm = parse_frontmatter_full(content);
-    (fm.name, fm.description, fm.domain, fm.skill_type)
+    (fm.name, fm.description, fm.purpose, fm.purpose)
 }
 
 /// Parse YAML frontmatter returning all fields.
@@ -141,7 +141,7 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         name: trim_opt(name),
         description: trim_opt(description),
         domain: trim_opt(domain),
-        skill_type: trim_opt(skill_type),
+        purpose: trim_opt(skill_type),
         version: trim_opt(version),
         model: trim_opt(model),
         argument_hint: trim_opt(argument_hint),
@@ -269,7 +269,7 @@ fn upload_skill_inner(
     // Validate mandatory fields: name, domain, description must all be present
     let missing_fields: Vec<&str> = [
         ("name", fm.name.is_none()),
-        ("domain", fm.domain.is_none()),
+        ("domain", fm.purpose.is_none()),
         ("description", fm.description.is_none()),
     ]
     .iter()
@@ -321,15 +321,14 @@ fn upload_skill_inner(
     let skill = WorkspaceSkill {
         skill_id,
         skill_name: skill_name.clone(),
-        domain: fm.domain.clone(),
-        is_active: true,
+                is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
         // Store description from frontmatter in DB
         description: fm.description,
         // Always force skill_type to 'skill-builder' for uploaded zips
-        skill_type: Some("skill-builder".to_string()),
+        
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
@@ -827,9 +826,9 @@ pub(crate) fn seed_bundled_skills(
 
         // Validate required frontmatter fields; skip and error-log if any are missing
         let mut missing_required: Vec<&str> = Vec::new();
-        if fm.domain.is_none() { missing_required.push("domain"); }
+        if fm.purpose.is_none() { missing_required.push("domain"); }
         if fm.description.is_none() { missing_required.push("description"); }
-        if fm.skill_type.is_none() { missing_required.push("skill_type"); }
+        if fm.purpose.is_none() { missing_required.push("skill_type"); }
         if !missing_required.is_empty() {
             log::error!(
                 "seed_bundled_skills: skipping '{}' — missing required frontmatter fields: {}",
@@ -874,15 +873,13 @@ pub(crate) fn seed_bundled_skills(
         let skill = crate::types::WorkspaceSkill {
             skill_id: format!("bundled-{}", skill_name),
             skill_name: skill_name.clone(),
-            domain: fm.domain,
-            is_active,
+                        is_active,
             disk_path: dest_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             // Store description from frontmatter in DB
             description: fm.description,
-            skill_type: fm.skill_type,
-            version: fm.version,
+                        version: fm.version,
             model: fm.model,
             argument_hint: fm.argument_hint,
             user_invocable: fm.user_invocable,
@@ -960,7 +957,7 @@ mod tests {
         let skills = crate::db::list_workspace_skills(&conn).unwrap();
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].skill_name, "my-test-skill");
-        assert_eq!(skills[0].domain.as_deref(), Some("analytics"));
+        assert_eq!(skills[0].purpose.as_deref(), Some("analytics"));
         assert!(skills[0].is_active);
     }
 
@@ -1285,11 +1282,11 @@ domain: analytics
 
         let skill = result.unwrap();
         assert_eq!(skill.skill_name, "analytics-skill");
-        assert_eq!(skill.domain.as_deref(), Some("e-commerce"));
+        assert_eq!(skill.purpose.as_deref(), Some("e-commerce"));
         assert_eq!(skill.description.as_deref(), Some("Analytics domain skill"));
         assert!(skill.is_active);
         // skill_type is always forced to 'skill-builder' on zip upload
-        assert_eq!(skill.skill_type.as_deref(), Some("skill-builder"));
+        assert_eq!(skill.purpose.as_deref(), Some("skill-builder"));
 
         // Verify files were extracted
         let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
@@ -1998,7 +1995,7 @@ domain: analytics
 
         let skill = crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().unwrap();
         assert_eq!(
-            skill.skill_type.as_deref(),
+            skill.purpose.as_deref(),
             Some("skill-builder"),
             "skill_type must be stored so Settings → Skills can find bundled skills"
         );

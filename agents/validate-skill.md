@@ -20,9 +20,8 @@ Only evaluate: conformance to Skill Best Practices, completeness against `decisi
 ## Inputs
 
 The coordinator provides:
-- The **domain name**
 - The **skill name**
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
 - The **skill output directory** path (containing `SKILL.md` and reference files)
 - **User context** and **workspace directory** — per the User Context protocol
@@ -56,7 +55,7 @@ Scope recommendation is active. No skill was generated, so no tests were run.
 ---
 scope_recommendation: true
 skill_name: {skill_name}
-skill_type: {skill_type}
+purpose: {purpose}
 companions: []
 ---
 ## Companion Recommendations Skipped
@@ -73,9 +72,8 @@ Before running the validate-skill skill or writing any files, verify that `{skil
 ## Step 1: Run the validate-skill skill
 
 Use the validate-skill skill to validate a completed skill for:
-- domain: {domain}
 - skill_name: {skill_name}
-- skill_type: {skill_type}
+- purpose: {purpose}
 - context_dir: {context_dir}
 - skill_output_dir: {skill_output_dir}
 - workspace_dir: {workspace_dir}

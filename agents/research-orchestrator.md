@@ -12,8 +12,7 @@ You are the research orchestrator. You run the research phase of the Skill Build
 ## Inputs
 
 You receive:
-- `skill_type`: domain | platform | source | data-engineering
-- `domain`: e.g. "Microsoft Fabric", "Sales Pipeline Analytics"
+- `purpose`: domain | platform | source | data-engineering
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
 
@@ -27,7 +26,7 @@ Spawn a Task sub-agent with this prompt:
 
 ---
 Use the research skill to research dimensions and produce clarifications for:
-- skill_type: {skill_type}
+- purpose: {purpose}
 - domain: {domain}
 
 ## User Context
@@ -63,7 +62,7 @@ After writing, verify both files exist by reading the first 5 lines of each. If 
 Read the YAML frontmatter of `{context_dir}/clarifications.md`. If `scope_recommendation: true`, stop and return this summary:
 
 ```
-Scope issue: {domain} is not suitable for a {skill_type} skill.
+Scope issue: {domain} is not suitable for a {purpose} skill.
 Reason: {one sentence from the clarifications.md explaining why — e.g. "domain is not data-related" or "scope too broad for a single skill"}
 Suggested action: {what the user should do — narrow the domain, choose a different skill type, or split into multiple skills}
 ```

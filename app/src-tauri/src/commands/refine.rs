@@ -540,11 +540,11 @@ pub async fn send_refine_message(
             let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
             let domain = run_row
                 .as_ref()
-                .map(|r| r.domain.clone())
+                .map(|r| r.purpose.clone())
                 .unwrap_or_else(|| skill_name.clone());
             let skill_type = run_row
                 .as_ref()
-                .map(|r| r.skill_type.clone())
+                .map(|r| r.purpose.clone())
                 .unwrap_or_else(|| "domain".to_string());
 
             let intake_json = run_row.as_ref().and_then(|r| r.intake_json.clone());
@@ -587,7 +587,7 @@ pub async fn send_refine_message(
             &user_message,
             target_files.as_deref(),
             command.as_deref(),
-            user_context.as_deref(),
+            
         );
         log::debug!(
             "[send_refine_message] first message prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
