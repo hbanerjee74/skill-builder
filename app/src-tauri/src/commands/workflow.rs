@@ -564,6 +564,8 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
 /// `build_prompt` / refine's `send_refine_message` (for inline embedding).
 /// Returns `None` when all fields are empty.
 pub fn format_user_context(
+    name: Option<&str>,
+    tags: &[String],
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
@@ -579,6 +581,11 @@ pub fn format_user_context(
 
     // --- Skill identity ---
     let mut skill_parts: Vec<String> = Vec::new();
+    if let Some(n) = name {
+        if !n.is_empty() {
+            skill_parts.push(format!("**Name**: {}", n));
+        }
+    }
     if let Some(p) = purpose {
         if !p.is_empty() {
             let label = match p {
@@ -595,6 +602,9 @@ pub fn format_user_context(
         if !desc.is_empty() {
             skill_parts.push(format!("**Description**: {}", desc));
         }
+    }
+    if !tags.is_empty() {
+        skill_parts.push(format!("**Tags**: {}", tags.join(", ")));
     }
     if !skill_parts.is_empty() {
         sections.push(format!("### Skill\n{}", skill_parts.join("\n")));
@@ -684,6 +694,7 @@ pub fn format_user_context(
 pub fn write_user_context_file(
     workspace_path: &str,
     skill_name: &str,
+    tags: &[String],
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
@@ -695,7 +706,7 @@ pub fn write_user_context_file(
     user_invocable: Option<bool>,
     disable_model_invocation: Option<bool>,
 ) {
-    let Some(ctx) = format_user_context(industry, function_role, intake_json, description, purpose, version, skill_model, argument_hint, user_invocable, disable_model_invocation) else {
+    let Some(ctx) = format_user_context(Some(skill_name), tags, industry, function_role, intake_json, description, purpose, version, skill_model, argument_hint, user_invocable, disable_model_invocation) else {
         return;
     };
 
@@ -850,6 +861,7 @@ struct WorkflowSettings {
     preferred_model: String,
     extended_thinking: bool,
     purpose: String,
+    tags: Vec<String>,
     author_login: Option<String>,
     created_at: Option<String>,
     max_dimensions: u32,
@@ -908,6 +920,10 @@ fn read_workflow_settings(
     let argument_hint = run_row.as_ref().and_then(|r| r.argument_hint.clone());
     let user_invocable = run_row.as_ref().and_then(|r| r.user_invocable);
     let disable_model_invocation = run_row.as_ref().and_then(|r| r.disable_model_invocation);
+    let tags = crate::db::get_tags_for_skills(&conn, &[skill_name.to_string()])
+        .unwrap_or_default()
+        .remove(skill_name)
+        .unwrap_or_default();
 
     Ok(WorkflowSettings {
         skills_path,
@@ -915,6 +931,7 @@ fn read_workflow_settings(
         preferred_model,
         extended_thinking,
         purpose,
+        tags,
         author_login,
         created_at,
         max_dimensions,
@@ -954,6 +971,7 @@ async fn run_workflow_step_inner(
     write_user_context_file(
         workspace_path,
         skill_name,
+        &settings.tags,
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         settings.intake_json.as_deref(),
@@ -1445,10 +1463,11 @@ pub async fn run_answer_evaluator(
     write_user_context_file(
         &workspace_path,
         &skill_name,
+        &[], // answer evaluator doesn't need full metadata
         industry.as_deref(),
         function_role.as_deref(),
         intake_json.as_deref(),
-        None, None, None, None, None, None, None, // answer evaluator doesn't need full metadata
+        None, None, None, None, None, None, None,
     );
 
     let context_dir = std::path::Path::new(&skills_path)
@@ -2544,7 +2563,7 @@ mod tests {
         // Directory doesn't need to pre-exist — create_dir_all handles it
 
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
-        write_user_context_file(workspace_path, "my-skill", Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
+        write_user_context_file(workspace_path, "my-skill", &[], Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("# User Context"));
@@ -2565,7 +2584,7 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", Some("Fintech"), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(workspace_path, "my-skill", &[], Some("Fintech"), None, None, None, None, None, None, None, None, None);
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("**Industry**: Fintech"));
@@ -2574,27 +2593,30 @@ mod tests {
     }
 
     #[test]
-    fn test_write_user_context_file_empty_fields_skipped() {
+    fn test_write_user_context_file_empty_optional_fields_skipped() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", Some(""), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(workspace_path, "my-skill", &[], Some(""), None, None, None, None, None, None, None, None, None);
 
-        // Empty industry should not produce a file
-        assert!(!workspace_dir.join("user-context.md").exists());
+        // Skill name is always written; empty optional fields are omitted
+        let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("**Name**: my-skill"));
+        assert!(!content.contains("**Industry**"));
     }
 
     #[test]
-    fn test_write_user_context_file_no_fields_is_noop() {
+    fn test_write_user_context_file_always_writes_skill_name() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", None, None, None, None, None, None, None, None, None, None);
+        write_user_context_file(workspace_path, "my-skill", &[], None, None, None, None, None, None, None, None, None, None);
 
-        // No fields → no file
-        assert!(!workspace_dir.join("user-context.md").exists());
+        // Skill name alone is enough to produce a file
+        let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
+        assert!(content.contains("**Name**: my-skill"));
     }
 
     #[test]
@@ -2605,7 +2627,7 @@ mod tests {
         // Directory does NOT exist yet
         assert!(!workspace_dir.exists());
 
-        write_user_context_file(workspace_path, "new-skill", Some("Retail"), None, None, None, None, None, None, None, None, None);
+        write_user_context_file(workspace_path, "new-skill", &[], Some("Retail"), None, None, None, None, None, None, None, None, None);
 
         // Directory should have been created and file written
         assert!(workspace_dir.join("user-context.md").exists());
@@ -2761,21 +2783,29 @@ mod tests {
     #[test]
     fn test_format_user_context_all_fields() {
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
-        let result = format_user_context(Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
+        let tags = vec!["analytics".to_string(), "salesforce".to_string()];
+        let result = format_user_context(Some("my-skill"), &tags, Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.starts_with("## User Context\n"));
+        assert!(ctx.contains("**Name**: my-skill"));
+        assert!(ctx.contains("**Tags**: analytics, salesforce"));
         assert!(ctx.contains("**Industry**: Healthcare"));
         assert!(ctx.contains("**Function**: Analytics Lead"));
-        assert!(ctx.contains("**Target Audience**: Data engineers"));
-        assert!(ctx.contains("**Key Challenges**: Legacy systems"));
-        assert!(ctx.contains("**Scope**: ETL pipelines"));
-        assert!(ctx.contains("**What Makes This Setup Unique**: Multi-cloud"));
-        assert!(ctx.contains("**What Claude Gets Wrong**: Assumes AWS"));
+        assert!(ctx.contains("### Target Audience"));
+        assert!(ctx.contains("Data engineers"));
+        assert!(ctx.contains("### Key Challenges"));
+        assert!(ctx.contains("Legacy systems"));
+        assert!(ctx.contains("### Scope"));
+        assert!(ctx.contains("ETL pipelines"));
+        assert!(ctx.contains("### What Makes This Setup Unique"));
+        assert!(ctx.contains("Multi-cloud"));
+        assert!(ctx.contains("### What Claude Gets Wrong"));
+        assert!(ctx.contains("Assumes AWS"));
     }
 
     #[test]
     fn test_format_user_context_partial_fields() {
-        let result = format_user_context(Some("Fintech"), None, None, None, None, None, None, None, None, None);
+        let result = format_user_context(None, &[], Some("Fintech"), None, None, None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Fintech"));
         assert!(!ctx.contains("**Function**"));
@@ -2783,19 +2813,19 @@ mod tests {
 
     #[test]
     fn test_format_user_context_empty_strings_skipped() {
-        let result = format_user_context(Some(""), Some(""), None, None, None, None, None, None, None, None);
+        let result = format_user_context(None, &[], Some(""), Some(""), None, None, None, None, None, None, None, None);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_all_none() {
-        let result = format_user_context(None, None, None, None, None, None, None, None, None, None);
+        let result = format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_invalid_json_ignored() {
-        let result = format_user_context(Some("Tech"), None, Some("not json"), None, None, None, None, None, None, None);
+        let result = format_user_context(None, &[], Some("Tech"), None, Some("not json"), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Tech"));
         assert!(!ctx.contains("Target Audience"));
@@ -2804,11 +2834,13 @@ mod tests {
     #[test]
     fn test_format_user_context_partial_intake() {
         let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
-        let result = format_user_context(None, None, Some(intake), None, None, None, None, None, None, None);
+        let result = format_user_context(None, &[], None, None, Some(intake), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
-        assert!(ctx.contains("**Target Audience**: Engineers"));
-        assert!(ctx.contains("**Scope**: APIs"));
-        assert!(!ctx.contains("**Key Challenges**"));
+        assert!(ctx.contains("### Target Audience"));
+        assert!(ctx.contains("Engineers"));
+        assert!(ctx.contains("### Scope"));
+        assert!(ctx.contains("APIs"));
+        assert!(!ctx.contains("### Key Challenges"));
     }
 
     // --- build_prompt user context integration tests ---
