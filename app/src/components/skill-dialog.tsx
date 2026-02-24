@@ -29,7 +29,7 @@ import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 
 /**
  * A skill is "built" when the generate step (step 5) has been completed.
- * Locked fields: name, type, tags.
+ * Locked fields: name, purpose, tags.
  */
 function isSkillBuilt(skill: SkillSummary | null): boolean {
   if (!skill) return false
@@ -305,7 +305,7 @@ export default function SkillDialog(props: SkillDialogProps) {
       apiOpts: { industry, functionRole },
       versionRef: group0VersionRef, debounceRef: group0DebounceRef,
       debounceMs: 800,
-      onResult: (r) => setDescriptionSuggestion((r as unknown as Record<string, string>).description || null),
+      onResult: (r) => setDescriptionSuggestion(r.description || null),
     })
     return () => { if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current) }
   }, [dialogOpen, isEdit, skillName, purpose, industry, functionRole, fetchGroup])

@@ -2984,8 +2984,9 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
 /// Migration 28: Rename `skill_type` -> `purpose` and drop `domain` column from all 4 tables:
 /// skills, workflow_runs, imported_skills, workspace_skills.
 fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Disable FK checks while we recreate tables — re-enabled at the end.
-    conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+    // Wrap in a transaction so partial failure rolls back, preventing irrecoverable state.
+    // FK checks disabled during table rebuilds, re-enabled after commit.
+    conn.execute_batch("PRAGMA foreign_keys = OFF; BEGIN;")?;
 
     // --- skills ---
     conn.execute_batch("
@@ -3125,8 +3126,8 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
     ");
     conn.execute_batch(&sql)?;
 
-    // Re-enable FK checks
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    // Commit transaction and re-enable FK checks
+    conn.execute_batch("COMMIT; PRAGMA foreign_keys = ON;")?;
 
     log::info!("migration 28: renamed skill_type -> purpose, dropped domain from all 4 tables");
     Ok(())

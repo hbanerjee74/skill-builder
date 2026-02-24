@@ -1,11 +1,6 @@
 export const PURPOSES = ["platform", "domain", "source", "data-engineering"] as const;
 export type Purpose = typeof PURPOSES[number];
 
-/** @deprecated Use PURPOSES */
-export const SKILL_TYPES = PURPOSES;
-/** @deprecated Use Purpose */
-export type SkillType = Purpose;
-
 export const PURPOSE_LABELS: Record<Purpose, string> = {
   domain: "Business process knowledge",
   source: "Source system customizations",
@@ -13,18 +8,12 @@ export const PURPOSE_LABELS: Record<Purpose, string> = {
   platform: "Organization specific Azure or Fabric standards",
 };
 
-/** @deprecated Use PURPOSE_LABELS */
-export const SKILL_TYPE_LABELS = PURPOSE_LABELS;
-
 export const PURPOSE_COLORS: Record<Purpose, string> = {
   platform: "bg-[#E8F4F5] text-[#0E7C86] dark:bg-[#0E7C86]/15 dark:text-[#2EC4B6]",
   domain: "bg-[#EBF3EC] text-[#2D7A35] dark:bg-[#2D7A35]/15 dark:text-[#5D9B62]",
   source: "bg-[#FDF0EB] text-[#A85A33] dark:bg-[#A85A33]/15 dark:text-[#D4916E]",
   "data-engineering": "bg-[#F0ECF5] text-[#5E4B8B] dark:bg-[#5E4B8B]/15 dark:text-[#A08DC4]",
 };
-
-/** @deprecated Use PURPOSE_COLORS */
-export const SKILL_TYPE_COLORS = PURPOSE_COLORS;
 
 export interface AppSettings {
   anthropic_api_key: string | null

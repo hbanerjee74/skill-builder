@@ -600,12 +600,10 @@ pub fn update_skill_metadata(
             e
         })?;
     }
-    if let Some(ij) = &intake_json {
-        crate::db::set_skill_intake(&conn, &skill_name, Some(ij)).map_err(|e| {
-            log::error!("[update_skill_metadata] Failed to set intake_json: {}", e);
-            e
-        })?;
-    }
+    crate::db::set_skill_intake(&conn, &skill_name, intake_json.as_deref()).map_err(|e| {
+        log::error!("[update_skill_metadata] Failed to set intake_json: {}", e);
+        e
+    })?;
     if description.is_some()
         || version.is_some()
         || model.is_some()
@@ -800,6 +798,7 @@ fn rename_skill_inner(
 
 #[derive(Serialize)]
 pub struct FieldSuggestions {
+    pub description: String,
     pub domain: String,
     pub audience: String,
     pub challenges: String,
@@ -897,7 +896,7 @@ pub async fn generate_suggestions(
     };
 
     // Determine which fields to generate (default: all)
-    let all_fields = vec!["domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes", "context_questions"];
+    let all_fields = vec!["description", "domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes", "context_questions"];
     let requested: Vec<&str> = fields
         .as_ref()
         .map(|f| f.iter().map(|s| s.as_str()).collect())
@@ -906,6 +905,10 @@ pub async fn generate_suggestions(
     // Build JSON schema for requested fields only
     let field_schemas: Vec<String> = requested.iter().filter_map(|f| {
         match *f {
+            "description" => Some(format!(
+                "\"description\": \"<1-2 sentence description of what this skill does for {}>\"",
+                readable_name
+            )),
             "domain" => Some("\"domain\": \"<2-5 word domain name, e.g. Sales operations or Revenue recognition>\"".to_string()),
             "scope" => Some("\"scope\": \"<short phrase, e.g. Focus on revenue analytics and reporting>\"".to_string()),
             "audience" => Some("\"audience\": \"<2-3 short bullet points starting with • on separate lines, e.g. • Senior data engineers\\n• Analytics leads owning pipeline architecture>\"".to_string()),
@@ -1008,6 +1011,7 @@ pub async fn generate_suggestions(
     };
 
     Ok(FieldSuggestions {
+        description: field("description"),
         domain: field("domain"),
         audience: field("audience"),
         challenges: field("challenges"),
