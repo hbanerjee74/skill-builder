@@ -23,7 +23,9 @@ The coordinator provides:
 
 ## Instructions
 
-### Step 1: Read clarifications.md
+### Step 1: Read user context and clarifications
+
+Read `{workspace_directory}/user-context.md` for the user's purpose, description, and specific environment context. Use this to evaluate whether answers are substantive for their specific domain — a vague answer for one domain may be sufficient for another.
 
 Read `{context_directory}/clarifications.md`.
 
