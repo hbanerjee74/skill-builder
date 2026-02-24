@@ -8,6 +8,13 @@ export const PURPOSE_LABELS: Record<Purpose, string> = {
   platform: "Organization specific Azure or Fabric standards",
 };
 
+export const PURPOSE_SHORT_LABELS: Record<Purpose, string> = {
+  domain: "Business Process",
+  source: "Source Systems",
+  "data-engineering": "Data Engineering",
+  platform: "Azure / Fabric",
+};
+
 export const PURPOSE_COLORS: Record<Purpose, string> = {
   platform: "bg-[#E8F4F5] text-[#0E7C86] dark:bg-[#0E7C86]/15 dark:text-[#2EC4B6]",
   domain: "bg-[#EBF3EC] text-[#2D7A35] dark:bg-[#2D7A35]/15 dark:text-[#5D9B62]",
