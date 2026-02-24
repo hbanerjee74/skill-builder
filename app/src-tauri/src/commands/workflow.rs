@@ -1905,8 +1905,8 @@ mod tests {
             None,
             None,
         );
-        // Purpose is now in user-context.md section, not the main prompt line
-        assert!(prompt.contains("**Purpose**: Organization specific Azure or Fabric standards"));
+        // Purpose is now in user-context.md, read by the agent
+        assert!(prompt.contains("user-context.md"));
     }
 
     #[test]
@@ -2800,18 +2800,14 @@ mod tests {
     // --- build_prompt user context integration tests ---
 
     #[test]
-    fn test_build_prompt_includes_user_context() {
-        let intake = r#"{"audience":"Data engineers","challenges":"Legacy ETL","scope":"Pipelines"}"#;
+    fn test_build_prompt_includes_user_context_md_instruction() {
+        // User context is now read from user-context.md by the agent, not inlined in prompt
         let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
-            None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
+            None, None, 5, Some("Healthcare"), Some("Analytics Lead"), None,
             None, None, None, None, None, None,
         );
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Industry**: Healthcare"));
-        assert!(prompt.contains("**Function**: Analytics Lead"));
-        assert!(prompt.contains("**Target Audience**: Data engineers"));
-        assert!(prompt.contains("**Key Challenges**: Legacy ETL"));
-        assert!(prompt.contains("**Scope**: Pipelines"));
+        assert!(prompt.contains("user-context.md"));
+        assert!(prompt.contains("test-skill"));
     }
 
     #[test]
@@ -2820,9 +2816,8 @@ mod tests {
             None, None, 5, None, None, None,
             None, None, None, None, None, None,
         );
-        // Purpose is always present in user context now
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Purpose**: Business process knowledge"));
+        // Prompt instructs agent to read user-context.md
+        assert!(prompt.contains("user-context.md"));
         assert!(prompt.contains("test-skill"));
     }
 
@@ -2832,22 +2827,21 @@ mod tests {
             None, None, 5, Some("Fintech"), None, None,
             None, None, None, None, None, None,
         );
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Industry**: Fintech"));
-        assert!(!prompt.contains("**Function**"));
+        // User context is delegated to user-context.md
+        assert!(prompt.contains("user-context.md"));
+        assert!(prompt.contains("test-skill"));
     }
 
     #[test]
     fn test_build_prompt_with_only_intake() {
-        let intake = r#"{"audience":"Analysts","unique_setup":"Multi-region","claude_mistakes":"Assumes single tenant"}"#;
+        let intake = r#"{"audience":"Analysts"}"#;
         let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, Some(intake),
             None, None, None, None, None, None,
         );
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Target Audience**: Analysts"));
-        assert!(prompt.contains("**What Makes This Setup Unique**: Multi-region"));
-        assert!(prompt.contains("**What Claude Gets Wrong**: Assumes single tenant"));
+        // User context is delegated to user-context.md
+        assert!(prompt.contains("user-context.md"));
+        assert!(prompt.contains("test-skill"));
     }
 
     #[test]
@@ -2856,14 +2850,9 @@ mod tests {
             None, None, 5, None, None, None,
             Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
         );
-        // Behaviour fields are now in user-context.md section, not standalone prompt fields
-        assert!(prompt.contains("## User Context"));
-        assert!(prompt.contains("**Description**: A skill for sales analysis."));
-        assert!(prompt.contains("**Version**: 2.0.0"));
-        assert!(prompt.contains("**Preferred Model**: sonnet"));
-        assert!(prompt.contains("**Argument Hint**: [org-url]"));
-        assert!(prompt.contains("**User Invocable**: true"));
-        assert!(prompt.contains("**Disable Model Invocation**: false"));
+        // Behaviour fields are now in user-context.md, not inlined in prompt
+        assert!(prompt.contains("user-context.md"));
+        assert!(prompt.contains("test-skill"));
     }
 
     #[test]
