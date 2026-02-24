@@ -37,7 +37,6 @@ export function SkillsLibraryTab() {
   const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
-  const [activeUpgradeFilter, setActiveUpgradeFilter] = useState<string[] | undefined>(undefined)
   // Track which skill's purpose popover is open
   const [purposePopoverSkillId, setPurposePopoverSkillId] = useState<string | null>(null)
   // Ref to avoid re-triggering after clearing pendingUpgrade
@@ -49,7 +48,6 @@ export function SkillsLibraryTab() {
 
   useEffect(() => {
     if (pendingUpgrade?.mode === 'settings-skills') {
-      setActiveUpgradeFilter(pendingUpgrade.skills)
       setShowGitHubImport(true)
       useSettingsStore.getState().setPendingUpgradeOpen(null)
     }
@@ -299,14 +297,10 @@ export function SkillsLibraryTab() {
 
       <GitHubImportDialog
         open={showGitHubImport}
-        onOpenChange={(open) => {
-          setShowGitHubImport(open)
-          if (!open) setActiveUpgradeFilter(undefined)
-        }}
+        onOpenChange={setShowGitHubImport}
         onImported={fetchSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
-        upgradeFilter={activeUpgradeFilter}
       />
     </div>
   )

@@ -681,7 +681,6 @@ export default function DashboardPage() {
         mode="skill-library"
         url={marketplaceUrl ?? ""}
         workspacePath={workspacePath}
-        upgradeFilter={pendingUpgrade?.mode === 'skill-library' ? pendingUpgrade.skills : undefined}
       />
 
     </div>

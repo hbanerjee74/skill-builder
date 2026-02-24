@@ -114,7 +114,7 @@ export function AppLayout() {
                   {
                     duration: Infinity,
                     action: {
-                      label: "Open Marketplace",
+                      label: "Upgrade",
                       onClick: () => {
                         useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
                         router.navigate({ to: "/" });
@@ -130,7 +130,7 @@ export function AppLayout() {
                   {
                     duration: Infinity,
                     action: {
-                      label: "Open Marketplace",
+                      label: "Upgrade",
                       onClick: () => {
                         useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
                         router.navigate({ to: "/settings" });
