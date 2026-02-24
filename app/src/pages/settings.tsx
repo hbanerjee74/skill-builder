@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -64,6 +64,7 @@ export default function SettingsPage() {
   const [marketplaceUrl, setMarketplaceUrl] = useState("")
   const [marketplaceTesting, setMarketplaceTesting] = useState(false)
   const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
+  const [urlCheckState, setUrlCheckState] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
   const [autoUpdate, setAutoUpdate] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const availableModels = useSettingsStore((s) => s.availableModels)
@@ -230,12 +231,15 @@ export default function SettingsPage() {
   const handleTestMarketplace = async () => {
     setMarketplaceTesting(true)
     setMarketplaceValid(null)
+    setUrlCheckState("checking")
     try {
       await checkMarketplaceUrl(marketplaceUrl.trim())
       setMarketplaceValid(true)
+      setUrlCheckState("valid")
       toast.success("Marketplace is accessible")
     } catch (err) {
       setMarketplaceValid(false)
+      setUrlCheckState("invalid")
       toast.error(
         `Cannot access marketplace: ${err instanceof Error ? err.message : String(err)}`,
         { duration: Infinity },
@@ -598,6 +602,7 @@ export default function SettingsPage() {
                       onChange={(e) => {
                         setMarketplaceUrl(e.target.value)
                         setMarketplaceValid(null)
+                        setUrlCheckState("idle")
                       }}
                       onBlur={(e) => autoSave({ marketplaceUrl: e.target.value.trim() || null })}
                       className="text-sm"
@@ -618,7 +623,9 @@ export default function SettingsPage() {
                         {marketplaceValid ? "Valid" : "Test"}
                       </Button>
                     )}
-
+                    {urlCheckState === "checking" && <Loader2 className="size-4 animate-spin text-muted-foreground self-center" />}
+                    {urlCheckState === "valid" && <CheckCircle2 className="size-4 text-green-500 self-center" />}
+                    {urlCheckState === "invalid" && <XCircle className="size-4 text-destructive self-center" />}
                   </div>
                   {marketplaceValid === false && (
                     <p className="text-xs text-destructive">
