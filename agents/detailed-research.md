@@ -74,7 +74,7 @@ Each sub-agent's task per question:
 Follow the format example below. Return ONLY a JSON array of refinement objects — no preamble, no markdown, no wrapping text. The output is merged directly into `clarifications.json`.
 
 - Number sub-questions as `R{n}.{m}` where `n` is the parent question number
-- Each refinement object has: `id`, `parent_question_id`, `title`, `text` (rationale), `choices` array, `recommendation`, `answer_choice` (null), `answer_text` (null)
+- Each refinement object has: `id`, `parent_question_id`, `title`, `text` (rationale), `choices` array, `recommendation`, `must_answer` (false), `answer_choice` (null), `answer_text` (null), `refinements` (empty array `[]`)
 - 2-4 choices plus "Other (please specify)" with `is_other: true` — each choice must change the skill's design
 - Do NOT re-display original question text, choices, or recommendation
 
@@ -94,8 +94,10 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
       {"id": "D", "text": "Other (please specify)", "is_other": true}
     ],
     "recommendation": "B — Invoice date is the most common convention for SaaS businesses and aligns with standard accrual accounting.",
+    "must_answer": false,
     "answer_choice": null,
-    "answer_text": null
+    "answer_text": null,
+    "refinements": []
   }
 ]
 ```
