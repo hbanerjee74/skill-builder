@@ -335,8 +335,8 @@ describe("DashboardPage", () => {
     // Open type filter dropdown
     await user.click(screen.getByRole("button", { name: /Type/i }));
 
-    // Select "Platform" type
-    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Platform/i });
+    // Select "platform" type (now labeled "Organization specific Azure or Fabric standards")
+    const menuItem = screen.getByRole("menuitemcheckbox", { name: /Azure or Fabric/i });
     await user.click(menuItem);
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
@@ -369,7 +369,7 @@ describe("DashboardPage", () => {
 
     // Filter by type: platform (sales-pipeline + marketing-data)
     await user.click(screen.getByRole("button", { name: /Type/i }));
-    await user.click(screen.getByRole("menuitemcheckbox", { name: /Platform/i }));
+    await user.click(screen.getByRole("menuitemcheckbox", { name: /Azure or Fabric/i }));
 
     expect(screen.getByText("sales-pipeline")).toBeInTheDocument();
     expect(screen.getByText("marketing-data")).toBeInTheDocument();

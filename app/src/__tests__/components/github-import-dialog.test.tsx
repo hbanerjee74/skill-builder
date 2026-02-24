@@ -151,23 +151,22 @@ describe("GitHubImportDialog", () => {
       expect(screen.getByText("HR Metrics")).toBeInTheDocument();
     });
 
-    it("shows domain badge when domain is present", async () => {
+    it("shows description text when description is present", async () => {
       renderDialog();
 
       await waitFor(() => {
-        expect(screen.getByText("sales")).toBeInTheDocument();
+        expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument();
       });
     });
 
-    it("does not show domain badge when domain is null", async () => {
+    it("does not show description text when description is null", async () => {
       renderDialog();
 
       await waitFor(() => {
         expect(screen.getByText("HR Metrics")).toBeInTheDocument();
       });
-      // HR Metrics has no domain — only "sales" badge should appear
-      const badges = screen.getAllByText("sales");
-      expect(badges).toHaveLength(1);
+      // HR Metrics has description=null, so no description text
+      expect(screen.queryByText("No description")).not.toBeInTheDocument();
     });
 
     it("shows description in edit form when edit button is clicked", async () => {

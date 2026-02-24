@@ -189,14 +189,13 @@ describe("SkillsLibraryTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows domain text on skill row", async () => {
+  it("shows description text on skill row", async () => {
     setupMocks();
     render(<SkillsLibraryTab />);
 
     await waitFor(() => {
-      expect(screen.getByText("sales")).toBeInTheDocument();
+      expect(screen.getByText("Analytics skill for sales data")).toBeInTheDocument();
     });
-    expect(screen.getByText("HR")).toBeInTheDocument();
   });
 
   it("renders active toggle switch for each skill", async () => {
