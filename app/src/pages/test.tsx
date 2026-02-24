@@ -29,7 +29,7 @@ import {
   hasRunningAgents,
 } from "@/lib/tauri";
 import type { SkillSummary } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, deriveModelLabel } from "@/lib/utils";
 
 // Ensure agent-stream listeners are registered
 import "@/hooks/use-agent-stream";
@@ -206,14 +206,6 @@ function evalRowBg(direction: EvalDirection): string {
     case "down": return "bg-destructive/5";
     default: return "";
   }
-}
-
-
-/** Derive a human-readable label from a model ID string. */
-function deriveModelLabel(modelId: string): string {
-  if (modelId.includes("haiku")) return "Haiku";
-  if (modelId.includes("opus")) return "Opus";
-  return "Sonnet";
 }
 
 /** Return the evaluator placeholder message based on phase. */
@@ -797,7 +789,6 @@ export default function TestPage() {
   const modelLabel = deriveModelLabel(activeModel);
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
-
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;

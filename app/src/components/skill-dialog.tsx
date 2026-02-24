@@ -121,6 +121,19 @@ function normalizeModelValue(raw: string | null | undefined): string {
   return SHORTHAND_TO_MODEL[raw] ?? raw
 }
 
+function LockedIcon() {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Lock className="ml-1 inline size-3 text-muted-foreground" />
+        </TooltipTrigger>
+        <TooltipContent>Locked — skill has been built</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
@@ -425,16 +438,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="skill-name">
                     Skill Name <span className="text-destructive">*</span>
-                    {isBuilt && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>Locked — skill has been built</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {isBuilt && <LockedIcon />}
                   </Label>
                   <Input
                     id="skill-name"
@@ -486,16 +490,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="purpose-select">
                     What are you trying to capture? <span className="text-destructive">*</span>
-                    {(isBuilt || isImported) && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>Locked — skill has been built</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {(isBuilt || isImported) && <LockedIcon />}
                   </Label>
                   <select
                     id="purpose-select"
@@ -513,16 +508,7 @@ export default function SkillDialog(props: SkillDialogProps) {
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="tags">
                     Tags
-                    {isBuilt && (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
-                          </TooltipTrigger>
-                          <TooltipContent>Locked — skill has been built</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    {isBuilt && <LockedIcon />}
                   </Label>
                   <TagInput
                     tags={tags}

@@ -38,7 +38,6 @@ import type { SkillSummary, AppSettings } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
 import { SOURCE_DISPLAY_LABELS } from "@/components/skill-source-badge"
 
-
 function SortHeader({ label, column, sortBy, sortDir, onSort }: {
   label: string
   column: string

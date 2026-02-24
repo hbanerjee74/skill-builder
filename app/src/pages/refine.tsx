@@ -28,6 +28,7 @@ import {
 } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
+import { deriveModelLabel } from "@/lib/utils";
 import { ResizableSplitPane } from "@/components/refine/resizable-split-pane";
 import { SkillPicker } from "@/components/refine/skill-picker";
 import { ChatPanel } from "@/components/refine/chat-panel";
@@ -388,7 +389,7 @@ export default function RefinePage() {
   const activeModel = preferredModel ?? "claude-sonnet-4-6";
   const modelLabel =
     availableModels.find((m) => m.id === activeModel)?.displayName ??
-    (activeModel.includes("haiku") ? "Haiku" : activeModel.includes("opus") ? "Opus" : "Sonnet");
+    deriveModelLabel(activeModel);
 
   const dotClass = isRunning ? "bg-blue-500 animate-pulse" : selectedSkill ? "bg-green-500" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
