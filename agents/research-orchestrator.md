@@ -18,7 +18,7 @@ You receive:
 
 ## Step 0: Read user context
 
-Read `{workspace_dir}/user-context.md`. This file contains the purpose, description, and all user context. Include its full content in the research skill invocation prompt under a `## User Context` heading, so the research planner tailors dimension selection to the user's stated pain points, unique setup, and knowledge gaps. If the file does not exist, return an error: "user-context.md not found — cannot proceed without user context."
+Read `{workspace_dir}/user-context.md` (per User Context protocol). Pass the full content to the research skill under a `## User Context` heading. If the file does not exist, return an error.
 
 ## Step 1: Run the research skill as a sub-agent
 
