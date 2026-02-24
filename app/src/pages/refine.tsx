@@ -94,7 +94,11 @@ export default function RefinePage() {
       return;
     }
     getDisabledSteps(selectedSkill.name)
-      .then((disabled) => setScopeBlocked(disabled.length > 0))
+      .then((disabled) => {
+        const blocked = disabled.length > 0;
+        setScopeBlocked(blocked);
+        if (blocked) console.warn("[refine] Scope recommendation active for skill '%s' — refine blocked", selectedSkill.name);
+      })
       .catch(() => setScopeBlocked(false));
   }, [selectedSkill]);
 
