@@ -70,7 +70,7 @@ async function checkForMarketplaceUpdates(
     console.error("[app-layout] Marketplace update check failed:", err);
     toast.error(
       `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
-      { duration: Infinity }
+      { duration: 8000 }
     );
   }
 }

@@ -1346,11 +1346,11 @@ pub async fn check_marketplace_updates(
             }
 
             // Check workspace_skills independently.
-            // Treat a missing installed version as "" so skills imported before version
-            // tracking was added are still surfaced rather than silently excluded.
+            // Skills imported before version tracking was added have no version — treat
+            // a missing/empty installed version as always needing an update.
             if let Some(ws) = crate::db::get_workspace_skill_by_name(&conn, &skill.name)? {
                 let inst_ver = ws.version.as_deref().unwrap_or("");
-                if semver_gt(marketplace_ver, inst_ver) {
+                if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
                     workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
                 }
             }
@@ -1358,7 +1358,7 @@ pub async fn check_marketplace_updates(
             // Check imported_skills independently.
             if let Some(imp) = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None) {
                 let inst_ver = imp.version.as_deref().unwrap_or("");
-                if semver_gt(marketplace_ver, inst_ver) {
+                if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
                     library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
                 }
             }
