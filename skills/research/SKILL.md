@@ -66,13 +66,13 @@ For each selected dimension, read the full content of `references/dimensions/{sl
 Then spawn a Task sub-agent for that dimension. Construct the Task prompt as follows:
 
 ```
-You are researching the {dimension_name} dimension for a {purpose} skill about {domain}.
+You are researching the {dimension_name} dimension for a {purpose} skill about {skill_name}.
 
 {full content of references/dimensions/{slug}.md}
 
 Tailored focus: {tailored focus line from Step 2}
 
-Return detailed research text covering the dimension's questions and decision points for this domain. 500–800 words. Return raw research text only — no headings, no JSON, no structured format. Write as if briefing a colleague who needs to understand the key questions and tradeoffs for this dimension in the context of {domain}.
+Return detailed research text covering the dimension's questions and decision points for this skill. 500–800 words. Return raw research text only — no headings, no JSON, no structured format. Write as if briefing a colleague who needs to understand the key questions and tradeoffs for this dimension in the context of {skill_name}.
 ```
 
 Wait for all Tasks to return before proceeding to Step 4.

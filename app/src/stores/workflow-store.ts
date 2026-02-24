@@ -12,7 +12,7 @@ export interface WorkflowStep {
 interface WorkflowState {
   skillName: string | null;
   domain: string | null;
-  skillType: string | null;
+  purpose: string | null;
   currentStep: number;
   steps: WorkflowStep[];
   isRunning: boolean;
@@ -37,8 +37,8 @@ interface WorkflowState {
   /** Transient: signals the workflow page to start in update mode. Set before navigation, consumed once by the init effect. */
   pendingUpdateMode: boolean;
 
-  initWorkflow: (skillName: string, domain: string, skillType?: string) => void;
-  setSkillType: (skillType: string | null) => void;
+  initWorkflow: (skillName: string, domain: string, purpose?: string) => void;
+  setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
   updateStepStatus: (stepId: number, status: WorkflowStep["status"]) => void;
@@ -101,7 +101,7 @@ const defaultSteps: WorkflowStep[] = [
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,
   domain: null,
-  skillType: null,
+  purpose: null,
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
   isRunning: false,
@@ -116,11 +116,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   hydrated: false,
   disabledSteps: [],
 
-  initWorkflow: (skillName, domain, skillType) =>
+  initWorkflow: (skillName, domain, purpose) =>
     set({
       skillName,
       domain,
-      skillType: skillType ?? null,
+      purpose: purpose ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,
@@ -135,7 +135,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       disabledSteps: [],
     }),
 
-  setSkillType: (skillType) => set({ skillType }),
+  setPurpose: (purpose) => set({ purpose }),
 
   setReviewMode: (mode) => set({ reviewMode: mode }),
 
@@ -231,7 +231,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     set({
       skillName: null,
       domain: null,
-      skillType: null,
+      purpose: null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
       isRunning: false,

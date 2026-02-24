@@ -16,6 +16,17 @@ You receive:
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
 
+## Purpose labels
+
+Translate the `purpose` token to its full label when communicating with sub-agents:
+
+| Token | Label |
+|---|---|
+| `domain` | Business process knowledge |
+| `source` | Source system customizations |
+| `data-engineering` | Organization specific data engineering standards |
+| `platform` | Organization specific Azure or Fabric standards |
+
 ## Step 0: Read user context
 
 Read `{workspace_dir}/user-context.md` if it exists. Include its full content in the research skill invocation prompt under a `## User Context` heading, so the research planner tailors dimension selection to the user's stated pain points, unique setup, and knowledge gaps. If the file does not exist, omit the heading.
@@ -26,8 +37,7 @@ Spawn a Task sub-agent with this prompt:
 
 ---
 Use the research skill to research dimensions and produce clarifications for:
-- purpose: {purpose}
-- domain: {domain}
+- purpose: {purpose} ({purpose label from the table above})
 
 ## User Context
 {paste the full user-context.md content from Step 0 here, or omit this section if the file did not exist}
@@ -62,7 +72,7 @@ After writing, verify both files exist by reading the first 5 lines of each. If 
 Read the YAML frontmatter of `{context_dir}/clarifications.md`. If `scope_recommendation: true`, stop and return this summary:
 
 ```
-Scope issue: {domain} is not suitable for a {purpose} skill.
+Scope issue: this skill is not suitable as a {purpose label} skill.
 Reason: {one sentence from the clarifications.md explaining why — e.g. "domain is not data-related" or "scope too broad for a single skill"}
 Suggested action: {what the user should do — narrow the domain, choose a different skill type, or split into multiple skills}
 ```
