@@ -1078,14 +1078,7 @@ mod tests {
         // This test proves that list_skills_inner works without any filesystem
         // by using a nonexistent workspace path. The DB is the sole data source.
         let conn = create_test_db();
-        crate::db::save_workflow_run(
-            &conn,
-            "no-disk-skill",
-            "virtual",
-            5,
-            "completed",
-            "source",
-        )
+        crate::db::save_workflow_run(&conn, "no-disk-skill", 5, "completed", "source")
         .unwrap();
 
         let skills =
@@ -1641,7 +1634,7 @@ mod tests {
 
     /// Helper: create a skill in the DB for metadata update tests.
     fn setup_skill_for_metadata(conn: &Connection, name: &str) {
-        crate::db::save_workflow_run(conn, name, "analytics", 0, "pending", "domain").unwrap();
+        crate::db::save_workflow_run(conn, name, 0, "pending", "domain").unwrap();
     }
 
     #[test]
@@ -1661,7 +1654,7 @@ mod tests {
         setup_skill_for_metadata(&conn, "type-skill");
 
         conn.execute(
-            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
             rusqlite::params!["type-skill", "platform"],
         ).unwrap();
 
@@ -1700,7 +1693,7 @@ mod tests {
         // Update all four fields as update_skill_metadata would
         crate::db::set_skill_display_name(&conn, "full-meta", Some("Full Metadata")).unwrap();
         conn.execute(
-            "UPDATE workflow_runs SET skill_type = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
+            "UPDATE workflow_runs SET purpose = ?2, updated_at = datetime('now') || 'Z' WHERE skill_name = ?1",
             rusqlite::params!["full-meta", "source"],
         ).unwrap();
         crate::db::set_skill_tags(&conn, "full-meta", &["api".into(), "rest".into()]).unwrap();
@@ -1731,14 +1724,7 @@ mod tests {
         fs::write(skill_dir.join("SKILL.md"), "# Ready").unwrap();
 
         // Create an in-progress skill (should be excluded)
-        crate::db::save_workflow_run(
-            &conn,
-            "wip-skill",
-            "marketing",
-            3,
-            "in_progress",
-            "domain",
-        )
+        crate::db::save_workflow_run(&conn, "wip-skill", 3, "in_progress", "domain")
         .unwrap();
 
         let result = list_refinable_skills_inner("/unused", skills_path, &conn).unwrap();

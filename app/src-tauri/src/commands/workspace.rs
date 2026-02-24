@@ -285,7 +285,7 @@ pub fn resolve_discovery(
         "add-skill-builder" => {
             // Add as skill-builder with workflow_runs at step 5
             crate::db::save_workflow_run(
-                &conn, &skill_name, "unknown", 5, "completed", "domain",
+                &conn, &skill_name, 5, "completed", "domain",
             )?;
             // Validate workspace path before creating directory
             let ws_path = Path::new(&workspace_path);

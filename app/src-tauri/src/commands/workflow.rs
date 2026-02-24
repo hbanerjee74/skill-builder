@@ -655,10 +655,9 @@ fn write_user_context_file(
 #[allow(clippy::too_many_arguments)]
 fn build_prompt(
     skill_name: &str,
-    domain: &str,
     workspace_path: &str,
     skills_path: &str,
-    skill_type: &str,
+    purpose: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
@@ -676,13 +675,12 @@ fn build_prompt(
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
     let mut prompt = format!(
-        "The domain is: {}. The skill name is: {}. \
+        "The skill name is: {}. \
          The skill type is: {}. \
          The workspace directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
-        domain,
         skill_name,
         purpose,
         workspace_dir.display(),
@@ -847,8 +845,8 @@ fn read_workflow_settings(
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
 
-    // Get skill type
-    let skill_type = crate::db::get_purpose(&conn, skill_name)?;
+    // Get skill purpose
+    let purpose = crate::db::get_purpose(&conn, skill_name)?;
 
     // Read author info and intake data from workflow run
     let run_row = crate::db::get_workflow_run(&conn, skill_name)
@@ -895,7 +893,6 @@ async fn run_workflow_step_inner(
     pool: &SidecarPool,
     skill_name: &str,
     step_id: u32,
-    domain: &str,
     workspace_path: &str,
     settings: &WorkflowSettings,
 ) -> Result<String, String> {
@@ -917,7 +914,6 @@ async fn run_workflow_step_inner(
 
     let prompt = build_prompt(
         skill_name,
-        domain,
         workspace_path,
         &settings.skills_path,
         &settings.purpose,
@@ -977,10 +973,9 @@ pub async fn run_workflow_step(
     db: tauri::State<'_, Db>,
     skill_name: String,
     step_id: u32,
-    domain: String,
     workspace_path: String,
 ) -> Result<String, String> {
-    log::info!("[run_workflow_step] skill={} step={} domain={}", skill_name, step_id, domain);
+    log::info!("[run_workflow_step] skill={} step={}", skill_name, step_id);
     // Ensure prompt files exist in workspace before running
     ensure_workspace_prompts(&app, &workspace_path).await?;
 
@@ -1045,7 +1040,6 @@ pub async fn run_workflow_step(
         pool.inner(),
         &skill_name,
         step_id,
-        &domain,
         &workspace_path,
         &settings,
     )
@@ -1208,7 +1202,6 @@ pub fn get_workflow_state(
 #[tauri::command]
 pub fn save_workflow_state(
     skill_name: String,
-    domain: String,
     current_step: i32,
     status: String,
     purpose: String,
@@ -1832,7 +1825,6 @@ mod tests {
     fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
-            "e-commerce",
             "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
@@ -1849,7 +1841,7 @@ mod tests {
             None,
             None,
         );
-        assert!(prompt.contains("e-commerce"));
+        // domain no longer in prompt
         assert!(prompt.contains("my-skill"));
         // 3 distinct paths in prompt
         assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/my-skill"));
@@ -1861,7 +1853,6 @@ mod tests {
     fn test_build_prompt_with_skill_type() {
         let prompt = build_prompt(
             "my-skill",
-            "e-commerce",
             "/home/user/.vibedata",
             "/home/user/my-skills",
             "platform",
@@ -1885,7 +1876,6 @@ mod tests {
     fn test_build_prompt_with_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "e-commerce",
             "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
@@ -1911,7 +1901,6 @@ mod tests {
     fn test_build_prompt_without_author_info() {
         let prompt = build_prompt(
             "my-skill",
-            "e-commerce",
             "/home/user/.vibedata",
             "/home/user/my-skills",
             "domain",
@@ -2776,8 +2765,7 @@ mod tests {
     #[test]
     fn test_build_prompt_includes_user_context() {
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy ETL","scope":"Pipelines"}"#;
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Healthcare"), Some("Analytics Lead"), Some(intake),
             None, None, None, None, None, None,
         );
@@ -2791,20 +2779,18 @@ mod tests {
 
     #[test]
     fn test_build_prompt_without_user_context() {
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, None,
             None, None, None, None, None, None,
         );
         assert!(!prompt.contains("## User Context"));
         assert!(prompt.contains("test-skill"));
-        assert!(prompt.contains("sales"));
+        // domain no longer in prompt
     }
 
     #[test]
     fn test_build_prompt_with_only_industry() {
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, Some("Fintech"), None, None,
             None, None, None, None, None, None,
         );
@@ -2816,8 +2802,7 @@ mod tests {
     #[test]
     fn test_build_prompt_with_only_intake() {
         let intake = r#"{"audience":"Analysts","unique_setup":"Multi-region","claude_mistakes":"Assumes single tenant"}"#;
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, Some(intake),
             None, None, None, None, None, None,
         );
@@ -2829,8 +2814,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_with_behaviour_fields() {
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, None,
             Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
         );
@@ -2844,8 +2828,7 @@ mod tests {
 
     #[test]
     fn test_build_prompt_inherit_model_not_in_prompt() {
-        let prompt = build_prompt(
-            "test-skill", "sales", "/tmp/ws", "/tmp/skills", "domain",
+        let prompt = build_prompt("test-skill", "/tmp/ws", "/tmp/skills", "domain",
             None, None, 5, None, None, None,
             None, None, Some("inherit"), None, None, None,
         );
@@ -3226,7 +3209,6 @@ mod tests {
         let skill = crate::types::WorkspaceSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
-            domain: Some("skill-builder".to_string()),
             is_active: true,
             disk_path,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -3238,7 +3220,6 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3258,7 +3239,6 @@ mod tests {
         let skill = crate::types::WorkspaceSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
-            domain: Some("skill-builder".to_string()),
             is_active: false,
             disk_path: "/tmp/skills/test-practices".to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -3270,7 +3250,6 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
@@ -3298,7 +3277,6 @@ mod tests {
         let bundled = crate::types::WorkspaceSkill {
             skill_id: "bundled-test-practices".to_string(),
             skill_name: "test-practices".to_string(),
-            domain: Some("skill-builder".to_string()),
             is_active: true,
             disk_path: disk_path1,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
@@ -3310,12 +3288,10 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
         };
         let imported = crate::types::WorkspaceSkill {
             skill_id: "imp-data-analytics-123".to_string(),
             skill_name: "data-analytics".to_string(),
-            domain: Some("data".to_string()),
             is_active: true,
             disk_path: disk_path2,
             imported_at: "2025-01-15T10:00:00Z".to_string(),
@@ -3327,7 +3303,6 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &bundled).unwrap();
         crate::db::insert_workspace_skill(&conn, &imported).unwrap();
@@ -3367,7 +3342,6 @@ mod tests {
         let skill = crate::types::WorkspaceSkill {
             skill_id: "imp-my-skill-1".to_string(),
             skill_name: "my-skill".to_string(),
-            domain: Some("test".to_string()),
             is_active: true,
             disk_path,
             imported_at: "2025-01-01T00:00:00Z".to_string(),
@@ -3379,7 +3353,6 @@ mod tests {
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
