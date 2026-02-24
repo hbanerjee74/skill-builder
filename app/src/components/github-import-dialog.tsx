@@ -35,7 +35,7 @@ import { useSettingsStore } from "@/stores/settings-store"
 
 /**
  * Returns true only if `a` is strictly greater than `b` by semver rules.
- * Returns false if either value is null/undefined/empty or semver parsing fails.
+ * Returns false if either value is missing/empty or semver parsing fails.
  */
 function semverGt(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || a === "") return false

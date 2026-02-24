@@ -54,6 +54,7 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (24, run_frontmatter_to_skills_migration),
         (25, run_workspace_skills_purpose_migration),
         (26, run_content_hash_migration),
+        (27, run_backfill_null_versions_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -944,6 +945,29 @@ fn run_content_hash_migration(conn: &Connection) -> Result<(), rusqlite::Error> 
     if altered {
         log::info!("migration 26: added content_hash to workspace_skills and imported_skills");
     }
+    Ok(())
+}
+
+fn run_backfill_null_versions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // One-time patch: set version = '1.0.0' wherever version is NULL in all three version-
+    // tracking tables. Skills imported before version tracking was introduced had no version
+    // recorded; this prevents them from showing false "Update available" badges.
+    let skills_updated = conn.execute(
+        "UPDATE skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    let imported_updated = conn.execute(
+        "UPDATE imported_skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    let workspace_updated = conn.execute(
+        "UPDATE workspace_skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    log::info!(
+        "migration 27: backfilled null versions to '1.0.0' — skills={}, imported_skills={}, workspace_skills={}",
+        skills_updated, imported_updated, workspace_updated
+    );
     Ok(())
 }
 

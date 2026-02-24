@@ -777,39 +777,6 @@ describe("GitHubImportDialog", () => {
       expect(upToDateBadges).toHaveLength(2);
     });
 
-    it("shows 'Up to date' (not 'Update available') when installed version is null", async () => {
-      // Skills imported before version tracking had null installed versions.
-      // When marketplace later adds version fields, we should NOT show false positives.
-      const marketplaceSkills = [
-        makeLibrarySkill("skill-a", "1.0.0"),
-        makeLibrarySkill("skill-b", "1.0.0"),
-      ];
-      const installedSummaries = [
-        { name: "skill-a", version: null },  // version not tracked at import time
-        { name: "skill-b", version: null },
-      ];
-      mockInvoke.mockImplementation((cmd: string) => {
-        if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
-        if (cmd === "list_github_skills") return Promise.resolve(marketplaceSkills);
-        if (cmd === "get_dashboard_skill_names") return Promise.resolve(["skill-a", "skill-b"]);
-        if (cmd === "list_skills") return Promise.resolve(installedSummaries);
-        return Promise.resolve(undefined);
-      });
-
-      renderDialog({ mode: "skill-library", workspacePath: "/workspace" });
-
-      await waitFor(() => {
-        expect(screen.getByText("skill-a")).toBeInTheDocument();
-      });
-
-      // No false "Update available" badges when installed version is unknown
-      expect(screen.queryByText("Update available")).not.toBeInTheDocument();
-
-      // Both installed skills should be "Up to date"
-      const upToDateBadges = screen.getAllByText("Up to date");
-      expect(upToDateBadges).toHaveLength(2);
-    });
-
     it("shows correct upgrade state when workspacePath is empty (race condition fix)", async () => {
       // Regression: when dialog opens before settings have loaded, workspacePath="" which was
       // previously treated as falsy, skipping listSkills entirely and leaving installedSummary
@@ -844,57 +811,6 @@ describe("GitHubImportDialog", () => {
       expect(screen.getByText("Update available")).toBeInTheDocument();
       // list_skills must be called even with empty workspacePath
       expect(mockInvoke).toHaveBeenCalledWith("list_skills", expect.objectContaining({ workspacePath: "" }));
-    });
-  });
-
-  // Test D3 — Version guard: null installed version in settings-skills mode
-  describe("Version guard — null installed version — settings-skills mode", () => {
-    it("shows 'Up to date' (not 'Update available') when installed version is null", async () => {
-      const marketplaceSkill: AvailableSkill = {
-        path: "skills/my-skill",
-        name: "my-skill",
-        domain: null,
-        description: "A skill",
-        skill_type: "domain",
-        version: "1.0.0",
-        model: null,
-        argument_hint: null,
-        user_invocable: null,
-        disable_model_invocation: null,
-      };
-      const installedWs: WorkspaceSkill = {
-        skill_id: "ws-1",
-        skill_name: "my-skill",
-        domain: null,
-        description: null,
-        is_active: true,
-        is_bundled: false,
-        disk_path: "/skills/my-skill",
-        imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
-        version: null,  // skill was imported before version tracking
-        model: null,
-        argument_hint: null,
-        user_invocable: null,
-        disable_model_invocation: null,
-        purpose: null,
-      };
-      mockInvokeCommands({
-        parse_github_url: DEFAULT_REPO_INFO,
-        list_github_skills: [marketplaceSkill],
-        list_workspace_skills: [installedWs],
-      });
-
-      renderDialog({ mode: "settings-skills" });
-
-      await waitFor(() => {
-        expect(screen.getByText("my-skill")).toBeInTheDocument();
-      });
-
-      // Should NOT show "Update available" when installed version is unknown
-      expect(screen.queryByText("Update available")).not.toBeInTheDocument();
-      // Should show "Up to date"
-      expect(screen.getByText("Up to date")).toBeInTheDocument();
     });
   });
 
