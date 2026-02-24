@@ -11,7 +11,6 @@ export interface WorkflowStep {
 
 interface WorkflowState {
   skillName: string | null;
-  domain: string | null;
   purpose: string | null;
   currentStep: number;
   steps: WorkflowStep[];
@@ -37,7 +36,7 @@ interface WorkflowState {
   /** Transient: signals the workflow page to start in update mode. Set before navigation, consumed once by the init effect. */
   pendingUpdateMode: boolean;
 
-  initWorkflow: (skillName: string, domain: string, purpose?: string) => void;
+  initWorkflow: (skillName: string, purpose?: string) => void;
   setPurpose: (purpose: string | null) => void;
   setReviewMode: (mode: boolean) => void;
   setCurrentStep: (step: number) => void;
@@ -100,7 +99,6 @@ const defaultSteps: WorkflowStep[] = [
 
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   skillName: null,
-  domain: null,
   purpose: null,
   currentStep: 0,
   steps: defaultSteps.map((s) => ({ ...s })),
@@ -116,10 +114,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   hydrated: false,
   disabledSteps: [],
 
-  initWorkflow: (skillName, domain, purpose) =>
+  initWorkflow: (skillName, purpose) =>
     set({
       skillName,
-      domain,
       purpose: purpose ?? null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),
@@ -230,7 +227,6 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   reset: () =>
     set({
       skillName: null,
-      domain: null,
       purpose: null,
       currentStep: 0,
       steps: defaultSteps.map((s) => ({ ...s })),

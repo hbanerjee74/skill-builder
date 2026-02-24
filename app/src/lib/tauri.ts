@@ -119,9 +119,8 @@ export const startAgent = (
 export const runWorkflowStep = (
   skillName: string,
   stepId: number,
-  domain: string,
   workspacePath: string,
-) => invoke<string>("run_workflow_step", { skillName, stepId, domain, workspacePath });
+) => invoke<string>("run_workflow_step", { skillName, stepId, workspacePath });
 
 export const packageSkill = (
   skillName: string,
@@ -190,12 +189,11 @@ export const getWorkflowState = (skillName: string) =>
 
 export const saveWorkflowState = (
   skillName: string,
-  domain: string,
   currentStep: number,
   status: string,
   stepStatuses: StepStatusUpdate[],
   purpose?: string,
-) => invoke("save_workflow_state", { skillName, domain, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
+) => invoke("save_workflow_state", { skillName, currentStep, status, stepStatuses, purpose: purpose ?? "domain" });
 
 // --- Files ---
 
