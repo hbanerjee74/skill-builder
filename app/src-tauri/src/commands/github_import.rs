@@ -225,7 +225,11 @@ pub async fn check_marketplace_url(
     let resolved_branch = get_default_branch(&client, owner, repo).await?;
 
     // Verify that .claude-plugin/marketplace.json exists and is valid JSON.
-    let manifest_path = ".claude-plugin/marketplace.json";
+    // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
+    let manifest_path = match &repo_info.subpath {
+        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
+        None => ".claude-plugin/marketplace.json".to_string(),
+    };
     let raw_url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}/{}",
         owner, repo, resolved_branch, manifest_path
@@ -303,7 +307,7 @@ pub(crate) async fn list_github_skills_inner(
     owner: &str,
     repo: &str,
     branch: &str,
-    _subpath: Option<&str>,
+    subpath: Option<&str>,
     token: Option<&str>,
 ) -> Result<Vec<AvailableSkill>, String> {
     let client = build_github_client(token);
@@ -319,10 +323,15 @@ pub(crate) async fn list_github_skills_inner(
             .unwrap_or_else(|_| branch.to_string())
     };
 
-    // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com
+    // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com.
+    // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
+    let manifest_path = match subpath {
+        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
+        None => ".claude-plugin/marketplace.json".to_string(),
+    };
     let raw_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}/.claude-plugin/marketplace.json",
-        owner, repo, resolved_branch
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, resolved_branch, manifest_path
     );
 
     log::info!(
@@ -340,8 +349,8 @@ pub(crate) async fn list_github_skills_inner(
                 owner, repo, e
             );
             format!(
-                "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-                owner, repo
+                "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+                manifest_path, owner, repo
             )
         })?;
 
@@ -352,8 +361,8 @@ pub(crate) async fn list_github_skills_inner(
             owner, repo, status
         );
         return Err(format!(
-            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-            owner, repo
+            "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+            manifest_path, owner, repo
         ));
     }
 
