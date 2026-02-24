@@ -26,12 +26,13 @@ jobs:
             VERSION="${VERSION#v}"
           else
             VERSION="${{ inputs.version }}"
+            VERSION="${VERSION#v}"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Download plugin artifact from release
         env:
-          GH_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "v${{ steps.version.outputs.version }}" \
             --repo "${{ github.repository }}" \
@@ -75,10 +76,10 @@ jobs:
         run: |
           git config user.email "github-actions@github.com"
           git config user.name "GitHub Actions"
-          git diff --quiet && git diff --cached --quiet && echo "No changes to publish" && exit 0
+          git add .
+          git diff --cached --quiet && echo "No changes to publish" && exit 0
           BRANCH="release/v${VERSION}"
           git checkout -b "$BRANCH"
-          git add .
           git commit -m "Release v${VERSION}: update skill-builder plugins"
           git push origin "$BRANCH"
           curl -s -X POST \

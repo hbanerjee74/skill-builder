@@ -269,19 +269,19 @@ jobs:
 
           # --- marketplace.json ---
           mkdir -p "${STAGE}/.claude-plugin"
-          cat > "${STAGE}/.claude-plugin/marketplace.json" << 'JSON'
-          {
-            "name": "skills",
-            "owner": { "name": "hbanerjee74" },
-            "metadata": { "pluginRoot": "./plugins" },
-            "plugins": [
-              { "name": "skill-builder",           "source": "./plugins/skill-builder" },
-              { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research" },
-              { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate" },
-              { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices" }
-            ]
-          }
-          JSON
+          printf '%s\n' \
+            '{' \
+            '  "name": "skills",' \
+            '  "owner": { "name": "hbanerjee74" },' \
+            '  "metadata": { "pluginRoot": "./plugins" },' \
+            '  "plugins": [' \
+            '    { "name": "skill-builder",           "source": "./plugins/skill-builder" },' \
+            '    { "name": "skill-builder-research",  "source": "./plugins/skill-builder-research" },' \
+            '    { "name": "skill-builder-validate",  "source": "./plugins/skill-builder-validate" },' \
+            '    { "name": "skill-builder-practices", "source": "./plugins/skill-builder-practices" }' \
+            '  ]' \
+            '}' \
+            > "${STAGE}/.claude-plugin/marketplace.json"
 
           zip -r "${STAGE}.zip" "$STAGE"
 
