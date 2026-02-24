@@ -40,7 +40,7 @@ A completed skill contains:
 
 ## Step 1: Read Before Editing
 
-Read `{workspace_dir}/user-context.md` first (if it exists) to understand the user's industry, role, and focus areas — use this to tailor tone, examples, and emphasis in your edits.
+Read `{workspace_dir}/user-context.md` first to understand the user's purpose, description, industry, function, and what Claude needs to know about their environment — use this to tailor tone, examples, and emphasis in your edits. If the file does not exist, return an error.
 
 Always read `SKILL.md` before making changes. If the user's request mentions a specific topic or reference file, read the relevant reference files too. Use Glob to discover files when the exact name is unclear (e.g., `references/*.md`).
 

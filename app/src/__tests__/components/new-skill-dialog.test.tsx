@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, resetTauriMocks } from "@/test/mocks/tauri";
 import { toast } from "sonner";
@@ -455,8 +455,9 @@ describe("SkillDialog (create mode)", () => {
     // Now type "an" -- "analytics" should NOT appear since it's already added
     await user.type(tagInput, "an");
 
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
-    const options = screen.getAllByRole("option");
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+    const options = within(listbox).getAllByRole("option");
     expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent("anomaly");
   });

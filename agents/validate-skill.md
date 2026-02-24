@@ -21,10 +21,11 @@ Only evaluate: conformance to Skill Best Practices, completeness against `decisi
 
 The coordinator provides:
 - The **skill name**
-- The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **context directory** path (containing `decisions.md`, `clarifications.md`, and where to write output files)
 - The **skill output directory** path (containing `SKILL.md` and reference files)
-- **User context** and **workspace directory** — per the User Context protocol
+- The **workspace directory** path
+
+Read `{workspace_directory}/user-context.md` for purpose, description, industry, function, and what Claude needs to know about the user's specific environment. Use this to validate the skill against the user's actual needs.
 
 ## Scope Recommendation Guard
 
