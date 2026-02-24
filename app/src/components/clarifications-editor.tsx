@@ -151,6 +151,8 @@ export function ClarificationsEditor({
           All others refine quality but have reasonable defaults.
         </div>
 
+        {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
+
         {data.sections.map((section) => (
           <SectionBlock
             key={section.id}
@@ -161,8 +163,6 @@ export function ClarificationsEditor({
             readOnly={readOnly}
           />
         ))}
-
-        {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
       </div>
 
       {/* ── Bottom bar ── */}
