@@ -12,6 +12,7 @@ import type { AppSettings, ReconciliationResult } from "@/lib/types";
 // Mock @tanstack/react-router
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
+  useRouter: () => ({ navigate: vi.fn() }),
   useRouterState: () => ({ location: { pathname: "/" } }),
   Outlet: () => <div data-testid="outlet">Dashboard Content</div>,
   Link: ({

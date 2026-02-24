@@ -85,6 +85,11 @@ interface GitHubImportDialogProps {
   mode?: 'skill-library' | 'settings-skills'
   /** Workspace path — required for skill-library mode to look up installed skill metadata. */
   workspacePath?: string
+  /**
+   * When provided, the dialog filters the skill list to only these skill names and
+   * pre-marks them as "upgrade" state (bypassing version comparison).
+   */
+  upgradeFilter?: string[]
 }
 
 type SkillState = "idle" | "importing" | "imported" | "exists" | "same-version" | "upgrade"
@@ -138,6 +143,7 @@ export default function GitHubImportDialog({
   typeFilter,
   mode = 'settings-skills',
   workspacePath,
+  upgradeFilter,
 }: GitHubImportDialogProps) {
   const [loading, setLoading] = useState(false)
   const [repoInfo, setRepoInfo] = useState<GitHubRepoInfo | null>(null)
@@ -211,6 +217,13 @@ export default function GitHubImportDialog({
       if (mode === 'settings-skills') {
         available = available.filter((s) => !!s.name)
       }
+
+      // Apply upgradeFilter: restrict to skills whose name is in the list
+      if (upgradeFilter && upgradeFilter.length > 0) {
+        const upgradeSet = new Set(upgradeFilter)
+        available = available.filter((s) => upgradeSet.has(s.name))
+      }
+
       if (available.length === 0) {
         setError("No skills found in this repository.")
         return
@@ -218,7 +231,20 @@ export default function GitHubImportDialog({
 
       const preStates = new Map<string, SkillState>()
 
-      if (mode === 'skill-library') {
+      // If upgradeFilter is provided, pre-mark all matching skills as "upgrade" immediately
+      if (upgradeFilter && upgradeFilter.length > 0) {
+        const upgradeSet = new Set(upgradeFilter)
+        for (const skill of available) {
+          if (upgradeSet.has(skill.name)) {
+            preStates.set(skill.path, "upgrade")
+          }
+        }
+        // Still fetch workspace skills for the edit form's version display (settings-skills mode)
+        if (mode === 'settings-skills') {
+          const installedSkills = await listWorkspaceSkills()
+          setWorkspaceSkills(installedSkills)
+        }
+      } else if (mode === 'skill-library') {
         // skill-library: check the skills master table (covers both skill-builder and marketplace skills)
         const dashboardNames = await getDashboardSkillNames()
         const dashboardSet = new Set(dashboardNames)
@@ -256,7 +282,7 @@ export default function GitHubImportDialog({
     } finally {
       setLoading(false)
     }
-  }, [url, typeFilter, workspacePath])
+  }, [url, typeFilter, workspacePath, upgradeFilter])
 
   useEffect(() => {
     if (open) browse()

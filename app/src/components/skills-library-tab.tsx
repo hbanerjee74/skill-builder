@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react"
+import { useEffect, useCallback, useState, useRef } from "react"
 import { open } from "@tauri-apps/plugin-dialog"
 import { toast } from "sonner"
 import { Upload, Package, Github, Trash2, Tag } from "lucide-react"
@@ -35,13 +35,26 @@ export function SkillsLibraryTab() {
   } = useImportedSkillsStore()
 
   const marketplaceUrl = useSettingsStore((s) => s.marketplaceUrl)
+  const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
+  const [activeUpgradeFilter, setActiveUpgradeFilter] = useState<string[] | undefined>(undefined)
   // Track which skill's purpose popover is open
   const [purposePopoverSkillId, setPurposePopoverSkillId] = useState<string | null>(null)
+  // Ref to avoid re-triggering after clearing pendingUpgrade
+  const prevPendingRef = useRef(pendingUpgrade)
 
   useEffect(() => {
     fetchSkills()
   }, [fetchSkills])
+
+  useEffect(() => {
+    if (pendingUpgrade?.mode === 'settings-skills') {
+      setActiveUpgradeFilter(pendingUpgrade.skills)
+      setShowGitHubImport(true)
+      useSettingsStore.getState().setPendingUpgradeOpen(null)
+    }
+    prevPendingRef.current = pendingUpgrade
+  }, [pendingUpgrade])
 
   const handleUpload = useCallback(async () => {
     const filePath = await open({
@@ -286,10 +299,14 @@ export function SkillsLibraryTab() {
 
       <GitHubImportDialog
         open={showGitHubImport}
-        onOpenChange={setShowGitHubImport}
+        onOpenChange={(open) => {
+          setShowGitHubImport(open)
+          if (!open) setActiveUpgradeFilter(undefined)
+        }}
         onImported={fetchSkills}
         mode="settings-skills"
         url={marketplaceUrl ?? ""}
+        upgradeFilter={activeUpgradeFilter}
       />
     </div>
   )

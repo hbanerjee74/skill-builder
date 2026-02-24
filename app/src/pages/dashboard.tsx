@@ -65,6 +65,7 @@ export default function DashboardPage() {
   const [workspacePath, setWorkspacePath] = useState("")
   const [createOpen, setCreateOpen] = useState(false)
   const [skillLibraryMarketplaceOpen, setSkillLibraryMarketplaceOpen] = useState(false)
+  const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null)
   const [editTarget, setEditTarget] = useState<SkillSummary | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -136,6 +137,13 @@ export default function DashboardPage() {
   useEffect(() => {
     loadSettings()
   }, [loadSettings])
+
+  useEffect(() => {
+    if (pendingUpgrade?.mode === 'skill-library') {
+      setSkillLibraryMarketplaceOpen(true)
+      useSettingsStore.getState().setPendingUpgradeOpen(null)
+    }
+  }, [pendingUpgrade])
 
   useEffect(() => {
     loadSkills()
@@ -673,6 +681,7 @@ export default function DashboardPage() {
         mode="skill-library"
         url={marketplaceUrl ?? ""}
         workspacePath={workspacePath}
+        upgradeFilter={pendingUpgrade?.mode === 'skill-library' ? pendingUpgrade.skills : undefined}
       />
 
     </div>

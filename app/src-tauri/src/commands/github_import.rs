@@ -1266,8 +1266,17 @@ pub(crate) fn compute_skill_content_hash(disk_path: &str) -> Option<String> {
 // check_marketplace_updates
 // ---------------------------------------------------------------------------
 
+/// Separate update lists for each registry source.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MarketplaceUpdateResult {
+    /// Skills with updates in imported_skills (Skills Library / marketplace source).
+    pub library: Vec<String>,
+    /// Skills with updates in workspace_skills (Settings → Skills).
+    pub workspace: Vec<String>,
+}
+
 /// Check the marketplace for skills that have a newer version than those installed.
-/// Returns a list of skill names for which a newer version is available.
+/// Returns separate lists for library (imported_skills) and workspace (workspace_skills) skills.
 #[tauri::command]
 pub async fn check_marketplace_updates(
     db: tauri::State<'_, Db>,
@@ -1275,7 +1284,7 @@ pub async fn check_marketplace_updates(
     repo: String,
     branch: String,
     subpath: Option<String>,
-) -> Result<Vec<String>, String> {
+) -> Result<MarketplaceUpdateResult, String> {
     log::info!(
         "[check_marketplace_updates] owner={} repo={} branch={} subpath={:?}",
         owner, repo, branch, subpath
@@ -1292,13 +1301,14 @@ pub async fn check_marketplace_updates(
 
     let available = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref()).await?;
 
-    let updates: Vec<String> = {
+    let result = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[check_marketplace_updates] failed to acquire DB lock for DB reads: {}", e);
             e.to_string()
         })?;
 
-        let mut result = Vec::new();
+        let mut library = Vec::new();
+        let mut workspace = Vec::new();
 
         for skill in &available {
             let marketplace_ver = skill.version.as_deref().unwrap_or("");
@@ -1306,34 +1316,34 @@ pub async fn check_marketplace_updates(
                 continue;
             }
 
-            // Check workspace_skills first, then imported_skills
-            let installed_ver_opt: Option<String> = {
-                let ws = crate::db::get_workspace_skill_by_name(&conn, &skill.name)?;
-                if let Some(ws) = ws {
-                    ws.version
-                } else {
-                    // Check imported_skills (marketplace/library skills)
-                    let imp = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None);
-                    imp.and_then(|i| i.version)
+            // Check workspace_skills independently
+            if let Some(ws) = crate::db::get_workspace_skill_by_name(&conn, &skill.name)? {
+                if let Some(inst_ver) = ws.version {
+                    if semver_gt(marketplace_ver, &inst_ver) {
+                        workspace.push(skill.name.clone());
+                    }
                 }
-            };
+            }
 
-            if let Some(installed_ver) = installed_ver_opt {
-                if semver_gt(marketplace_ver, &installed_ver) {
-                    result.push(skill.name.clone());
+            // Check imported_skills independently
+            if let Some(imp) = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None) {
+                if let Some(inst_ver) = imp.version {
+                    if semver_gt(marketplace_ver, &inst_ver) {
+                        library.push(skill.name.clone());
+                    }
                 }
             }
         }
 
-        result
+        MarketplaceUpdateResult { library, workspace }
     };
 
     log::info!(
-        "[check_marketplace_updates] found {} skills with available updates",
-        updates.len()
+        "[check_marketplace_updates] found {} library updates, {} workspace updates",
+        result.library.len(), result.workspace.len()
     );
 
-    Ok(updates)
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------

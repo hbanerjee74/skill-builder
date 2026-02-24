@@ -397,8 +397,8 @@ export const checkMarketplaceUpdates = (
   repo: string,
   branch: string,
   subpath?: string,
-): Promise<string[]> =>
-  invoke<string[]>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+): Promise<{ library: string[]; workspace: string[] }> =>
+  invoke<{ library: string[]; workspace: string[] }>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })

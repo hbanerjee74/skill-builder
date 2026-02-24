@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Outlet, useNavigate, useRouterState, useRouter } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
@@ -19,6 +19,7 @@ export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const isConfigured = useSettingsStore((s) => s.isConfigured);
   const navigate = useNavigate();
+  const router = useRouter();
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isSettings = currentPath === "/settings";
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -60,11 +61,35 @@ export function AppLayout() {
           .then((info) =>
             checkMarketplaceUpdates(info.owner, info.repo, info.branch, info.subpath ?? undefined)
           )
-          .then((updates) => {
-            if (updates.length > 0) {
+          .then(({ library, workspace }) => {
+            if (library.length > 0) {
               toast.info(
-                `Updates available for ${updates.length} skill${updates.length !== 1 ? "s" : ""}: ${updates.join(", ")} — open Marketplace to update`,
-                { duration: Infinity }
+                `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${library.join(", ")}`,
+                {
+                  duration: Infinity,
+                  action: {
+                    label: "Open Marketplace",
+                    onClick: () => {
+                      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: library });
+                      router.navigate({ to: "/" });
+                    },
+                  },
+                }
+              );
+            }
+            if (workspace.length > 0) {
+              toast.info(
+                `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${workspace.join(", ")}`,
+                {
+                  duration: Infinity,
+                  action: {
+                    label: "Open Marketplace",
+                    onClick: () => {
+                      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: workspace });
+                      router.navigate({ to: "/settings" });
+                    },
+                  },
+                }
               );
             }
           })
