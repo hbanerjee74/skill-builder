@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, Info, Store } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, Info } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -20,7 +20,7 @@ import TagInput from "@/components/tag-input"
 import { GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
-import { renameSkill, updateSkillMetadata, generateSuggestions, listGitHubSkills, parseGitHubUrl, type FieldSuggestions } from "@/lib/tauri"
+import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
@@ -75,8 +75,6 @@ interface SkillDialogCreateProps {
   existingNames?: string[]
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  /** Called when user picks "Import and refine" in the marketplace prompt. */
-  onOpenMarketplace?: (typeFilter: string[]) => void
 }
 
 interface SkillDialogEditProps {
@@ -124,7 +122,7 @@ function normalizeModelValue(raw: string | null | undefined): string {
 export default function SkillDialog(props: SkillDialogProps) {
   const isEdit = props.mode === "edit"
   const navigate = useNavigate()
-  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, marketplaceUrl, availableModels } = useSettingsStore()
+  const { workspacePath: storeWorkspacePath, skillsPath, industry, functionRole, availableModels } = useSettingsStore()
 
   // Extract mode-specific props
   const editSkill = isEdit ? (props as SkillDialogEditProps).skill : null
@@ -134,7 +132,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const createWorkspacePath = !isEdit ? (props as SkillDialogCreateProps).workspacePath : ""
   const createOnCreated = !isEdit ? (props as SkillDialogCreateProps).onCreated : undefined
   const createOnOpenChange = !isEdit ? (props as SkillDialogCreateProps).onOpenChange : undefined
-  const onOpenMarketplace = !isEdit ? (props as SkillDialogCreateProps).onOpenMarketplace : undefined
   const tagSuggestions = props.tagSuggestions ?? []
   const existingNames = props.existingNames ?? []
 
@@ -168,12 +165,6 @@ export default function SkillDialog(props: SkillDialogProps) {
   const [disableModelInvocation, setDisableModelInvocation] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  // Marketplace check state (create mode, step 1 only)
-  const [marketplaceCheckLoading, setMarketplaceCheckLoading] = useState(false)
-  const [marketplaceMatchFound, setMarketplaceMatchFound] = useState(false)
-  const [marketplacePromptDismissed, setMarketplacePromptDismissed] = useState(false)
-  const marketplaceDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Ghost suggestion state
   const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
@@ -213,10 +204,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     setContextQuestionsSuggestion(null)
     setError(null)
     setSubmitting(false)
-    setMarketplaceCheckLoading(false)
-    setMarketplaceMatchFound(false)
-    setMarketplacePromptDismissed(false)
-    if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
     group0VersionRef.current++
     contextQVersionRef.current++
     suggestionCache.current.clear()
@@ -323,43 +310,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     })
     return () => { if (contextQDebounceRef.current) clearTimeout(contextQDebounceRef.current) }
   }, [dialogOpen, skillName, purpose, description, industry, functionRole, fetchGroup])
-
-  // Marketplace check: fire after purpose is set (create mode, step 1 only, debounced 600ms)
-  useEffect(() => {
-    if (isEdit || !dialogOpen || !purpose || marketplacePromptDismissed) {
-      setMarketplaceMatchFound(false)
-      setMarketplaceCheckLoading(false)
-      return
-    }
-    if (!marketplaceUrl) return
-
-    if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
-    setMarketplaceCheckLoading(true)
-    marketplaceDebounceRef.current = setTimeout(async () => {
-      try {
-        const repoInfo = await parseGitHubUrl(marketplaceUrl)
-        const available = await listGitHubSkills(
-          repoInfo.owner,
-          repoInfo.repo,
-          repoInfo.branch,
-          repoInfo.subpath ?? undefined,
-        )
-        const matches = available.filter(
-          (s) => s.purpose != null && s.purpose === purpose,
-        )
-        setMarketplaceMatchFound(matches.length > 0)
-      } catch (err) {
-        console.warn("[skill-dialog] Marketplace check failed (non-fatal):", err)
-        setMarketplaceMatchFound(false)
-      } finally {
-        setMarketplaceCheckLoading(false)
-      }
-    }, 600)
-
-    return () => {
-      if (marketplaceDebounceRef.current) clearTimeout(marketplaceDebounceRef.current)
-    }
-  }, [isEdit, dialogOpen, purpose, marketplaceUrl, marketplacePromptDismissed])
 
   // --- Submit ---
 
@@ -587,44 +537,6 @@ export default function SkillDialog(props: SkillDialogProps) {
                     <span>
                       To change name or purpose, export and reimport as a new skill.
                     </span>
-                  </div>
-                )}
-
-                {/* Marketplace match prompt (create mode, step 1, when purpose is set) */}
-                {!isEdit && marketplaceCheckLoading && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
-                    Checking marketplace for matching skills...
-                  </div>
-                )}
-                {!isEdit && !marketplaceCheckLoading && marketplaceMatchFound && !marketplacePromptDismissed && (
-                  <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
-                    <div className="flex items-start gap-2">
-                      <Store className="mt-0.5 size-4 shrink-0 text-primary" />
-                      <p className="text-sm font-medium text-foreground">
-                        We found existing skills that match -- would you like to import and refine one, or build from scratch?
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => {
-                          handleOpenChange(false)
-                          onOpenMarketplace?.([purpose])
-                        }}
-                      >
-                        Import and refine
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setMarketplacePromptDismissed(true)}
-                      >
-                        Build from scratch
-                      </Button>
-                    </div>
                   </div>
                 )}
 
