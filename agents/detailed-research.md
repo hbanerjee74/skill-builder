@@ -22,7 +22,7 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)
-- **User context**: Read `{workspace_directory}/user-context.md` in Phase 1 for purpose, description, industry, function, and what Claude needs to know about the user's environment. Embed the full content inline in every sub-agent prompt under a `## User Context` heading.
+- **User context**: Read `{workspace_directory}/user-context.md` in Phase 1 for purpose, description, industry, function, and what Claude needs to know about the user's environment. Pass the full user context to every sub-agent under a `## User Context` heading in the Task prompt.
 - **Single artifact**: All refinements and flags are added in-place to `clarifications.md`.
 
 </context>
@@ -64,7 +64,7 @@ All sub-agents **return text** — they do not write files. Include the standard
 - The list of question IDs to refine in the assigned section, with their verdict (`not_answered`, `vague`, or `needs_refinement`) and the user's answer text
 - The clear answers in the same section (for cross-reference context)
 - Which section to drill into
-- The full **user context** from `user-context.md` (embedded inline under `## User Context`)
+- The full **user context** from `user-context.md` (passed under a `## User Context` heading)
 
 Each sub-agent's task for each question to refine:
 - For `not_answered`: the answer contains the auto-filled recommendation — generate 1-3 focused questions to validate or refine the recommended approach
