@@ -13,7 +13,166 @@ import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
-import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
+import type { AppSettings, DiscoveredSkill, OrphanSkill } from "@/lib/types";
+
+interface SkillUpdateInfo {
+  name: string;
+  path: string;
+  version: string;
+}
+
+/** Filter out customized skills, returning only those safe to auto-update. */
+async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpdateInfo[]> {
+  const results = await Promise.all(
+    skills.map(async (skill) => {
+      const customized = await checkSkillCustomized(skill.name).catch(() => false);
+      return customized ? null : skill;
+    })
+  );
+  return results.filter((s): s is SkillUpdateInfo => s !== null);
+}
+
+/** Read previously notified versions from localStorage. */
+function readNotifiedVersions(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem("marketplace_notified_versions") ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+/** Persist notified versions to localStorage so toasts are not repeated on next launch. */
+function saveNotifiedVersions(notified: Record<string, string>): void {
+  try {
+    localStorage.setItem("marketplace_notified_versions", JSON.stringify(notified));
+  } catch { /* ignore */ }
+}
+
+/** Check the marketplace for updates and either auto-update or show notification toasts. */
+async function checkForMarketplaceUpdates(
+  settings: AppSettings,
+  cancelledRef: { current: boolean },
+  router: ReturnType<typeof useRouter>,
+): Promise<void> {
+  try {
+    const info = await parseGitHubUrl(settings.marketplace_url!);
+    const { library, workspace } = await checkMarketplaceUpdates(
+      info.owner, info.repo, info.branch, info.subpath ?? undefined
+    );
+    if (cancelledRef.current) return;
+
+    if (settings.auto_update) {
+      await handleAutoUpdate(library, workspace, info, cancelledRef);
+    } else {
+      showManualUpdateToasts(library, workspace, router);
+    }
+  } catch (err) {
+    console.error("[app-layout] Marketplace update check failed:", err);
+    toast.error(
+      `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
+      { duration: Infinity }
+    );
+  }
+}
+
+/** Auto-update non-customized skills silently and show a summary toast. */
+async function handleAutoUpdate(
+  library: SkillUpdateInfo[],
+  workspace: SkillUpdateInfo[],
+  info: { owner: string; repo: string; branch: string },
+  cancelledRef: { current: boolean },
+): Promise<void> {
+  const [libFiltered, wsFiltered] = await Promise.all([
+    filterNonCustomized(library),
+    filterNonCustomized(workspace),
+  ]);
+  if (cancelledRef.current) return;
+
+  await Promise.all([
+    libFiltered.length > 0
+      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path)).catch((err) =>
+          console.warn("[app-layout] Auto-update library failed:", err)
+        )
+      : Promise.resolve(),
+    wsFiltered.length > 0
+      ? importGitHubSkills(
+          info.owner, info.repo, info.branch,
+          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version }))
+        ).catch((err) =>
+          console.warn("[app-layout] Auto-update workspace failed:", err)
+        )
+      : Promise.resolve(),
+  ]);
+  if (cancelledRef.current) return;
+
+  const total = libFiltered.length + wsFiltered.length;
+  if (total > 0) {
+    toast.success(
+      <div className="space-y-1">
+        <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
+        {libFiltered.length > 0 && (
+          <p>• Skills Library: {libFiltered.map((s) => s.name).join(", ")}</p>
+        )}
+        {wsFiltered.length > 0 && (
+          <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
+        )}
+      </div>,
+      { duration: Infinity }
+    );
+  }
+}
+
+/** Show persistent notification toasts for skill updates not yet seen by the user. */
+function showManualUpdateToasts(
+  library: SkillUpdateInfo[],
+  workspace: SkillUpdateInfo[],
+  router: ReturnType<typeof useRouter>,
+): void {
+  const notified = readNotifiedVersions();
+
+  const libNew = library.filter((s) => notified[`lib:${s.name}`] !== s.version);
+  const wsNew = workspace.filter((s) => notified[`ws:${s.name}`] !== s.version);
+
+  if (libNew.length > 0) {
+    const names = libNew.map((s) => s.name);
+    toast.info(
+      `Skills Library: update available for ${libNew.length} skill${libNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      {
+        duration: Infinity,
+        action: {
+          label: "Upgrade",
+          onClick: () => {
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
+            router.navigate({ to: "/" });
+          },
+        },
+      }
+    );
+  }
+  if (wsNew.length > 0) {
+    const names = wsNew.map((s) => s.name);
+    toast.info(
+      `Settings \u2192 Skills: update available for ${wsNew.length} skill${wsNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      {
+        duration: Infinity,
+        action: {
+          label: "Upgrade",
+          onClick: () => {
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
+            router.navigate({ to: "/settings" });
+          },
+        },
+      }
+    );
+  }
+
+  if (libNew.length > 0 || wsNew.length > 0) {
+    const updated = { ...notified };
+    for (const s of libNew) updated[`lib:${s.name}`] = s.version;
+    for (const s of wsNew) updated[`ws:${s.name}`] = s.version;
+    saveNotifiedVersions(updated);
+  }
+}
 
 export function AppLayout() {
   const setSettings = useSettingsStore((s) => s.setSettings);
@@ -33,10 +192,10 @@ export function AppLayout() {
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
-    let cancelled = false;
+    const cancelledRef = { current: false };
 
     getSettings().then((s) => {
-      if (cancelled) return;
+      if (cancelledRef.current) return;
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
         workspacePath: s.workspace_path,
@@ -55,135 +214,22 @@ export function AppLayout() {
       // Fetch available models in the background — no need to await
       if (s.anthropic_api_key) {
         invoke<ModelInfo[]>("list_models", { apiKey: s.anthropic_api_key })
-          .then((models) => { if (!cancelled) setSettings({ availableModels: models }); })
+          .then((models) => { if (!cancelledRef.current) setSettings({ availableModels: models }); })
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }
       // Check for marketplace updates in the background
       if (s.marketplace_url) {
-        parseGitHubUrl(s.marketplace_url)
-          .then(async (info) => {
-            const { library, workspace } = await checkMarketplaceUpdates(
-              info.owner, info.repo, info.branch, info.subpath ?? undefined
-            );
-            if (cancelled) return;
-
-            if (s.auto_update) {
-              // Auto-update: import all non-customized skills silently
-              const [libFiltered, wsFiltered] = await Promise.all([
-                Promise.all(library.map(async (skill) => {
-                  const customized = await checkSkillCustomized(skill.name).catch(() => false);
-                  return customized ? null : skill;
-                })).then((r) => r.filter((s): s is NonNullable<typeof s> => s !== null)),
-                Promise.all(workspace.map(async (skill) => {
-                  const customized = await checkSkillCustomized(skill.name).catch(() => false);
-                  return customized ? null : skill;
-                })).then((r) => r.filter((s): s is NonNullable<typeof s> => s !== null)),
-              ]);
-              if (cancelled) return;
-
-              await Promise.all([
-                libFiltered.length > 0
-                  ? importMarketplaceToLibrary(libFiltered.map((s) => s.path)).catch((err) =>
-                      console.warn("[app-layout] Auto-update library failed:", err)
-                    )
-                  : Promise.resolve(),
-                wsFiltered.length > 0
-                  ? importGitHubSkills(
-                      info.owner, info.repo, info.branch,
-                      wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version }))
-                    ).catch((err) =>
-                      console.warn("[app-layout] Auto-update workspace failed:", err)
-                    )
-                  : Promise.resolve(),
-              ]);
-              if (cancelled) return;
-
-              const total = libFiltered.length + wsFiltered.length;
-              if (total > 0) {
-                toast.success(
-                  <div className="space-y-1">
-                    <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
-                    {libFiltered.length > 0 && (
-                      <p>• Skills Library: {libFiltered.map((s) => s.name).join(", ")}</p>
-                    )}
-                    {wsFiltered.length > 0 && (
-                      <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
-                    )}
-                  </div>,
-                  { duration: Infinity }
-                );
-              }
-            } else {
-              // Manual update: show persistent toasts only for versions not yet notified.
-              // Suppresses repeated toasts on every cold launch for the same available version.
-              const NOTIFIED_KEY = "marketplace_notified_versions";
-              const notified: Record<string, string> = (() => {
-                try { return JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? "{}"); }
-                catch { return {}; }
-              })();
-
-              const libNew = library.filter((s) => notified[`lib:${s.name}`] !== s.version);
-              const wsNew = workspace.filter((s) => notified[`ws:${s.name}`] !== s.version);
-
-              if (libNew.length > 0) {
-                const names = libNew.map((s) => s.name);
-                toast.info(
-                  `Skills Library: update available for ${libNew.length} skill${libNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
-                  {
-                    duration: Infinity,
-                    action: {
-                      label: "Upgrade",
-                      onClick: () => {
-                        useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
-                        router.navigate({ to: "/" });
-                      },
-                    },
-                  }
-                );
-              }
-              if (wsNew.length > 0) {
-                const names = wsNew.map((s) => s.name);
-                toast.info(
-                  `Settings \u2192 Skills: update available for ${wsNew.length} skill${wsNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
-                  {
-                    duration: Infinity,
-                    action: {
-                      label: "Upgrade",
-                      onClick: () => {
-                        useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
-                        router.navigate({ to: "/settings" });
-                      },
-                    },
-                  }
-                );
-              }
-
-              // Persist notified versions so the same update doesn't toast on next launch.
-              if (libNew.length > 0 || wsNew.length > 0) {
-                const updated = { ...notified };
-                for (const s of libNew) updated[`lib:${s.name}`] = s.version;
-                for (const s of wsNew) updated[`ws:${s.name}`] = s.version;
-                try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
-              }
-            }
-          })
-          .catch((err) => {
-            console.error("[app-layout] Marketplace update check failed:", err);
-            toast.error(
-              `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
-              { duration: Infinity }
-            );
-          });
+        checkForMarketplaceUpdates(s, cancelledRef, router);
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
-      if (!cancelled) setSettingsLoaded(true);
+      if (!cancelledRef.current) setSettingsLoaded(true);
     });
 
     // Load GitHub auth state
     useAuthStore.getState().loadUser();
 
-    return () => { cancelled = true; };
+    return () => { cancelledRef.current = true; };
   }, [setSettings]);
 
   // Run reconciliation after settings are loaded

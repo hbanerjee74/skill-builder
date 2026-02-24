@@ -1420,18 +1420,18 @@ pub fn check_skill_customized(
             }
         };
 
-        let workspace_root_ok = settings.workspace_path.as_ref().map(|wp| {
-            let expected = Path::new(wp).join(".claude").join("skills");
-            std::fs::canonicalize(&expected)
-                .map(|root| canonical_disk.starts_with(&root))
+        let is_under_root = |root: &Path| -> bool {
+            std::fs::canonicalize(root)
+                .map(|r| canonical_disk.starts_with(&r))
                 .unwrap_or(false)
-        }).unwrap_or(false);
+        };
 
-        let skills_path_ok = settings.skills_path.as_ref().map(|sp| {
-            std::fs::canonicalize(sp)
-                .map(|root| canonical_disk.starts_with(&root))
-                .unwrap_or(false)
-        }).unwrap_or(false);
+        let workspace_root_ok = settings.workspace_path.as_ref().is_some_and(|wp| {
+            is_under_root(&Path::new(wp).join(".claude").join("skills"))
+        });
+        let skills_path_ok = settings.skills_path.as_ref().is_some_and(|sp| {
+            is_under_root(Path::new(sp))
+        });
 
         if !workspace_root_ok && !skills_path_ok {
             log::warn!(

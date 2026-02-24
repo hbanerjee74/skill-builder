@@ -239,12 +239,10 @@ export default function GitHubImportDialog({
         // settings-skills: check workspace_skills table
         const installedSkills = await listWorkspaceSkills()
         setWorkspaceSkills(installedSkills)
-        const installedSet = new Set(installedSkills.map((s) => s.skill_name))
         const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
         for (const skill of available) {
-          if (installedSet.has(skill.name)) {
-            const installedVersion = installedVersionMap.get(skill.name)
-            const isUpgrade = semverGt(skill.version, installedVersion)
+          if (installedVersionMap.has(skill.name)) {
+            const isUpgrade = semverGt(skill.version, installedVersionMap.get(skill.name))
             preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
           }
         }
