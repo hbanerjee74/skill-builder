@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { ChevronRight, AlertTriangle, Info, Clock, RotateCcw, Check, Loader2 } from "lucide-react";
+import { ChevronRight, AlertTriangle, Info, Clock, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   type ClarificationsFile,
@@ -46,6 +46,7 @@ interface ClarificationsEditorProps {
   readOnly?: boolean;
   filePath?: string;
   saveStatus?: SaveStatus;
+  evaluating?: boolean;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ export function ClarificationsEditor({
   readOnly = false,
   filePath,
   saveStatus = "idle",
+  evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const { answered, total, mustUnanswered } = getTotalCounts(data);
@@ -169,12 +171,22 @@ export function ClarificationsEditor({
             </Button>
           )}
           {onContinue && (
-            <Button size="sm" onClick={onContinue} disabled={!canContinue || readOnly}>
-              Continue
-              {!canContinue && (
-                <span className="ml-1.5 text-[10px] opacity-70">
-                  ({mustUnanswered} required)
-                </span>
+            <Button size="sm" onClick={onContinue} disabled={!canContinue || readOnly || evaluating}>
+              {evaluating ? (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  Evaluating answers...
+                </>
+              ) : (
+                <>
+                  <ArrowRight className="size-3.5" />
+                  Continue
+                  {!canContinue && (
+                    <span className="ml-1 text-[10px] opacity-70">
+                      ({mustUnanswered} required)
+                    </span>
+                  )}
+                </>
               )}
             </Button>
           )}
