@@ -152,9 +152,14 @@ If no recommendations, use `companions: []`.
 - All Skill Best Practices checks pass
 - Each content file scores 3+ on all Quality Dimensions
 - All auto-fixable issues are fixed and verified
-- `references/evaluations.md` is present with at least 3 complete evaluation scenarios
-- Decision Architecture skills (Platform, DE) have a Getting Started section
+- Standards skills have a Getting Started section
 - No process artifacts, stakeholder questions, or redundant discovery sections in skill output
+
+### Evaluations
+- `{context_dir}/evaluations.md` is present with at least 3 complete evaluation scenarios
+- Each scenario is **actually run** — send the prompt to Claude with the skill active, compare output against expected behavior and pass criteria
+- Each result has PASS/PARTIAL/FAIL with specific evidence
+- Report identifies actionable gaps where the skill fails to produce correct output
 
 ### Testing
 - 5 test prompts covering all 6 categories

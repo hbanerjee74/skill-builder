@@ -76,7 +76,7 @@ Include only what Claude would get wrong without this skill. Do not restate offi
 
 ### Evaluations (mandatory)
 
-Every skill must include `references/evaluations.md` with at least 3 evaluation scenarios:
+Every skill must have `evaluations.md` in the **context directory** (not in `references/` — it's a process artifact used by validate-skill, not skill content). At least 3 evaluation scenarios:
 
 ```
 ### Scenario 1: [Short name]
@@ -85,16 +85,16 @@ Every skill must include `references/evaluations.md` with at least 3 evaluation 
 **Pass criteria**: [1-2 measurable signals the skill is working]
 ```
 
-Scenarios must be runnable, grounded (exercise different skill sections), and observable (checkable without running code).
+Scenarios must be runnable, grounded (exercise different skill sections), and observable (checkable without running code). The validate-skill agent runs these scenarios to verify the skill works.
 
 ### Output Separation
 
 The skill output directory must contain ONLY:
 - `SKILL.md`
-- `references/*.md` (including `evaluations.md`)
+- `references/*.md`
 
 Never write to the skill output directory:
-- `clarifications.md`, `decisions.md`, `research-plan.md` — these belong in context/
+- `clarifications.md`, `decisions.md`, `evaluations.md`, `research-plan.md` — these belong in context/
 - Validation logs, test output, or companion recommendations
 - Any file whose purpose is process documentation rather than skill content
 
