@@ -563,6 +563,7 @@ fn derive_agent_name(workspace_path: &str, _purpose: &str, prompt_template: &str
 /// Shared by `write_user_context_file` (for file-based agents) and
 /// `build_prompt` / refine's `send_refine_message` (for inline embedding).
 /// Returns `None` when all fields are empty.
+#[allow(clippy::too_many_arguments)]
 pub fn format_user_context(
     name: Option<&str>,
     tags: &[String],
