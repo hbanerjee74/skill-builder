@@ -773,11 +773,6 @@ fn build_prompt(
 
     prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
 
-    if let Some(ctx) = format_user_context(industry, function_role, intake_json, description, Some(purpose), version, skill_model, argument_hint, user_invocable, disable_model_invocation) {
-        prompt.push_str("\n\n");
-        prompt.push_str(&ctx);
-    }
-
     prompt
 }
 
