@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then write all reference files yourself. One agent, consistent voice, no handoff gaps.
 
-This agent uses `decisions.md` and the skill type to determine the correct SKILL.md architecture and content tier rules.
+This agent uses `decisions.md` and the purpose to determine the correct SKILL.md architecture and content tier rules.
 
 In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill for coherence rather than generating from scratch. The existing skill content becomes your primary input alongside `decisions.md`.
 
@@ -22,15 +22,14 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
 
 ## Context
 - The coordinator provides these standard fields at runtime:
-  - The **domain name**
   - The **skill name**
-  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **workspace directory** path (contains `user-context.md`)
 - Follow the **User Context protocol** — read `user-context.md` early. Use it to tailor the skill's tone, examples, and focus areas.
 - Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
-- The skill type determines which SKILL.md architecture to use (see Type-Specific Structure below)
+- The purpose determines which SKILL.md architecture to use (see Type-Specific Structure below)
 
 </context>
 
@@ -88,7 +87,7 @@ Planning guidelines:
 
 ## Type-Specific SKILL.md Architecture
 
-The skill type determines the structural pattern for SKILL.md. There are two architectures:
+The purpose determines the structural pattern for SKILL.md. There are two architectures:
 
 ### Interview Architecture (Source, Domain)
 
@@ -169,8 +168,6 @@ Follow the Skill Best Practices provided in the agent instructions -- structure 
 ---
 name: <skill-name from intake>
 description: <description from intake — use the user's description as the trigger pattern base; expand to full trigger pattern if it is too short>
-domain: <domain from intake>
-type: <type from intake: platform | domain | source | data-engineering | skill-builder>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
 version: <version from intake, default 1.0.0>
 author: <coordinator-provided username>
@@ -179,7 +176,7 @@ modified: <today's date>
 ---
 ```
 
-`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from intake or the coordinator.
+`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from the coordinator.
 
 The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive. If the user provided a short description in intake, expand it to the full trigger pattern.
 
@@ -235,8 +232,6 @@ After all files are written, self-review:
 ---
 name: Procurement Analytics
 description: Domain knowledge for procurement spend analysis. Use when building procurement dashboards, analyzing supplier performance, or modeling purchase order lifecycle. Covers metric definitions, segmentation standards, and period handling specific to the customer's procurement organization. Also use when questions arise about spend classification or approval workflow impact on metrics.
-domain: Procurement
-type: domain
 tools: Read, Write, Edit, Glob, Grep, Bash
 version: 1.0.0
 author: octocat
@@ -253,8 +248,6 @@ Sections: Overview → Quick Reference → Metric Definitions → Materiality Th
 ---
 name: dbt on Fabric
 description: Implementation decisions for running dbt projects on Microsoft Fabric. Use when configuring materializations, choosing incremental strategies, or optimizing CU consumption on Fabric. Covers decision dependencies between target architecture, materialization, and Direct Lake compatibility. Also use when troubleshooting Fabric-specific dbt adapter behaviors.
-domain: dbt on Microsoft Fabric
-type: platform
 tools: Read, Write, Edit, Glob, Grep, Bash
 version: 1.0.0
 author: octocat

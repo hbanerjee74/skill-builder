@@ -26,16 +26,16 @@ Skills encode the **delta** — the customer-specific and domain-specific knowle
 
 ## Topic Relevance Pre-Check
 
-Before scoring any dimensions, decide whether the domain is a legitimate topic for the given skill type.
+Before scoring any dimensions, decide whether the domain is a legitimate topic for the given purpose.
 
-**If the domain is clearly not relevant** (e.g., "pizza-jokes" for a data engineering skill, or a non-data topic for any skill type):
+**If the domain is clearly not relevant** (e.g., "pizza-jokes" for a data engineering skill, or a non-data topic for any purpose):
 
 - Score: `topic_relevance: not_relevant`
 - Set `dimensions_evaluated: 0`, `dimensions_selected: 0`
 - Return an empty selected list with a brief explanation
 - Do not attempt to score dimensions — return immediately
 
-**If the domain is plausibly relevant**, proceed with scoring all type-scoped candidate dimensions.
+**If the domain is plausibly relevant**, proceed with scoring all purpose-scoped candidate dimensions.
 
 ---
 
@@ -83,7 +83,7 @@ The scored dimension table is returned as part of the `=== RESEARCH PLAN ===` se
 
 ```markdown
 ---
-skill_type: [skill_type]
+purpose: [purpose]
 domain: [domain name]
 topic_relevance: relevant | not_relevant
 dimensions_evaluated: [count of all scored dimensions]
@@ -91,7 +91,7 @@ dimensions_selected: [count of selected dimensions]
 ---
 # Research Plan
 
-## Skill: [domain name] ([skill_type])
+## Skill: [domain name] ([purpose])
 
 ## Dimension Scores
 

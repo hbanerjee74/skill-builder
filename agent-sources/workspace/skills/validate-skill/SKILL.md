@@ -2,11 +2,9 @@
 name: validate-skill
 description: >
   Validates a completed skill against its decisions and clarifications. Use when
-  validating a skill for a domain and skill type. Returns a validation log, test
+  validating a skill for a domain and purpose. Returns a validation log, test
   results, and companion recommendations as inline text with === VALIDATION LOG ===,
   === TEST RESULTS ===, and === COMPANION SKILLS === delimiters.
-domain: Skill Builder
-type: skill-builder
 ---
 
 # Validate Skill
@@ -29,7 +27,7 @@ This is a **read-only computation unit** — it reads skill files, runs validati
 |---|---|
 | `domain` | Domain name |
 | `skill_name` | Skill name |
-| `skill_type` | `domain` \| `data-engineering` \| `platform` \| `source` |
+| `purpose` | `domain` \| `data-engineering` \| `platform` \| `source` |
 | `context_dir` | Path to context directory (contains `decisions.md`, `clarifications.md`, `research-plan.md`) |
 | `skill_output_dir` | Path to skill output directory (contains `SKILL.md` and `references/`) |
 | `workspace_dir` | Path to workspace directory (contains `user-context.md`) |
@@ -52,7 +50,7 @@ Read the full content of the three spec files in `references/`. Spawn one sub-ag
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - Workspace directory: `{workspace_dir}`
-- Skill type: `{skill_type}`
+- Purpose: `{purpose}`
 
 **Test evaluator** — `references/test-skill-spec.md`. Paths:
 - `decisions.md`: `{context_dir}/decisions.md`
@@ -67,7 +65,7 @@ Read the full content of the three spec files in `references/`. Spawn one sub-ag
 - `decisions.md`: `{context_dir}/decisions.md`
 - `research-plan.md`: `{context_dir}/research-plan.md`
 - Workspace directory: `{workspace_dir}`
-- Skill type: `{skill_type}`
+- Purpose: `{purpose}`
 
 
 ---
@@ -131,11 +129,11 @@ YAML frontmatter with structured companion data (for UI parsing) plus markdown b
 ```yaml
 ---
 skill_name: [skill_name]
-skill_type: [skill_type]
+purpose: [purpose]
 companions:
   - name: [display name]
     slug: [kebab-case]
-    type: [skill type]
+    purpose: [purpose]
     priority: High | Medium | Low
     dimension: [dimension slug]
     score: [planner score]

@@ -7,7 +7,7 @@ You perform a comprehensive quality assessment of a completed skill. Four passes
 
 You are given:
 - Paths to `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files
-- The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **workspace directory** path (contains `user-context.md`)
 
 Read all provided files and `user-context.md` from the workspace directory.
@@ -18,7 +18,7 @@ Map every decision and answered clarification to a specific file and section. Re
 
 Check SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flag orphaned or unnecessary files.
 
-Verify SKILL.md uses the correct architectural pattern for the skill type:
+Verify SKILL.md uses the correct architectural pattern for the purpose:
 - **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
 - **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
 
@@ -42,13 +42,13 @@ Score each section of SKILL.md AND every reference file on the Quality Dimension
 
 ## Pass 3: Boundary Check
 
-Check whether the skill contains content that belongs to a different skill type. Use the type-scoped dimension sets:
+Check whether the skill contains content that belongs to a different purpose. Use the purpose-scoped dimension sets:
 - **Domain**: `entities`, `data-quality`, `metrics`, `business-rules`, `segmentation-and-periods`, `modeling-patterns`
 - **Data-Engineering**: `entities`, `data-quality`, `pattern-interactions`, `load-merge-patterns`, `historization`, `layer-design`
 - **Platform**: `entities`, `platform-behavioral-overrides`, `config-patterns`, `integration-orchestration`, `operational-failure-modes`
 - **Source**: `entities`, `data-quality`, `extraction`, `field-semantics`, `lifecycle-and-state`, `reconciliation`
 
-For each section and reference file, classify which dimension(s) it covers. Content mapping to a dimension outside the current skill type's set is a boundary violation. Brief incidental mentions are acceptable — only substantial content sections that belong to another type are violations.
+For each section and reference file, classify which dimension(s) it covers. Content mapping to a dimension outside the current purpose's set is a boundary violation. Brief incidental mentions are acceptable — only substantial content sections that belong to another purpose are violations.
 
 ## Pass 4: Prescriptiveness Check
 

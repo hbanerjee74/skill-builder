@@ -18,9 +18,8 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
 
 ## Context
 - The coordinator provides these standard fields at runtime:
-  - The **domain name**
   - The **skill name**
-  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)

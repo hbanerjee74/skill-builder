@@ -1,6 +1,6 @@
-# Dimension Sets by Skill Type
+# Dimension Sets by Purpose
 
-This file maps each skill type to its candidate research dimensions. The skill coordinator reads this file in Step 1 to select the 5–6 dimensions applicable to the given `skill_type`, then scores those dimensions against the domain in Step 2.
+This file maps each purpose to its candidate research dimensions. The skill coordinator reads this file in Step 1 to select the 5–6 dimensions applicable to the given `purpose`, then scores those dimensions against the domain in Step 2.
 
 ---
 
@@ -33,7 +33,7 @@ All 18 dimension slugs and their full names:
 
 ## Domain Dimensions
 
-Use when `skill_type: domain`. These 6 dimensions cover the conceptual and analytical knowledge needed to model a business domain correctly.
+Use when `purpose: domain`. These 6 dimensions cover the conceptual and analytical knowledge needed to model a business domain correctly.
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -48,7 +48,7 @@ Use when `skill_type: domain`. These 6 dimensions cover the conceptual and analy
 
 ## Data-Engineering Dimensions
 
-Use when `skill_type: data-engineering`. These 6 dimensions cover the pipeline architecture and data engineering patterns needed to build robust ELT/ETL infrastructure.
+Use when `purpose: data-engineering`. These 6 dimensions cover the pipeline architecture and data engineering patterns needed to build robust ELT/ETL infrastructure.
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -63,7 +63,7 @@ Use when `skill_type: data-engineering`. These 6 dimensions cover the pipeline a
 
 ## Platform Dimensions
 
-Use when `skill_type: platform`. These 5 dimensions cover the behavioral quirks, configuration requirements, and operational characteristics of a specific data platform (e.g., Snowflake, Microsoft Fabric, BigQuery).
+Use when `purpose: platform`. These 5 dimensions cover the behavioral quirks, configuration requirements, and operational characteristics of a specific data platform (e.g., Snowflake, Microsoft Fabric, BigQuery).
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -77,7 +77,7 @@ Use when `skill_type: platform`. These 5 dimensions cover the behavioral quirks,
 
 ## Source Dimensions
 
-Use when `skill_type: source`. These 6 dimensions cover the extraction, field semantics, and data reliability characteristics of a specific source system (e.g., Salesforce, HubSpot, SAP).
+Use when `purpose: source`. These 6 dimensions cover the extraction, field semantics, and data reliability characteristics of a specific source system (e.g., Salesforce, HubSpot, SAP).
 
 | # | Dimension Name | Slug | Dimension Spec |
 |---|----------------|------|----------------|
@@ -92,7 +92,7 @@ Use when `skill_type: source`. These 6 dimensions cover the extraction, field se
 
 ## Applicability Matrix
 
-Quick reference showing which dimensions apply to each skill type (`Y` = included in type set, `-` = not included):
+Quick reference showing which dimensions apply to each purpose (`Y` = included in set, `-` = not included):
 
 | Slug | domain | data-engineering | platform | source |
 |------|--------|-----------------|----------|--------|

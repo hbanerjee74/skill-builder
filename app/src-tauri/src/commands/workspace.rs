@@ -298,7 +298,7 @@ pub fn resolve_discovery(
         }
         "add-imported" => {
             // Add as imported, clear context folder — force skill_source to "imported"
-            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "unknown", "domain")?;
+            crate::db::upsert_skill_with_source(&conn, &skill_name, "imported", "domain")?;
             // Validate skills_path before touching filesystem
             let sp = Path::new(&skills_path);
             validate_path_within(sp, &skill_name, "skills_path")?;

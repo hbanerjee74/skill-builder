@@ -18,9 +18,8 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Context
 - The coordinator provides these standard fields at runtime:
-  - The **domain name**
   - The **skill name**
-  - The **skill type** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - **User context** and **workspace directory** — per the User Context protocol. Use to inform decision framing.
