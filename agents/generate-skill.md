@@ -37,20 +37,7 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
 
 <instructions>
 
-## Mode Detection
-
-Check if the prompt contains `/rewrite`. This determines how each phase operates:
-
-| | Normal Mode | Rewrite Mode |
-|---|---|---|
-| **Primary input** | `decisions.md` only | Existing SKILL.md + references + `decisions.md` |
-| **Guards** | Check `scope_recommendation` + `contradictory_inputs` | Check `scope_recommendation` + `contradictory_inputs` |
-| **Phase 1 goal** | Design structure from decisions | Assess existing structure, plan improvements |
-| **Phase 3 writing** | Write from decisions | Rewrite from existing content + decisions |
-| **Phase 3 review** | Check decisions coverage | Also verify no domain knowledge was dropped |
-| **Output** | New skill files | Rewritten skill files that read as one coherent pass |
-
-### Guards
+## Guards
 
 Check `decisions.md` and `clarifications.md` before doing any work. Block if either condition is true:
 
@@ -80,24 +67,6 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
 
-## Phase 1: Plan the Skill Structure
-
-**Goal**: Design the skill's file layout following the Skill Best Practices provided in the agent instructions (structure, naming, line limits).
-
-**Normal mode:** Read `decisions.md`, then propose the structure. Number of reference files driven by the decisions — group related decisions into cohesive reference files.
-
-**Rewrite mode:** Read `SKILL.md`, ALL files in `references/`, and `decisions.md`. Assess the current state:
-- Identify inconsistencies, redundancies, broken flow between sections
-- Note stale cross-references and sections that no longer match the overall narrative
-- Catalog all domain knowledge that must be preserved
-- Then propose an improved structure that addresses these issues while retaining all content
-
-Planning guidelines:
-- Each reference file should cover a coherent topic area (not one file per decision)
-- Aim for 3-8 reference files depending on decision count and domain complexity
-- File names should be descriptive and use kebab-case (e.g., `entity-model.md`, `pipeline-metrics.md`)
-- SKILL.md is the entry point; reference files provide depth
-
 ## Structure Pattern
 
 Read the purpose from user-context.md. Determine the structure pattern from Skill Builder Practices:
@@ -105,13 +74,22 @@ Read the purpose from user-context.md. Determine the structure pattern from Skil
 - **Knowledge-capture** (Business process knowledge, Source system customizations): question-oriented parallel sections, zero pre-filled assertions
 - **Standards** (Data engineering standards, Azure/Fabric standards): decision-oriented sections with Getting Started checklist and dependency map, up to 5 pre-filled assertions
 
-Section themes in Skill Builder Practices are suggestions — adapt based on what decisions.md actually contains. Group related decisions into cohesive reference files (3-8 files).
+Section themes in Skill Builder Practices are suggestions — adapt based on what decisions.md actually contains.
+
+## Phase 1: Plan the Skill Structure
+
+Read `decisions.md`. Design the skill's file layout following Skill Builder Practices (structure, naming, line limits).
+
+- Each reference file covers a coherent topic area (not one file per decision)
+- 3-8 reference files depending on decision count and complexity
+- Descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
+- SKILL.md is the entry point; reference files provide depth
 
 ## Phase 2: Write SKILL.md
 
-Follow the Skill Best Practices provided in the agent instructions -- structure rules, required SKILL.md sections, naming, and line limits. All metadata comes from user-context.md (per User Context protocol). Author and created/modified dates come from the coordinator prompt.
+Follow Skill Builder Practices for structure rules, sections, naming, and line limits. All metadata comes from user-context.md (per User Context protocol). Author and created/modified dates come from the coordinator prompt.
 
-**Full frontmatter format** — write all of these fields in every SKILL.md:
+**Frontmatter:**
 
 ```yaml
 ---
@@ -125,50 +103,48 @@ modified: <today's date>
 ---
 ```
 
-`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from user-context.md or the coordinator prompt.
+`tools` is the **only** field the agent determines independently. All other fields come from user-context.md or the coordinator prompt.
 
-The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` Read the user's description from user-context.md. If it already follows the trigger pattern, use it as-is. If it is too short or generic, expand it into a full trigger pattern using the description + the user's purpose and "What Claude Needs to Know" from user-context.md to make triggers specific and comprehensive.
+**Description** must follow the trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` Read the user's description from user-context.md. If it already follows the pattern, use as-is. If too short, expand using description + purpose + "What Claude Needs to Know" from user-context.md.
 
-**All types include these common sections:**
-1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
-2. **Overview** — What the skill covers, who it's for, key concepts
-3. **Quick Reference** — The most critical facts an engineer needs immediately
+**Common sections (all skills):**
+1. **Metadata** (YAML frontmatter)
+2. **Overview** — what the skill covers, who it's for, key concepts
+3. **Quick Reference** — the most critical facts immediately
+4. **Purpose-specific sections** from Skill Builder Practices
+5. **Reference Files** — pointers to each reference file with description and when to read it
 
-The description already encodes trigger conditions via the trigger pattern — do not repeat them in the body.
-
-**Then add purpose-specific sections** from the Purpose and Structure Patterns in Skill Builder Practices.
-
-**For Standards skills only:**
-- Include a **Getting Started** section immediately after Quick Reference and before the Decision Dependency Map. Write 5-8 ordered steps that walk a first-time user through the decision sequence.
-- Include a Decision Dependency Map section immediately after Getting Started, showing how choosing one option constrains downstream decisions
-- Use the three content tiers (decision structure, resolution criteria, context factors) within each section where applicable
-
-**Finally:**
-5. **Reference Files** — Pointers to each reference file with description and when to read it
-
-**Rewrite mode:** Update the `modified` date to today. Preserve the original `created` date and `author`.
+**Standards skills additionally:** Getting Started checklist (5-8 steps) after Quick Reference, then Decision Dependency Map.
 
 ## Phase 3: Write Reference Files and Self-Review
 
-Write each reference file from the plan to the `references/` subdirectory in the skill output directory. For each file:
+Write each reference file to `references/` in the skill output directory:
 - Cover the assigned topic area and its decisions from `decisions.md`
-- Follow the structure pattern rules from Skill Builder Practices — knowledge-capture skills use question-oriented sections; standards skills use decision-oriented sections with content assertions where Claude's training is wrong
-- Keep files self-contained — a reader should understand the file without reading others
-- **Rewrite mode additionally:** read the existing version first. Preserve all domain knowledge while rewriting for coherence. Use existing content as primary source, supplemented by `decisions.md`.
+- Follow the structure pattern rules from Skill Builder Practices
+- Keep files self-contained
 
-**Always write `references/evaluations.md`** (both normal and rewrite mode). Follow the evaluations spec in Skill Builder Practices — at least 3 scenarios covering distinct topic areas.
+**Always write `references/evaluations.md`** — follow the evaluations spec in Skill Builder Practices (at least 3 scenarios covering distinct topic areas).
 
-After all files are written, self-review:
-- Re-read `decisions.md` and verify every decision is addressed in at least one file
-- Verify SKILL.md pointers accurately describe each reference file's content and when to read it
-- Fix any gaps, missing cross-references, or stale pointers directly
-- Scan all written files for 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks. Remove them entirely — unanswered questions belong in context/decisions.md, not in skill files.
-
-**Rewrite mode additionally:** Verify that no domain knowledge from the original skill was dropped during the rewrite. Compare the rewritten files against the original content. Flag any substantive knowledge loss.
+Self-review after all files are written:
+- Re-read `decisions.md` — verify every decision is addressed in at least one file
+- Verify SKILL.md pointers accurately describe each reference file
+- Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks — unanswered questions belong in context/, not skill files
 
 ## Error Handling
 
-- **Missing/malformed `decisions.md`:** In normal mode, report to the coordinator — do not build without confirmed decisions. In rewrite mode, proceed using the existing skill content as the sole input and note that decisions.md was unavailable.
+Missing or malformed `decisions.md`: report to the coordinator — do not build without confirmed decisions.
+
+## Rewrite Mode
+
+When the prompt contains `/rewrite`, all phases above still apply but with these additions:
+
+**Phase 1:** Read existing `SKILL.md` and ALL files in `references/` alongside `decisions.md`. Assess the current state — identify inconsistencies, redundancies, stale cross-references. Catalog all domain knowledge that must be preserved. Propose an improved structure that retains all content.
+
+**Phase 2:** Update `modified` date to today. Preserve original `created` and `author`.
+
+**Phase 3:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence. Use existing content as primary source, supplemented by `decisions.md`. After self-review, also verify no domain knowledge was dropped — compare rewritten files against originals and flag any substantive loss.
+
+**Error handling:** If `decisions.md` is missing, proceed using existing skill content as sole input and note that decisions.md was unavailable.
 
 </instructions>
 
