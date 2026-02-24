@@ -262,7 +262,7 @@ pub async fn check_marketplace_url(
         format!("Failed to read marketplace.json: {}", e)
     })?;
 
-    serde_json::from_str::<serde_json::Value>(&body).map_err(|e| {
+    serde_json::from_str::<MarketplaceJson>(&body).map_err(|e| {
         log::error!("[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}", owner, repo, e);
         format!("marketplace.json at {} in {}/{} is not valid JSON.", manifest_path, owner, repo)
     })?;
@@ -1560,11 +1560,15 @@ mod tests {
 
     #[test]
     fn test_check_marketplace_url_json_validation_logic() {
+        use crate::types::MarketplaceJson;
         // Exercise the serde_json parse step used in check_marketplace_url.
-        // Valid JSON must succeed; invalid JSON must produce an error.
-        assert!(serde_json::from_str::<serde_json::Value>(r#"{"plugins": []}"#).is_ok());
-        assert!(serde_json::from_str::<serde_json::Value>("Not found").is_err());
-        assert!(serde_json::from_str::<serde_json::Value>("").is_err());
+        // Valid MarketplaceJson (with "plugins" array) must succeed; anything missing
+        // the required schema or non-JSON must produce an error.
+        assert!(serde_json::from_str::<MarketplaceJson>(r#"{"plugins": []}"#).is_ok());
+        // Arbitrary valid JSON missing the "plugins" array must be rejected.
+        assert!(serde_json::from_str::<MarketplaceJson>(r#"{"anything": 123}"#).is_err());
+        assert!(serde_json::from_str::<MarketplaceJson>("Not found").is_err());
+        assert!(serde_json::from_str::<MarketplaceJson>("").is_err());
     }
 
     // --- Branch resolution tests ---
