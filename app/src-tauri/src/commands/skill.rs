@@ -897,7 +897,7 @@ pub async fn generate_suggestions(
     };
 
     // Determine which fields to generate (default: all)
-    let all_fields = vec!["domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes"];
+    let all_fields = vec!["domain", "scope", "audience", "challenges", "unique_setup", "claude_mistakes", "context_questions"];
     let requested: Vec<&str> = fields
         .as_ref()
         .map(|f| f.iter().map(|s| s.as_str()).collect())
@@ -918,6 +918,19 @@ pub async fn generate_suggestions(
                 "\"claude_mistakes\": \"<2-3 short bullet points starting with • on separate lines describing what Claude gets wrong when working with {} in the {} domain>\"",
                 readable_name, purpose
             )),
+            "context_questions" => {
+                let purpose_label = match purpose.as_str() {
+                    "domain" => "Business process knowledge",
+                    "source" => "Source system customizations",
+                    "data-engineering" => "Organization specific data engineering standards",
+                    "platform" => "Organization specific Azure or Fabric standards",
+                    _ => &purpose,
+                };
+                Some(format!(
+                    "\"context_questions\": \"<exactly 2 bullets starting with \u{2022} on separate lines, 2-4 words each. Bullet 1: what is unique about this {} setup. Bullet 2: what does Claude usually miss. Be specific to {}.>\"",
+                    purpose_label, readable_name
+                ))
+            }
             _ => None,
         }
     }).collect();
@@ -1001,6 +1014,7 @@ pub async fn generate_suggestions(
         scope: field("scope"),
         unique_setup: field("unique_setup"),
         claude_mistakes: field("claude_mistakes"),
+        context_questions: field("context_questions"),
     })
 }
 
