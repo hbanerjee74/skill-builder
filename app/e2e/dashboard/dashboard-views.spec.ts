@@ -16,36 +16,33 @@ const BASE_SETTINGS = {
 const FEW_SKILLS = [
   {
     name: "sales-pipeline",
-    domain: "Sales",
     current_step: "Step 3",
     status: "in_progress",
     last_modified: new Date().toISOString(),
     tags: ["crm"],
-    skill_type: "platform",
+    purpose: "platform",
     author_login: null,
     author_avatar: null,
     intake_json: null,
   },
   {
     name: "hr-analytics",
-    domain: "HR",
     current_step: "completed",
     status: "completed",
     last_modified: new Date().toISOString(),
     tags: ["workday"],
-    skill_type: "domain",
+    purpose: "domain",
     author_login: null,
     author_avatar: null,
     intake_json: null,
   },
   {
     name: "finance-reporting",
-    domain: "Finance",
     current_step: "Step 1",
     status: "in_progress",
     last_modified: new Date().toISOString(),
     tags: [],
-    skill_type: "domain",
+    purpose: "domain",
     author_login: null,
     author_avatar: null,
     intake_json: null,
@@ -56,12 +53,11 @@ const FEW_SKILLS = [
 function generateSkills(count: number) {
   return Array.from({ length: count }, (_, i) => ({
     name: `skill-${i}`,
-    domain: "Test",
     current_step: "Step 1",
     status: "in_progress",
     last_modified: new Date().toISOString(),
     tags: [],
-    skill_type: "domain",
+    purpose: "domain",
     author_login: null,
     author_avatar: null,
     intake_json: null,
@@ -341,9 +337,8 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
     await expect(page).toHaveURL("/");
   });
 
-  test("3g: list view shows domain and type as text", async ({ page }) => {
+  test("3g: list view shows purpose as text", async ({ page }) => {
     const row = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
-    await expect(row.getByText("HR", { exact: true })).toBeVisible();
     await expect(row.getByText("Domain", { exact: true })).toBeVisible();
   });
 

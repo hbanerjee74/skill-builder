@@ -30,9 +30,9 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     const newSkillButton = page.getByRole("button", { name: /new skill/i }).first();
     await newSkillButton.click();
 
-    // Step 1: Fill skill name + select type + description (all required to advance)
+    // Step 1: Fill skill name + select purpose + description (all required to advance)
     await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
-    // The skill type radio uses Radix RadioGroupItem (<button role="radio" data-slot="radio-group-item">).
+    // The purpose radio uses Radix RadioGroupItem (<button role="radio" data-slot="radio-group-item">).
     // Use the data-slot attribute to target the actual Radix button (not the hidden native input).
     await page.locator('[data-slot="radio-group-item"]').first().click();
     await page.getByRole("textbox", { name: "Description" }).fill("HR analytics skill for workforce data.");
@@ -41,14 +41,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     await expect(page.getByRole("button", { name: "Next" })).toBeEnabled({ timeout: 3_000 });
     await page.getByRole("button", { name: "Next" }).click();
 
-    // Step 2: Fill domain (required) then advance to Step 3
-    await page.getByRole("textbox", { name: "Domain" }).fill("Human Resources");
-    await page.getByRole("button", { name: "Next" }).click();
-
-    // Step 3: Optional fields — advance to Step 4
-    await page.getByRole("button", { name: "Next" }).click();
-
-    // Step 4: Create button is available
+    // Step 2: Create button is available
     const createButton = page.getByRole("button", { name: "Create" });
     await expect(createButton).toBeEnabled();
     await createButton.click();
@@ -70,7 +63,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
         list_skills: [
           {
             name: "sales-pipeline",
-            domain: "Sales",
+            purpose: "domain",
             current_step: "Step 3",
             status: "in_progress",
             last_modified: new Date().toISOString(),
@@ -81,9 +74,8 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    // Skill card shows the raw kebab-case name and domain badge
+    // Skill card shows the raw kebab-case name
     await expect(page.getByText("sales-pipeline")).toBeVisible();
-    await expect(page.getByText("Sales", { exact: true })).toBeVisible();
   });
 
   test("can open delete dialog from skill card", async ({ page }) => {
@@ -98,7 +90,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
         list_skills: [
           {
             name: "my-skill",
-            domain: "Testing",
+            purpose: "domain",
             current_step: null,
             status: null,
             last_modified: null,
@@ -131,7 +123,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
         list_skills: [
           {
             name: "delete-me",
-            domain: "Test",
+            purpose: "domain",
             current_step: null,
             status: null,
             last_modified: null,
@@ -167,7 +159,7 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
         list_skills: [
           {
             name: "keep-me",
-            domain: "Test",
+            purpose: "domain",
             current_step: null,
             status: null,
             last_modified: null,
