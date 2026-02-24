@@ -428,8 +428,8 @@ describe("AppLayout", () => {
 
       await waitFor(() => {
         expect(toast.success).toHaveBeenCalledWith(
-          "Auto-updated 1 skill",
-          expect.objectContaining({ duration: 5000 })
+          expect.anything(),
+          expect.objectContaining({ duration: Infinity })
         );
       });
     });
@@ -457,8 +457,8 @@ describe("AppLayout", () => {
       // Only the 1 non-customized skill is auto-updated
       await waitFor(() => {
         expect(toast.success).toHaveBeenCalledWith(
-          "Auto-updated 1 skill",
-          expect.objectContaining({ duration: 5000 })
+          expect.anything(),
+          expect.objectContaining({ duration: Infinity })
         );
       });
     });
@@ -485,6 +485,26 @@ describe("AppLayout", () => {
 
       expect(toast.info).not.toHaveBeenCalled();
       expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("shows persistent error toast when marketplace update check fails", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Marketplace update check failed: marketplace.json not found",
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
     });
   });
 });

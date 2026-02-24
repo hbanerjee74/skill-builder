@@ -149,7 +149,13 @@ export function AppLayout() {
               }
             }
           })
-          .catch((err) => console.warn("[app-layout] Marketplace update check failed:", err));
+          .catch((err) => {
+            console.error("[app-layout] Marketplace update check failed:", err);
+            toast.error(
+              `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
+              { duration: Infinity }
+            );
+          });
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
