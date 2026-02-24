@@ -503,3 +503,9 @@ html, body, #root {
   min-width: 900px;
   min-height: 600px;
 }
+
+/* Sonner toast action buttons use primary brand color */
+[data-sonner-toast][data-styled='true'] [data-button] {
+  background: var(--primary) !important;
+  color: var(--primary-foreground) !important;
+}

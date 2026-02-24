@@ -22,6 +22,7 @@ export function makeAppSettings(overrides?: Partial<AppSettings>): AppSettings {
     industry: null,
     function_role: null,
     dashboard_view_mode: null,
+    auto_update: false,
     ...overrides,
   };
 }

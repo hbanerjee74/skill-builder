@@ -12,6 +12,7 @@ import type { AppSettings, ReconciliationResult } from "@/lib/types";
 // Mock @tanstack/react-router
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
+  useRouter: () => ({ navigate: vi.fn() }),
   useRouterState: () => ({ location: { pathname: "/" } }),
   Outlet: () => <div data-testid="outlet">Dashboard Content</div>,
   Link: ({
@@ -101,6 +102,7 @@ const defaultSettings: AppSettings = {
   industry: null,
   function_role: null,
   dashboard_view_mode: null,
+  auto_update: false,
 };
 
 const emptyReconciliation: ReconciliationResult = {
@@ -352,5 +354,157 @@ describe("AppLayout", () => {
     // Setup screen should not be present (it auto-completes via mock, but
     // for configured users the isConfigured effect sets setupComplete before
     // splash dismisses, so it never mounts)
+  });
+
+  describe("marketplace update toasts", () => {
+    const marketplaceSettings = {
+      ...defaultSettings,
+      marketplace_url: "https://github.com/owner/skill-marketplace",
+    };
+    const repoInfo = { owner: "owner", repo: "skill-marketplace", branch: "main", subpath: null };
+
+    it("shows info toast for library skills update in manual mode", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.resolve({
+          library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
+          workspace: [],
+        });
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(toast.info).toHaveBeenCalledWith(
+          "Skills Library: update available for 1 skill: sales-skill",
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("shows info toast for workspace skills update in manual mode", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.resolve({
+          library: [],
+          workspace: [{ name: "hr-skill", path: "skills/hr-skill", version: "1.1.0" }],
+        });
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(toast.info).toHaveBeenCalledWith(
+          "Settings \u2192 Skills: update available for 1 skill: hr-skill",
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("shows success toast after auto-updating non-customized skills", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.resolve({
+          library: [{ name: "sales-skill", path: "skills/sales-skill", version: "1.1.0" }],
+          workspace: [],
+        });
+        if (cmd === "check_skill_customized") return Promise.resolve(false);
+        if (cmd === "import_marketplace_to_library") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("skips customized skills during auto-update", async () => {
+      mockInvoke.mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "get_settings") return Promise.resolve({ ...marketplaceSettings, auto_update: true });
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.resolve({
+          library: [
+            { name: "customized-skill", path: "skills/customized-skill", version: "1.1.0" },
+            { name: "stock-skill", path: "skills/stock-skill", version: "1.1.0" },
+          ],
+          workspace: [],
+        });
+        if (cmd === "check_skill_customized") return Promise.resolve(args?.skillName === "customized-skill");
+        if (cmd === "import_marketplace_to_library") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      // Only the 1 non-customized skill is auto-updated
+      await waitFor(() => {
+        expect(toast.success).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
+
+    it("shows no toast when all skills are up to date", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.resolve({
+          library: [],
+          workspace: [],
+        });
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      // Wait for the check to complete (reconciliation done = content visible)
+      await waitFor(() => {
+        expect(screen.getByTestId("outlet")).toBeInTheDocument();
+      });
+
+      expect(toast.info).not.toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("shows persistent error toast when marketplace update check fails", async () => {
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "get_settings") return Promise.resolve(marketplaceSettings);
+        if (cmd === "reconcile_startup") return Promise.resolve(emptyReconciliation);
+        if (cmd === "list_models") return Promise.reject(new Error("not needed"));
+        if (cmd === "parse_github_url") return Promise.resolve(repoInfo);
+        if (cmd === "check_marketplace_updates") return Promise.reject(new Error("marketplace.json not found"));
+        return Promise.resolve(undefined);
+      });
+
+      render(<AppLayout />);
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(
+          "Marketplace update check failed: marketplace.json not found",
+          expect.objectContaining({ duration: Infinity })
+        );
+      });
+    });
   });
 });

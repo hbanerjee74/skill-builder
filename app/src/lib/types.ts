@@ -40,6 +40,13 @@ export interface AppSettings {
   industry: string | null
   function_role: string | null
   dashboard_view_mode: string | null
+  auto_update: boolean
+}
+
+export interface SkillUpdateInfo {
+  name: string
+  path: string
+  version: string
 }
 
 export interface DeviceFlowResponse {

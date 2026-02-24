@@ -149,6 +149,8 @@ const mockResponses: Record<string, unknown> = {
       is_bundled: false,
     },
   ],
+  // Models (available from API key)
+  list_models: [],
   // Usage
   get_usage_summary: { total_cost: 0, total_runs: 0, avg_cost_per_run: 0 },
   get_recent_workflow_sessions: [],

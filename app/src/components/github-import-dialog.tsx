@@ -9,6 +9,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -17,11 +27,36 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills } from "@/lib/tauri"
+import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, WorkspaceSkill } from "@/lib/types"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill } from "@/lib/types"
 import { SKILL_TYPES, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
+
+/**
+ * Returns true only if `a` is strictly greater than `b` by semver rules.
+ * Returns false if either value is missing/empty or semver parsing fails.
+ */
+function semverGt(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (a == null || a === "") return false
+  if (b == null || b === "") return false
+  // Try semver parse: split "major.minor.patch" into numbers
+  const parseSemver = (v: string): [number, number, number] | null => {
+    const m = v.match(/^(\d+)\.(\d+)\.(\d+)/)
+    if (!m) return null
+    return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10)]
+  }
+  const pa = parseSemver(a)
+  const pb = parseSemver(b)
+  if (pa && pb) {
+    if (pa[0] !== pb[0]) return pa[0] > pb[0]
+    if (pa[1] !== pb[1]) return pa[1] > pb[1]
+    return pa[2] > pb[2]
+  }
+  // Fallback: semver parsing failed on one or both sides — can't determine direction,
+  // so don't show a spurious upgrade badge.
+  return false
+}
 
 const FALLBACK_MODEL_OPTIONS = [
   { id: "haiku",  displayName: "Haiku — fastest, lowest cost" },
@@ -69,6 +104,32 @@ interface EditFormState {
   purpose: string | null
 }
 
+/** Renders a version upgrade banner when upgrading a settings-skills skill. */
+function UpgradeBanner({
+  editingSkill,
+  editForm,
+  skillStates,
+  workspaceSkills,
+}: {
+  editingSkill: AvailableSkill | null
+  editForm: EditFormState | null
+  skillStates: Map<string, SkillState>
+  workspaceSkills: WorkspaceSkill[]
+}): React.ReactElement | null {
+  if (!editingSkill || !editForm) return null
+  if (skillStates.get(editingSkill.path) !== "upgrade") return null
+  const installedVersion = workspaceSkills.find(
+    (w) => w.skill_name === editingSkill.name || w.skill_name === editForm.name
+  )?.version
+  const newVersion = editingSkill.version
+  if (!installedVersion || !newVersion || installedVersion === newVersion) return null
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
+    </div>
+  )
+}
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
@@ -90,6 +151,12 @@ export default function GitHubImportDialog({
 
   // Workspace skills for version comparison and purpose conflict detection (settings-skills only)
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
+  // Installed library skills for edit form pre-population fallback (skill-library only)
+  const [installedLibrarySkills, setInstalledLibrarySkills] = useState<Map<string, SkillSummary>>(new Map())
+
+  // Customization warning state (settings-skills upgrade path)
+  const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
+  const [showCustomizationWarning, setShowCustomizationWarning] = useState(false)
 
   function setSkillState(path: string, state: SkillState): void {
     setSkillStates((prev) => new Map(prev).set(path, state))
@@ -112,6 +179,9 @@ export default function GitHubImportDialog({
     setSkillStates(new Map())
     closeEditForm()
     setWorkspaceSkills([])
+    setInstalledLibrarySkills(new Map())
+    setPendingUpgradeSkill(null)
+    setShowCustomizationWarning(false)
   }, [])
 
   const handleOpenChange = useCallback(
@@ -144,6 +214,7 @@ export default function GitHubImportDialog({
       if (mode === 'settings-skills') {
         available = available.filter((s) => !!s.name)
       }
+
       if (available.length === 0) {
         setError("No skills found in this repository.")
         return
@@ -155,28 +226,28 @@ export default function GitHubImportDialog({
         // skill-library: check the skills master table (covers both skill-builder and marketplace skills)
         const dashboardNames = await getDashboardSkillNames()
         const dashboardSet = new Set(dashboardNames)
-        // Also fetch full metadata for version comparison
-        const wp = workspacePath ?? ''
-        const summaries = wp ? await listSkills(wp) : []
+        // Fetch full metadata for version comparison. list_skills reads from DB (ignores
+        // workspace_path on the Rust side), so passing "" is safe when workspacePath is
+        // not yet loaded (e.g. dialog opened before settings async load completes).
+        const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
+        setInstalledLibrarySkills(newSummaryMap)
         for (const skill of available) {
           if (dashboardSet.has(skill.name)) {
             const installedSummary = newSummaryMap.get(skill.name)
-            const sameVersion = installedSummary?.version === skill.version
-            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+            const isUpgrade = semverGt(skill.version, installedSummary?.version)
+            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
           }
         }
       } else {
         // settings-skills: check workspace_skills table
         const installedSkills = await listWorkspaceSkills()
         setWorkspaceSkills(installedSkills)
-        const installedSet = new Set(installedSkills.map((s) => s.skill_name))
         const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
         for (const skill of available) {
-          if (installedSet.has(skill.name)) {
-            const installedVersion = installedVersionMap.get(skill.name)
-            const sameVersion = installedVersion === skill.version  // covers both null/undefined
-            preStates.set(skill.path, sameVersion ? "same-version" : "upgrade")
+          if (installedVersionMap.has(skill.name)) {
+            const isUpgrade = semverGt(skill.version, installedVersionMap.get(skill.name))
+            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
           }
         }
       }
@@ -200,14 +271,20 @@ export default function GitHubImportDialog({
     setEditingSkill(skill)
     // Priority: remote skill frontmatter → existing installed version (for upgrade/exists)
     const state = skillStates.get(skill.path)
-    const ws = (state === 'upgrade' || state === 'exists')
+    const isUpgradeOrExists = state === 'upgrade' || state === 'exists'
+    // settings-skills mode: fall back to workspace_skills row
+    const ws = isUpgradeOrExists
       ? workspaceSkills.find((w) => w.skill_name === skill.name)
+      : undefined
+    // skill-library mode: fall back to installed SkillSummary for description/domain
+    const lib = mode === 'skill-library' && isUpgradeOrExists
+      ? installedLibrarySkills.get(skill.name)
       : undefined
     const isSettingsMode = mode === 'settings-skills'
     setEditForm({
       name: skill.name ?? ws?.skill_name ?? '',
-      description: skill.description ?? ws?.description ?? '',
-      domain: skill.domain ?? ws?.domain ?? '',
+      description: skill.description ?? lib?.description ?? ws?.description ?? '',
+      domain: skill.domain ?? lib?.domain ?? ws?.domain ?? '',
       skill_type: isSettingsMode ? 'skill-builder' : (skill.skill_type ?? ws?.skill_type ?? ''),
       version: skill.version ?? ws?.version ?? '1.0.0',
       model: skill.model ?? ws?.model ?? '',
@@ -216,7 +293,7 @@ export default function GitHubImportDialog({
       disable_model_invocation: (skill.disable_model_invocation ?? ws?.disable_model_invocation) ?? false,
       purpose: ws?.purpose ?? null,
     })
-  }, [mode, skillStates, workspaceSkills])
+  }, [mode, skillStates, workspaceSkills, installedLibrarySkills])
 
   /** Handle marketplace import result, returning true if the import succeeded. */
   function handleMarketplaceResult(path: string, results: { success: boolean; error: string | null }[]): boolean {
@@ -279,6 +356,7 @@ export default function GitHubImportDialog({
       const requests: WorkspaceSkillImportRequest[] = [{
         path: skillPath,
         purpose: editForm.purpose ?? null,
+        version: editingSkill.version ?? null,
         metadata_override: {
           name: editForm.name,
           description: editForm.description,
@@ -313,7 +391,7 @@ export default function GitHubImportDialog({
   }
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.version.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
     : false
 
   // settings-skills: purpose conflict blocks import
@@ -416,7 +494,22 @@ export default function GitHubImportDialog({
                               className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                               disabled={isImporting}
                               aria-label={`Import ${skill.name}`}
-                              onClick={() => openEditForm(skill)}
+                              onClick={async () => {
+                                if (isUpgrade && mode === 'settings-skills') {
+                                  // Check for customization before opening edit form
+                                  try {
+                                    const isCustomized = await checkSkillCustomized(skill.name)
+                                    if (isCustomized) {
+                                      setPendingUpgradeSkill(skill)
+                                      setShowCustomizationWarning(true)
+                                      return
+                                    }
+                                  } catch (err) {
+                                    console.warn("[github-import] checkSkillCustomized failed:", err)
+                                  }
+                                }
+                                openEditForm(skill)
+                              }}
                             >
                               {isImporting ? (
                                 <Loader2 className="size-3.5 animate-spin" />
@@ -531,13 +624,19 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label htmlFor="edit-version">
+                    Version <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="edit-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
+                    className={!editForm.version.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="e.g. 1.0.0"
                   />
+                  {!editForm.version.trim() && (
+                    <p className="text-xs text-destructive">Version is required</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -621,6 +720,12 @@ export default function GitHubImportDialog({
               Review and configure the skill before importing. Purpose determines how this skill is used by agents.
             </DialogDescription>
           </DialogHeader>
+          <UpgradeBanner
+            editingSkill={editingSkill}
+            editForm={editForm}
+            skillStates={skillStates}
+            workspaceSkills={workspaceSkills}
+          />
           {editForm && (
             <ScrollArea className="max-h-[75vh]">
               <div className="flex flex-col gap-4 pr-2">
@@ -704,13 +809,19 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="si-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label htmlFor="si-version">
+                    Version <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="si-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
+                    className={!editForm.version.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="e.g. 1.0.0"
                   />
+                  {!editForm.version.trim() && (
+                    <p className="text-xs text-destructive">Version is required</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -778,6 +889,38 @@ export default function GitHubImportDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Customization warning: shown when upgrading a skill that has been locally modified */}
+      <AlertDialog open={showCustomizationWarning} onOpenChange={(open) => {
+        if (!open) {
+          setShowCustomizationWarning(false)
+          setPendingUpgradeSkill(null)
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Skill has been customized</AlertDialogTitle>
+            <AlertDialogDescription>
+              This skill has been modified since it was imported. Updating will replace your changes with the marketplace version. Continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowCustomizationWarning(false)
+              setPendingUpgradeSkill(null)
+            }}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const skill = pendingUpgradeSkill
+              setShowCustomizationWarning(false)
+              setPendingUpgradeSkill(null)
+              if (skill) openEditForm(skill)
+            }}>
+              Continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

@@ -53,6 +53,8 @@ pub fn init_db(app: &tauri::App) -> Result<Db, Box<dyn std::error::Error>> {
         (23, run_fk_columns_migration),
         (24, run_frontmatter_to_skills_migration),
         (25, run_workspace_skills_purpose_migration),
+        (26, run_content_hash_migration),
+        (27, run_backfill_null_versions_migration),
     ];
 
     for &(version, migrate_fn) in migrations {
@@ -917,6 +919,55 @@ fn run_workspace_skills_purpose_migration(conn: &Connection) -> Result<(), rusql
         conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN purpose TEXT;")?;
     }
     log::info!("migration 25: added purpose column to workspace_skills");
+    Ok(())
+}
+
+/// Migration 26: Add `content_hash TEXT` to workspace_skills and imported_skills.
+/// Existing rows get NULL (treated as "unmodified baseline unknown").
+fn run_content_hash_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    let check_col = |table: &str, col: &str| -> bool {
+        conn.prepare(&format!("PRAGMA table_info({})", table))
+            .and_then(|mut stmt| {
+                stmt.query_map([], |r| r.get::<_, String>(1))
+                    .map(|rows| rows.filter_map(|r| r.ok()).any(|n| n == col))
+            })
+            .unwrap_or(false)
+    };
+    let mut altered = false;
+    if !check_col("workspace_skills", "content_hash") {
+        conn.execute_batch("ALTER TABLE workspace_skills ADD COLUMN content_hash TEXT;")?;
+        altered = true;
+    }
+    if !check_col("imported_skills", "content_hash") {
+        conn.execute_batch("ALTER TABLE imported_skills ADD COLUMN content_hash TEXT;")?;
+        altered = true;
+    }
+    if altered {
+        log::info!("migration 26: added content_hash to workspace_skills and imported_skills");
+    }
+    Ok(())
+}
+
+fn run_backfill_null_versions_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // One-time patch: set version = '1.0.0' wherever version is NULL in all three version-
+    // tracking tables. Skills imported before version tracking was introduced had no version
+    // recorded; this prevents them from showing false "Update available" badges.
+    let skills_updated = conn.execute(
+        "UPDATE skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    let imported_updated = conn.execute(
+        "UPDATE imported_skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    let workspace_updated = conn.execute(
+        "UPDATE workspace_skills SET version = '1.0.0' WHERE version IS NULL",
+        [],
+    )?;
+    log::info!(
+        "migration 27: backfilled null versions to '1.0.0' — skills={}, imported_skills={}, workspace_skills={}",
+        skills_updated, imported_updated, workspace_updated
+    );
     Ok(())
 }
 
@@ -2557,6 +2608,52 @@ pub fn get_workspace_skill_by_purpose(
     }
 }
 
+/// Update the content_hash for a workspace skill row identified by skill_name.
+pub fn set_workspace_skill_content_hash(conn: &Connection, skill_name: &str, hash: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE workspace_skills SET content_hash = ?1 WHERE skill_name = ?2",
+        rusqlite::params![hash, skill_name],
+    ).map_err(|e| format!("set_workspace_skill_content_hash: {}", e))?;
+    Ok(())
+}
+
+/// Update the content_hash for an imported skill row identified by skill_name.
+pub fn set_imported_skill_content_hash(conn: &Connection, skill_name: &str, hash: &str) -> Result<(), String> {
+    conn.execute(
+        "UPDATE imported_skills SET content_hash = ?1 WHERE skill_name = ?2",
+        rusqlite::params![hash, skill_name],
+    ).map_err(|e| format!("set_imported_skill_content_hash: {}", e))?;
+    Ok(())
+}
+
+/// Read disk_path and content_hash for a workspace skill by name.
+pub fn get_workspace_skill_hash_info(conn: &Connection, skill_name: &str) -> Result<Option<(String, Option<String>)>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT disk_path, content_hash FROM workspace_skills WHERE skill_name = ?1"
+    ).map_err(|e| format!("get_workspace_skill_hash_info: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    }).map_err(|e| format!("get_workspace_skill_hash_info query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_workspace_skill_hash_info row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
+/// Read disk_path and content_hash for an imported (marketplace/library) skill by name.
+pub fn get_imported_skill_hash_info(conn: &Connection, skill_name: &str) -> Result<Option<(String, Option<String>)>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT disk_path, content_hash FROM imported_skills WHERE skill_name = ?1"
+    ).map_err(|e| format!("get_imported_skill_hash_info: {}", e))?;
+    let mut rows = stmt.query_map(rusqlite::params![skill_name], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+    }).map_err(|e| format!("get_imported_skill_hash_info query: {}", e))?;
+    match rows.next() {
+        Some(row) => Ok(Some(row.map_err(|e| format!("get_imported_skill_hash_info row: {}", e))?)),
+        None => Ok(None),
+    }
+}
+
 /// Return the names of all locally installed skills.
 /// Combines workflow_runs (generated/marketplace skills), imported_skills (GitHub imports),
 /// and workspace_skills (Settings → Skills).
@@ -2966,6 +3063,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -2999,6 +3097,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &settings).unwrap();
 
@@ -3028,6 +3127,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &v1).unwrap();
 
@@ -3050,6 +3150,7 @@ mod tests {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         };
         write_settings(&conn, &v2).unwrap();
 

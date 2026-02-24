@@ -76,6 +76,9 @@ pub struct AppSettings {
     /// Dashboard view mode: "grid" | "list" | None (auto-select based on skill count)
     #[serde(default)]
     pub dashboard_view_mode: Option<String>,
+    /// Automatically apply marketplace updates at startup (default: false).
+    #[serde(default)]
+    pub auto_update: bool,
 }
 
 impl Default for AppSettings {
@@ -99,6 +102,7 @@ impl Default for AppSettings {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         }
     }
 }
@@ -650,6 +654,7 @@ mod tests {
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
             dashboard_view_mode: Some("grid".to_string()),
+            auto_update: false,
         };
         let json = serde_json::to_string(&settings).unwrap();
         let deserialized: AppSettings = serde_json::from_str(&json).unwrap();

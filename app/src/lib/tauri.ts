@@ -1,13 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
+import type { AppSettings, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, SkillSummary, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
 
 // Re-export shared types so existing imports from "@/lib/tauri" continue to work
-export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride } from "@/lib/types";
+export type { AppSettings, SkillSummary, NodeStatus, PackageResult, ReconciliationResult, DeviceFlowResponse, GitHubAuthResult, GitHubUser, AgentRunRecord, WorkflowSessionRecord, UsageSummary, UsageByStep, UsageByModel, ImportedSkill, WorkspaceSkill, GitHubRepoInfo, AvailableSkill, SkillFileContent, RefineDiff, RefineSessionInfo, MarketplaceImportResult, SkillMetadataOverride, SkillUpdateInfo } from "@/lib/types";
 
 export interface WorkspaceSkillImportRequest {
   path: string;
   purpose: string | null;
   metadata_override: SkillMetadataOverride | null;
+  version: string | null;
 }
 
 // --- Settings ---
@@ -391,6 +392,17 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 
 export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
   invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
+
+export const checkMarketplaceUpdates = (
+  owner: string,
+  repo: string,
+  branch: string,
+  subpath?: string,
+): Promise<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }> =>
+  invoke<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+
+export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
+  invoke<boolean>("check_skill_customized", { skillName })
 
 // --- Refine ---
 

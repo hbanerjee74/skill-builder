@@ -447,8 +447,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     // Click the "Source" filter dropdown (first one — in the filter bar)
     await page.getByRole("button", { name: "Source" }).first().click();
 
-    // Select "Marketplace" option
-    await page.getByRole("option", { name: "Marketplace" }).click();
+    // Select "Marketplace" option (DropdownMenuCheckboxItem renders as menuitemcheckbox)
+    await page.getByRole("menuitemcheckbox", { name: "Marketplace" }).click();
 
     // data-analytics (marketplace) should be visible; api-design (imported) should not
     await expect(page.getByText("data-analytics")).toBeVisible();
@@ -511,17 +511,18 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
     await page.getByRole("button", { name: /marketplace/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
 
-    // Skill row should be visible
-    await expect(page.getByText("data-analytics")).toBeVisible();
+    // Skill row should be visible inside the dialog
+    await expect(dialog.getByText("data-analytics")).toBeVisible();
 
     // "Up to date" badge must appear for the same-version skill
-    await expect(page.getByText("Up to date")).toBeVisible();
+    await expect(dialog.getByText("Up to date")).toBeVisible();
 
     // The action button is replaced by a non-button checkmark icon — no importable button for this skill
-    const skillRow = page.locator("div").filter({ hasText: /^data-analytics/ }).first();
+    const skillRow = dialog.locator("div").filter({ hasText: /^data-analytics/ }).first();
     await expect(skillRow.getByRole("button")).not.toBeVisible();
   });
 
@@ -566,16 +567,16 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
     await page.getByRole("button", { name: /marketplace/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
 
-    await expect(page.getByText("data-analytics")).toBeVisible();
+    await expect(dialog.getByText("data-analytics")).toBeVisible();
 
     // "Update available" badge must appear for the upgraded skill
-    await expect(page.getByText("Update available")).toBeVisible();
+    await expect(dialog.getByText("Update available")).toBeVisible();
 
     // The import button must be enabled (upgrade is allowed)
-    const dialog = page.getByRole("dialog");
     const importButton = dialog.getByRole("button").last();
     await expect(importButton).toBeEnabled();
   });
@@ -659,16 +660,17 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
     await page.getByRole("button", { name: /marketplace/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
 
-    await expect(page.getByText("no-version-skill")).toBeVisible();
+    await expect(dialog.getByText("no-version-skill")).toBeVisible();
 
     // Both null versions are treated as equal — "Up to date" must appear
-    await expect(page.getByText("Up to date")).toBeVisible();
+    await expect(dialog.getByText("Up to date")).toBeVisible();
 
     // No enabled import button (replaced by checkmark)
-    const skillRow = page.locator("div").filter({ hasText: /^no-version-skill/ }).first();
+    const skillRow = dialog.locator("div").filter({ hasText: /^no-version-skill/ }).first();
     await expect(skillRow.getByRole("button")).not.toBeVisible();
   });
 
@@ -684,6 +686,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       dashboard_view_mode: null,
     },
     parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
+    check_marketplace_updates: { library: [], workspace: [] },
     get_installed_skill_names: [],
     list_skills: [],
     get_all_tags: [],
@@ -737,15 +740,15 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await navigateToDashboard(page);
     // Open skill-library marketplace dialog via top-bar Marketplace button
     await page.getByRole("button", { name: /marketplace/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const marketplaceDialog = page.getByRole("dialog").first();
+    await expect(marketplaceDialog).toBeVisible();
     await page.waitForTimeout(500);
 
-    await expect(page.getByText("data-analytics")).toBeVisible();
-    await expect(page.getByText("Update available")).toBeVisible();
+    await expect(marketplaceDialog.getByText("data-analytics")).toBeVisible();
+    await expect(marketplaceDialog.getByText("Update available")).toBeVisible();
 
     // Click the edit & import button to open the edit form
-    const marketplaceDialog = page.getByRole("dialog").first();
-    await marketplaceDialog.getByRole("button").last().click();
+    await marketplaceDialog.getByLabel("Import data-analytics").click();
 
     // Edit & Import Skill dialog should open
     await expect(page.getByText("Edit & Import Skill")).toBeVisible();
@@ -808,15 +811,15 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToDashboard(page);
     await page.getByRole("button", { name: /marketplace/i }).first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    const marketplaceDialog = page.getByRole("dialog").first();
+    await expect(marketplaceDialog).toBeVisible();
     await page.waitForTimeout(500);
 
-    await expect(page.getByText("data-analytics")).toBeVisible();
-    await expect(page.getByText("Update available")).toBeVisible();
+    await expect(marketplaceDialog.getByText("data-analytics")).toBeVisible();
+    await expect(marketplaceDialog.getByText("Update available")).toBeVisible();
 
     // Click the edit & import button
-    const marketplaceDialog = page.getByRole("dialog").first();
-    await marketplaceDialog.getByRole("button").last().click();
+    await marketplaceDialog.getByLabel("Import data-analytics").click();
 
     await expect(page.getByText("Edit & Import Skill")).toBeVisible();
 

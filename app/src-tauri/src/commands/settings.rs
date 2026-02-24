@@ -123,6 +123,7 @@ fn diff_settings(old: &AppSettings, new: &AppSettings) -> Vec<String> {
     cmp_opt!(industry, "industry");
     cmp_opt!(function_role, "function_role");
     cmp_opt!(dashboard_view_mode, "dashboard_view_mode");
+    cmp_bool!(auto_update, "auto_update");
     changes
 }
 

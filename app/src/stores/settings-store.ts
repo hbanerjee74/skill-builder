@@ -21,9 +21,12 @@ interface SettingsState {
   industry: string | null;
   functionRole: string | null;
   dashboardViewMode: string | null;
+  autoUpdate: boolean;
   isConfigured: boolean;
   availableModels: ModelInfo[];
-  setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset">>) => void;
+  pendingUpgradeOpen: { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null;
+  setSettings: (settings: Partial<Omit<SettingsState, "isConfigured" | "setSettings" | "reset" | "setPendingUpgradeOpen">>) => void;
+  setPendingUpgradeOpen: (value: { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null) => void;
   reset: () => void;
 }
 
@@ -43,8 +46,10 @@ const initialState = {
   industry: null,
   functionRole: null,
   dashboardViewMode: null,
+  autoUpdate: false,
   isConfigured: false,
   availableModels: [] as ModelInfo[],
+  pendingUpgradeOpen: null as { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null,
 };
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -57,5 +62,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         isConfigured: !!next.anthropicApiKey && !!next.skillsPath,
       };
     }),
+  setPendingUpgradeOpen: (value) => set({ pendingUpgradeOpen: value }),
   reset: () => set(initialState),
 }));

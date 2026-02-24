@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockInvoke, mockInvokeCommands, resetTauriMocks } from "@/test/mocks/tauri";
 import { open as mockOpen } from "@tauri-apps/plugin-dialog";
@@ -53,6 +53,7 @@ vi.mock("@/components/feedback-dialog", () => ({
 
 // Import after mocks are set up
 import SettingsPage from "@/pages/settings";
+import { useSettingsStore } from "@/stores/settings-store";
 
 const defaultSettings: AppSettings = {
   anthropic_api_key: null,
@@ -72,6 +73,7 @@ const defaultSettings: AppSettings = {
   industry: null,
   function_role: null,
   dashboard_view_mode: null,
+  auto_update: false,
 };
 
 const populatedSettings: AppSettings = {
@@ -92,6 +94,7 @@ const populatedSettings: AppSettings = {
   industry: null,
   function_role: null,
   dashboard_view_mode: null,
+  auto_update: false,
 };
 
 function setupDefaultMocks(settingsOverride?: Partial<AppSettings>) {
@@ -119,6 +122,7 @@ describe("SettingsPage", () => {
     mockNavigate.mockClear();
     // Default to logged-out state
     useAuthStore.setState({ user: null, isLoggedIn: false, isLoading: false });
+    useSettingsStore.getState().reset();
     // Reset URL search params so tab defaults to "general"
     window.history.replaceState({}, "", window.location.pathname);
   });
@@ -661,5 +665,43 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /Sign Out/i })).toBeInTheDocument();
     // Should NOT show "Not connected"
     expect(screen.queryByText("Not connected")).not.toBeInTheDocument();
+  });
+
+  it("auto-switches to skills section when pendingUpgradeOpen targets settings-skills", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    // General section is active by default — skills content not visible
+    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
+
+    act(() => {
+      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: ["my-skill"] });
+    });
+
+    // Settings page should auto-switch to Skills section
+    await waitFor(() => {
+      expect(screen.getByTestId("skills-page")).toBeInTheDocument();
+    });
+  });
+
+  it("does not auto-switch section for skill-library mode", async () => {
+    setupDefaultMocks();
+    render(<SettingsPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+    });
+
+    act(() => {
+      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: ["my-skill"] });
+    });
+
+    // General section should remain — skills content not visible
+    expect(screen.queryByTestId("skills-page")).not.toBeInTheDocument();
+    expect(screen.getByText("API Configuration")).toBeInTheDocument();
   });
 });

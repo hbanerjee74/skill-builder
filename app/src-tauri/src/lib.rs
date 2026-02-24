@@ -215,6 +215,8 @@ pub fn run() {
             commands::github_auth::github_logout,
             commands::github_import::import_marketplace_to_library,
             commands::github_import::get_dashboard_skill_names,
+            commands::github_import::check_marketplace_updates,
+            commands::github_import::check_skill_customized,
             commands::usage::persist_agent_run,
             commands::usage::get_usage_summary,
             commands::usage::get_recent_runs,
