@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
-import { GhostInput, GhostTextarea } from "@/components/ghost-input"
+import { GhostTextarea } from "@/components/ghost-input"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, listGitHubSkills, parseGitHubUrl, type FieldSuggestions } from "@/lib/tauri"
@@ -456,7 +456,7 @@ export default function SkillDialog(props: SkillDialogProps) {
           </Button>
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl transition-all duration-200">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit Skill" : "Create New Skill"}</DialogTitle>
@@ -491,7 +491,7 @@ export default function SkillDialog(props: SkillDialogProps) {
             {step === 1 && (
               <>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="skill-name">Skill Name</Label>
+                  <Label htmlFor="skill-name">Skill Name <span className="text-destructive">*</span></Label>
                   <Input
                     id="skill-name"
                     placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
@@ -525,22 +525,22 @@ export default function SkillDialog(props: SkillDialogProps) {
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <GhostInput
+                  <Label htmlFor="description">Description <span className="text-destructive">*</span></Label>
+                  <GhostTextarea
                     id="description"
                     placeholder="Brief description of what this skill does (1-2 sentences)"
                     value={description}
-                    onChange={setDescription}
+                    onChange={(val) => setDescription(val.slice(0, 1024))}
                     suggestion={descriptionSuggestion}
-                    onAccept={setDescription}
+                    onAccept={(val) => setDescription(val.slice(0, 1024))}
                     disabled={submitting}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Short description for how Claude Code decides when to activate this skill
+                    How Claude Code decides when to activate this skill ({description.length}/1024)
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="purpose-select">What are you trying to capture?</Label>
+                  <Label htmlFor="purpose-select">What are you trying to capture? <span className="text-destructive">*</span></Label>
                   <select
                     id="purpose-select"
                     value={purpose}
@@ -746,14 +746,6 @@ export default function SkillDialog(props: SkillDialogProps) {
                 >
                   <ChevronLeft className="size-4" />
                   Back
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={doSubmit}
-                  disabled={submitting || !canAdvanceStep1}
-                >
-                  Skip
                 </Button>
                 <Button
                   type="submit"
