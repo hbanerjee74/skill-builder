@@ -23,6 +23,7 @@ import {
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
+  getDisabledSteps,
 } from "@/lib/tauri";
 import { useSkillStore } from "@/stores/skill-store";
 import type { SkillSummary } from "@/lib/types";
@@ -82,6 +83,20 @@ export default function RefinePage() {
   // Track which skillParam was last auto-selected so navigating back with a
   // different skill (e.g. from the skill library) triggers a fresh selection.
   const autoSelectedRef = useRef<string | null>(null);
+
+  // --- Scope recommendation guard ---
+  // When scope recommendation is active (disabledSteps non-empty), block refine commands.
+  const [scopeBlocked, setScopeBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!selectedSkill) {
+      setScopeBlocked(false);
+      return;
+    }
+    getDisabledSteps(selectedSkill.name)
+      .then((disabled) => setScopeBlocked(disabled.length > 0))
+      .catch(() => setScopeBlocked(false));
+  }, [selectedSkill]);
 
   // --- Navigation guard ---
   // Block navigation while an agent is running and show a confirmation dialog.
@@ -395,6 +410,7 @@ export default function RefinePage() {
               isRunning={isRunning}
               hasSkill={!!selectedSkill}
               availableFiles={availableFiles}
+              scopeBlocked={scopeBlocked}
             />
           }
           right={<PreviewPanel />}
