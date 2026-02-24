@@ -21,6 +21,7 @@ const FEW_SKILLS = [
     last_modified: new Date().toISOString(),
     tags: ["crm"],
     purpose: "platform",
+    skill_source: "skill-builder",
     author_login: null,
     author_avatar: null,
     intake_json: null,
@@ -110,7 +111,7 @@ test.describe("View Toggle", { tag: "@dashboard" }, () => {
     await expect(page.locator(".grid.grid-cols-1")).toBeVisible();
 
     // No list rows should exist
-    const listRows = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const listRows = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await expect(listRows).toHaveCount(0);
   });
 
@@ -130,8 +131,8 @@ test.describe("View Toggle", { tag: "@dashboard" }, () => {
     await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "Grid view" })).toHaveAttribute("aria-pressed", "false");
 
-    // List rows should be rendered (role="button" divs)
-    const rows = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    // List rows should be rendered (tr elements in the table)
+    const rows = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await expect(rows.first()).toBeVisible();
 
     // Grid layout should NOT be present
@@ -174,7 +175,7 @@ test.describe("View Toggle", { tag: "@dashboard" }, () => {
     await expect(page.getByRole("button", { name: "List view" })).toHaveAttribute("aria-pressed", "true");
 
     // List rows should be visible
-    const rows = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const rows = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await expect(rows.first()).toBeVisible();
   });
 
@@ -215,10 +216,9 @@ test.describe("Grid View Actions", { tag: "@dashboard" }, () => {
   });
 
   test("2b: edit workflow icon navigates to skill page in update mode", async ({ page }) => {
-    // There are multiple "Edit workflow" buttons (one per card). Find the one near sales-pipeline.
-    // The buttons are aria-labeled "Edit workflow" — click the first one
-    const editButtons = page.getByRole("button", { name: "Edit workflow" });
-    await editButtons.first().click();
+    // sales-pipeline is the only skill-builder skill, so there's exactly one "Edit workflow" button
+    const editButton = page.getByRole("button", { name: "Edit workflow" }).first();
+    await editButton.click();
     await expect(page).toHaveURL(/\/skill\/sales-pipeline/);
   });
 
@@ -291,44 +291,44 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
   });
 
   test("3a: clicking list row navigates to skill page in review mode", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
-    await row.locator("span", { hasText: "sales-pipeline" }).click();
+    const row = page.locator("tr").filter({ hasText: "sales-pipeline" });
+    await row.locator("div", { hasText: "sales-pipeline" }).first().click();
     await expect(page).toHaveURL(/\/skill\/sales-pipeline/);
   });
 
   test("3b: edit workflow icon in list row navigates in update mode", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const row = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await row.getByRole("button", { name: "Edit workflow" }).click();
     await expect(page).toHaveURL(/\/skill\/sales-pipeline/);
   });
 
   test("3c: delete icon in list row opens delete dialog", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const row = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await row.getByRole("button", { name: "Delete skill" }).click();
 
     await expect(page.getByRole("heading", { name: "Delete Skill" })).toBeVisible();
   });
 
   test("3d: kebab menu shows Edit details option", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const row = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await row.getByRole("button", { name: "More actions" }).click();
     await expect(page.getByText("Edit details")).toBeVisible();
   });
 
   test("3e: download and refine icons match card view visibility rules", async ({ page }) => {
     // Completed skill should show download + refine
-    const completedRow = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
+    const completedRow = page.locator("tr").filter({ hasText: "hr-analytics" });
     await expect(completedRow.getByRole("button", { name: "Download skill" })).toBeVisible();
     await expect(completedRow.getByRole("button", { name: "Refine skill" })).toBeVisible();
 
     // In-progress skill should NOT
-    const inProgressRow = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const inProgressRow = page.locator("tr").filter({ hasText: "sales-pipeline" });
     await expect(inProgressRow.getByRole("button", { name: "Download skill" })).not.toBeVisible();
     await expect(inProgressRow.getByRole("button", { name: "Refine skill" })).not.toBeVisible();
   });
 
   test("3f: action icon clicks do not trigger row navigation", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "sales-pipeline" });
+    const row = page.locator("tr").filter({ hasText: "sales-pipeline" });
 
     // Click the delete button — should open dialog, not navigate
     await row.getByRole("button", { name: "Delete skill" }).click();
@@ -338,12 +338,12 @@ test.describe("List View Actions", { tag: "@dashboard" }, () => {
   });
 
   test("3g: list view shows purpose as text", async ({ page }) => {
-    const row = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
-    await expect(row.getByText("Domain", { exact: true })).toBeVisible();
+    const row = page.locator("tr").filter({ hasText: "hr-analytics" });
+    await expect(row.getByText("Business process knowledge", { exact: true })).toBeVisible();
   });
 
-  test("3h: list view shows progress percentage", async ({ page }) => {
-    const completedRow = page.locator("div[role='button']").filter({ hasText: "hr-analytics" });
-    await expect(completedRow.getByText("100%").first()).toBeVisible();
+  test("3h: list view shows completed status for completed skills", async ({ page }) => {
+    const completedRow = page.locator("tr").filter({ hasText: "hr-analytics" });
+    await expect(completedRow.getByText("Completed").first()).toBeVisible();
   });
 });
