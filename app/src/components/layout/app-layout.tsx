@@ -98,11 +98,14 @@ export function AppLayout() {
               ]);
               if (cancelled) return;
 
-              const total = libFiltered.length + wsFiltered.length;
-              if (total > 0) {
+              const allNames = [
+                ...libFiltered.map((s) => s.name),
+                ...wsFiltered.map((s) => s.name),
+              ];
+              if (allNames.length > 0) {
                 toast.success(
-                  `Auto-updated ${total} skill${total !== 1 ? "s" : ""}`,
-                  { duration: 5000 }
+                  `Auto-updated ${allNames.length} skill${allNames.length !== 1 ? "s" : ""}: ${allNames.join(", ")}`,
+                  { duration: Infinity }
                 );
               }
             } else {
