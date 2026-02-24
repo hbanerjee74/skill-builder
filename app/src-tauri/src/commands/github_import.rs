@@ -191,6 +191,21 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
 }
 
 // ---------------------------------------------------------------------------
+// marketplace_manifest_path
+// ---------------------------------------------------------------------------
+
+/// Returns the repo-relative path to the marketplace manifest for a given subpath.
+///
+/// With subpath:    `plugins/.claude-plugin/marketplace.json`
+/// Without subpath: `.claude-plugin/marketplace.json`
+fn marketplace_manifest_path(subpath: Option<&str>) -> String {
+    match subpath {
+        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
+        None => ".claude-plugin/marketplace.json".to_string(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // check_marketplace_url
 // ---------------------------------------------------------------------------
 
@@ -226,10 +241,7 @@ pub async fn check_marketplace_url(
 
     // Verify that .claude-plugin/marketplace.json exists and is valid JSON.
     // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
-    let manifest_path = match &repo_info.subpath {
-        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
-        None => ".claude-plugin/marketplace.json".to_string(),
-    };
+    let manifest_path = marketplace_manifest_path(repo_info.subpath.as_deref());
     let raw_url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}/{}",
         owner, repo, resolved_branch, manifest_path
@@ -325,10 +337,7 @@ pub(crate) async fn list_github_skills_inner(
 
     // Fetch .claude-plugin/marketplace.json via raw.githubusercontent.com.
     // Respect any subpath in the URL (e.g. /tree/main/plugins → plugins/.claude-plugin/marketplace.json).
-    let manifest_path = match subpath {
-        Some(sp) => format!("{}/.claude-plugin/marketplace.json", sp),
-        None => ".claude-plugin/marketplace.json".to_string(),
-    };
+    let manifest_path = marketplace_manifest_path(subpath);
     let raw_url = format!(
         "https://raw.githubusercontent.com/{}/{}/{}/{}",
         owner, repo, resolved_branch, manifest_path
@@ -1578,6 +1587,34 @@ mod tests {
         assert!(serde_json::from_str::<MarketplaceJson>(r#"{"anything": 123}"#).is_err());
         assert!(serde_json::from_str::<MarketplaceJson>("Not found").is_err());
         assert!(serde_json::from_str::<MarketplaceJson>("").is_err());
+    }
+
+    // --- marketplace_manifest_path tests ---
+
+    #[test]
+    fn test_marketplace_manifest_path_no_subpath() {
+        assert_eq!(
+            marketplace_manifest_path(None),
+            ".claude-plugin/marketplace.json"
+        );
+    }
+
+    #[test]
+    fn test_marketplace_manifest_path_single_segment_subpath() {
+        // URL like https://github.com/owner/repo/tree/main/plugins
+        assert_eq!(
+            marketplace_manifest_path(Some("plugins")),
+            "plugins/.claude-plugin/marketplace.json"
+        );
+    }
+
+    #[test]
+    fn test_marketplace_manifest_path_deep_subpath() {
+        // URL like https://github.com/owner/repo/tree/main/packages/analytics
+        assert_eq!(
+            marketplace_manifest_path(Some("packages/analytics")),
+            "packages/analytics/.claude-plugin/marketplace.json"
+        );
     }
 
     // --- Branch resolution tests ---
