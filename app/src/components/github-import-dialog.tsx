@@ -35,9 +35,7 @@ import { useSettingsStore } from "@/stores/settings-store"
 
 /**
  * Returns true only if `a` is strictly greater than `b` by semver rules.
- * Returns false if semver parsing fails on either side (can't determine direction).
- * If `a` is null/undefined, returns false (no marketplace version → never upgrade).
- * If `b` is null/undefined, returns false (unknown installed version → can't determine direction).
+ * Returns false if either value is null/undefined/empty or semver parsing fails.
  */
 function semverGt(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || a === "") return false
@@ -407,7 +405,7 @@ export default function GitHubImportDialog({
   }
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.domain.trim() || !editForm.version.trim() || (mode !== 'settings-skills' && !editForm.skill_type.trim())
     : false
 
   // settings-skills: purpose conflict blocks import
@@ -640,13 +638,19 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label htmlFor="edit-version">
+                    Version <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="edit-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
+                    className={!editForm.version.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="e.g. 1.0.0"
                   />
+                  {!editForm.version.trim() && (
+                    <p className="text-xs text-destructive">Version is required</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -819,13 +823,19 @@ export default function GitHubImportDialog({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="si-version">Version <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Label htmlFor="si-version">
+                    Version <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="si-version"
                     value={editForm.version}
                     onChange={(e) => updateField("version", e.target.value)}
+                    className={!editForm.version.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
                     placeholder="e.g. 1.0.0"
                   />
+                  {!editForm.version.trim() && (
+                    <p className="text-xs text-destructive">Version is required</p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
