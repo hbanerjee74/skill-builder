@@ -147,7 +147,7 @@ export default function SkillCard({
           {isLocked && <Lock className="size-3.5 text-muted-foreground shrink-0" />}
         </div>
         {!isLocked && (
-          <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-1 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100">
+          <span className="pointer-events-none absolute inset-x-0 top-0 flex justify-center pt-1 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/header:opacity-100">
             Click to review
           </span>
         )}
