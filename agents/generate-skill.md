@@ -12,7 +12,7 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 ## Your Role
 You plan the skill structure, write `SKILL.md`, then write all reference files yourself. One agent, consistent voice, no handoff gaps.
 
-This agent uses `decisions.md` and the purpose to determine the correct SKILL.md architecture and content tier rules.
+This agent uses `decisions.md` and the purpose to determine the correct SKILL.md structure pattern.
 
 In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill for coherence rather than generating from scratch. The existing skill content becomes your primary input alongside `decisions.md`.
 
@@ -29,7 +29,7 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
   - The **workspace directory** path (contains `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to tailor the skill's tone, examples, and focus areas.
 - Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
-- The purpose determines which SKILL.md architecture to use (see Skill Builder Practices)
+- The purpose determines the SKILL.md structure pattern (see Skill Builder Practices)
 
 </context>
 
@@ -98,15 +98,14 @@ Planning guidelines:
 - File names should be descriptive and use kebab-case (e.g., `entity-model.md`, `pipeline-metrics.md`)
 - SKILL.md is the entry point; reference files provide depth
 
-## Architecture and Content Rules
+## Structure Pattern
 
-Follow the **Purpose and Architecture** rules in Skill Builder Practices (loaded via agent instructions) to determine:
-- Which SKILL.md architecture to use (Interview vs Decision)
-- The 6 canonical sections for the purpose
-- Annotation budget and content tier rules
-- Delta principle calibration
+Read the purpose from user-context.md. Determine the structure pattern from Skill Builder Practices:
 
-The purpose label from user-context.md maps to an architecture and shorthand — see the mapping table in Skill Builder Practices.
+- **Knowledge-capture** (Business process knowledge, Source system customizations): question-oriented parallel sections, zero pre-filled assertions
+- **Standards** (Data engineering standards, Azure/Fabric standards): decision-oriented sections with Getting Started checklist and dependency map, up to 5 pre-filled assertions
+
+Section themes in Skill Builder Practices are suggestions — adapt based on what decisions.md actually contains. Group related decisions into cohesive reference files (3-8 files).
 
 ## Phase 2: Write SKILL.md
 
@@ -137,9 +136,9 @@ The SKILL.md frontmatter description must follow the trigger pattern provided in
 
 The description already encodes trigger conditions via the trigger pattern — do not repeat them in the body.
 
-**Then add the 6 purpose-specific sections** from the Purpose and Architecture rules in Skill Builder Practices.
+**Then add purpose-specific sections** from the Purpose and Structure Patterns in Skill Builder Practices.
 
-**For Decision Architecture purposes only (see Skill Builder Practices mapping):**
+**For Standards skills only:**
 - Include a **Getting Started** section immediately after Quick Reference and before the Decision Dependency Map. Write 5-8 ordered steps that walk a first-time user through the decision sequence.
 - Include a Decision Dependency Map section immediately after Getting Started, showing how choosing one option constrains downstream decisions
 - Use the three content tiers (decision structure, resolution criteria, context factors) within each section where applicable
@@ -153,7 +152,7 @@ The description already encodes trigger conditions via the trigger pattern — d
 
 Write each reference file from the plan to the `references/` subdirectory in the skill output directory. For each file:
 - Cover the assigned topic area and its decisions from `decisions.md`
-- Follow content tier rules for the purpose (see Skill Builder Practices): Source/Domain produce guided prompts only; Platform/DE use the three content tiers and respect the annotation budget
+- Follow the structure pattern rules from Skill Builder Practices — knowledge-capture skills use question-oriented sections; standards skills use decision-oriented sections with content assertions where Claude's training is wrong
 - Keep files self-contained — a reader should understand the file without reading others
 
 **Rewrite mode additionally:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence and consistency with the new SKILL.md structure. Use the existing content as primary source, supplemented by `decisions.md`.
@@ -176,7 +175,7 @@ After all files are written, self-review:
 
 <output_format>
 
-### Output Example — Interview Architecture (Domain)
+### Output Example — Knowledge-Capture (Business Process)
 
 ```yaml
 ---
@@ -192,7 +191,7 @@ modified: 2025-06-15
 
 Sections: Overview → Quick Reference → Metric Definitions → Materiality Thresholds → Segmentation Standards → Period Handling → Business Logic Decisions → Output Standards → Reference Files
 
-### Output Example — Decision Architecture (Platform)
+### Output Example — Standards (Platform)
 
 ```yaml
 ---
@@ -216,10 +215,10 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 - 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file
 - SKILL.md pointers accurately describe each reference file's content and when to read it
-- SKILL.md uses the correct architecture for the purpose (interview vs decision)
-- Type-specific canonical sections are present (6 per type)
-- Annotation budget respected (Source 3-5, Domain 0, Platform 3-5, DE 2-3)
-- Delta principle followed — no content Claude already knows at expert level
+- SKILL.md uses the correct structure pattern for the purpose (knowledge-capture vs standards)
+- Purpose-appropriate sections from Skill Builder Practices
+- Assertion limits respected (knowledge-capture: 0, standards: up to 5)
+- Delta rule followed — no content Claude already knows at expert level
 - `references/evaluations.md` exists with at least 3 runnable evaluation scenarios covering distinct topic areas
-- Decision Architecture skills have a Getting Started section with 5-8 ordered steps
+- Standards skills have a Getting Started section with 5-8 ordered steps
 - **Rewrite mode:** All domain knowledge from the original skill is preserved; the result reads as one coherent pass
