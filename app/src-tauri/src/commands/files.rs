@@ -142,8 +142,8 @@ mod tests {
         fs::write(skill.join("skill").join("SKILL.md"), "# My Skill").unwrap();
         fs::write(skill.join("skill").join("references").join("ref1.md"), "# Ref 1").unwrap();
         fs::write(
-            skill.join("context").join("clarifications.md"),
-            "# Clarifications",
+            skill.join("context").join("clarifications.json"),
+            "{}",
         )
         .unwrap();
     }
@@ -159,14 +159,14 @@ mod tests {
         )
         .unwrap();
 
-        // Should have: context/, context/clarifications.md,
+        // Should have: context/, context/clarifications.json,
         //              skill/, skill/SKILL.md, skill/references/, skill/references/ref1.md
         assert_eq!(entries.len(), 6);
 
         let paths: Vec<&str> = entries.iter().map(|e| e.relative_path.as_str()).collect();
         assert!(paths.contains(&"skill/SKILL.md"));
         assert!(paths.contains(&"context"));
-        assert!(paths.contains(&"context/clarifications.md"));
+        assert!(paths.contains(&"context/clarifications.json"));
         assert!(paths.contains(&"skill"));
         assert!(paths.contains(&"skill/references"));
         assert!(paths.contains(&"skill/references/ref1.md"));

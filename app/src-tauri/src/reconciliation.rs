@@ -587,7 +587,7 @@ mod tests {
         let conn = create_test_db();
 
         // DB says step 5, but disk only has step 0 output
-        // (Step 2 is non-detectable — it edits clarifications.md in-place)
+        // (Step 2 is non-detectable — it edits clarifications.json in-place)
         crate::db::save_workflow_run(&conn, "my-skill", 5, "in_progress", "domain")
             .unwrap();
         create_skill_dir(tmp.path(), "my-skill", "sales");
@@ -1612,7 +1612,7 @@ mod tests {
     #[test]
     fn test_partial_output_stops_detection_and_cleans_up() {
         // Step 0 has partial output (only 1 of 2 files) → detection returns None.
-        // Step 0 expects: context/research-plan.md + context/clarifications.md
+        // Step 0 expects: context/research-plan.md + context/clarifications.json
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().to_str().unwrap();
         let conn = create_test_db();
@@ -1708,7 +1708,7 @@ mod tests {
 
         // All step output should be deleted
         let skill_dir = tmp.path().join("my-skill");
-        // Step 0 files (research-plan.md, clarifications.md in context/)
+        // Step 0 files (research-plan.md, clarifications.json in context/)
         let step0_file = skill_dir.join("context").join("research-plan.md");
         assert!(!step0_file.exists(), "step 0 output should be cleaned");
         // Step 5 file
