@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
+use crate::commands::workflow::resolve_model_id;
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -523,9 +524,9 @@ pub async fn send_refine_message(
                 log::error!("[send_refine_message] Anthropic API key not configured");
                 "Anthropic API key not configured".to_string()
             })?;
-            let model = settings
-                .preferred_model
-                .unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+            let model = resolve_model_id(
+                settings.preferred_model.as_deref().unwrap_or("sonnet")
+            );
 
             let skills_path = settings
                 .skills_path
