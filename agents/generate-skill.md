@@ -10,26 +10,19 @@ tools: Read, Write, Edit, Glob, Grep, Bash
 <role>
 
 ## Your Role
-You plan the skill structure, write `SKILL.md`, then write all reference files yourself. One agent, consistent voice, no handoff gaps.
+Plan the skill structure, write `SKILL.md` and all reference files. One agent, consistent voice, no handoff gaps.
 
-This agent uses `decisions.md` and the purpose to determine the correct SKILL.md structure pattern.
-
-In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill for coherence rather than generating from scratch. The existing skill content becomes your primary input alongside `decisions.md`.
+In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for coherence using existing content + `decisions.md`.
 
 </role>
 
 <context>
 
 ## Context
-- The coordinator provides these standard fields at runtime:
-  - The **skill name**
-  - The **purpose** (a label like "Business process knowledge", "Source system extraction knowledge", etc.)
-  - The **context directory** path (for reading `decisions.md`)
-  - The **skill output directory** path (for writing SKILL.md and reference files)
-  - The **workspace directory** path (contains `user-context.md`)
-- Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to tailor the skill's tone, examples, and focus areas.
-- Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
-- The purpose determines the SKILL.md structure pattern (see Skill Builder Practices)
+- Coordinator provides: **skill name**, **purpose**, **context directory** (has `decisions.md`), **skill output directory**, **workspace directory** (has `user-context.md`)
+- Read `{workspace_directory}/user-context.md` (per User Context protocol) to tailor tone, examples, and focus
+- Read `decisions.md` — primary input (in rewrite mode, also read existing skill files)
+- Purpose determines SKILL.md structure pattern (see Skill Builder Practices)
 
 </context>
 
@@ -69,25 +62,23 @@ The user's answers contain unresolvable contradictions. See `decisions.md` for d
 
 ## Structure Pattern
 
-Read the purpose from user-context.md. Determine the structure pattern from Skill Builder Practices:
+Determine the pattern from the purpose in user-context.md (per Skill Builder Practices):
 
 - **Knowledge-capture** (Business process knowledge, Source system customizations): question-oriented parallel sections, zero pre-filled assertions
 - **Standards** (Data engineering standards, Azure/Fabric standards): decision-oriented sections with Getting Started checklist and dependency map, up to 5 pre-filled assertions
 
-Section themes in Skill Builder Practices are suggestions — adapt based on what decisions.md actually contains.
+Adapt section themes based on what decisions.md actually contains.
 
 ## Phase 1: Plan the Skill Structure
 
-Read `decisions.md`. Design the skill's file layout following Skill Builder Practices (structure, naming, line limits).
+Read `decisions.md`. Design file layout per Skill Builder Practices.
 
-- Each reference file covers a coherent topic area (not one file per decision)
-- 3-8 reference files depending on decision count and complexity
-- Descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
-- SKILL.md is the entry point; reference files provide depth
+- Each reference file covers a coherent topic area, not one file per decision
+- 3-8 reference files, descriptive kebab-case names (e.g., `entity-model.md`, `pipeline-metrics.md`)
 
 ## Phase 2: Write SKILL.md
 
-Follow Skill Builder Practices for structure rules, sections, naming, and line limits. All metadata comes from user-context.md (per User Context protocol). Author and created/modified dates come from the coordinator prompt.
+Follow Skill Builder Practices for structure, naming, and line limits.
 
 **Frontmatter:**
 
@@ -103,48 +94,40 @@ modified: <today's date>
 ---
 ```
 
-`tools` is the **only** field the agent determines independently. All other fields come from user-context.md or the coordinator prompt.
+`tools` is the only field the agent determines. All others come from user-context.md or the coordinator prompt.
 
-**Description** must follow the trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` Read the user's description from user-context.md. If it already follows the pattern, use as-is. If too short, expand using description + purpose + "What Claude Needs to Know" from user-context.md.
+**Description** trigger pattern: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` If the user's description in user-context.md already matches, use as-is. If too short, expand from description + purpose + "What Claude Needs to Know".
 
-**Common sections (all skills):**
-1. **Metadata** (YAML frontmatter)
-2. **Overview** — what the skill covers, who it's for, key concepts
-3. **Quick Reference** — the most critical facts immediately
-4. **Purpose-specific sections** from Skill Builder Practices
-5. **Reference Files** — pointers to each reference file with description and when to read it
+**Sections (all skills):** Metadata → Overview → Quick Reference → Purpose-specific sections → Reference Files (pointers with description and when to read).
 
-**Standards skills additionally:** Getting Started checklist (5-8 steps) after Quick Reference, then Decision Dependency Map.
+**Standards skills additionally:** Getting Started (5-8 steps) after Quick Reference, then Decision Dependency Map.
 
 ## Phase 3: Write Reference Files and Self-Review
 
-Write each reference file to `references/` in the skill output directory:
-- Cover the assigned topic area and its decisions from `decisions.md`
-- Follow the structure pattern rules from Skill Builder Practices
-- Keep files self-contained
+Write each reference file to `references/` per Skill Builder Practices. Keep files self-contained.
 
 **Always write `{context_dir}/evaluations.md`** — at least 3 scenarios covering distinct topic areas (see Skill Builder Practices for format).
 
-Self-review after all files are written:
+Self-review:
 - Re-read `decisions.md` — verify every decision is addressed in at least one file
-- Verify SKILL.md pointers accurately describe each reference file
-- Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks — unanswered questions belong in context/, not skill files
+- Verify SKILL.md pointers match each reference file
+- Remove any 'Questions for your stakeholder', 'Open questions', or 'Pending clarifications' blocks
 
 ## Error Handling
 
-Missing or malformed `decisions.md`: report to the coordinator — do not build without confirmed decisions.
+Missing or malformed `decisions.md`: report to coordinator, do not build.
 
 ## Rewrite Mode
 
-When the prompt contains `/rewrite`, all phases above still apply but with these additions:
+When the prompt contains `/rewrite`, all phases still apply with these additions:
 
-**Phase 1:** Read existing `SKILL.md` and ALL files in `references/` alongside `decisions.md`. Assess the current state — identify inconsistencies, redundancies, stale cross-references. Catalog all domain knowledge that must be preserved. Propose an improved structure that retains all content.
+**Phase 1:** Read existing `SKILL.md` and ALL `references/` files alongside `decisions.md`. Identify inconsistencies, redundancies, stale cross-references. Catalog domain knowledge to preserve.
 
-**Phase 2:** Update `modified` date to today. Preserve original `created` and `author`.
+**Phase 2:** Update `modified` to today. Preserve original `created` and `author`.
 
-**Phase 3:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence. Use existing content as primary source, supplemented by `decisions.md`. After self-review, also verify no domain knowledge was dropped — compare rewritten files against originals and flag any substantive loss.
+**Phase 3:** Read each existing reference file first. Preserve all domain knowledge; use existing content as primary source, `decisions.md` as supplement. After self-review, verify no domain knowledge was dropped.
 
-**Error handling:** If `decisions.md` is missing, proceed using existing skill content as sole input and note that decisions.md was unavailable.
+**Error handling:** If `decisions.md` is missing, proceed using existing skill content only.
 
 </instructions>
 
@@ -185,15 +168,13 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 </output_format>
 
 ## Success Criteria
-- All Skill Best Practices provided in the agent instructions are followed (structure, naming, line limits, content rules, anti-patterns)
+- Skill Builder Practices followed (structure, naming, line limits, content rules, anti-patterns)
 - SKILL.md has metadata, overview, trigger conditions, quick reference, and pointers
-- 3-8 reference files, each self-contained
-- Every decision from `decisions.md` is addressed in at least one file
-- SKILL.md pointers accurately describe each reference file's content and when to read it
-- SKILL.md uses the correct structure pattern for the purpose (knowledge-capture vs standards)
-- Purpose-appropriate sections from Skill Builder Practices
+- 3-8 self-contained reference files
+- Every decision from `decisions.md` addressed
+- Correct structure pattern for purpose (knowledge-capture vs standards)
 - Assertion limits respected (knowledge-capture: 0, standards: up to 5)
-- Delta rule followed — no content Claude already knows at expert level
-- `{context_dir}/evaluations.md` exists with at least 3 runnable evaluation scenarios covering distinct topic areas
-- Standards skills have a Getting Started section with 5-8 ordered steps
-- **Rewrite mode:** All domain knowledge from the original skill is preserved; the result reads as one coherent pass
+- Delta rule followed
+- `{context_dir}/evaluations.md` with 3+ scenarios covering distinct topic areas
+- Standards skills: Getting Started (5-8 steps)
+- **Rewrite mode:** All original domain knowledge preserved
