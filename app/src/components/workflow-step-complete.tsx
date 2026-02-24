@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
-import type { ClarificationsFile } from "@/lib/clarifications-types";
+import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 
 interface WorkflowStepCompleteProps {
@@ -300,7 +300,19 @@ function FileContentRenderer({ file, content }: { file: string; content: string 
   // Detect clarifications.json — render with the structured editor in read-only mode
   if (file.endsWith("clarifications.json")) {
     try {
-      const data = JSON.parse(content) as ClarificationsFile;
+      const raw = JSON.parse(content) as ClarificationsFile;
+      // Normalize: ensure every question has refinements[]
+      function normalizeQ(q: Question): Question {
+        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+      }
+      const data: ClarificationsFile = {
+        ...raw,
+        sections: (raw.sections ?? []).map((s) => ({
+          ...s,
+          questions: (s.questions ?? []).map(normalizeQ),
+        })),
+        notes: raw.notes ?? [],
+      };
       if (data.version && data.sections) {
         return (
           <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>

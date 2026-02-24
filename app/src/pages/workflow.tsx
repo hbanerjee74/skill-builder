@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import { ClarificationsEditor, type SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile } from "@/lib/clarifications-types";
+import { type ClarificationsFile, type Question } from "@/lib/clarifications-types";
 import {
   Loader2,
   Play,
@@ -77,11 +77,24 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   3: { relativePath: "context/clarifications.json" },
 };
 
-/** Try to parse JSON clarifications data from raw file content. Returns null on failure. */
+/** Parse and normalize JSON clarifications from raw file content.
+ *  Ensures every question has a `refinements` array (agents may omit it). */
 function parseClarifications(content: string | null): ClarificationsFile | null {
   if (!content) return null;
   try {
-    return JSON.parse(content);
+    const raw = JSON.parse(content) as ClarificationsFile;
+    // Normalize: ensure every question has refinements[] (agent output may omit it)
+    function normalizeQ(q: Question): Question {
+      return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+    }
+    return {
+      ...raw,
+      sections: (raw.sections ?? []).map((s) => ({
+        ...s,
+        questions: (s.questions ?? []).map(normalizeQ),
+      })),
+      notes: raw.notes ?? [],
+    };
   } catch {
     return null;
   }
