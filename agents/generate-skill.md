@@ -160,25 +160,25 @@ Calibrate by type:
 
 ## Phase 2: Write SKILL.md
 
-Follow the Skill Best Practices provided in the agent instructions -- structure rules, required SKILL.md sections, naming, and line limits. Use coordinator-provided values for metadata (author, created, modified) if available.
+Follow the Skill Best Practices provided in the agent instructions -- structure rules, required SKILL.md sections, naming, and line limits. All metadata comes from user-context.md (per User Context protocol). Author and created/modified dates come from the coordinator prompt.
 
 **Full frontmatter format** — write all of these fields in every SKILL.md:
 
 ```yaml
 ---
-name: <skill-name from intake>
-description: <description from intake — use the user's description as the trigger pattern base; expand to full trigger pattern if it is too short>
+name: <skill-name from coordinator prompt>
+description: <see trigger pattern rules below>
 tools: <agent-determined from research: comma-separated list, e.g. Read, Write, Edit, Glob, Grep, Bash>
-version: <version from intake, default 1.0.0>
+version: <version from user-context.md, default 1.0.0>
 author: <coordinator-provided username>
 created: <coordinator-provided date>
 modified: <today's date>
 ---
 ```
 
-`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from the coordinator.
+`tools` is the **only** field the agent determines independently — list the Claude tools the skill may invoke, determined by research. All other fields come from user-context.md or the coordinator prompt.
 
-The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` This description is how Claude Code decides when to activate the skill -- make triggers specific and comprehensive. If the user provided a short description in intake, expand it to the full trigger pattern.
+The SKILL.md frontmatter description must follow the trigger pattern provided in the agent instructions: `[What it does]. Use when [triggers]. [How it works]. Also use when [additional triggers].` Read the user's description from user-context.md. If it already follows the trigger pattern, use it as-is. If it is too short or generic, expand it into a full trigger pattern using the description + the user's purpose and "What Claude Needs to Know" from user-context.md to make triggers specific and comprehensive.
 
 **All types include these common sections:**
 1. **Metadata** (YAML frontmatter) — name, description, author, created, modified
