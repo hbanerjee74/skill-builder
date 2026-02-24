@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { ChevronRight, AlertTriangle, Info, Clock, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
+import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   type ClarificationsFile,
@@ -24,12 +24,13 @@ function makeAnswerUpdater(text: string): (q: Question) => Question {
   });
 }
 
-function resolveNoteIcon(type: Note["type"]): typeof AlertTriangle {
-  switch (type) {
-    case "blocked": return AlertTriangle;
-    case "deferred": return Clock;
-    default: return Info;
-  }
+function isWarnNote(type: string): boolean {
+  return type === "blocked" || type === "critical_gap";
+}
+
+function resolveNoteIcon(type: string): typeof AlertTriangle {
+  if (isWarnNote(type)) return AlertTriangle;
+  return Info;
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -605,16 +606,26 @@ function RefinementItem({
   );
 }
 
-// ─── Notes / Needs Clarification ──────────────────────────────────────────────
+// ─── Research Notes ───────────────────────────────────────────────────────────
 
 function NotesBlock({ notes }: { notes: Note[] }) {
   return (
     <div>
-      <div className="mt-6 flex items-center gap-2.5 border-t-2 border-amber-500 bg-amber-500/10 px-6 py-2.5">
-        <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-        <span className="flex-1 text-sm font-semibold tracking-tight text-amber-600 dark:text-amber-400">
-          Needs Clarification
+      <div
+        className="mt-6 flex items-center gap-2.5 px-6 py-2.5"
+        style={{
+          borderTop: "2px solid var(--color-ocean)",
+          background: "color-mix(in oklch, var(--color-ocean), transparent 90%)",
+        }}
+      >
+        <Info className="size-4" style={{ color: "var(--color-ocean)" }} />
+        <span
+          className="flex-1 text-sm font-semibold tracking-tight"
+          style={{ color: "var(--color-ocean)" }}
+        >
+          Research Notes
         </span>
+        <span className="text-[11px] text-muted-foreground">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
       </div>
       {notes.map((note, i) => (
         <NoteCard key={i} note={note} />
@@ -624,15 +635,18 @@ function NotesBlock({ notes }: { notes: Note[] }) {
 }
 
 function NoteCard({ note }: { note: Note }) {
-  const isBlocked = note.type === "blocked";
+  const warn = isWarnNote(note.type);
   const Icon = resolveNoteIcon(note.type);
 
   return (
-    <div className={`mx-6 mt-3 rounded-lg border p-4 ${isBlocked ? "border-destructive/30 bg-destructive/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+    <div className={`mx-6 mt-3 rounded-lg border p-4 ${warn ? "border-amber-500/30 bg-amber-500/5" : "border-border bg-muted/30"}`}>
       <div className="mb-1.5 flex items-center gap-2">
-        <Icon className={`size-3.5 ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`} />
-        <span className={`text-xs font-semibold ${isBlocked ? "text-destructive" : "text-amber-600 dark:text-amber-400"}`}>
+        <Icon className={`size-3.5 ${warn ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`} />
+        <span className={`text-xs font-semibold ${warn ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
           {note.title}
+        </span>
+        <span className="rounded border px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">
+          {note.type.replace(/_/g, " ")}
         </span>
       </div>
       <p className="text-xs leading-relaxed text-muted-foreground">{note.body}</p>
