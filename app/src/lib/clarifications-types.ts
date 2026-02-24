@@ -45,7 +45,7 @@ export interface Choice {
 }
 
 export interface Note {
-  type: "inconsistency" | "blocked" | "deferred";
+  type: string; // "inconsistency" | "blocked" | "deferred" | "critical_gap" | "flag" — agents may produce any type
   title: string;
   body: string;
 }
