@@ -361,7 +361,11 @@ export default function TestPage() {
       return;
     }
     getDisabledSteps(state.selectedSkill.name)
-      .then((disabled) => setScopeBlocked(disabled.length > 0))
+      .then((disabled) => {
+        const blocked = disabled.length > 0;
+        setScopeBlocked(blocked);
+        if (blocked) console.warn("[test] Scope recommendation active for skill '%s' — testing blocked", state.selectedSkill!.name);
+      })
       .catch(() => setScopeBlocked(false));
   }, [state.selectedSkill]);
 
