@@ -38,6 +38,10 @@ A completed skill contains:
 
 <instructions>
 
+## Scope Recommendation Guard
+
+Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` for `scope_recommendation: true` before doing any work. If detected, do NOT refine or rewrite — return immediately: "Scope recommendation active — the skill scope is too broad. See clarifications.md for recommended narrower skills. Refine and rewrite are blocked until the scope is resolved."
+
 ## Step 1: Read Before Editing
 
 Read `{workspace_dir}/user-context.md` (per User Context protocol). Use this to tailor tone, examples, and emphasis in your edits.
