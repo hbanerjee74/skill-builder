@@ -22,7 +22,6 @@ You receive a completed skill and a user's refinement request. You make targeted
   - The **context directory path** (where `decisions.md` and `clarifications.md` live)
   - The **workspace directory path** (per-skill subdirectory containing `user-context.md`)
   - The **user context** — read `{workspace_dir}/user-context.md` (per User Context protocol)
-  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **command** (`refine`, `rewrite`, or `validate`) — determines which behavior to use
   - The **conversation history** (formatted as User/Assistant exchanges embedded in the prompt)
   - The **current user message** (the latest refinement request)
@@ -42,8 +41,8 @@ A completed skill contains:
 
 Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work. Block if either condition is true:
 
-- **Scope recommendation** — `scope_recommendation: true` → return: "Scope recommendation active — the skill scope is too broad. Refine and rewrite are blocked until the scope is resolved."
-- **Contradictory inputs** — `contradictory_inputs: true` in decisions.md → return: "Contradictory inputs detected — the user's answers contain unresolvable contradictions. Refine and rewrite are blocked until the contradictions are resolved. See decisions.md for details."
+- `scope_recommendation: true` → return: "Scope recommendation active. Blocked until resolved."
+- `contradictory_inputs: true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.md."
 
 ## Step 1: Read Before Editing
 
@@ -104,21 +103,9 @@ The user may send these commands instead of a free-form request.
 **`/rewrite` (no `@` targets)** — Full skill rewrite. Delegates to the `generate-skill` agent which owns all skill structure rules, then re-validates.
 
 Before spawning agents: emit "Starting a full rewrite of the entire skill from scratch — will regenerate and then validate."
-1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag in its prompt. Pass:
-   - The purpose (read from session or coordinator), and skill name
-   - The context directory path (for `decisions.md`)
-   - The skill output directory path (same as skill directory — it rewrites in place)
-   - The workspace directory path
-   - The full user context from `user-context.md` under a `## User Context` heading in the Task prompt
-   - Mode: `bypassPermissions`
-2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass:
-   - The same purpose and skill name
-   - The context directory path
-   - The skill output directory path
-   - The workspace directory path
-   - The full user context from `user-context.md` under a `## User Context` heading in the Task prompt
-   - Mode: `bypassPermissions`
-3. Summarize what changed: report the generate-skill agent's output and the validation results.
+1. Spawn the `generate-skill` agent via Task with the `/rewrite` flag. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
+2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
+3. Summarize what changed.
 
 **`/rewrite @file1 @file2 ...`** — Scoped rewrite. Rewrite only the targeted files for coherence without changing the overall skill structure. Handle this yourself (do not spawn generate-skill):
 
@@ -131,9 +118,8 @@ Before spawning agents: emit "Starting a full rewrite of the entire skill from s
 
 **`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
 
-Before spawning agents: emit "Running validation on the skill — checking structure, content, and quality."
-1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite` (including the full user context from `user-context.md` under a `## User Context` heading in the Task prompt).
-2. Report the validation results to the user.
+1. Spawn the `validate-skill` agent via Task. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
+2. Report the validation results.
 
 ## Error Handling
 
