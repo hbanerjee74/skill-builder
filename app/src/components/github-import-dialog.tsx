@@ -37,11 +37,11 @@ import { useSettingsStore } from "@/stores/settings-store"
  * Returns true only if `a` is strictly greater than `b` by semver rules.
  * Returns false if semver parsing fails on either side (can't determine direction).
  * If `a` is null/undefined, returns false (no marketplace version → never upgrade).
- * If only `b` is null/undefined, treats `a` as newer.
+ * If `b` is null/undefined, returns false (unknown installed version → can't determine direction).
  */
 function semverGt(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || a === "") return false
-  if (b == null || b === "") return true
+  if (b == null || b === "") return false
   // Try semver parse: split "major.minor.patch" into numbers
   const parseSemver = (v: string): [number, number, number] | null => {
     const m = v.match(/^(\d+)\.(\d+)\.(\d+)/)
