@@ -187,7 +187,7 @@ export function WorkflowStepComplete({
         )}
         {!reviewMode && (
           <div className="flex items-center gap-2 pb-4">
-            <CheckCircle2 className="size-4 text-green-500" />
+            <CheckCircle2 className="size-4" style={{ color: "var(--color-seafoam)" }} />
             <h3 className="text-sm font-semibold">{stepName} Complete</h3>
             <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
               {duration !== undefined && (
@@ -247,7 +247,7 @@ export function WorkflowStepComplete({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <CheckCircle2 className="size-12 text-green-500" />
+          <CheckCircle2 className="size-12" style={{ color: "var(--color-seafoam)" }} />
           <h3 className="text-lg font-semibold">{stepName} Complete</h3>
 
           {outputFiles.length > 0 && (
