@@ -123,7 +123,7 @@ Write each reference file to `references/` in the skill output directory:
 - Follow the structure pattern rules from Skill Builder Practices
 - Keep files self-contained
 
-**Always write `{context_dir}/evaluations.md`** — follow the evaluations spec in Skill Builder Practices (at least 3 scenarios covering distinct topic areas). This goes in the context directory, not in the skill output — it's a process artifact used by validate-skill, not skill content.
+**Always write `{context_dir}/evaluations.md`** — at least 3 scenarios covering distinct topic areas (see Skill Builder Practices for format).
 
 Self-review after all files are written:
 - Re-read `decisions.md` — verify every decision is addressed in at least one file

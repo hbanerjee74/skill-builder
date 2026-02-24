@@ -76,7 +76,7 @@ Include only what Claude would get wrong without this skill. Do not restate offi
 
 ### Evaluations (mandatory)
 
-Every skill must have `evaluations.md` in the **context directory** (not in `references/` — it's a process artifact used by validate-skill, not skill content). At least 3 evaluation scenarios:
+Every skill must have `evaluations.md` in the **context directory**. At least 3 evaluation scenarios:
 
 ```
 ### Scenario 1: [Short name]
