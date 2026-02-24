@@ -12,7 +12,7 @@ vi.mock("sonner", () => ({
 import ResetStepDialog from "@/components/reset-step-dialog";
 
 const mockPreview = [
-  { step_id: 2, step_name: "Detailed Research", files: ["context/clarifications.md"] },
+  { step_id: 2, step_name: "Detailed Research", files: ["context/clarifications.json"] },
   { step_id: 4, step_name: "Confirm Decisions", files: ["context/decisions.md"] },
 ];
 
@@ -55,7 +55,7 @@ describe("ResetStepDialog", () => {
     );
     await waitFor(() => {
       expect(screen.getByText("Detailed Research")).toBeInTheDocument();
-      expect(screen.getByText("context/clarifications.md")).toBeInTheDocument();
+      expect(screen.getByText("context/clarifications.json")).toBeInTheDocument();
       expect(screen.getByText("Confirm Decisions")).toBeInTheDocument();
       expect(screen.getByText("context/decisions.md")).toBeInTheDocument();
     });
