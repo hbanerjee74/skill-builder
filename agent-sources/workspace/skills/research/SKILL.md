@@ -25,7 +25,6 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 | Input | Values | Example |
 |-------|--------|---------|
 | `purpose` | `domain` \| `platform` \| `source` \| `data-engineering` | `domain` |
-| `domain` | Free text domain name | `"Sales Pipeline Analytics"` |
 
 ---
 

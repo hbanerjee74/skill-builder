@@ -91,7 +91,7 @@ export default function WorkflowPage() {
   const skillsPath = useSettingsStore((s) => s.skillsPath);
   const {
     domain,
-    skillType,
+    purpose,
     currentStep,
     steps,
     isRunning,
@@ -318,7 +318,7 @@ export default function WorkflowPage() {
         }
 
         const domainName = state.run.domain || skillName.replace(/-/g, " ");
-        initWorkflow(skillName, domainName, state.run.skill_type);
+        initWorkflow(skillName, domainName, state.run.purpose);
 
         const completedIds = state.steps
           .filter((s) => s.status === "completed")
@@ -426,13 +426,13 @@ export default function WorkflowPage() {
         status = "pending";
       }
 
-      saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, skillType ?? undefined).catch(
+      saveWorkflowState(skillName, domain, latestStore.currentStep, status, stepStatuses, purpose ?? undefined).catch(
         (err) => console.error("Failed to persist workflow state:", err)
       );
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [steps, currentStep, skillName, domain, skillType, hydrated]);
+  }, [steps, currentStep, skillName, domain, purpose, hydrated]);
 
   // Load file content when entering a human review step.
   // skills_path is required — no workspace fallback.

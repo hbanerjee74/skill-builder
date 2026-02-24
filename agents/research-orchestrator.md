@@ -33,11 +33,13 @@ Read `{workspace_dir}/user-context.md` if it exists. Include its full content in
 
 ## Step 1: Run the research skill as a sub-agent
 
+Use the mapping table above to derive the research dimension token from the purpose label. For example, if purpose is "Business process knowledge", the token is `domain`.
+
 Spawn a Task sub-agent with this prompt:
 
 ---
 Use the research skill to research dimensions and produce clarifications for:
-- purpose: {purpose} ({purpose label from the table above})
+- purpose: {derived token, e.g. domain}
 
 ## User Context
 {paste the full user-context.md content from Step 0 here, or omit this section if the file did not exist}
