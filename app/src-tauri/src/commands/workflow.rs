@@ -671,7 +671,7 @@ pub fn format_user_context(
 /// and behaviour settings provided by the user.
 /// Non-fatal: logs a warning on failure rather than blocking the workflow.
 #[allow(clippy::too_many_arguments)]
-fn write_user_context_file(
+pub fn write_user_context_file(
     workspace_path: &str,
     skill_name: &str,
     industry: Option<&str>,
