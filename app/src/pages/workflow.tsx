@@ -1024,6 +1024,7 @@ export default function WorkflowPage() {
           onContinue={() => handleReviewContinue()}
           filePath={reviewFilePath}
           saveStatus={saveStatus}
+          evaluating={gateLoading}
         />
       );
     }
