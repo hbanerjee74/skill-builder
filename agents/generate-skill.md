@@ -123,7 +123,7 @@ Write each reference file to `references/` in the skill output directory:
 - Follow the structure pattern rules from Skill Builder Practices
 - Keep files self-contained
 
-**Always write `references/evaluations.md`** — follow the evaluations spec in Skill Builder Practices (at least 3 scenarios covering distinct topic areas).
+**Always write `{context_dir}/evaluations.md`** — follow the evaluations spec in Skill Builder Practices (at least 3 scenarios covering distinct topic areas). This goes in the context directory, not in the skill output — it's a process artifact used by validate-skill, not skill content.
 
 Self-review after all files are written:
 - Re-read `decisions.md` — verify every decision is addressed in at least one file
@@ -194,6 +194,6 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 - Purpose-appropriate sections from Skill Builder Practices
 - Assertion limits respected (knowledge-capture: 0, standards: up to 5)
 - Delta rule followed — no content Claude already knows at expert level
-- `references/evaluations.md` exists with at least 3 runnable evaluation scenarios covering distinct topic areas
+- `{context_dir}/evaluations.md` exists with at least 3 runnable evaluation scenarios covering distinct topic areas
 - Standards skills have a Getting Started section with 5-8 ordered steps
 - **Rewrite mode:** All domain knowledge from the original skill is preserved; the result reads as one coherent pass
