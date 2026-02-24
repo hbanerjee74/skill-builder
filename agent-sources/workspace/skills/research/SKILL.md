@@ -73,7 +73,7 @@ Select the top 3–5 dimensions by score. Prefer quality of coverage over meetin
 
 For each selected dimension, read the full content of `references/dimensions/{slug}.md` for that dimension.
 
-Then spawn a Task sub-agent for that dimension. Construct the Task prompt as follows:
+Then spawn a Task sub-agent for that dimension. Pass the full user context so the research is grounded in the user's specific environment. Construct the Task prompt as follows:
 
 ```
 You are researching the {dimension_name} dimension for a {purpose} skill about {skill_name}.
@@ -82,7 +82,10 @@ You are researching the {dimension_name} dimension for a {purpose} skill about {
 
 Tailored focus: {tailored focus line from Step 2}
 
-Return detailed research text covering the dimension's questions and decision points for this skill. 500–800 words. Return raw research text only — no headings, no JSON, no structured format. Write as if briefing a colleague who needs to understand the key questions and tradeoffs for this dimension in the context of {skill_name}.
+## User Context
+{paste the full user context received from the orchestrator — purpose, description, what Claude needs to know, industry, function, etc.}
+
+Return detailed research text covering the dimension's questions and decision points for this skill. 500–800 words. Return raw research text only — no headings, no JSON, no structured format. Write as if briefing a colleague who needs to understand the key questions and tradeoffs for this dimension in the context of {skill_name}. Use the user context above to tailor the research to their specific environment.
 ```
 
 Wait for all Tasks to return before proceeding to Step 4.
