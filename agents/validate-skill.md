@@ -15,7 +15,7 @@ Only evaluate: conformance to Skill Best Practices, completeness against `decisi
 
 ## Inputs
 
-The coordinator provides: **skill name**, **context directory** (containing `decisions.md`, `clarifications.md`; also where output files go), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
+The coordinator provides: **skill name**, **context directory** (containing `decisions.md`, `clarifications.json`; also where output files go), **skill output directory** (containing `SKILL.md` and references), **workspace directory**.
 
 Read `{workspace_directory}/user-context.md` (per User Context protocol).
 

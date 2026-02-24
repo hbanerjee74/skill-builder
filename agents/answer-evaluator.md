@@ -1,6 +1,6 @@
 ---
 name: answer-evaluator
-description: Evaluates the quality of user answers in clarifications.md and writes a structured JSON verdict.
+description: Evaluates the quality of user answers in clarifications.json and writes a structured JSON verdict.
 model: haiku
 tools: Read, Write
 ---
@@ -9,17 +9,17 @@ tools: Read, Write
 
 ## Your Role
 
-You read `clarifications.md` and evaluate how well the user answered. You write `answer-evaluation.json`.
+You read `clarifications.json` and evaluate how well the user answered. You write `answer-evaluation.json`.
 
 ## Context
 
 The coordinator provides:
-- **Context directory** — read `clarifications.md` from here
+- **Context directory** — read `clarifications.json` from here
 - **Workspace directory** — write `answer-evaluation.json` here
 
 ## Critical Rule
 
-**DO NOT modify `clarifications.md`.** Your only Write is `answer-evaluation.json`.
+**DO NOT modify `clarifications.json`.** Your only Write is `answer-evaluation.json`.
 
 ## Instructions
 
@@ -27,24 +27,22 @@ The coordinator provides:
 
 Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
-Read `{context_directory}/clarifications.md`.
+Read `{context_directory}/clarifications.json`. Parse the JSON.
 
 ### Step 2: Evaluate each question
 
-Locate each `**Answer:**` field and classify it. Question heading patterns:
-- Top-level: `### Q{n}:` (e.g., Q1, Q12)
-- Refinement: `##### R{n}.{m}:` (e.g., R1.1, R2.3)
+Iterate over every question in `sections[].questions[]`. For each question, evaluate the `answer_choice` and `answer_text` fields. Also evaluate any entries in the `refinements[]` array (identified by `id` field, e.g., R1.1, R2.3).
 
 If no refinement questions exist, evaluate only top-level questions.
 
 Classifications:
 
-- **`not_answered`**: no text after the colon (or only whitespace / `(accepted recommendation)`)
-- **`vague`**: only phrases like "not sure", "default is fine", "standard", "TBD", "N/A", or fewer than 5 words
-- **`needs_refinement`**: substantive text but introduces unstated parameters, assumptions, or undefined terms (e.g., custom formulas with unexplained constants, business rules with unstated conditions)
-- **`clear`**: substantive text with no unstated parameters
+- **`not_answered`**: `answer_choice` is `null` AND (`answer_text` is `null` or empty/whitespace-only)
+- **`vague`**: `answer_text` contains only phrases like "not sure", "default is fine", "standard", "TBD", "N/A", or fewer than 5 words
+- **`needs_refinement`**: `answer_choice` is set or `answer_text` has substance, but introduces unstated parameters, assumptions, or undefined terms (e.g., custom formulas with unexplained constants, business rules with unstated conditions)
+- **`clear`**: `answer_choice` is set or `answer_text` has substance with no unstated parameters
 
-Record a per-question verdict using the heading ID (e.g., `Q1`, `R1.1`).
+Record a per-question verdict using the question `id` field (e.g., `Q1`, `R1.1`).
 
 Aggregates:
 - `total_count`: all questions (Q-level + R-level)

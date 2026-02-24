@@ -43,23 +43,23 @@ Capture the full tool result as `research_output`.
 === RESEARCH PLAN ===
 {scored dimension table}
 === CLARIFICATIONS ===
-{complete clarifications.md content including YAML frontmatter}
+{complete clarifications.json content — valid JSON}
 ```
 
 **Write these two files. No other output.**
 
 1. Extract between `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===` → `{context_dir}/research-plan.md`
-2. Extract after `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.md`
+2. Extract after `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.json`
 
 Write content verbatim. Verify both files exist by reading the first 5 lines of each. If either is missing or empty, retry once.
 
 ## Step 3: Check scope recommendation
 
-Read the YAML frontmatter of `{context_dir}/clarifications.md`. If `scope_recommendation: true`, stop and return:
+Read `{context_dir}/clarifications.json`. If `metadata.scope_recommendation` is `true`, stop and return:
 
 ```
 Scope issue: this skill is not suitable as a {purpose label} skill.
-Reason: {one sentence from clarifications.md}
+Reason: {one sentence from clarifications.json}
 Suggested action: {narrow the domain, choose a different skill type, or split into multiple skills}
 ```
 
