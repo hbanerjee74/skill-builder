@@ -32,9 +32,8 @@ test.describe("Skill CRUD", { tag: "@dashboard" }, () => {
 
     // Step 1: Fill skill name + select purpose + description (all required to advance)
     await page.getByRole("textbox", { name: "Skill Name" }).fill("hr-analytics");
-    // The purpose radio uses Radix RadioGroupItem (<button role="radio" data-slot="radio-group-item">).
-    // Use the data-slot attribute to target the actual Radix button (not the hidden native input).
-    await page.locator('[data-slot="radio-group-item"]').first().click();
+    // Purpose is a native <select> element — select by option value
+    await page.getByLabel(/What are you trying to capture/i).selectOption("domain");
     await page.getByRole("textbox", { name: "Description" }).fill("HR analytics skill for workforce data.");
 
     // Next button should now be enabled — wait for it, then advance to Step 2
