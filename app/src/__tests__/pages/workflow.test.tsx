@@ -1426,7 +1426,8 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
       );
     }, { timeout: 3000 });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Saved");
+    // Autosave calls handleSave(true) — silent mode, so no toast is shown
+    expect(mockToast.success).not.toHaveBeenCalledWith("Saved");
   }, 10000);
 
   it("autosave does NOT fire on non-human-review steps", async () => {

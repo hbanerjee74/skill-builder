@@ -136,7 +136,7 @@ export default function SettingsPage() {
   const fetchModels = async (key: string) => {
     try {
       const models = await invoke<ModelInfo[]>("list_models", { apiKey: key })
-      setStoreSettings({ availableModels: models })
+      setStoreSettings({ availableModels: models ?? [] })
       // If current preferredModel is a shorthand not in the list, keep it (resolve_model_id handles it)
     } catch (err) {
       console.warn("[settings] Could not fetch model list:", err)
