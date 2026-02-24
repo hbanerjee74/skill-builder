@@ -327,6 +327,10 @@ function QuestionCard({
   readOnly: boolean;
 }) {
   const answered = isQuestionAnswered(question);
+  const refCount = question.refinements.length;
+  const refUnanswered = refCount > 0
+    ? question.refinements.filter((r) => !isQuestionAnswered(r)).length
+    : 0;
 
   return (
     <div
@@ -348,6 +352,7 @@ function QuestionCard({
         <span className="flex-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
           {question.title}
         </span>
+        {refCount > 0 && <RefinementBadge count={refCount} unanswered={refUnanswered} />}
         {question.must_answer && <MustBadge />}
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
@@ -423,12 +428,33 @@ function QuestionCard({
   );
 }
 
-// ─── MUST Badge ───────────────────────────────────────────────────────────────
+// ─── Badges ──────────────────────────────────────────────────────────────────
 
 function MustBadge() {
   return (
     <span className="shrink-0 rounded border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-destructive">
       must
+    </span>
+  );
+}
+
+function RefinementBadge({ count, unanswered }: { count: number; unanswered: number }) {
+  const allAnswered = unanswered === 0;
+  return (
+    <span
+      className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
+      style={{
+        borderColor: allAnswered
+          ? "color-mix(in oklch, var(--color-seafoam), transparent 50%)"
+          : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
+        background: allAnswered
+          ? "color-mix(in oklch, var(--color-seafoam), transparent 88%)"
+          : "color-mix(in oklch, var(--color-ocean), transparent 88%)",
+        color: allAnswered ? "var(--color-seafoam)" : "var(--color-ocean)",
+      }}
+    >
+      {count} {count === 1 ? "refinement" : "refinements"}
+      {unanswered > 0 && ` (${unanswered} unanswered)`}
     </span>
   );
 }
