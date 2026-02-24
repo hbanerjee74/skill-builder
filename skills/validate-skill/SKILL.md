@@ -25,9 +25,8 @@ This is a **read-only computation unit** — it reads skill files, runs validati
 
 | Input | Description |
 |---|---|
-| `domain` | Domain name |
 | `skill_name` | Skill name |
-| `purpose` | `domain` \| `data-engineering` \| `platform` \| `source` |
+| `purpose` | `Business process knowledge` \| `Organization specific data engineering standards` \| `Organization specific Azure or Fabric standards` \| `Source system customizations` |
 | `context_dir` | Path to context directory (contains `decisions.md`, `clarifications.md`, `research-plan.md`) |
 | `skill_output_dir` | Path to skill output directory (contains `SKILL.md` and `references/`) |
 | `workspace_dir` | Path to workspace directory (contains `user-context.md`) |
