@@ -44,17 +44,15 @@ Check if the prompt contains `/rewrite`. This determines how each phase operates
 | | Normal Mode | Rewrite Mode |
 |---|---|---|
 | **Primary input** | `decisions.md` only | Existing SKILL.md + references + `decisions.md` |
-| **Scope guard** | Check for `scope_recommendation: true` | Skip (skill already exists) |
+| **Scope guard** | Check for `scope_recommendation: true` | Check for `scope_recommendation: true` |
 | **Phase 1 goal** | Design structure from decisions | Assess existing structure, plan improvements |
 | **Phase 3 writing** | Write from decisions | Rewrite from existing content + decisions |
 | **Phase 3 review** | Check decisions coverage | Also verify no domain knowledge was dropped |
 | **Output** | New skill files | Rewritten skill files that read as one coherent pass |
 
-### Scope Recommendation Guard (Normal Mode Only)
+### Scope Recommendation Guard
 
-Skip this guard entirely in rewrite mode.
-
-Check `decisions.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `SKILL.md` in the skill output directory and return:
+Check `decisions.md` per the Scope Recommendation Guard protocol in **both normal and rewrite mode**. If `scope_recommendation: true` is detected, write this stub to `SKILL.md` in the skill output directory and return:
 
 ```
 ---
