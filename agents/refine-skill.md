@@ -38,9 +38,12 @@ A completed skill contains:
 
 <instructions>
 
-## Scope Recommendation Guard
+## Guards
 
-Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` for `scope_recommendation: true` before doing any work. If detected, do NOT refine or rewrite — return immediately: "Scope recommendation active — the skill scope is too broad. See clarifications.md for recommended narrower skills. Refine and rewrite are blocked until the scope is resolved."
+Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work. Block if either condition is true:
+
+- **Scope recommendation** — `scope_recommendation: true` → return: "Scope recommendation active — the skill scope is too broad. Refine and rewrite are blocked until the scope is resolved."
+- **Contradictory inputs** — `contradictory_inputs: true` in decisions.md → return: "Contradictory inputs detected — the user's answers contain unresolvable contradictions. Refine and rewrite are blocked until the contradictions are resolved. See decisions.md for details."
 
 ## Step 1: Read Before Editing
 

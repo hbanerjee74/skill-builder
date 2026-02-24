@@ -50,9 +50,11 @@ Check if the prompt contains `/rewrite`. This determines how each phase operates
 | **Phase 3 review** | Check decisions coverage | Also verify no domain knowledge was dropped |
 | **Output** | New skill files | Rewritten skill files that read as one coherent pass |
 
-### Scope Recommendation Guard
+### Guards
 
-Check `decisions.md` per the Scope Recommendation Guard protocol in **both normal and rewrite mode**. If `scope_recommendation: true` is detected, write this stub to `SKILL.md` in the skill output directory and return:
+Check `decisions.md` and `clarifications.md` in **both normal and rewrite mode** before doing any work. Block if either condition is true:
+
+**Scope recommendation** — if `scope_recommendation: true` in clarifications.md or decisions.md, write this stub to `SKILL.md` and return:
 
 ```
 ---
@@ -63,6 +65,19 @@ scope_recommendation: true
 ## Scope Recommendation Active
 
 The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No skill was generated.
+```
+
+**Contradictory inputs** — if `contradictory_inputs: true` in decisions.md, write this stub to `SKILL.md` and return:
+
+```
+---
+name: (contradictory inputs)
+description: Contradictory inputs detected — no skill generated.
+contradictory_inputs: true
+---
+## Contradictory Inputs Detected
+
+The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
 
 ## Phase 1: Plan the Skill Structure
