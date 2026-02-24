@@ -249,7 +249,7 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     // It should only be called after hydration with the correct state
     const saveCalls = vi.mocked(saveWorkflowState).mock.calls;
     for (const call of saveCalls) {
-      const stepStatuses = call[4] as Array<{ step_id: number; status: string }>;
+      const stepStatuses = call[3] as Array<{ step_id: number; status: string }>;
       const step0 = stepStatuses.find((s) => s.step_id === 0);
       expect(step0?.status).toBe("completed");
     }
