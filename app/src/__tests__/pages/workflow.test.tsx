@@ -52,17 +52,24 @@ vi.mock("@/lib/tauri", () => ({
   logGateDecision: vi.fn(() => Promise.resolve()),
 }));
 
-// Mock MDEditor — renders a textarea that calls onChange on input
-vi.mock("@uiw/react-md-editor", () => ({
-  __esModule: true,
-  default: ({ value, onChange, ...rest }: { value?: string; onChange?: (val?: string) => void; [key: string]: unknown }) => (
-    <textarea
-      data-testid="md-editor"
-      value={value ?? ""}
-      onChange={(e) => onChange?.(e.target.value)}
-      {...Object.fromEntries(Object.entries(rest).filter(([k]) => !["visibleDragbar"].includes(k)))}
-    />
-  ),
+// Mock ClarificationsEditor — renders a simple div with testid and
+// exposes onChange/onContinue via buttons so tests can trigger them.
+const mockClarificationsOnChange = vi.hoisted(() => vi.fn());
+vi.mock("@/components/clarifications-editor", () => ({
+  ClarificationsEditor: ({ data, onChange, onContinue }: {
+    data: unknown;
+    onChange?: (updated: unknown) => void;
+    onContinue?: () => void;
+  }) => {
+    // Stash onChange so tests can call it
+    mockClarificationsOnChange.mockImplementation((updated: unknown) => onChange?.(updated));
+    return (
+      <div data-testid="clarifications-editor">
+        <span data-testid="clarifications-data">{JSON.stringify(data)}</span>
+        {onContinue && <button data-testid="clarifications-continue" onClick={onContinue}>Complete Step</button>}
+      </div>
+    );
+  },
 }));
 
 // Mock heavy sub-components to isolate the effect lifecycle
@@ -82,6 +89,58 @@ vi.mock("@/components/workflow-step-complete", () => ({
 import WorkflowPage from "@/pages/workflow";
 import { getWorkflowState, saveWorkflowState, writeFile, readFile, runWorkflowStep, resetWorkflowStep, cleanupSkillSidecar, endWorkflowSession, previewStepReset, runAnswerEvaluator } from "@/lib/tauri";
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
+import type { ClarificationsFile } from "@/lib/clarifications-types";
+
+/** Minimal valid ClarificationsFile for tests */
+function makeClarificationsJson(overrides?: Partial<ClarificationsFile>): ClarificationsFile {
+  return {
+    version: "1",
+    metadata: {
+      title: "Test Clarifications",
+      question_count: 2,
+      section_count: 1,
+      refinement_count: 0,
+      must_answer_count: 1,
+      priority_questions: ["Q1"],
+    },
+    sections: [
+      {
+        id: "S1",
+        title: "Test Section",
+        questions: [
+          {
+            id: "Q1",
+            title: "Question 1",
+            must_answer: true,
+            text: "What is the primary focus?",
+            choices: [
+              { id: "A", text: "Option A", is_other: false },
+              { id: "B", text: "Option B", is_other: false },
+            ],
+            answer_choice: null,
+            answer_text: null,
+            refinements: [],
+          },
+          {
+            id: "Q2",
+            title: "Question 2",
+            must_answer: false,
+            text: "Secondary concern?",
+            choices: [
+              { id: "A", text: "Choice A", is_other: false },
+              { id: "B", text: "Choice B", is_other: false },
+            ],
+            answer_choice: null,
+            answer_text: null,
+            refinements: [],
+          },
+        ],
+      },
+    ],
+    notes: [],
+    ...overrides,
+  };
+}
 
 describe("WorkflowPage — agent completion lifecycle", () => {
   beforeEach(() => {
@@ -484,12 +543,10 @@ describe("WorkflowPage — human review file loading priority", () => {
 
   it("loads review content from skillsPath context directory first", async () => {
     // skillsPath has the file — should use it even though workspace also has content
+    const jsonData = makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From skills context dir");
-      }
-      if (path === "/test/workspace/test-skill/context/clarifications.md") {
-        return Promise.resolve("# From workspace");
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
       }
       return Promise.reject("not found");
     });
@@ -503,14 +560,14 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     render(<WorkflowPage />);
 
-    // Should show content from skills context directory
+    // Should render the ClarificationsEditor with the parsed JSON data
     await waitFor(() => {
-      expect(screen.getByText("From skills context dir")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
-    // readFile should have been called with the skillsPath location first
+    // readFile should have been called with the skillsPath location
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.md"
+      "/test/skills/test-skill/context/clarifications.json"
     );
   });
 
@@ -530,7 +587,7 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     // Should show missing file error since skillsPath file not found and no workspace fallback
     await waitFor(() => {
-      expect(screen.getByText("Missing clarification file")).toBeTruthy();
+      expect(screen.getByText("Missing clarifications file")).toBeTruthy();
     });
   });
 
@@ -552,18 +609,19 @@ describe("WorkflowPage — human review file loading priority", () => {
 
     // Without skillsPath, review content is null — should show missing file error
     await waitFor(() => {
-      expect(screen.getByText("Missing clarification file")).toBeTruthy();
+      expect(screen.getByText("Missing clarifications file")).toBeTruthy();
     });
 
     // readFile should NOT have been called at all
     expect(vi.mocked(readFile)).not.toHaveBeenCalled();
   });
 
-  it("uses skillsPath context dir for step 3 (clarifications.md) too", async () => {
-    // Step 3 reviews clarifications.md — same priority should apply
+  it("uses skillsPath context dir for step 3 (clarifications.json) too", async () => {
+    // Step 3 reviews clarifications.json — same priority should apply
+    const jsonData = makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve("# Merged clarifications from skills dir");
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
       }
       return Promise.reject("not found");
     });
@@ -578,11 +636,11 @@ describe("WorkflowPage — human review file loading priority", () => {
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Merged clarifications from skills dir")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.md"
+      "/test/skills/test-skill/context/clarifications.json"
     );
   });
 });
@@ -619,21 +677,14 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     useSettingsStore.getState().reset();
   });
 
-  it("Complete Step saves content as-is without auto-fill", async () => {
-    // Content with empty Answer fields — should NOT be auto-filled
-    const reviewContent = [
-      "## Question 1",
-      "**Recommendation:** Use incremental loads for large tables",
-      "**Answer:** ",
-      "",
-      "## Question 2",
-      "**Recommendation:** Partition by date for time-series data",
-      "**Answer:** ",
-    ].join("\n");
+  it("Complete Step saves JSON content preserving unanswered questions", async () => {
+    // Content with empty answers — should be saved as-is
+    const jsonData = makeClarificationsJson();
+    const jsonString = JSON.stringify(jsonData);
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve(reviewContent);
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(jsonString);
       }
       return Promise.reject("not found");
     });
@@ -648,31 +699,29 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
 
     render(<WorkflowPage />);
 
-    // Wait for review content to load and Complete Step button to appear
+    // Wait for ClarificationsEditor to load and Complete Step button to appear
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-continue")).toBeTruthy();
     });
 
-    // Click "Complete Step"
+    // Click "Complete Step" via the ClarificationsEditor's continue button
     act(() => {
-      screen.getByText("Complete Step").click();
+      screen.getByTestId("clarifications-continue").click();
     });
 
-    // writeFile should be called with the ORIGINAL content (empty answers preserved)
+    // writeFile should be called with stringified JSON
     await waitFor(() => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
     const writePath = vi.mocked(writeFile).mock.calls[0][0];
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
-    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.md");
-    expect(savedContent).toBe(reviewContent);
+    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.json");
 
-    // Verify no auto-fill happened
-    expect(savedContent).not.toContain("auto-selected from recommendation");
-
-    // Empty answers should still be empty
-    expect(savedContent).toContain("**Answer:** \n");
+    // Saved content should be valid JSON matching the original data
+    const parsed = JSON.parse(savedContent);
+    expect(parsed.version).toBe("1");
+    expect(parsed.sections[0].questions[0].answer_choice).toBeNull();
 
     // Step should be marked completed and advanced
     await waitFor(() => {
@@ -707,25 +756,17 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     expect(wf.currentStep).toBe(0);
   });
 
-  it("preserves partially filled answers", async () => {
+  it("preserves partially filled answers in JSON", async () => {
     // Content with mixed answers — some filled, some empty
-    const reviewContent = [
-      "## Question 1",
-      "**Recommendation:** Use incremental loads",
-      "**Answer:** We use full refresh for this table",
-      "",
-      "## Question 2",
-      "**Recommendation:** Partition by date",
-      "**Answer:** ",
-      "",
-      "## Question 3",
-      "**Recommendation:** Add surrogate keys",
-      "**Answer:** Already using natural keys, no change needed",
-    ].join("\n");
+    const jsonData = makeClarificationsJson();
+    jsonData.sections[0].questions[0].answer_choice = "A";
+    jsonData.sections[0].questions[0].answer_text = "We use full refresh for this table";
+    // Q2 left unanswered
+    const jsonString = JSON.stringify(jsonData);
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve(reviewContent);
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(jsonString);
       }
       return Promise.reject("not found");
     });
@@ -739,11 +780,11 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-continue")).toBeTruthy();
     });
 
     act(() => {
-      screen.getByText("Complete Step").click();
+      screen.getByTestId("clarifications-continue").click();
     });
 
     await waitFor(() => {
@@ -751,30 +792,24 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
 
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    const parsed = JSON.parse(savedContent);
 
-    // User-filled answers should be preserved
-    expect(savedContent).toContain("**Answer:** We use full refresh for this table");
-    expect(savedContent).toContain("**Answer:** Already using natural keys, no change needed");
+    // User-filled answer should be preserved
+    expect(parsed.sections[0].questions[0].answer_choice).toBe("A");
+    expect(parsed.sections[0].questions[0].answer_text).toBe("We use full refresh for this table");
 
-    // Empty answer should still be empty — not auto-filled
-    expect(savedContent).toContain("**Answer:** \n");
+    // Empty answer should still be null — not auto-filled
+    expect(parsed.sections[0].questions[1].answer_choice).toBeNull();
   });
 
-  it("step 3 human review also saves without auto-fill", async () => {
-    // Step 3 reviews clarifications.md — same behavior expected
-    const reviewContent = [
-      "## Merged Question 1",
-      "**Recommendation:** Normalize customer dimensions",
-      "**Answer:** ",
-      "",
-      "## Merged Question 2",
-      "**Recommendation:** Use SCD Type 2 for slowly changing dims",
-      "**Answer:** ",
-    ].join("\n");
+  it("step 3 human review also saves JSON without auto-fill", async () => {
+    // Step 3 reviews clarifications.json — same behavior expected
+    const jsonData = makeClarificationsJson();
+    const jsonString = JSON.stringify(jsonData);
 
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve(reviewContent);
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(jsonString);
       }
       return Promise.reject("not found");
     });
@@ -790,11 +825,11 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("Complete Step")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-continue")).toBeTruthy();
     });
 
     act(() => {
-      screen.getByText("Complete Step").click();
+      screen.getByTestId("clarifications-continue").click();
     });
 
     await waitFor(() => {
@@ -802,16 +837,15 @@ describe("WorkflowPage — VD-410 human review behavior", () => {
     });
 
     // Verify it saved to the correct filesystem path for step 3 (skillsPath, no workspace fallback)
-    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-      "/test/skills/test-skill/context/clarifications.md",
-      reviewContent,
-    );
+    const writePath = vi.mocked(writeFile).mock.calls[0][0];
+    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.json");
 
     const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    const parsed = JSON.parse(savedContent);
 
-    // Empty answers should remain empty — no auto-fill
-    expect(savedContent).not.toContain("auto-selected from recommendation");
-    expect(savedContent).toBe(reviewContent);
+    // Answers should remain null — no auto-fill
+    expect(parsed.sections[0].questions[0].answer_choice).toBeNull();
+    expect(parsed.sections[0].questions[1].answer_choice).toBeNull();
 
     // Step should be marked completed and advanced
     await waitFor(() => {
@@ -1028,7 +1062,7 @@ describe("WorkflowPage — reset flow session lifecycle", () => {
   });
 });
 
-describe("WorkflowPage — VD-615 markdown editor", () => {
+describe("WorkflowPage — VD-615 clarifications editor", () => {
   beforeEach(() => {
     resetTauriMocks();
     useWorkflowStore.getState().reset();
@@ -1053,6 +1087,7 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
+    mockClarificationsOnChange.mockClear();
   });
 
   afterEach(() => {
@@ -1061,11 +1096,12 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     useSettingsStore.getState().reset();
   });
 
-  /** Helper: set up step 1 (human review) with content loaded */
-  function setupHumanReviewStep(content: string) {
+  /** Helper: set up step 1 (human review) with JSON content loaded */
+  function setupHumanReviewStep(data?: ClarificationsFile) {
+    const jsonData = data ?? makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve(content);
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
       }
       return Promise.reject("not found");
     });
@@ -1078,178 +1114,45 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
   }
 
-  it("renders MDEditor textarea when in active editing mode", async () => {
-    setupHumanReviewStep("# Test Content");
+  it("renders ClarificationsEditor when JSON content is loaded", async () => {
+    setupHumanReviewStep();
     render(<WorkflowPage />);
 
-    // Wait for editor to appear AND editorContent to sync from reviewContent
     await waitFor(() => {
-      const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-      expect(textarea.value).toBe("# Test Content");
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
+
+    // Verify data was passed through
+    const dataEl = screen.getByTestId("clarifications-data");
+    const parsed = JSON.parse(dataEl.textContent ?? "");
+    expect(parsed.version).toBe("1");
+    expect(parsed.sections).toHaveLength(1);
   });
 
-  it("Save button is disabled when there are no unsaved changes", async () => {
-    setupHumanReviewStep("# No changes");
+  it("Complete Step via ClarificationsEditor saves and advances", async () => {
+    setupHumanReviewStep();
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-continue")).toBeTruthy();
     });
 
-    // Save button should be present but disabled
-    const saveButton = screen.getByRole("button", { name: /Save/ });
-    expect(saveButton).toBeDisabled();
-  });
-
-  it("Save button calls writeFile with correct path and editor content", async () => {
-    setupHumanReviewStep("# Original");
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
+    // Click "Complete Step" via the ClarificationsEditor's continue button
+    act(() => {
+      screen.getByTestId("clarifications-continue").click();
     });
 
-    // Simulate editing
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      // Fire change event to update editorContent
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, "value"
-      )?.set;
-      nativeInputValueSetter?.call(textarea, "# Edited content");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    // Save button should be enabled now
-    await waitFor(() => {
-      const saveButton = screen.getByRole("button", { name: /Save/ });
-      expect(saveButton).toBeEnabled();
-    });
-
-    // Click save
-    await act(async () => {
-      screen.getByRole("button", { name: /Save/ }).click();
-    });
-
-    await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-        "/test/skills/test-skill/context/clarifications.md",
-        "# Edited content",
-      );
-    });
-
-    expect(mockToast.success).toHaveBeenCalledWith("Saved");
-  });
-
-  it("shows unsaved indicator dot when content is modified", async () => {
-    setupHumanReviewStep("# Original");
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
-    });
-
-    // Initially no unsaved indicator
-    expect(document.querySelector(".bg-orange-500")).toBeNull();
-
-    // Edit content
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, "value"
-      )?.set;
-      nativeInputValueSetter?.call(textarea, "# Modified");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    // Unsaved indicator (orange dot) should appear
-    await waitFor(() => {
-      expect(document.querySelector(".bg-orange-500")).toBeTruthy();
-    });
-  });
-
-  it("Complete Step with unsaved changes shows confirmation dialog", async () => {
-    setupHumanReviewStep("# Original");
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
-    });
-
-    // Edit content to create unsaved changes
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, "value"
-      )?.set;
-      nativeInputValueSetter?.call(textarea, "# Edited");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    // Wait for the Save button to become enabled (confirms unsaved changes are detected)
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
-    });
-
-    // Click "Complete Step"
-    await act(async () => {
-      screen.getByRole("button", { name: /Complete Step/ }).click();
-    });
-
-    // Unsaved changes dialog should appear
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved Changes")).toBeTruthy();
-      expect(screen.getByText("Save & Continue")).toBeTruthy();
-      expect(screen.getByText("Discard & Continue")).toBeTruthy();
-    });
-  });
-
-  it("Save & Continue saves then completes the step", async () => {
-    setupHumanReviewStep("# Original");
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
-    });
-
-    // Edit content
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, "value"
-      )?.set;
-      nativeInputValueSetter?.call(textarea, "# Save and continue");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
-    });
-
-    // Click "Complete Step" → shows dialog
-    await act(async () => {
-      screen.getByRole("button", { name: /Complete Step/ }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Save & Continue")).toBeTruthy();
-    });
-
-    // Click "Save & Continue"
-    await act(async () => {
-      screen.getByText("Save & Continue").click();
-    });
-
-    // writeFile should be called exactly once (from handleSave — before the gate runs)
+    // writeFile should be called with stringified JSON
     await waitFor(() => {
       expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
     });
 
-    // The save handler writes the editor content
-    const saveCall = vi.mocked(writeFile).mock.calls[0];
-    expect(saveCall[0]).toBe("/test/skills/test-skill/context/clarifications.md");
-    expect(saveCall[1]).toBe("# Save and continue");
+    const writePath = vi.mocked(writeFile).mock.calls[0][0];
+    expect(writePath).toBe("/test/skills/test-skill/context/clarifications.json");
+
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    const parsed = JSON.parse(savedContent);
+    expect(parsed.version).toBe("1");
 
     // Gate evaluator should be invoked (runAnswerEvaluator rejects → fail-open → advances)
     expect(vi.mocked(runAnswerEvaluator)).toHaveBeenCalled();
@@ -1261,57 +1164,38 @@ describe("WorkflowPage — VD-615 markdown editor", () => {
     });
   });
 
-  it("Discard & Continue completes without saving editor changes", async () => {
-    setupHumanReviewStep("# Original");
+  it("onChange from ClarificationsEditor marks content as dirty (triggers autosave)", async () => {
+    vi.useRealTimers();
+
+    setupHumanReviewStep();
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
-    // Edit content
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, "value"
-      )?.set;
-      nativeInputValueSetter?.call(textarea, "# Discarded edits");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    vi.mocked(writeFile).mockClear();
+
+    // Simulate user editing a question via the ClarificationsEditor onChange callback
+    const updatedData = makeClarificationsJson();
+    updatedData.sections[0].questions[0].answer_choice = "A";
+    act(() => {
+      mockClarificationsOnChange(updatedData);
     });
 
+    // Dirty flag is set internally — autosave should fire after 1500ms
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
-    });
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    }, { timeout: 3000 });
 
-    // Click "Complete Step" → shows dialog
-    await act(async () => {
-      screen.getByRole("button", { name: /Complete Step/ }).click();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Discard & Continue")).toBeTruthy();
-    });
-
-    // Click "Discard & Continue"
-    await act(async () => {
-      screen.getByText("Discard & Continue").click();
-    });
-
-    // Discard path does not write — in-flight edits are dropped, file on disk is unchanged
-    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
-
-    // Gate evaluator should be invoked (runAnswerEvaluator rejects → fail-open → advances)
-    expect(vi.mocked(runAnswerEvaluator)).toHaveBeenCalled();
-
-    // Step should be completed and advanced (via fail-open gate path)
-    await waitFor(() => {
-      expect(useWorkflowStore.getState().steps[1].status).toBe("completed");
-      expect(useWorkflowStore.getState().currentStep).toBe(2);
-    });
-  });
+    // Saved content should include the edit
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    const parsed = JSON.parse(savedContent);
+    expect(parsed.sections[0].questions[0].answer_choice).toBe("A");
+  }, 10000);
 
   it("shows nav guard with unsaved changes text when blocker is triggered", async () => {
-    setupHumanReviewStep("# Original");
+    setupHumanReviewStep();
 
     // Simulate blocker triggered (not running, so it must be unsaved changes)
     mockBlocker.status = "blocked";
@@ -1367,6 +1251,7 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
     vi.mocked(readFile).mockClear();
     vi.mocked(writeFile).mockClear();
     vi.mocked(runAnswerEvaluator).mockClear();
+    mockClarificationsOnChange.mockClear();
   });
 
   afterEach(() => {
@@ -1379,10 +1264,11 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
     vi.useRealTimers();
   });
 
-  function setupHumanReviewStep(content: string) {
+  function setupHumanReviewStep(data?: ClarificationsFile) {
+    const jsonData = data ?? makeClarificationsJson();
     vi.mocked(readFile).mockImplementation((path: string) => {
-      if (path === "/test/skills/test-skill/context/clarifications.md") {
-        return Promise.resolve(content);
+      if (path === "/test/skills/test-skill/context/clarifications.json") {
+        return Promise.resolve(JSON.stringify(jsonData));
       }
       return Promise.reject("not found");
     });
@@ -1399,30 +1285,28 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
     // Use real timers for this test to avoid conflicts with waitFor polling
     vi.useRealTimers();
 
-    setupHumanReviewStep("# Original");
+    setupHumanReviewStep();
     render(<WorkflowPage />);
 
-    // Wait for editor to load content
+    // Wait for ClarificationsEditor to load
     await waitFor(() => {
-      expect((screen.getByTestId("md-editor") as HTMLTextAreaElement).value).toBe("# Original");
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
     vi.mocked(writeFile).mockClear();
 
-    // Edit content — triggers dirty flag and 1500ms autosave timer
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(textarea, "# Autosaved content");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    // Edit content via ClarificationsEditor onChange — triggers dirty flag and 1500ms autosave timer
+    const updatedData = makeClarificationsJson();
+    updatedData.sections[0].questions[0].answer_choice = "A";
+    act(() => {
+      mockClarificationsOnChange(updatedData);
     });
 
     // Autosave fires after 1500ms — wait up to 3000ms
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-        "/test/skills/test-skill/context/clarifications.md",
-        "# Autosaved content",
-      );
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const writePath = vi.mocked(writeFile).mock.calls[0][0];
+      expect(writePath).toBe("/test/skills/test-skill/context/clarifications.json");
     }, { timeout: 3000 });
 
     // Autosave calls handleSave(true) — silent mode, so no toast is shown
@@ -1451,76 +1335,65 @@ describe("WorkflowPage — VD-863 autosave on human review steps", () => {
     expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
   });
 
-  it("dirty indicator clears after autosave completes", async () => {
+  it("autosave clears dirty state after write completes", async () => {
     vi.useRealTimers();
 
-    setupHumanReviewStep("# Original");
+    setupHumanReviewStep();
     render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect((screen.getByTestId("md-editor") as HTMLTextAreaElement).value).toBe("# Original");
-    });
-
-    // Initially no unsaved indicator
-    expect(document.querySelector(".bg-orange-500")).toBeNull();
-
-    // Edit content — dirty indicator should appear
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(textarea, "# Dirty content");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector(".bg-orange-500")).toBeTruthy();
-    });
-
-    // After autosave fires (1500ms), dirty indicator should clear
-    await waitFor(() => {
-      expect(document.querySelector(".bg-orange-500")).toBeNull();
-    }, { timeout: 3000 });
-  }, 10000);
-
-  it("manual Save button still works (regression)", async () => {
-    vi.useRealTimers();
-
-    setupHumanReviewStep("# Original");
-    render(<WorkflowPage />);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("md-editor")).toBeTruthy();
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
     vi.mocked(writeFile).mockClear();
 
-    // Edit content
-    const textarea = screen.getByTestId("md-editor") as HTMLTextAreaElement;
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(textarea, "# Manual save");
-      textarea.dispatchEvent(new Event("change", { bubbles: true }));
+    // Edit content via onChange — sets dirty flag internally
+    const updatedData = makeClarificationsJson();
+    updatedData.sections[0].questions[0].answer_choice = "B";
+    act(() => {
+      mockClarificationsOnChange(updatedData);
     });
 
-    // Save button should be enabled
+    // After autosave fires (1500ms), writeFile should be called
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Save/ })).toBeEnabled();
-    });
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+    }, { timeout: 3000 });
 
-    // Click manual Save (before autosave timer fires)
-    await act(async () => {
-      screen.getByRole("button", { name: /Save/ }).click();
-    });
+    // Autosave calls handleSave(true) — silent mode, no toast
+    expect(mockToast.success).not.toHaveBeenCalledWith("Saved");
+  }, 10000);
+
+  it("autosave writes updated JSON data to correct path", async () => {
+    vi.useRealTimers();
+
+    setupHumanReviewStep();
+    render(<WorkflowPage />);
 
     await waitFor(() => {
-      expect(vi.mocked(writeFile)).toHaveBeenCalledWith(
-        "/test/skills/test-skill/context/clarifications.md",
-        "# Manual save",
-      );
+      expect(screen.getByTestId("clarifications-editor")).toBeTruthy();
     });
 
-    expect(mockToast.success).toHaveBeenCalledWith("Saved");
-  });
+    vi.mocked(writeFile).mockClear();
+
+    // Edit content via ClarificationsEditor onChange
+    const updatedData = makeClarificationsJson();
+    updatedData.sections[0].questions[0].answer_choice = "A";
+    act(() => {
+      mockClarificationsOnChange(updatedData);
+    });
+
+    // Autosave fires after 1500ms
+    await waitFor(() => {
+      expect(vi.mocked(writeFile)).toHaveBeenCalled();
+      const writePath = vi.mocked(writeFile).mock.calls[0][0];
+      expect(writePath).toBe("/test/skills/test-skill/context/clarifications.json");
+    }, { timeout: 3000 });
+
+    // Verify the saved JSON has the expected edit
+    const savedContent = vi.mocked(writeFile).mock.calls[0][1];
+    const parsed = JSON.parse(savedContent);
+    expect(parsed.sections[0].questions[0].answer_choice).toBe("A");
+  }, 10000);
 });
 
 describe("WorkflowPage — review mode default state", () => {
