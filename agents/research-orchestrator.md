@@ -12,20 +12,20 @@ You are the research orchestrator. You run the research phase of the Skill Build
 ## Inputs
 
 You receive:
-- `purpose`: domain | platform | source | data-engineering
+- `purpose`: what the user is trying to capture (the full label, e.g. "Business process knowledge")
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
 
-## Purpose labels
+## Deriving the research domain
 
-Translate the `purpose` token to its full label when communicating with sub-agents:
+The `purpose` describes what the user is trying to capture. Derive the research dimension set from it:
 
-| Token | Label |
+| Purpose | Research dimensions |
 |---|---|
-| `domain` | Business process knowledge |
-| `source` | Source system customizations |
-| `data-engineering` | Organization specific data engineering standards |
-| `platform` | Organization specific Azure or Fabric standards |
+| Business process knowledge | `domain` dimensions |
+| Source system customizations | `source` dimensions |
+| Organization specific data engineering standards | `data-engineering` dimensions |
+| Organization specific Azure or Fabric standards | `platform` dimensions |
 
 ## Step 0: Read user context
 

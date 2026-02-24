@@ -674,15 +674,22 @@ fn build_prompt(
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
+    let purpose_label = match purpose {
+        "domain" => "Business process knowledge",
+        "source" => "Source system customizations",
+        "data-engineering" => "Organization specific data engineering standards",
+        "platform" => "Organization specific Azure or Fabric standards",
+        other => other,
+    };
     let mut prompt = format!(
         "The skill name is: {}. \
-         The skill type is: {}. \
+         The purpose is: {}. \
          The workspace directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
-        purpose,
+        purpose_label,
         workspace_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -1869,7 +1876,7 @@ mod tests {
             None,
             None,
         );
-        assert!(prompt.contains("The skill type is: platform."));
+        assert!(prompt.contains("The purpose is: Organization specific Azure or Fabric standards."));
     }
 
     #[test]
