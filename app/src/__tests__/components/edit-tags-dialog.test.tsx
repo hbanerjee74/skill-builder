@@ -117,7 +117,7 @@ describe("SkillDialog (edit mode)", () => {
     expect(screen.getByRole("button", { name: /Next/i })).toBeInTheDocument();
   });
 
-  it("has Back, Skip, and Save buttons on step 2", async () => {
+  it("has Back and Save buttons on step 2 (no Skip)", async () => {
     const user = userEvent.setup();
     render(
       <SkillDialog
@@ -131,9 +131,9 @@ describe("SkillDialog (edit mode)", () => {
     );
     await goToStep2(user);
     expect(screen.getByRole("button", { name: /Back/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Skip/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Save/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Next$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Skip/i })).not.toBeInTheDocument();
   });
 
   it("calls onOpenChange(false) when Cancel is clicked", async () => {
@@ -170,7 +170,7 @@ describe("SkillDialog (edit mode)", () => {
 
     // Step 1
     expect(screen.getByText("Step 1 of 2")).toBeInTheDocument();
-    expect(screen.getByLabelText("Skill Name")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Skill Name/)).toBeInTheDocument();
 
     // Go to step 2
     await user.click(screen.getByRole("button", { name: /Next/i }));
@@ -275,7 +275,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByLabelText("Skill Name")).toHaveValue("sales-pipeline");
+    expect(screen.getByLabelText(/^Skill Name/)).toHaveValue("sales-pipeline");
   });
 
   it("shows purpose dropdown on step 1", () => {
@@ -289,7 +289,7 @@ describe("SkillDialog (edit mode)", () => {
         tagSuggestions={[]}
       />
     );
-    expect(screen.getByLabelText("What are you trying to capture?")).toBeInTheDocument();
+    expect(screen.getByLabelText(/What are you trying to capture/)).toBeInTheDocument();
   });
 
   it("shows context questions field on step 1", () => {
@@ -443,7 +443,7 @@ describe("SkillDialog (edit mode)", () => {
         />
       );
 
-      const nameInput = screen.getByLabelText("Skill Name");
+      const nameInput = screen.getByLabelText(/^Skill Name/);
       await user.clear(nameInput);
       await user.type(nameInput, "revenue-tracker");
 
