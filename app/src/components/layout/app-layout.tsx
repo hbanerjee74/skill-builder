@@ -63,7 +63,8 @@ export function AppLayout() {
           .then((updates) => {
             if (updates.length > 0) {
               toast.info(
-                `Updates available for ${updates.length} skill${updates.length !== 1 ? "s" : ""}: ${updates.join(", ")} — open Marketplace to update`
+                `Updates available for ${updates.length} skill${updates.length !== 1 ? "s" : ""}: ${updates.join(", ")} — open Marketplace to update`,
+                { duration: Infinity }
               );
             }
           })
