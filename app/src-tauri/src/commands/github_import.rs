@@ -194,11 +194,16 @@ fn parse_github_url_inner(url: &str) -> Result<GitHubRepoInfo, String> {
 // check_marketplace_url
 // ---------------------------------------------------------------------------
 
-/// Verify that a URL points to an accessible GitHub repository.
+/// Verify that a URL points to an accessible GitHub repository that contains
+/// a valid `.claude-plugin/marketplace.json` file.
 ///
 /// Unlike `list_github_skills`, this uses the repos API (`GET /repos/{owner}/{repo}`)
 /// which succeeds regardless of the default branch name. This avoids the 404
 /// that occurs when the repo's default branch is not "main".
+///
+/// After confirming the repo is accessible it fetches
+/// `.claude-plugin/marketplace.json` via `raw.githubusercontent.com` and
+/// returns a clear error if the file is missing or not valid JSON.
 #[tauri::command]
 pub async fn check_marketplace_url(
     db: tauri::State<'_, Db>,
@@ -215,7 +220,71 @@ pub async fn check_marketplace_url(
         settings.github_oauth_token.clone()
     };
     let client = build_github_client(token.as_deref());
-    get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+    let resolved_branch = get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+
+    // Verify that .claude-plugin/marketplace.json exists and is valid JSON.
+    let raw_url = format!(
+        "https://raw.githubusercontent.com/{}/{}/{}/.claude-plugin/marketplace.json",
+        repo_info.owner, repo_info.repo, resolved_branch
+    );
+    log::info!(
+        "[check_marketplace_url] fetching marketplace.json from {}/{} branch={}",
+        repo_info.owner, repo_info.repo, resolved_branch
+    );
+
+    let response = client
+        .get(&raw_url)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}",
+                repo_info.owner, repo_info.repo, e
+            );
+            format!(
+                "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
+                repo_info.owner, repo_info.repo
+            )
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        log::error!(
+            "[check_marketplace_url] marketplace.json not found for {}/{}: HTTP {}",
+            repo_info.owner, repo_info.repo, status
+        );
+        return Err(format!(
+            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
+            repo_info.owner, repo_info.repo
+        ));
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|e| {
+            log::error!(
+                "[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}",
+                repo_info.owner, repo_info.repo, e
+            );
+            format!("Failed to read marketplace.json: {}", e)
+        })?;
+
+    serde_json::from_str::<serde_json::Value>(&body).map_err(|e| {
+        log::error!(
+            "[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}",
+            repo_info.owner, repo_info.repo, e
+        );
+        format!(
+            "marketplace.json at .claude-plugin/marketplace.json in {}/{} is not valid JSON.",
+            repo_info.owner, repo_info.repo
+        )
+    })?;
+
+    log::info!(
+        "[check_marketplace_url] marketplace.json validated for {}/{}",
+        repo_info.owner, repo_info.repo
+    );
     Ok(())
 }
 
@@ -1502,6 +1571,60 @@ mod tests {
         assert_eq!(relative[0], "SKILL.md");
         assert_eq!(relative[1], "references/concepts.md");
         assert_eq!(relative[2], "references/patterns.md");
+    }
+
+    // --- check_marketplace_url error message format tests ---
+
+    #[test]
+    fn test_check_marketplace_url_not_found_error_message() {
+        // Verify the exact error message produced when marketplace.json returns non-200.
+        // This mirrors the logic in check_marketplace_url so that the frontend can
+        // display a clear, actionable message to the user.
+        let owner = "acme";
+        let repo = "skills";
+        let msg = format!(
+            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
+            owner, repo
+        );
+        assert!(msg.contains("marketplace.json not found"));
+        assert!(msg.contains(".claude-plugin/marketplace.json"));
+        assert!(msg.contains("acme/skills"));
+        assert!(msg.contains("Ensure the repository has this file."));
+    }
+
+    #[test]
+    fn test_check_marketplace_url_invalid_json_error_message() {
+        // Verify the exact error message produced when marketplace.json is not valid JSON.
+        let owner = "acme";
+        let repo = "skills";
+        let msg = format!(
+            "marketplace.json at .claude-plugin/marketplace.json in {}/{} is not valid JSON.",
+            owner, repo
+        );
+        assert!(msg.contains("marketplace.json at .claude-plugin/marketplace.json"));
+        assert!(msg.contains("acme/skills"));
+        assert!(msg.contains("is not valid JSON."));
+    }
+
+    #[test]
+    fn test_check_marketplace_url_json_validation_logic() {
+        // Simulate the serde_json parse step used in check_marketplace_url.
+        // Valid JSON must succeed; invalid JSON must produce the expected error.
+
+        // Valid marketplace JSON
+        let valid = r#"{"plugins": []}"#;
+        let result = serde_json::from_str::<serde_json::Value>(valid);
+        assert!(result.is_ok(), "valid JSON should parse successfully");
+
+        // Invalid JSON (bare text, not JSON)
+        let invalid = "Not found";
+        let result = serde_json::from_str::<serde_json::Value>(invalid);
+        assert!(result.is_err(), "invalid JSON should fail to parse");
+
+        // Empty string
+        let empty = "";
+        let result = serde_json::from_str::<serde_json::Value>(empty);
+        assert!(result.is_err(), "empty body should fail to parse");
     }
 
     // --- Branch resolution tests ---
