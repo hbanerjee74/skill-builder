@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
 import { GhostTextarea } from "@/components/ghost-input"
+import { Textarea } from "@/components/ui/textarea"
 import { useSettingsStore } from "@/stores/settings-store"
 import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
@@ -168,13 +169,10 @@ export default function SkillDialog(props: SkillDialogProps) {
 
   // Ghost suggestion state
   const [descriptionSuggestion, setDescriptionSuggestion] = useState<string | null>(null)
-  const [contextQuestionsSuggestion, setContextQuestionsSuggestion] = useState<string | null>(null)
 
   // Version refs and debounce timers
   const group0VersionRef = useRef(0)
-  const contextQVersionRef = useRef(0)
   const group0DebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const contextQDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const suggestionCache = useRef<Map<string, FieldSuggestions>>(new Map())
 
   // Derived state
@@ -201,14 +199,11 @@ export default function SkillDialog(props: SkillDialogProps) {
     setUserInvocable(true)
     setDisableModelInvocation(false)
     setDescriptionSuggestion(null)
-    setContextQuestionsSuggestion(null)
     setError(null)
     setSubmitting(false)
     group0VersionRef.current++
-    contextQVersionRef.current++
     suggestionCache.current.clear()
     if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current)
-    if (contextQDebounceRef.current) clearTimeout(contextQDebounceRef.current)
   }, [])
 
   // Populate form in edit mode when dialog opens; reset on close for both modes
@@ -296,20 +291,6 @@ export default function SkillDialog(props: SkillDialogProps) {
     })
     return () => { if (group0DebounceRef.current) clearTimeout(group0DebounceRef.current) }
   }, [dialogOpen, isEdit, skillName, purpose, industry, functionRole, fetchGroup])
-
-  // Context questions: fetch when name + description + purpose are all set
-  useEffect(() => {
-    if (!dialogOpen || !skillName || !purpose || !description.trim()) { setContextQuestionsSuggestion(null); return }
-    const params = { name: skillName, purpose, description, industry, functionRole }
-    fetchGroup({
-      group: "context_questions", fields: ["context_questions"], params,
-      apiOpts: { industry, functionRole },
-      versionRef: contextQVersionRef, debounceRef: contextQDebounceRef,
-      debounceMs: 800,
-      onResult: (r) => setContextQuestionsSuggestion(r.context_questions || null),
-    })
-    return () => { if (contextQDebounceRef.current) clearTimeout(contextQDebounceRef.current) }
-  }, [dialogOpen, skillName, purpose, description, industry, functionRole, fetchGroup])
 
   // --- Submit ---
 
@@ -516,14 +497,13 @@ export default function SkillDialog(props: SkillDialogProps) {
                 </div>
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="context-questions">What Claude needs to know</Label>
-                  <GhostTextarea
+                  <Textarea
                     id="context-questions"
                     placeholder="What makes your setup unique? What does Claude usually miss?"
                     value={contextQuestions}
-                    onChange={setContextQuestions}
-                    suggestion={contextQuestionsSuggestion}
-                    onAccept={setContextQuestions}
+                    onChange={(e) => setContextQuestions(e.target.value)}
                     disabled={submitting || isLocked}
+                    className="min-h-[4.5rem] resize-none"
                   />
                   <p className="text-xs text-muted-foreground">
                     Optional hints to guide the research agents
