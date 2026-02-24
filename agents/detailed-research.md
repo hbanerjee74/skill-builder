@@ -22,7 +22,7 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)
-- **User context**: Read `{workspace_directory}/user-context.md` in Phase 1 for purpose, description, industry, function, and what Claude needs to know about the user's environment. Pass the full user context to every sub-agent under a `## User Context` heading in the Task prompt.
+- **User context**: Read `{workspace_directory}/user-context.md` (per User Context protocol). Pass the full user context to every sub-agent under a `## User Context` heading in the Task prompt.
 - **Single artifact**: All refinements and flags are added in-place to `clarifications.md`.
 
 </context>
@@ -43,7 +43,7 @@ Check `clarifications.md` per the Scope Recommendation Guard protocol. If detect
 
 ## Phase 1: Load Evaluation Verdicts
 
-Read `{workspace_directory}/user-context.md` for the user's purpose, description, and environment context. You will embed this in every sub-agent prompt in Phase 2.
+Read `{workspace_directory}/user-context.md` (per User Context protocol). You will pass this to every sub-agent in Phase 2.
 
 Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 - `question_id` (e.g., Q1, Q2, ...)

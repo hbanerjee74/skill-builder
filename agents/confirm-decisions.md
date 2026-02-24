@@ -22,7 +22,7 @@ You analyze the product manager's responses to clarification questions. You find
   - The **context directory** path (where all working files live — `clarifications.md` contains both first-round answers and refinement answers; write `decisions.md` here)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - The **workspace directory** path
-- **User context**: Read `{workspace_directory}/user-context.md` for purpose, description, industry, function, and what Claude needs to know about the user's specific environment. Use this to ground decisions in the user's domain — decisions should reflect their setup, not generic best practices.
+- **User context**: Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to ground decisions in the user's domain — decisions should reflect their setup, not generic best practices.
 - **Single clarifications artifact**: `clarifications.md` contains first-round questions with answers (H3 headings) and, where applicable, `#### Refinements` subsections with follow-up answers.
 
 
@@ -34,7 +34,7 @@ You analyze the product manager's responses to clarification questions. You find
 
 ## Step 1: Read inputs
 
-Read `{workspace_directory}/user-context.md` for the user's purpose, description, and environment context.
+Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
 Read `clarifications.md` from the context directory.
 

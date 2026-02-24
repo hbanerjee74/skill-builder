@@ -25,7 +25,7 @@ The coordinator provides:
 - The **skill output directory** path (containing `SKILL.md` and reference files)
 - The **workspace directory** path
 
-Read `{workspace_directory}/user-context.md` for purpose, description, industry, function, and what Claude needs to know about the user's specific environment. Use this to validate the skill against the user's actual needs.
+Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to validate the skill against the user's actual needs.
 
 ## Scope Recommendation Guard
 

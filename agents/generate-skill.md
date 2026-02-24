@@ -27,7 +27,7 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
   - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **workspace directory** path (contains `user-context.md`)
-- Read `{workspace_directory}/user-context.md` for purpose, description, industry, function, and what Claude needs to know. Use this to tailor the skill's tone, examples, and focus areas.
+- Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to tailor the skill's tone, examples, and focus areas.
 - Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
 - The purpose determines which SKILL.md architecture to use (see Type-Specific Structure below)
 
