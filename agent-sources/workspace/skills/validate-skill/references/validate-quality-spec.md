@@ -19,8 +19,8 @@ Map every decision and answered clarification to a specific file and section. Re
 Check SKILL.md against the Skill Best Practices, Content Principles, and anti-patterns provided in the agent instructions. Flag orphaned or unnecessary files.
 
 Verify SKILL.md uses the correct architectural pattern for the purpose:
-- **Source/Domain** → interview-architecture (parallel sections, guided prompts, no dependency map)
-- **Platform/Data Engineering** → decision-architecture (dependency map present, content tiers used, pre-filled assertions within annotation budget)
+- **Source/Domain** → knowledge-capture (parallel sections, guided prompts, no dependency map)
+- **Platform/Data Engineering** → standards (dependency map present, content tiers used, pre-filled assertions within annotation budget)
 
 Report architectural pattern as CORRECT or MISMATCH with details.
 
@@ -32,7 +32,7 @@ Report architectural pattern as CORRECT or MISMATCH with details.
 
 3. **Redundant discovery**: Check that SKILL.md does NOT contain a "When to Use This Skill" section or equivalent ("When to use", "Use cases", "Trigger conditions" as a top-level heading). Trigger conditions must live in the description frontmatter only. Flag as REDUNDANT.
 
-4. **Evaluations**: Check that `references/evaluations.md` exists. If missing, flag as MISSING. If present, verify at least 3 scenarios each with a prompt, expected behavior, and pass criteria. Flag incomplete scenarios as INCOMPLETE.
+4. **Evaluations**: Check that `{context_dir}/evaluations.md` exists. If missing, flag as MISSING. If present, verify at least 3 scenarios each with a prompt, expected behavior, and pass criteria. Flag incomplete scenarios as INCOMPLETE.
 
 5. **Getting Started**: For Platform and Data Engineering skills, verify a "Getting Started" section exists in SKILL.md. If missing, flag as MISSING. For Source and Domain skills, verify NO Getting Started section exists. Flag its presence as INCORRECT.
 

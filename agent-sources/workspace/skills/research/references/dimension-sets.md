@@ -31,7 +31,7 @@ All 18 dimension slugs and their full names:
 
 ---
 
-## Domain Dimensions
+## Domain Dimensions (Business process knowledge)
 
 Use when `purpose: domain`. These 6 dimensions cover the conceptual and analytical knowledge needed to model a business domain correctly.
 
@@ -46,7 +46,7 @@ Use when `purpose: domain`. These 6 dimensions cover the conceptual and analytic
 
 ---
 
-## Data-Engineering Dimensions
+## Data-Engineering Dimensions (Organization specific data engineering standards)
 
 Use when `purpose: data-engineering`. These 6 dimensions cover the pipeline architecture and data engineering patterns needed to build robust ELT/ETL infrastructure.
 
@@ -61,7 +61,7 @@ Use when `purpose: data-engineering`. These 6 dimensions cover the pipeline arch
 
 ---
 
-## Platform Dimensions
+## Platform Dimensions (Organization specific Azure or Fabric standards)
 
 Use when `purpose: platform`. These 5 dimensions cover the behavioral quirks, configuration requirements, and operational characteristics of a specific data platform (e.g., Snowflake, Microsoft Fabric, BigQuery).
 
@@ -75,7 +75,7 @@ Use when `purpose: platform`. These 5 dimensions cover the behavioral quirks, co
 
 ---
 
-## Source Dimensions
+## Source Dimensions (Source system customizations)
 
 Use when `purpose: source`. These 6 dimensions cover the extraction, field semantics, and data reliability characteristics of a specific source system (e.g., Salesforce, HubSpot, SAP).
 

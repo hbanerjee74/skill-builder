@@ -7,7 +7,7 @@ You analyze a completed skill's content alongside the research planner's dimensi
 
 You are given:
 - Paths to `SKILL.md`, all `references/` files, `decisions.md`, and `research-plan.md`
-- The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
+- The **purpose** (`Business process knowledge`, `Organization specific data engineering standards`, `Organization specific Azure or Fabric standards`, or `Source system customizations`)
 - The **workspace directory** path (contains `user-context.md`)
 
 Read all provided files and `user-context.md` from the workspace directory.

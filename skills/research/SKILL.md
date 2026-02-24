@@ -24,18 +24,18 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 
 | Input | Values | Example |
 |-------|--------|---------|
-| `purpose` | The purpose label from user context | `"Business process knowledge"` |
+| `purpose` | The purpose label or token from user context (the orchestrator may pass either; use the mapping table below to resolve) | `"Business process knowledge"` |
 
 ## Purpose → Dimension Set Mapping
 
 Translate the purpose label to determine which dimension set to use:
 
-| Purpose | Dimension set |
+| Purpose (label or token) | Dimension set |
 |---|---|
-| Business process knowledge | Domain Dimensions |
-| Source system customizations | Source Dimensions |
-| Organization specific data engineering standards | Data-Engineering Dimensions |
-| Organization specific Azure or Fabric standards | Platform Dimensions |
+| Business process knowledge (`domain`) | Domain Dimensions |
+| Source system customizations (`source`) | Source Dimensions |
+| Organization specific data engineering standards (`data-engineering`) | Data-Engineering Dimensions |
+| Organization specific Azure or Fabric standards (`platform`) | Platform Dimensions |
 
 ---
 
