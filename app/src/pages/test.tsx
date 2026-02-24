@@ -252,10 +252,10 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-        <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        <Badge className={cn("text-[10px] px-1.5 py-0", badgeClass)}>
+        <Badge className={cn("text-xs px-1.5 py-0", badgeClass)}>
           {badgeText}
         </Badge>
       </div>
@@ -798,7 +798,6 @@ export default function TestPage() {
 
   const { lines: evalLines, recommendations: evalRecommendations } = parseEvalOutput(state.evalText);
 
-  const needsRefinement = state.phase === "done" && (evalRecommendations.length > 0 || evalLines.some((l) => l.direction === "down"));
 
   const handleRefine = useCallback(() => {
     if (!state.selectedSkill) return;
@@ -840,10 +839,16 @@ export default function TestPage() {
             onSelect={handleSelectSkill}
           />
         </div>
-        {scopeBlocked && (
+        {scopeBlocked && state.selectedSkill && (
           <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
             <AlertTriangle className="size-4 shrink-0" />
-            Scope recommendation active — the skill scope is too broad. Testing is blocked until the scope is resolved.
+            <span>Scope recommendation active — the skill scope is too broad.</span>
+            <button
+              className="ml-auto shrink-0 underline underline-offset-2"
+              onClick={() => navigate({ to: "/skill/$skillName", params: { skillName: state.selectedSkill!.name } })}
+            >
+              Go to Workflow →
+            </button>
           </div>
         )}
         <div className="flex gap-2">
@@ -940,7 +945,7 @@ export default function TestPage() {
         {/* Evaluator panel (bottom zone) */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
-            <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Evaluator
             </span>
           </div>
@@ -974,10 +979,10 @@ export default function TestPage() {
                 {evalRecommendations && (
                   <div className="rounded-md border border-[var(--color-pacific)]/20 bg-[var(--color-pacific)]/5 p-3">
                     <div className="mb-2 flex items-center justify-between">
-                      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--color-pacific)]">
                         Recommendations
                       </p>
-                      {needsRefinement && (
+                      {state.phase === "done" && state.selectedSkill && (
                         <Button size="sm" variant="outline" className="h-6 text-xs" onClick={handleRefine}>
                           Refine skill
                         </Button>
@@ -988,6 +993,11 @@ export default function TestPage() {
                     </pre>
                   </div>
                 )}
+              </div>
+            ) : state.phase === "idle" && !state.selectedSkill ? (
+              <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
+                <p className="text-sm font-medium text-muted-foreground">Test your skill</p>
+                <p className="text-xs text-muted-foreground/60">Select a skill and describe a task to see how it performs with and without the skill loaded.</p>
               </div>
             ) : (
               <p className="text-xs text-muted-foreground/40 italic">
@@ -1024,32 +1034,32 @@ export default function TestPage() {
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
           <div className={cn("size-[5px] rounded-full", dotClass)} />
-          <span className="text-[10.5px] text-muted-foreground/60">
+          <span className="text-xs text-muted-foreground/60">
             {statusLabel}
           </span>
         </div>
         {state.selectedSkill && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               {state.selectedSkill.name}
             </span>
           </>
         )}
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-[10.5px] text-muted-foreground/60">plan mode</span>
+        <span className="text-xs text-muted-foreground/60">plan mode</span>
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-[10.5px] text-muted-foreground/60">{modelLabel}</span>
+        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>
-            <span className="text-[10.5px] text-muted-foreground/60">
+            <span className="text-xs text-muted-foreground/60">
               {elapsedStr}
             </span>
           </>
         )}
         <div className="flex-1" />
-        <span className="text-[10.5px] text-muted-foreground/20">
+        <span className="text-xs text-muted-foreground/20">
           no context &middot; fresh run
         </span>
       </div>
