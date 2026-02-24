@@ -1,22 +1,22 @@
 {
-  "verdict": "mixed",
-  "answered_count": 4,
-  "empty_count": 6,
-  "vague_count": 2,
+  "verdict": "sufficient",
+  "answered_count": 12,
+  "empty_count": 0,
+  "vague_count": 0,
   "total_count": 12,
-  "reasoning": "4 of 12 questions have detailed answers (1 needs refinement); 6 are blank and 2 are vague.",
+  "reasoning": "All 9 questions and 3 refinements have clear, substantive answers.",
   "per_question": [
-    { "question_id": "Q1", "verdict": "needs_refinement" },
+    { "question_id": "Q1", "verdict": "clear" },
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "clear" },
     { "question_id": "Q4", "verdict": "clear" },
-    { "question_id": "Q5", "verdict": "vague" },
-    { "question_id": "Q6", "verdict": "vague" },
-    { "question_id": "Q7", "verdict": "not_answered" },
-    { "question_id": "Q8", "verdict": "not_answered" },
-    { "question_id": "Q9", "verdict": "not_answered" },
-    { "question_id": "R1.1", "verdict": "not_answered" },
-    { "question_id": "R2.1", "verdict": "not_answered" },
-    { "question_id": "R5.1", "verdict": "not_answered" }
+    { "question_id": "Q5", "verdict": "clear" },
+    { "question_id": "Q6", "verdict": "clear" },
+    { "question_id": "Q7", "verdict": "clear" },
+    { "question_id": "Q8", "verdict": "clear" },
+    { "question_id": "Q9", "verdict": "clear" },
+    { "question_id": "R1.1", "verdict": "clear" },
+    { "question_id": "R2.1", "verdict": "clear" },
+    { "question_id": "R5.1", "verdict": "clear" }
   ]
 }
