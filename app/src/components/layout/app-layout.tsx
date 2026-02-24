@@ -33,7 +33,10 @@ export function AppLayout() {
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
+    let cancelled = false;
+
     getSettings().then((s) => {
+      if (cancelled) return;
       setSettings({
         anthropicApiKey: s.anthropic_api_key,
         workspacePath: s.workspace_path,
@@ -52,7 +55,7 @@ export function AppLayout() {
       // Fetch available models in the background — no need to await
       if (s.anthropic_api_key) {
         invoke<ModelInfo[]>("list_models", { apiKey: s.anthropic_api_key })
-          .then((models) => setSettings({ availableModels: models }))
+          .then((models) => { if (!cancelled) setSettings({ availableModels: models }); })
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }
       // Check for marketplace updates in the background
@@ -62,6 +65,7 @@ export function AppLayout() {
             const { library, workspace } = await checkMarketplaceUpdates(
               info.owner, info.repo, info.branch, info.subpath ?? undefined
             );
+            if (cancelled) return;
 
             if (s.auto_update) {
               // Auto-update: import all non-customized skills silently
@@ -75,6 +79,7 @@ export function AppLayout() {
                   return customized ? null : skill;
                 })).then((r) => r.filter((s): s is NonNullable<typeof s> => s !== null)),
               ]);
+              if (cancelled) return;
 
               await Promise.all([
                 libFiltered.length > 0
@@ -91,6 +96,7 @@ export function AppLayout() {
                     )
                   : Promise.resolve(),
               ]);
+              if (cancelled) return;
 
               const total = libFiltered.length + wsFiltered.length;
               if (total > 0) {
@@ -139,11 +145,13 @@ export function AppLayout() {
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
-      setSettingsLoaded(true);
+      if (!cancelled) setSettingsLoaded(true);
     });
 
     // Load GitHub auth state
     useAuthStore.getState().loadUser();
+
+    return () => { cancelled = true; };
   }, [setSettings]);
 
   // Run reconciliation after settings are loaded
