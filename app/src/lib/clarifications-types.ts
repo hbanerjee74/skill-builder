@@ -68,8 +68,7 @@ export function getSectionCounts(section: Section) {
 
   function countQuestion(q: Question) {
     total++;
-    const isAnswered = q.answer_choice !== null || (q.answer_text !== null && q.answer_text.trim() !== "");
-    if (isAnswered) answered++;
+    if (isQuestionAnswered(q)) answered++;
     else if (q.must_answer) mustUnanswered++;
     for (const r of q.refinements) countQuestion(r);
   }

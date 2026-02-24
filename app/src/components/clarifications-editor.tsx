@@ -14,6 +14,26 @@ import {
   isQuestionAnswered,
 } from "@/lib/clarifications-types";
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Build an updater that sets answer_text and answer_choice for a question. */
+function makeAnswerUpdater(text: string): (q: Question) => Question {
+  return (q) => ({
+    ...q,
+    answer_text: text,
+    answer_choice: text.trim() !== "" ? (q.answer_choice ?? "custom") : null,
+  });
+}
+
+/** Resolve which icon to use for a note based on its type. */
+function resolveNoteIcon(type: Note["type"]): typeof AlertTriangle {
+  switch (type) {
+    case "blocked": return AlertTriangle;
+    case "deferred": return Clock;
+    default: return Info;
+  }
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface ClarificationsEditorProps {
@@ -414,12 +434,7 @@ function QuestionCard({
             value={question.answer_text ?? ""}
             onChange={(text) => {
               if (readOnly) return;
-              updateQuestion(question.id, (q) => ({
-                ...q,
-                answer_text: text,
-                // If typing freely, mark as custom unless it matches a choice
-                answer_choice: text.trim() !== "" ? (q.answer_choice ?? "custom") : null,
-              }));
+              updateQuestion(question.id, makeAnswerUpdater(text));
             }}
             readOnly={readOnly}
           />
@@ -634,11 +649,7 @@ function RefinementItem({
         value={refinement.answer_text ?? ""}
         onChange={(text) => {
           if (readOnly) return;
-          updateQuestion(refinement.id, (q) => ({
-            ...q,
-            answer_text: text,
-            answer_choice: text.trim() !== "" ? (q.answer_choice ?? "custom") : null,
-          }));
+          updateQuestion(refinement.id, makeAnswerUpdater(text));
         }}
         readOnly={readOnly}
         compact
@@ -673,9 +684,8 @@ function NotesBlock({ notes }: { notes: Note[] }) {
 
 function NoteCard({ note }: { note: Note }) {
   const isBlocked = note.type === "blocked";
-  const isDeferred = note.type === "deferred";
 
-  const Icon = isBlocked ? AlertTriangle : isDeferred ? Clock : Info;
+  const Icon = resolveNoteIcon(note.type);
 
   return (
     <div
