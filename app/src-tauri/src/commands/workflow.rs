@@ -1451,25 +1451,15 @@ pub async fn run_answer_evaluator(
         .join("context");
     let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
 
-    // Use the same standard context pattern as build_prompt — send workspace and
-    // context directories, let the agent handle file routing.
-    let mut prompt = format!(
+    // Point agent at workspace and context dirs; user-context.md is already written.
+    let prompt = format!(
         "The workspace directory is: {workspace}. \
          The context directory is: {context}. \
-         All directories already exist — do not create any directories.",
+         All directories already exist — do not create any directories. \
+         Read {workspace}/user-context.md for purpose, description, and all user context. Use it to evaluate answers in the user's specific domain.",
         workspace = workspace_dir.display(),
         context = context_dir.display(),
     );
-
-    if let Some(ctx) = format_user_context(
-        industry.as_deref(),
-        function_role.as_deref(),
-        intake_json.as_deref(),
-        None, None, None, None, None, None, None,
-    ) {
-        prompt.push_str("\n\n");
-        prompt.push_str(&ctx);
-    }
 
     log::debug!("run_answer_evaluator: prompt={}", prompt);
     log::info!("run_answer_evaluator: skill={} model={}", skill_name, preferred_model);
