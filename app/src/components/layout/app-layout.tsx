@@ -98,13 +98,18 @@ export function AppLayout() {
               ]);
               if (cancelled) return;
 
-              const allNames = [
-                ...libFiltered.map((s) => s.name),
-                ...wsFiltered.map((s) => s.name),
-              ];
-              if (allNames.length > 0) {
+              const total = libFiltered.length + wsFiltered.length;
+              if (total > 0) {
                 toast.success(
-                  `Auto-updated ${allNames.length} skill${allNames.length !== 1 ? "s" : ""}: ${allNames.join(", ")}`,
+                  <div className="space-y-1">
+                    <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
+                    {libFiltered.length > 0 && (
+                      <p>• Skills Library: {libFiltered.map((s) => s.name).join(", ")}</p>
+                    )}
+                    {wsFiltered.length > 0 && (
+                      <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
+                    )}
+                  </div>,
                   { duration: Infinity }
                 );
               }
