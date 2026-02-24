@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { invoke } from "@tauri-apps/api/core"
 import { toast } from "sonner"
-import { Plus, Loader2, ChevronLeft, ChevronRight, Lock, Info } from "lucide-react"
+import { Plus, Loader2, ChevronLeft, ChevronRight, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Switch } from "@/components/ui/switch"
 import TagInput from "@/components/tag-input"
 import { GhostTextarea } from "@/components/ghost-input"
@@ -24,7 +25,7 @@ import { useWorkflowStore } from "@/stores/workflow-store"
 import { renameSkill, updateSkillMetadata, generateSuggestions, type FieldSuggestions } from "@/lib/tauri"
 import { isValidKebab, toKebabChars, buildIntakeJson } from "@/lib/utils"
 import type { SkillSummary } from "@/lib/types"
-import { PURPOSES, PURPOSE_LABELS } from "@/lib/types"
+import { PURPOSES, PURPOSE_LABELS, PURPOSE_SHORT_LABELS } from "@/lib/types"
 
 // --- Built skill detection ---
 
@@ -422,7 +423,19 @@ export default function SkillDialog(props: SkillDialogProps) {
             {step === 1 && (
               <>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="skill-name">Skill Name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="skill-name">
+                    Skill Name <span className="text-destructive">*</span>
+                    {isBuilt && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>Locked — skill has been built</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </Label>
                   <Input
                     id="skill-name"
                     placeholder={isEdit ? "kebab-case-name" : "e.g., sales-pipeline"}
@@ -471,7 +484,19 @@ export default function SkillDialog(props: SkillDialogProps) {
                   </p>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="purpose-select">What are you trying to capture? <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="purpose-select">
+                    What are you trying to capture? <span className="text-destructive">*</span>
+                    {(isBuilt || isImported) && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>Locked — skill has been built</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </Label>
                   <select
                     id="purpose-select"
                     value={purpose}
@@ -481,12 +506,24 @@ export default function SkillDialog(props: SkillDialogProps) {
                   >
                     <option value="" disabled>Select a purpose...</option>
                     {PURPOSES.map((p) => (
-                      <option key={p} value={p}>{PURPOSE_LABELS[p]}</option>
+                      <option key={p} value={p} title={PURPOSE_LABELS[p]}>{PURPOSE_SHORT_LABELS[p]}</option>
                     ))}
                   </select>
                 </div>
                 <div className="flex flex-col gap-2">
-                  <Label htmlFor="tags">Tags</Label>
+                  <Label htmlFor="tags">
+                    Tags
+                    {isBuilt && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Lock className="ml-1 inline size-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>Locked — skill has been built</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </Label>
                   <TagInput
                     tags={tags}
                     onChange={setTags}
@@ -509,16 +546,6 @@ export default function SkillDialog(props: SkillDialogProps) {
                     Optional hints to guide the research agents
                   </p>
                 </div>
-
-                {/* Locked fields hint for built skills */}
-                {isBuilt && (
-                  <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
-                    <Info className="mt-0.5 size-4 shrink-0" />
-                    <span>
-                      To change name or purpose, export and reimport as a new skill.
-                    </span>
-                  </div>
-                )}
 
                 {/* Skills output location (create mode only) */}
                 {!isEdit && skillsPath && skillName && (
