@@ -106,7 +106,15 @@ Follow the format example below. Return ONLY a JSON array of refinement objects 
 2. For each question with refinements from sub-agents: parse the sub-agent's JSON array and merge each refinement object into the parent question's `refinements[]` array.
 3. Deduplicate overlapping refinements across sub-agents (match by `parent_question_id` and similar `title`/`text`).
 4. Update `metadata.refinement_count` to reflect the total number of refinement objects inserted across all questions.
-5. Write the updated JSON back to `clarifications.json` in a single Write call.
+5. Write the updated JSON back to `clarifications.json` in a single Write call. **Do not echo or repeat the file contents in your response.**
+
+## Phase 4: Return
+
+Return **one sentence only** — do not include file contents, JSON, or any other output:
+
+```
+Detailed research complete: {refinement_count} refinements added across {section_count} sections.
+```
 
 ## Error Handling
 

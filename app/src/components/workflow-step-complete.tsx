@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
+import { ClarificationsEditor } from "@/components/clarifications-editor";
+import type { ClarificationsFile } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 
 interface WorkflowStepCompleteProps {
@@ -223,13 +225,7 @@ export function WorkflowStepComplete({
                       </p>
                     )}
                     {!notFound && content && (
-                      <div className="rounded-md border">
-                        <div className="markdown-body compact max-w-none p-4">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                            {content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
+                      <FileContentRenderer file={file} content={content} />
                     )}
                   </div>
                 );
@@ -294,6 +290,37 @@ export function WorkflowStepComplete({
         onClose={onClose}
         onNextStep={onNextStep}
       />
+    </div>
+  );
+}
+
+// ─── File Content Renderer ────────────────────────────────────────────────────
+
+function FileContentRenderer({ file, content }: { file: string; content: string }) {
+  // Detect clarifications.json — render with the structured editor in read-only mode
+  if (file.endsWith("clarifications.json")) {
+    try {
+      const data = JSON.parse(content) as ClarificationsFile;
+      if (data.version && data.sections) {
+        return (
+          <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
+            <ClarificationsEditor data={data} onChange={() => {}} readOnly />
+          </div>
+        );
+      }
+    } catch {
+      // Fall through to markdown renderer if JSON parse fails
+    }
+  }
+
+  // Default: render as markdown
+  return (
+    <div className="rounded-md border">
+      <div className="markdown-body compact max-w-none p-4">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }

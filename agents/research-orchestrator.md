@@ -46,7 +46,7 @@ Capture the full tool result as `research_output`.
 {complete clarifications.json content — valid JSON}
 ```
 
-**Write these two files. No other output.**
+**Your only actions are two Write calls. Do not echo or repeat the file contents in your response.**
 
 1. Extract between `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===` → `{context_dir}/research-plan.md`
 2. Extract after `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.json`
@@ -64,6 +64,8 @@ Suggested action: {narrow the domain, choose a different skill type, or split in
 ```
 
 ## Step 4: Return
+
+Return **one sentence only** — do not include file contents, JSON, or any other output:
 
 ```
 Research complete: {n} dimensions selected, {question_count} clarification questions written.
