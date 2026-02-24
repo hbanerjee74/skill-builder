@@ -67,7 +67,15 @@ export default function SettingsPage() {
   const [autoUpdate, setAutoUpdate] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const availableModels = useSettingsStore((s) => s.availableModels)
+  const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, logout } = useAuthStore()
+
+  // Auto-navigate to the skills section when a pending upgrade targets settings-skills
+  useEffect(() => {
+    if (pendingUpgrade?.mode === "settings-skills") {
+      setActiveSection("skills")
+    }
+  }, [pendingUpgrade])
   const { theme, setTheme } = useTheme()
 
   useEffect(() => {
