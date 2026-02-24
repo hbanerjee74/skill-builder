@@ -99,9 +99,9 @@ export default function ImportedSkillCard({
           />
         </div>
         <div className="flex items-center gap-1.5">
-          {skill.domain && (
+          {skill.description && (
             <Badge variant="outline" className="w-fit text-xs">
-              {skill.domain}
+              {skill.description}
             </Badge>
           )}
           {skill.is_bundled && (

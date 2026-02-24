@@ -222,10 +222,9 @@ describe("WorkflowPage — agent completion lifecycle", () => {
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
         skill_name: "test-skill",
-        domain: "test domain",
         current_step: 1,
         status: "pending",
-        skill_type: "domain",
+        purpose: "domain",
         created_at: "",
         updated_at: "",
       },
@@ -1574,10 +1573,9 @@ describe("WorkflowPage — review mode default state", () => {
     vi.mocked(getWorkflowState).mockResolvedValueOnce({
       run: {
         skill_name: "test-skill",
-        domain: "test domain",
         current_step: 0,
         status: "pending",
-        skill_type: "domain",
+        purpose: "domain",
         created_at: "2026-01-01T00:00:00Z",
         updated_at: "2026-01-01T00:00:00Z",
       },

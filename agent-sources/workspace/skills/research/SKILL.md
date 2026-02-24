@@ -24,7 +24,18 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 
 | Input | Values | Example |
 |-------|--------|---------|
-| `purpose` | `domain` \| `platform` \| `source` \| `data-engineering` | `domain` |
+| `purpose` | The purpose label from user context | `"Business process knowledge"` |
+
+## Purpose → Dimension Set Mapping
+
+Translate the purpose label to determine which dimension set to use:
+
+| Purpose | Dimension set |
+|---|---|
+| Business process knowledge | Domain Dimensions |
+| Source system customizations | Source Dimensions |
+| Organization specific data engineering standards | Data-Engineering Dimensions |
+| Organization specific Azure or Fabric standards | Platform Dimensions |
 
 ---
 
@@ -32,7 +43,7 @@ This is a **pure computation unit** — it takes inputs, returns inline text, an
 
 Read `references/dimension-sets.md`.
 
-Based on `purpose`, identify the 5–6 candidate dimensions for this purpose. The file contains four named sections (Domain Dimensions, Data-Engineering Dimensions, Platform Dimensions, Source Dimensions) each with a table of slugs and dimension names.
+Using the mapping table above, identify the dimension set section for the given purpose. Each section contains a table of slugs and dimension names (5–6 candidate dimensions).
 
 Note the dimension slugs — you will use them in Step 3 to locate dimension spec files at `references/dimensions/{slug}.md`.
 

@@ -236,7 +236,7 @@ describe("Canonical format: research-plan.md structure", () => {
     const content = readFile(researchPlan);
 
     it("has frontmatter with skill_type", () => {
-      expect(content).toMatch(/^---\n[\s\S]*?skill_type:/m);
+      expect(content).toMatch(/^---\n[\s\S]*?purpose:/m);
     });
 
     it("has frontmatter with domain", () => {
