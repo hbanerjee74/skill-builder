@@ -140,6 +140,7 @@ describe("GitHubImportDialog", () => {
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
         list_workspace_skills: [],
+        list_skills: [],
       });
     });
 
@@ -202,6 +203,7 @@ describe("GitHubImportDialog", () => {
         list_github_skills: mixed,
         get_dashboard_skill_names: [],
         list_workspace_skills: [],
+        list_skills: [],
       });
 
       // typeFilter only applies in skill-library mode
@@ -279,6 +281,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
       });
     });
 
@@ -321,6 +324,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -350,6 +354,7 @@ describe("GitHubImportDialog", () => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
         if (cmd === "get_dashboard_skill_names") return Promise.resolve([]);
+        if (cmd === "list_skills") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library") {
           return new Promise((res) => { resolveImport = res; });
         }
@@ -382,6 +387,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -409,6 +415,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: false, error: "already exists" }],
       });
 
@@ -437,6 +444,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 
@@ -585,6 +593,7 @@ describe("GitHubImportDialog", () => {
         if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
         if (cmd === "list_github_skills") return Promise.resolve(sampleSkills);
         if (cmd === "get_dashboard_skill_names") return Promise.resolve([]);
+        if (cmd === "list_skills") return Promise.resolve([]);
         if (cmd === "import_marketplace_to_library")
           return Promise.reject(new Error("Import failed: server error"));
         return Promise.reject(new Error(`Unmocked command: ${cmd}`));
@@ -800,6 +809,42 @@ describe("GitHubImportDialog", () => {
       const upToDateBadges = screen.getAllByText("Up to date");
       expect(upToDateBadges).toHaveLength(2);
     });
+
+    it("shows correct upgrade state when workspacePath is empty (race condition fix)", async () => {
+      // Regression: when dialog opens before settings have loaded, workspacePath="" which was
+      // previously treated as falsy, skipping listSkills entirely and leaving installedSummary
+      // undefined for all skills (causing all installed skills to show "Update available").
+      // The fix: always call listSkills since the Rust backend ignores the path anyway.
+      const marketplaceSkills = [
+        makeLibrarySkill("skill-a", "1.0.0"),
+        makeLibrarySkill("dbt-fabric", "1.1.0"),
+      ];
+      const installedSummaries = [
+        { name: "skill-a", version: "1.0.0" },
+        { name: "dbt-fabric", version: "1.0.0" },
+      ];
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "parse_github_url") return Promise.resolve(DEFAULT_REPO_INFO);
+        if (cmd === "list_github_skills") return Promise.resolve(marketplaceSkills);
+        if (cmd === "get_dashboard_skill_names") return Promise.resolve(["skill-a", "dbt-fabric"]);
+        if (cmd === "list_skills") return Promise.resolve(installedSummaries);
+        return Promise.resolve(undefined);
+      });
+
+      // Render with empty workspacePath — simulates dialog opening before settings async load
+      renderDialog({ mode: "skill-library", workspacePath: "" });
+
+      await waitFor(() => {
+        expect(screen.getByText("skill-a")).toBeInTheDocument();
+      });
+
+      // skill-a at same version → "Up to date"
+      expect(screen.getByText("Up to date")).toBeInTheDocument();
+      // dbt-fabric with newer marketplace version → "Update available"
+      expect(screen.getByText("Update available")).toBeInTheDocument();
+      // list_skills must be called even with empty workspacePath
+      expect(mockInvoke).toHaveBeenCalledWith("list_skills", expect.objectContaining({ workspacePath: "" }));
+    });
   });
 
   // Test D3 — Version guard: null installed version in settings-skills mode
@@ -978,6 +1023,7 @@ describe("GitHubImportDialog", () => {
         parse_github_url: DEFAULT_REPO_INFO,
         list_github_skills: sampleSkills,
         get_dashboard_skill_names: [],
+        list_skills: [],
         import_marketplace_to_library: [{ skill_name: "Sales Analytics", success: true, error: null }],
       });
 

@@ -248,9 +248,10 @@ export default function GitHubImportDialog({
         // skill-library: check the skills master table (covers both skill-builder and marketplace skills)
         const dashboardNames = await getDashboardSkillNames()
         const dashboardSet = new Set(dashboardNames)
-        // Also fetch full metadata for version comparison
-        const wp = workspacePath ?? ''
-        const summaries = wp ? await listSkills(wp) : []
+        // Fetch full metadata for version comparison. list_skills reads from DB (ignores
+        // workspace_path on the Rust side), so passing "" is safe when workspacePath is
+        // not yet loaded (e.g. dialog opened before settings async load completes).
+        const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
         for (const skill of available) {
           if (dashboardSet.has(skill.name)) {
