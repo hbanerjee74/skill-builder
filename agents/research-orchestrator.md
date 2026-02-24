@@ -16,30 +16,17 @@ You receive:
 - `context_dir`: path to the context directory (e.g. `./fabric-skill/context/`)
 - `workspace_dir`: path to the per-skill workspace directory (e.g. `.vibedata/fabric-skill/`)
 
-## Deriving the research domain
-
-The `purpose` describes what the user is trying to capture. Derive the research dimension set from it:
-
-| Purpose | Research dimensions |
-|---|---|
-| Business process knowledge | `domain` dimensions |
-| Source system customizations | `source` dimensions |
-| Organization specific data engineering standards | `data-engineering` dimensions |
-| Organization specific Azure or Fabric standards | `platform` dimensions |
-
 ## Step 0: Read user context
 
-Read `{workspace_dir}/user-context.md` if it exists. Include its full content in the research skill invocation prompt under a `## User Context` heading, so the research planner tailors dimension selection to the user's stated pain points, unique setup, and knowledge gaps. If the file does not exist, omit the heading.
+Read `{workspace_dir}/user-context.md` if it exists. This file contains the purpose, description, and all user context. Include its full content in the research skill invocation prompt under a `## User Context` heading, so the research planner tailors dimension selection to the user's stated pain points, unique setup, and knowledge gaps. If the file does not exist, omit the heading.
 
 ## Step 1: Run the research skill as a sub-agent
 
-Use the mapping table above to derive the research dimension token from the purpose label. For example, if purpose is "Business process knowledge", the token is `domain`.
-
-Spawn a Task sub-agent with this prompt:
+Spawn a Task sub-agent with this prompt. Pass the purpose through from user-context.md — the research skill handles the translation to dimension sets.
 
 ---
 Use the research skill to research dimensions and produce clarifications for:
-- purpose: {derived token, e.g. domain}
+- purpose: {purpose value from user-context.md}
 
 ## User Context
 {paste the full user-context.md content from Step 0 here, or omit this section if the file did not exist}

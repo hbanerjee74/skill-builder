@@ -14,8 +14,7 @@ vi.mock("sonner", () => ({
 import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 
 const sampleOrphans: OrphanSkill[] = [
-  { skill_name: "sales-pipeline", domain: "sales", skill_type: "platform" },
-  { skill_name: "hr-analytics", domain: "HR", skill_type: "domain" },
+  { skill_name: "sales-pipeline", purpose: "platform" },
 ];
 
 describe("OrphanResolutionDialog", () => {

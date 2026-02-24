@@ -19,18 +19,18 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  SKILL_TYPE_LABELS,
-  SKILL_TYPE_COLORS,
+  PURPOSE_LABELS,
+  PURPOSE_COLORS,
   type SkillSummary,
-  type SkillType,
+  type Purpose,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-function SkillTypeBadge({ skillType, className }: { skillType: string; className?: string }) {
-  const type = skillType as SkillType;
+function PurposeBadge({ purpose, className }: { purpose: string; className?: string }) {
+  const p = purpose as Purpose;
   return (
-    <Badge className={cn("px-1.5 py-0 text-[10px]", SKILL_TYPE_COLORS[type], className)}>
-      {SKILL_TYPE_LABELS[type] ?? skillType}
+    <Badge className={cn("px-1.5 py-0 text-[10px]", PURPOSE_COLORS[p], className)}>
+      {PURPOSE_LABELS[p] ?? purpose}
     </Badge>
   );
 }
@@ -58,7 +58,7 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
           {selected ? (
             <span className="flex items-center gap-2 truncate">
               <span className="truncate">{selected.name}</span>
-              {selected.skill_type && <SkillTypeBadge skillType={selected.skill_type} />}
+              {selected.purpose && <PurposeBadge purpose={selected.purpose} />}
             </span>
           ) : (
             <span className="text-muted-foreground">Select a skill...</span>
@@ -88,7 +88,7 @@ export function SkillPicker({ skills, selected, isLoading, disabled, lockedSkill
                   >
                     <span className="truncate">{skill.name}</span>
                     {isLocked && <Lock className="ml-auto size-3 shrink-0 text-muted-foreground" />}
-                    {!isLocked && skill.skill_type && <SkillTypeBadge skillType={skill.skill_type} className="ml-auto" />}
+                    {!isLocked && skill.purpose && <PurposeBadge purpose={skill.purpose} className="ml-auto" />}
                   </CommandItem>
                 );
 

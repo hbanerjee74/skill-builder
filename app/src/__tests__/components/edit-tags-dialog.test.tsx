@@ -19,12 +19,11 @@ import type { SkillSummary } from "@/lib/types";
 
 const sampleSkill: SkillSummary = {
   name: "sales-pipeline",
-  domain: "sales",
   current_step: "Step 3",
   status: "in_progress",
   last_modified: new Date().toISOString(),
   tags: ["analytics", "crm"],
-  skill_type: "domain",
+  purpose: "domain",
   author_login: null,
   author_avatar: null,
   intake_json: null,
@@ -259,8 +258,7 @@ describe("SkillDialog (edit mode)", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        domain: "sales",
-        skillType: "domain",
+        purpose: "domain",
         tags: ["analytics", "crm"],
         intakeJson: null,
         description: "A skill for managing sales pipelines",
@@ -466,8 +464,7 @@ describe("SkillDialog (edit mode)", () => {
     await waitFor(() => {
       expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
         skillName: "sales-pipeline",
-        domain: "sales",
-        skillType: "domain",
+        purpose: "domain",
         tags: ["analytics", "crm"],
         intakeJson: JSON.stringify({ audience: "Analysts" }),
         description: "A skill for managing sales pipelines",
@@ -655,8 +652,7 @@ describe("SkillDialog (edit mode)", () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
           skillName: "revenue-tracker",
-          domain: "sales",
-          skillType: "domain",
+          purpose: "domain",
           tags: ["analytics", "crm"],
           intakeJson: null,
           description: "A skill for managing sales pipelines",
@@ -748,8 +744,7 @@ describe("SkillDialog (edit mode)", () => {
       await waitFor(() => {
         expect(mockInvoke).toHaveBeenCalledWith("update_skill_metadata", {
           skillName: "sales-pipeline",
-          domain: "sales",
-          skillType: "domain",
+          purpose: "domain",
           tags: ["analytics", "crm"],
           intakeJson: null,
           description: "A skill for managing sales pipelines",

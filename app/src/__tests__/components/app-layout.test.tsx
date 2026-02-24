@@ -264,8 +264,7 @@ describe("AppLayout", () => {
         orphans: [
           {
             skill_name: "old-skill",
-            domain: "test",
-            skill_type: "domain",
+            purpose: "domain",
           },
         ],
         notifications: [],

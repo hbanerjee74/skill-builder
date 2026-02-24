@@ -567,8 +567,38 @@ pub fn format_user_context(
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
+    description: Option<&str>,
+    purpose: Option<&str>,
+    version: Option<&str>,
+    skill_model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 ) -> Option<String> {
     let mut parts: Vec<String> = Vec::new();
+
+    // Purpose (full label)
+    if let Some(p) = purpose {
+        if !p.is_empty() {
+            let label = match p {
+                "domain" => "Business process knowledge",
+                "source" => "Source system customizations",
+                "data-engineering" => "Organization specific data engineering standards",
+                "platform" => "Organization specific Azure or Fabric standards",
+                other => other,
+            };
+            parts.push(format!("- **Purpose**: {}", label));
+        }
+    }
+
+    // Description
+    if let Some(desc) = description {
+        if !desc.is_empty() {
+            parts.push(format!("- **Description**: {}", desc));
+        }
+    }
+
+    // User profile
     if let Some(ind) = industry {
         if !ind.is_empty() {
             parts.push(format!("- **Industry**: {}", ind));
@@ -579,8 +609,17 @@ pub fn format_user_context(
             parts.push(format!("- **Function**: {}", fr));
         }
     }
+
+    // Intake — new unified field ("context") + legacy fields for backwards compat
     if let Some(ij) = intake_json {
         if let Ok(intake) = serde_json::from_str::<serde_json::Value>(ij) {
+            // New: unified "What Claude needs to know" field
+            if let Some(v) = intake.get("context").and_then(|v| v.as_str()) {
+                if !v.is_empty() {
+                    parts.push(format!("- **What Claude Needs to Know**: {}", v));
+                }
+            }
+            // Legacy fields (for existing skills with old intake_json)
             for (key, label) in [
                 ("audience", "Target Audience"),
                 ("challenges", "Key Challenges"),
@@ -596,6 +635,30 @@ pub fn format_user_context(
             }
         }
     }
+
+    // Behaviour settings
+    if let Some(ver) = version {
+        if !ver.is_empty() {
+            parts.push(format!("- **Version**: {}", ver));
+        }
+    }
+    if let Some(m) = skill_model {
+        if !m.is_empty() && m != "inherit" {
+            parts.push(format!("- **Preferred Model**: {}", m));
+        }
+    }
+    if let Some(hint) = argument_hint {
+        if !hint.is_empty() {
+            parts.push(format!("- **Argument Hint**: {}", hint));
+        }
+    }
+    if let Some(inv) = user_invocable {
+        parts.push(format!("- **User Invocable**: {}", inv));
+    }
+    if let Some(dmi) = disable_model_invocation {
+        parts.push(format!("- **Disable Model Invocation**: {}", dmi));
+    }
+
     if parts.is_empty() {
         None
     } else {
@@ -604,17 +667,25 @@ pub fn format_user_context(
 }
 
 /// spawned by orchestrator agents can read it from disk.
-/// This file captures industry, function/role, and intake responses
-/// (audience, challenges, scope) provided by the user.
+/// This file captures purpose, description, user context, industry, function/role,
+/// and behaviour settings provided by the user.
 /// Non-fatal: logs a warning on failure rather than blocking the workflow.
+#[allow(clippy::too_many_arguments)]
 fn write_user_context_file(
     workspace_path: &str,
     skill_name: &str,
     industry: Option<&str>,
     function_role: Option<&str>,
     intake_json: Option<&str>,
+    description: Option<&str>,
+    purpose: Option<&str>,
+    version: Option<&str>,
+    skill_model: Option<&str>,
+    argument_hint: Option<&str>,
+    user_invocable: Option<bool>,
+    disable_model_invocation: Option<bool>,
 ) {
-    let Some(ctx) = format_user_context(industry, function_role, intake_json) else {
+    let Some(ctx) = format_user_context(industry, function_role, intake_json, description, purpose, version, skill_model, argument_hint, user_invocable, disable_model_invocation) else {
         return;
     };
 
@@ -674,22 +745,13 @@ fn build_prompt(
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
-    let purpose_label = match purpose {
-        "domain" => "Business process knowledge",
-        "source" => "Source system customizations",
-        "data-engineering" => "Organization specific data engineering standards",
-        "platform" => "Organization specific Azure or Fabric standards",
-        other => other,
-    };
     let mut prompt = format!(
         "The skill name is: {}. \
-         The purpose is: {}. \
          The workspace directory is: {}. \
          The context directory is: {}. \
          The skill output directory (SKILL.md and references/) is: {}. \
          All directories already exist — never create directories with mkdir or any other method. Never list directories with ls. Read only the specific files named in your instructions and write files directly.",
         skill_name,
-        purpose_label,
         workspace_dir.display(),
         context_dir.display(),
         skill_output_dir.display(),
@@ -709,36 +771,9 @@ fn build_prompt(
 
     prompt.push_str(&format!(" The maximum research dimensions before scope warning is: {}.", max_dimensions));
 
-    prompt.push_str(" The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
+    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context. The workspace directory only contains user-context.md — ignore everything else (logs/, etc.).");
 
-    if let Some(desc) = description {
-        if !desc.is_empty() {
-            prompt.push_str(&format!(" The skill description is: {}.", desc));
-        }
-    }
-    if let Some(ver) = version {
-        if !ver.is_empty() {
-            prompt.push_str(&format!(" The version is: {}.", ver));
-        }
-    }
-    if let Some(m) = skill_model {
-        if !m.is_empty() && m != "inherit" {
-            prompt.push_str(&format!(" The preferred model is: {}.", m));
-        }
-    }
-    if let Some(hint) = argument_hint {
-        if !hint.is_empty() {
-            prompt.push_str(&format!(" The argument hint is: {}.", hint));
-        }
-    }
-    if let Some(inv) = user_invocable {
-        prompt.push_str(&format!(" User invocable: {}.", inv));
-    }
-    if let Some(dmi) = disable_model_invocation {
-        prompt.push_str(&format!(" Disable model invocation: {}.", dmi));
-    }
-
-    if let Some(ctx) = format_user_context(industry, function_role, intake_json) {
+    if let Some(ctx) = format_user_context(industry, function_role, intake_json, description, Some(purpose), version, skill_model, argument_hint, user_invocable, disable_model_invocation) {
         prompt.push_str("\n\n");
         prompt.push_str(&ctx);
     }
@@ -917,6 +952,13 @@ async fn run_workflow_step_inner(
         settings.industry.as_deref(),
         settings.function_role.as_deref(),
         settings.intake_json.as_deref(),
+        settings.description.as_deref(),
+        Some(settings.purpose.as_str()),
+        settings.version.as_deref(),
+        settings.skill_model.as_deref(),
+        settings.argument_hint.as_deref(),
+        settings.user_invocable,
+        settings.disable_model_invocation,
     );
 
     let prompt = build_prompt(
@@ -1401,6 +1443,7 @@ pub async fn run_answer_evaluator(
         industry.as_deref(),
         function_role.as_deref(),
         intake_json.as_deref(),
+        None, None, None, None, None, None, None, // answer evaluator doesn't need full metadata
     );
 
     let context_dir = std::path::Path::new(&skills_path)
@@ -1422,6 +1465,7 @@ pub async fn run_answer_evaluator(
         industry.as_deref(),
         function_role.as_deref(),
         intake_json.as_deref(),
+        None, None, None, None, None, None, None,
     ) {
         prompt.push_str("\n\n");
         prompt.push_str(&ctx);
@@ -1876,7 +1920,8 @@ mod tests {
             None,
             None,
         );
-        assert!(prompt.contains("The purpose is: Organization specific Azure or Fabric standards."));
+        // Purpose is now in user-context.md section, not the main prompt line
+        assert!(prompt.contains("**Purpose**: Organization specific Azure or Fabric standards"));
     }
 
     #[test]
@@ -2504,7 +2549,7 @@ mod tests {
         // Directory doesn't need to pre-exist — create_dir_all handles it
 
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines"}"#;
-        write_user_context_file(workspace_path, "my-skill", Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+        write_user_context_file(workspace_path, "my-skill", Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("# User Context"));
@@ -2521,7 +2566,7 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", Some("Fintech"), None, None);
+        write_user_context_file(workspace_path, "my-skill", Some("Fintech"), None, None, None, None, None, None, None, None, None);
 
         let content = std::fs::read_to_string(workspace_dir.join("user-context.md")).unwrap();
         assert!(content.contains("**Industry**: Fintech"));
@@ -2535,7 +2580,7 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", Some(""), None, None);
+        write_user_context_file(workspace_path, "my-skill", Some(""), None, None, None, None, None, None, None, None, None);
 
         // Empty industry should not produce a file
         assert!(!workspace_dir.join("user-context.md").exists());
@@ -2547,7 +2592,7 @@ mod tests {
         let workspace_path = tmp.path().to_str().unwrap();
         let workspace_dir = tmp.path().join("my-skill");
 
-        write_user_context_file(workspace_path, "my-skill", None, None, None);
+        write_user_context_file(workspace_path, "my-skill", None, None, None, None, None, None, None, None, None, None);
 
         // No fields → no file
         assert!(!workspace_dir.join("user-context.md").exists());
@@ -2561,7 +2606,7 @@ mod tests {
         // Directory does NOT exist yet
         assert!(!workspace_dir.exists());
 
-        write_user_context_file(workspace_path, "new-skill", Some("Retail"), None, None);
+        write_user_context_file(workspace_path, "new-skill", Some("Retail"), None, None, None, None, None, None, None, None, None);
 
         // Directory should have been created and file written
         assert!(workspace_dir.join("user-context.md").exists());
@@ -2717,7 +2762,7 @@ mod tests {
     #[test]
     fn test_format_user_context_all_fields() {
         let intake = r#"{"audience":"Data engineers","challenges":"Legacy systems","scope":"ETL pipelines","unique_setup":"Multi-cloud","claude_mistakes":"Assumes AWS"}"#;
-        let result = format_user_context(Some("Healthcare"), Some("Analytics Lead"), Some(intake));
+        let result = format_user_context(Some("Healthcare"), Some("Analytics Lead"), Some(intake), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.starts_with("## User Context\n"));
         assert!(ctx.contains("**Industry**: Healthcare"));
@@ -2731,7 +2776,7 @@ mod tests {
 
     #[test]
     fn test_format_user_context_partial_fields() {
-        let result = format_user_context(Some("Fintech"), None, None);
+        let result = format_user_context(Some("Fintech"), None, None, None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Fintech"));
         assert!(!ctx.contains("**Function**"));
@@ -2739,19 +2784,19 @@ mod tests {
 
     #[test]
     fn test_format_user_context_empty_strings_skipped() {
-        let result = format_user_context(Some(""), Some(""), None);
+        let result = format_user_context(Some(""), Some(""), None, None, None, None, None, None, None, None);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_all_none() {
-        let result = format_user_context(None, None, None);
+        let result = format_user_context(None, None, None, None, None, None, None, None, None, None);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_format_user_context_invalid_json_ignored() {
-        let result = format_user_context(Some("Tech"), None, Some("not json"));
+        let result = format_user_context(Some("Tech"), None, Some("not json"), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.contains("**Industry**: Tech"));
         assert!(!ctx.contains("Target Audience"));
@@ -2760,7 +2805,7 @@ mod tests {
     #[test]
     fn test_format_user_context_partial_intake() {
         let intake = r#"{"audience":"Engineers","scope":"APIs"}"#;
-        let result = format_user_context(None, None, Some(intake));
+        let result = format_user_context(None, None, Some(intake), None, None, None, None, None, None, None);
         let ctx = result.unwrap();
         assert!(ctx.contains("**Target Audience**: Engineers"));
         assert!(ctx.contains("**Scope**: APIs"));
@@ -2790,9 +2835,10 @@ mod tests {
             None, None, 5, None, None, None,
             None, None, None, None, None, None,
         );
-        assert!(!prompt.contains("## User Context"));
+        // Purpose is always present in user context now
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Purpose**: Business process knowledge"));
         assert!(prompt.contains("test-skill"));
-        // domain no longer in prompt
     }
 
     #[test]
@@ -2825,12 +2871,14 @@ mod tests {
             None, None, 5, None, None, None,
             Some("A skill for sales analysis."), Some("2.0.0"), Some("sonnet"), Some("[org-url]"), Some(true), Some(false),
         );
-        assert!(prompt.contains("The skill description is: A skill for sales analysis."));
-        assert!(prompt.contains("The version is: 2.0.0."));
-        assert!(prompt.contains("The preferred model is: sonnet."));
-        assert!(prompt.contains("The argument hint is: [org-url]."));
-        assert!(prompt.contains("User invocable: true."));
-        assert!(prompt.contains("Disable model invocation: false."));
+        // Behaviour fields are now in user-context.md section, not standalone prompt fields
+        assert!(prompt.contains("## User Context"));
+        assert!(prompt.contains("**Description**: A skill for sales analysis."));
+        assert!(prompt.contains("**Version**: 2.0.0"));
+        assert!(prompt.contains("**Preferred Model**: sonnet"));
+        assert!(prompt.contains("**Argument Hint**: [org-url]"));
+        assert!(prompt.contains("**User Invocable**: true"));
+        assert!(prompt.contains("**Disable Model Invocation**: false"));
     }
 
     #[test]

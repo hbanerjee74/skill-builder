@@ -546,6 +546,7 @@ pub async fn send_refine_message(
                 settings.industry.as_deref(),
                 settings.function_role.as_deref(),
                 intake_json.as_deref(),
+                None, Some(purpose.as_str()), None, None, None, None, None,
             );
 
             (key, settings.extended_thinking, model, skills_path, purpose, ctx)
@@ -1397,6 +1398,7 @@ mod tests {
             Some("Healthcare"),
             Some("Analytics Lead"),
             Some(r#"{"audience":"Data engineers","challenges":"Legacy ETL"}"#),
+            None, None, None, None, None, None, None,
         );
         let prompt = if let Some(ctx) = user_context {
             format!("{}\n\n{}", message, ctx)
@@ -1413,7 +1415,7 @@ mod tests {
     fn test_prompt_unchanged_without_user_context() {
         // When no user context fields exist, prompt passes through unchanged
         let message = "Fix the overview".to_string();
-        let user_context = crate::commands::workflow::format_user_context(None, None, None);
+        let user_context = crate::commands::workflow::format_user_context(None, None, None, None, None, None, None, None, None, None);
         let prompt = if let Some(ctx) = user_context {
             format!("{}\n\n{}", message, ctx)
         } else {

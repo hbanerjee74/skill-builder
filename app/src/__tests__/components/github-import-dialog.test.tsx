@@ -30,9 +30,8 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/sales-analytics",
     name: "Sales Analytics",
-    domain: "sales",
     description: "Analyze your sales pipeline",
-    skill_type: "skill-builder",
+    purpose: "skill-builder",
     version: null,
     model: null,
     argument_hint: null,
@@ -42,9 +41,8 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/hr-metrics",
     name: "HR Metrics",
-    domain: null,
     description: null,
-    skill_type: "skill-builder",
+    purpose: "skill-builder",
     version: null,
     model: null,
     argument_hint: null,
@@ -194,9 +192,9 @@ describe("GitHubImportDialog", () => {
 
     it("does not show skills filtered out by typeFilter in skill-library mode", async () => {
       const mixed: AvailableSkill[] = [
-        { path: "skills/a", name: "Skill A", domain: null, description: null, skill_type: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/b", name: "Skill B", domain: null, description: null, skill_type: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/c", name: "Skill C", domain: null, description: null, skill_type: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/a", name: "Skill A", description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/b", name: "Skill B", description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/c", name: "Skill C", description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
       ];
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -234,19 +232,17 @@ describe("GitHubImportDialog", () => {
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
         skill_name: "Sales Analytics",
-        domain: "sales",
         description: null,
         is_active: true,
         is_bundled: false,
         disk_path: "/skills/sales",
         imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
+        purpose: null,
         version: null,
         model: null,
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
-        purpose: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -637,9 +633,8 @@ describe("GitHubImportDialog", () => {
     const availableSkillVersioned: AvailableSkill = {
       path: "skills/my-skill",
       name: "my-skill",
-      domain: null,
       description: "A versioned skill",
-      skill_type: "domain",
+      purpose: "domain",
       version: "2.0.0",
       model: null,
       argument_hint: null,
@@ -651,19 +646,17 @@ describe("GitHubImportDialog", () => {
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
         skill_name: "my-skill",
-        domain: null,
         description: null,
         is_active: true,
         is_bundled: false,
         disk_path: "/skills/my-skill",
         imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
+        purpose: null,
         version: "1.0.0",
         model: null,
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
-        purpose: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -692,19 +685,17 @@ describe("GitHubImportDialog", () => {
       const installedWs: WorkspaceSkill = {
         skill_id: "ws-1",
         skill_name: "my-skill",
-        domain: null,
         description: null,
         is_active: true,
         is_bundled: false,
         disk_path: "/skills/my-skill",
         imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
+        purpose: null,
         version: "1.0.0",
         model: null,
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
-        purpose: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -733,9 +724,8 @@ describe("GitHubImportDialog", () => {
     const makeLibrarySkill = (name: string, version: string | null): AvailableSkill => ({
       path: `skills/${name}`,
       name,
-      domain: "analytics",
       description: `${name} description`,
-      skill_type: "skill-builder",
+      purpose: "skill-builder",
       version,
       model: null,
       argument_hint: null,
@@ -854,37 +844,33 @@ describe("GitHubImportDialog", () => {
       const existingVersionWs: WorkspaceSkill = {
         skill_id: "ws-existing",
         skill_name: "Sales Analytics",
-        domain: "sales",
         description: null,
         is_active: true,
         is_bundled: false,
         disk_path: "/skills/sales-analytics",
         imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
+        purpose: null,
         version: "1.0.0",
         model: null,
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
-        purpose: "research",
       };
       // Workspace skill 2: another active skill already occupying "research" purpose
       const occupyingWs: WorkspaceSkill = {
         skill_id: "ws-occupying",
         skill_name: "other-research-skill",
-        domain: null,
         description: null,
         is_active: true,
         is_bundled: false,
         disk_path: "/skills/other",
         imported_at: "2026-01-01T00:00:00Z",
-        skill_type: null,
+        purpose: null,
         version: null,
         model: null,
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
-        purpose: "research",
       };
 
       // Available skill with a newer version (triggers "upgrade" state → selectable)

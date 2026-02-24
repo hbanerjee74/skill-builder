@@ -193,7 +193,7 @@ export default function DashboardPage() {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
-          (s.domain && s.domain.toLowerCase().includes(q)) ||
+          (s.description && s.description.toLowerCase().includes(q)) ||
           (s.purpose && (PURPOSE_LABELS[s.purpose as keyof typeof PURPOSE_LABELS] || s.purpose).toLowerCase().includes(q))
       )
     }

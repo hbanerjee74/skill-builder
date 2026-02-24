@@ -7,19 +7,17 @@ import type { WorkspaceSkill } from "@/stores/imported-skills-store";
 const baseSkill: WorkspaceSkill = {
   skill_id: "id-1",
   skill_name: "sales-analytics",
-  domain: "sales",
   description: "Analytics skill for sales data pipelines",
   is_active: true,
   disk_path: "/skills/sales-analytics",
   imported_at: new Date().toISOString(),
   is_bundled: false,
-  skill_type: null,
+  purpose: null,
   version: null,
   model: null,
   argument_hint: null,
   user_invocable: null,
   disable_model_invocation: null,
-  purpose: null,
 };
 
 describe("WorkspaceSkillCard", () => {
