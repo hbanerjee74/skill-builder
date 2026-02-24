@@ -382,7 +382,7 @@ export default function DashboardPage() {
             </div>
             <CardTitle>No skills yet</CardTitle>
             <CardDescription>
-              Create your first skill to get started.
+              Skills are knowledge packages that teach Claude your team's specific processes, systems, and standards. Create your first skill to get started.
             </CardDescription>
           </CardHeader>
           {workspacePath && skillsPath && (
