@@ -23,11 +23,11 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
 ## Context
 - The coordinator provides these standard fields at runtime:
   - The **skill name**
-  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
+  - The **purpose** (a label like "Business process knowledge", "Source system extraction knowledge", etc.)
   - The **context directory** path (for reading `decisions.md`)
   - The **skill output directory** path (for writing SKILL.md and reference files)
   - The **workspace directory** path (contains `user-context.md`)
-- Follow the **User Context protocol** — read `user-context.md` early. Use it to tailor the skill's tone, examples, and focus areas.
+- Read `{workspace_directory}/user-context.md` for purpose, description, industry, function, and what Claude needs to know. Use this to tailor the skill's tone, examples, and focus areas.
 - Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
 - The purpose determines which SKILL.md architecture to use (see Type-Specific Structure below)
 

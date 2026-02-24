@@ -29,7 +29,7 @@ Use the research skill to research dimensions and produce clarifications for:
 - purpose: {purpose value from user-context.md}
 
 ## User Context
-{paste the full user-context.md content from Step 0}
+{full user-context.md content from Step 0 — pass the complete file content here}
 
 Return the complete output as inline text — do not write files.
 ---

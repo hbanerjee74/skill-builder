@@ -79,6 +79,8 @@ Use the validate-skill skill to validate a completed skill for:
 - skill_output_dir: {skill_output_dir}
 - workspace_dir: {workspace_dir}
 
+Pass the full user context from `user-context.md` to the sub-agent under a `## User Context` heading in the Task prompt.
+
 ## Step 2: Write output files
 
 The skill returns inline text with three clearly delimited sections:

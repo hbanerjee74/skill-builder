@@ -102,12 +102,14 @@ Before spawning agents: emit "Starting a full rewrite of the entire skill from s
    - The context directory path (for `decisions.md`)
    - The skill output directory path (same as skill directory — it rewrites in place)
    - The workspace directory path
+   - The full user context from `user-context.md` under a `## User Context` heading in the Task prompt
    - Mode: `bypassPermissions`
 2. After generate-skill completes, spawn the `validate-skill` agent via Task. Pass:
    - The same purpose and skill name
    - The context directory path
    - The skill output directory path
    - The workspace directory path
+   - The full user context from `user-context.md` under a `## User Context` heading in the Task prompt
    - Mode: `bypassPermissions`
 3. Summarize what changed: report the generate-skill agent's output and the validation results.
 
@@ -123,7 +125,7 @@ Before spawning agents: emit "Starting a full rewrite of the entire skill from s
 **`/validate`** — Re-run validation on the whole skill. Ignores any `@` file targets (validation always checks everything).
 
 Before spawning agents: emit "Running validation on the skill — checking structure, content, and quality."
-1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite`.
+1. Spawn the `validate-skill` agent via Task. Pass the same fields as step 2 of `/rewrite` (including the full user context from `user-context.md` under a `## User Context` heading in the Task prompt).
 2. Report the validation results to the user.
 
 ## Error Handling
