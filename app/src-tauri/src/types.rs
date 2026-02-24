@@ -76,6 +76,9 @@ pub struct AppSettings {
     /// Dashboard view mode: "grid" | "list" | None (auto-select based on skill count)
     #[serde(default)]
     pub dashboard_view_mode: Option<String>,
+    /// Automatically apply marketplace updates at startup (default: false).
+    #[serde(default)]
+    pub auto_update: bool,
 }
 
 impl Default for AppSettings {
@@ -99,6 +102,7 @@ impl Default for AppSettings {
             industry: None,
             function_role: None,
             dashboard_view_mode: None,
+            auto_update: false,
         }
     }
 }

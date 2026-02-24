@@ -64,6 +64,7 @@ export default function SettingsPage() {
   const [marketplaceUrl, setMarketplaceUrl] = useState("")
   const [marketplaceTesting, setMarketplaceTesting] = useState(false)
   const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
+  const [autoUpdate, setAutoUpdate] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const availableModels = useSettingsStore((s) => s.availableModels)
   const { user, isLoggedIn, logout } = useAuthStore()
@@ -86,6 +87,7 @@ export default function SettingsPage() {
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
             setMarketplaceUrl(result.marketplace_url ?? "")
+            setAutoUpdate(result.auto_update ?? false)
             setLoading(false)
             // Fetch available models once we have an API key
             if (result.anthropic_api_key) {
@@ -143,6 +145,7 @@ export default function SettingsPage() {
     marketplaceUrl: string | null;
     industry: string | null;
     functionRole: string | null;
+    autoUpdate: boolean;
   }>) => {
     const settings: AppSettings = {
       anthropic_api_key: overrides.apiKey !== undefined ? overrides.apiKey : apiKey,
@@ -163,6 +166,7 @@ export default function SettingsPage() {
       industry: overrides.industry !== undefined ? overrides.industry : (industry || null),
       function_role: overrides.functionRole !== undefined ? overrides.functionRole : (functionRole || null),
       dashboard_view_mode: useSettingsStore.getState().dashboardViewMode ?? null,
+      auto_update: overrides.autoUpdate !== undefined ? overrides.autoUpdate : autoUpdate,
     }
     try {
       await invoke("save_settings", { settings })
@@ -178,6 +182,7 @@ export default function SettingsPage() {
         marketplaceUrl: settings.marketplace_url,
         industry: settings.industry,
         functionRole: settings.function_role,
+        autoUpdate: settings.auto_update,
       })
       const changed = Object.entries(overrides)
         .filter(([, v]) => v !== undefined)
@@ -613,6 +618,19 @@ export default function SettingsPage() {
                     </p>
                   )}
                 </div>
+                {marketplaceUrl && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-0.5">
+                      <Label htmlFor="auto-update">Auto-update</Label>
+                      <span className="text-sm text-muted-foreground">Automatically apply marketplace updates at startup.</span>
+                    </div>
+                    <Switch
+                      id="auto-update"
+                      checked={autoUpdate}
+                      onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

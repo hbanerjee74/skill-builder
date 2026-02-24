@@ -102,6 +102,7 @@ const defaultSettings: AppSettings = {
   industry: null,
   function_role: null,
   dashboard_view_mode: null,
+  auto_update: false,
 };
 
 const emptyReconciliation: ReconciliationResult = {

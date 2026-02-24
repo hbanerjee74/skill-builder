@@ -21,6 +21,7 @@ interface SettingsState {
   industry: string | null;
   functionRole: string | null;
   dashboardViewMode: string | null;
+  autoUpdate: boolean;
   isConfigured: boolean;
   availableModels: ModelInfo[];
   pendingUpgradeOpen: { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null;
@@ -45,6 +46,7 @@ const initialState = {
   industry: null,
   functionRole: null,
   dashboardViewMode: null,
+  autoUpdate: false,
   isConfigured: false,
   availableModels: [] as ModelInfo[],
   pendingUpgradeOpen: null as { mode: 'skill-library' | 'settings-skills'; skills: string[] } | null,

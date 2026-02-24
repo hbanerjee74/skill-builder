@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates } from "@/lib/tauri";
+import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { DiscoveredSkill, OrphanSkill } from "@/lib/types";
@@ -58,39 +58,81 @@ export function AppLayout() {
       // Check for marketplace updates in the background
       if (s.marketplace_url) {
         parseGitHubUrl(s.marketplace_url)
-          .then((info) =>
-            checkMarketplaceUpdates(info.owner, info.repo, info.branch, info.subpath ?? undefined)
-          )
-          .then(({ library, workspace }) => {
-            if (library.length > 0) {
-              toast.info(
-                `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${library.join(", ")}`,
-                {
-                  duration: Infinity,
-                  action: {
-                    label: "Open Marketplace",
-                    onClick: () => {
-                      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: library });
-                      router.navigate({ to: "/" });
+          .then(async (info) => {
+            const { library, workspace } = await checkMarketplaceUpdates(
+              info.owner, info.repo, info.branch, info.subpath ?? undefined
+            );
+
+            if (s.auto_update) {
+              // Auto-update: import all non-customized skills silently
+              const [libFiltered, wsFiltered] = await Promise.all([
+                Promise.all(library.map(async (skill) => {
+                  const customized = await checkSkillCustomized(skill.name).catch(() => false);
+                  return customized ? null : skill;
+                })).then((r) => r.filter((s): s is NonNullable<typeof s> => s !== null)),
+                Promise.all(workspace.map(async (skill) => {
+                  const customized = await checkSkillCustomized(skill.name).catch(() => false);
+                  return customized ? null : skill;
+                })).then((r) => r.filter((s): s is NonNullable<typeof s> => s !== null)),
+              ]);
+
+              await Promise.all([
+                libFiltered.length > 0
+                  ? importMarketplaceToLibrary(libFiltered.map((s) => s.path)).catch((err) =>
+                      console.warn("[app-layout] Auto-update library failed:", err)
+                    )
+                  : Promise.resolve(),
+                wsFiltered.length > 0
+                  ? importGitHubSkills(
+                      info.owner, info.repo, info.branch,
+                      wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null }))
+                    ).catch((err) =>
+                      console.warn("[app-layout] Auto-update workspace failed:", err)
+                    )
+                  : Promise.resolve(),
+              ]);
+
+              const total = libFiltered.length + wsFiltered.length;
+              if (total > 0) {
+                toast.success(
+                  `Auto-updated ${total} skill${total !== 1 ? "s" : ""}`,
+                  { duration: 5000 }
+                );
+              }
+            } else {
+              // Manual update: show persistent badge toasts with action buttons
+              if (library.length > 0) {
+                const names = library.map((s) => s.name);
+                toast.info(
+                  `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+                  {
+                    duration: Infinity,
+                    action: {
+                      label: "Open Marketplace",
+                      onClick: () => {
+                        useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
+                        router.navigate({ to: "/" });
+                      },
                     },
-                  },
-                }
-              );
-            }
-            if (workspace.length > 0) {
-              toast.info(
-                `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${workspace.join(", ")}`,
-                {
-                  duration: Infinity,
-                  action: {
-                    label: "Open Marketplace",
-                    onClick: () => {
-                      useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: workspace });
-                      router.navigate({ to: "/settings" });
+                  }
+                );
+              }
+              if (workspace.length > 0) {
+                const names = workspace.map((s) => s.name);
+                toast.info(
+                  `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+                  {
+                    duration: Infinity,
+                    action: {
+                      label: "Open Marketplace",
+                      onClick: () => {
+                        useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
+                        router.navigate({ to: "/settings" });
+                      },
                     },
-                  },
-                }
-              );
+                  }
+                );
+              }
             }
           })
           .catch((err) => console.warn("[app-layout] Marketplace update check failed:", err));

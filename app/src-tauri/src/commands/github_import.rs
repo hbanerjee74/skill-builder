@@ -1266,13 +1266,20 @@ pub(crate) fn compute_skill_content_hash(disk_path: &str) -> Option<String> {
 // check_marketplace_updates
 // ---------------------------------------------------------------------------
 
+/// Name and repo path for a skill that has an available update.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SkillUpdateInfo {
+    pub name: String,
+    pub path: String,
+}
+
 /// Separate update lists for each registry source.
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct MarketplaceUpdateResult {
     /// Skills with updates in imported_skills (Skills Library / marketplace source).
-    pub library: Vec<String>,
+    pub library: Vec<SkillUpdateInfo>,
     /// Skills with updates in workspace_skills (Settings → Skills).
-    pub workspace: Vec<String>,
+    pub workspace: Vec<SkillUpdateInfo>,
 }
 
 /// Check the marketplace for skills that have a newer version than those installed.
@@ -1320,7 +1327,7 @@ pub async fn check_marketplace_updates(
             if let Some(ws) = crate::db::get_workspace_skill_by_name(&conn, &skill.name)? {
                 if let Some(inst_ver) = ws.version {
                     if semver_gt(marketplace_ver, &inst_ver) {
-                        workspace.push(skill.name.clone());
+                        workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone() });
                     }
                 }
             }
@@ -1329,7 +1336,7 @@ pub async fn check_marketplace_updates(
             if let Some(imp) = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None) {
                 if let Some(inst_ver) = imp.version {
                     if semver_gt(marketplace_ver, &inst_ver) {
-                        library.push(skill.name.clone());
+                        library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone() });
                     }
                 }
             }
