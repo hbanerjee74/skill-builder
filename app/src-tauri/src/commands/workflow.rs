@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::db::Db;
+use serde_json;
 use crate::types::{
     PackageResult, StepConfig, StepStatusUpdate,
     WorkflowStateResponse,
@@ -28,7 +29,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 0,
             name: "Research".to_string(),
             prompt_template: "research-orchestrator.md".to_string(),
-            output_file: "context/clarifications.md".to_string(),
+            output_file: "context/clarifications.json".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
@@ -36,7 +37,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             step_id: 2,
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
-            output_file: "context/clarifications.md".to_string(),
+            output_file: "context/clarifications.json".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
@@ -497,28 +498,17 @@ fn read_agent_frontmatter_name(workspace_path: &str, phase: &str) -> Option<Stri
     None
 }
 
-/// Check if clarifications.md has `scope_recommendation: true` in its YAML frontmatter.
+/// Check if clarifications.json has `metadata.scope_recommendation == true`.
 fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
     let content = match std::fs::read_to_string(clarifications_path) {
         Ok(c) => c,
         Err(_) => return false,
     };
-    if !content.starts_with("---") {
-        return false;
-    }
-    let after_start = &content[3..];
-    let end = match after_start.find("---") {
-        Some(pos) => pos,
-        None => return false,
+    let value: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return false,
     };
-    let frontmatter = &after_start[..end];
-    for line in frontmatter.lines() {
-        let trimmed = line.trim();
-        if trimmed == "scope_recommendation: true" {
-            return true;
-        }
-    }
-    false
+    value["metadata"]["scope_recommendation"] == true
 }
 
 /// Check decisions.md for guard conditions:
@@ -1032,11 +1022,11 @@ pub async fn run_workflow_step(
         .join("context");
 
     if step_id >= 2 {
-        let clarifications_path = context_dir.join("clarifications.md");
+        let clarifications_path = context_dir.join("clarifications.json");
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
                 "Step {} is disabled: the research phase determined the skill scope is too broad. \
-                 Review the scope recommendations in clarifications.md, then reset to step 1 \
+                 Review the scope recommendations in clarifications.json, then reset to step 1 \
                  and start with a narrower focus.",
                 step_id
             ));
@@ -1314,10 +1304,10 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
     match step_id {
         0 => vec![
             "context/research-plan.md",
-            "context/clarifications.md",
+            "context/clarifications.json",
         ],
         1 => vec![],  // Human review
-        2 => vec![],  // Step 2 edits clarifications.md in-place (no unique artifact)
+        2 => vec![],  // Step 2 edits clarifications.json in-place (no unique artifact)
         3 => vec![],  // Human review
         4 => vec!["context/decisions.md"],
         5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
@@ -1368,7 +1358,7 @@ pub fn get_disabled_steps(
     let context_dir = Path::new(&skills_path)
         .join(&skill_name)
         .join("context");
-    let clarifications_path = context_dir.join("clarifications.md");
+    let clarifications_path = context_dir.join("clarifications.json");
     let decisions_path = context_dir.join("decisions.md");
 
     if parse_scope_recommendation(&clarifications_path) {
@@ -1480,8 +1470,9 @@ pub async fn run_answer_evaluator(
     Ok(agent_id)
 }
 
-/// Copy Recommendation -> Answer for every empty Answer field in clarifications.md.
-/// Returns the number of fields auto-filled.
+/// Auto-fill empty top-level question answers in clarifications.json.
+/// For each question with no answer_choice and no answer_text, picks the
+/// first non-other choice. Returns the number of fields auto-filled.
 #[tauri::command]
 pub fn autofill_clarifications(
     skill_name: String,
@@ -1495,7 +1486,7 @@ pub fn autofill_clarifications(
     let clarifications_path = Path::new(&skills_path)
         .join(&skill_name)
         .join("context")
-        .join("clarifications.md");
+        .join("clarifications.json");
 
     let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
         log::error!(
@@ -1503,7 +1494,7 @@ pub fn autofill_clarifications(
             clarifications_path.display(),
             e
         );
-        format!("Failed to read clarifications.md: {}", e)
+        format!("Failed to read clarifications.json: {}", e)
     })?;
 
     let (updated, count) = autofill_answers(&content);
@@ -1515,7 +1506,7 @@ pub fn autofill_clarifications(
                 clarifications_path.display(),
                 e
             );
-            format!("Failed to write clarifications.md: {}", e)
+            format!("Failed to write clarifications.json: {}", e)
         })?;
         log::info!(
             "autofill_clarifications: auto-filled {} answers in {}",
@@ -1540,7 +1531,7 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
     );
 }
 
-/// Copy Recommendation -> Answer for every empty Answer field in **refinement** questions only.
+/// Auto-fill empty refinement answers in clarifications.json.
 /// Top-level Q-level answers are left untouched. Returns the number of fields auto-filled.
 #[tauri::command]
 pub fn autofill_refinements(
@@ -1555,7 +1546,7 @@ pub fn autofill_refinements(
     let clarifications_path = Path::new(&skills_path)
         .join(&skill_name)
         .join("context")
-        .join("clarifications.md");
+        .join("clarifications.json");
 
     let content = std::fs::read_to_string(&clarifications_path).map_err(|e| {
         log::error!(
@@ -1563,7 +1554,7 @@ pub fn autofill_refinements(
             clarifications_path.display(),
             e
         );
-        format!("Failed to read clarifications.md: {}", e)
+        format!("Failed to read clarifications.json: {}", e)
     })?;
 
     let (updated, count) = autofill_refinement_answers(&content);
@@ -1575,7 +1566,7 @@ pub fn autofill_refinements(
                 clarifications_path.display(),
                 e
             );
-            format!("Failed to write clarifications.md: {}", e)
+            format!("Failed to write clarifications.json: {}", e)
         })?;
         log::info!(
             "autofill_refinements: auto-filled {} refinement answers in {}",
@@ -1589,116 +1580,99 @@ pub fn autofill_refinements(
     Ok(count)
 }
 
-/// Pure function: parse clarifications.md content and copy Recommendation -> Answer
-/// for each empty Answer field in refinement questions (`##### R{n}.{m}:`).
-/// Top-level Q-level answers are left untouched. Returns (updated_content, count_filled).
+/// Parse clarifications.json and auto-fill empty refinement answers.
+/// For each refinement where answer_choice is null AND answer_text is null/empty,
+/// sets answer_choice to the first non-other choice's id and answer_text to its text.
+/// Top-level question answers are left untouched. Returns (updated_json_string, count_filled).
 fn autofill_refinement_answers(content: &str) -> (String, u32) {
-    let mut result = String::new();
+    let mut value: serde_json::Value = match serde_json::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return (content.to_string(), 0),
+    };
     let mut count: u32 = 0;
-    let mut last_recommendation = String::new();
-    let mut in_refinement = false;
-    let has_trailing_newline = content.ends_with('\n');
 
-    for line in content.lines() {
-        let trimmed = line.trim();
+    if let Some(sections) = value.get_mut("sections").and_then(|s| s.as_array_mut()) {
+        for section in sections.iter_mut() {
+            if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
+                for question in questions.iter_mut() {
+                    if let Some(refinements) = question.get_mut("refinements").and_then(|r| r.as_array_mut()) {
+                        for refinement in refinements.iter_mut() {
+                            let answer_choice_empty = refinement.get("answer_choice").map_or(true, |v| v.is_null());
+                            let answer_text_empty = refinement.get("answer_text").map_or(true, |v| {
+                                v.is_null() || v.as_str().map_or(false, |s| s.is_empty())
+                            });
 
-        // Track refinement sections
-        if trimmed.starts_with("##### ") {
-            in_refinement = true;
-            last_recommendation = String::new();
-        } else if trimmed.starts_with("## ") || trimmed.starts_with("### ") {
-            in_refinement = false;
-            last_recommendation = String::new();
-        }
-
-        if in_refinement {
-            if let Some(rest) = trimmed.strip_prefix("**Recommendation:**") {
-                last_recommendation = rest.trim().to_string();
-            }
-
-            if trimmed.starts_with("**Answer:**") {
-                let after_prefix = trimmed.strip_prefix("**Answer:**").unwrap_or("");
-                let answer_text = after_prefix.trim();
-                let is_empty = answer_text.is_empty()
-                    || answer_text.eq_ignore_ascii_case("(accepted recommendation)");
-                if is_empty && !last_recommendation.is_empty() {
-                    let leading_ws = &line[..line.len() - line.trim_start().len()];
-                    result.push_str(leading_ws);
-                    result.push_str("**Answer:** ");
-                    result.push_str(&last_recommendation);
-                    result.push('\n');
-                    count += 1;
-                    continue;
+                            if answer_choice_empty && answer_text_empty {
+                                if let Some(choices) = refinement.get("choices").and_then(|c| c.as_array()) {
+                                    if let Some(first_non_other) = choices.iter().find(|c| {
+                                        c.get("is_other").and_then(|v| v.as_bool()) != Some(true)
+                                    }) {
+                                        if let (Some(id), Some(text)) = (
+                                            first_non_other.get("id").cloned(),
+                                            first_non_other.get("text").cloned(),
+                                        ) {
+                                            refinement["answer_choice"] = id;
+                                            refinement["answer_text"] = text;
+                                            count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
-
-        result.push_str(line);
-        result.push('\n');
     }
 
-    if !has_trailing_newline && result.ends_with('\n') {
-        result.pop();
-    }
-    (result, count)
+    let updated = serde_json::to_string_pretty(&value).unwrap_or_else(|_| content.to_string());
+    (updated, count)
 }
 
-/// Pure function: parse clarifications.md content and copy Recommendation -> Answer
-/// for each empty Answer field. Returns (updated_content, count_filled).
+/// Parse clarifications.json and auto-fill empty top-level question answers.
+/// For each question where answer_choice is null AND answer_text is null/empty,
+/// sets answer_choice to the first non-other choice's id and answer_text to its text.
+/// Does NOT touch refinements (that's autofill_refinement_answers).
+/// Returns (updated_json_string, count_filled).
 fn autofill_answers(content: &str) -> (String, u32) {
-    let mut result = String::new();
+    let mut value: serde_json::Value = match serde_json::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return (content.to_string(), 0),
+    };
     let mut count: u32 = 0;
-    let mut last_recommendation = String::new();
 
-    let has_trailing_newline = content.ends_with('\n');
+    if let Some(sections) = value.get_mut("sections").and_then(|s| s.as_array_mut()) {
+        for section in sections.iter_mut() {
+            if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
+                for question in questions.iter_mut() {
+                    let answer_choice_empty = question.get("answer_choice").map_or(true, |v| v.is_null());
+                    let answer_text_empty = question.get("answer_text").map_or(true, |v| {
+                        v.is_null() || v.as_str().map_or(false, |s| s.is_empty())
+                    });
 
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        // Reset recommendation at each new section (##) or question (###) heading
-        // to prevent a previous question's recommendation from bleeding into the next.
-        if trimmed.starts_with("## ") || trimmed.starts_with("### ") {
-            last_recommendation = String::new();
-        }
-
-        // Track the most recent Recommendation value.
-        // Handle both `- Recommendation: ...` and `**Recommendation:** ...` formats.
-        if let Some(rest) = trimmed.strip_prefix("- Recommendation:") {
-            last_recommendation = rest.trim().to_string();
-        } else if let Some(rest) = trimmed.strip_prefix("**Recommendation:**") {
-            last_recommendation = rest.trim().to_string();
-        }
-
-        // Check for empty Answer fields
-        if trimmed.starts_with("**Answer:**") {
-            let after_prefix = trimmed.strip_prefix("**Answer:**").unwrap_or("");
-            let answer_text = after_prefix.trim();
-
-            let is_empty_or_sentinel = answer_text.is_empty()
-                || answer_text.eq_ignore_ascii_case("(accepted recommendation)");
-            if is_empty_or_sentinel && !last_recommendation.is_empty() {
-                // Replace the line, preserving leading whitespace
-                let leading_ws = &line[..line.len() - line.trim_start().len()];
-                result.push_str(leading_ws);
-                result.push_str("**Answer:** ");
-                result.push_str(&last_recommendation);
-                result.push('\n');
-                count += 1;
-                continue;
+                    if answer_choice_empty && answer_text_empty {
+                        if let Some(choices) = question.get("choices").and_then(|c| c.as_array()) {
+                            if let Some(first_non_other) = choices.iter().find(|c| {
+                                c.get("is_other").and_then(|v| v.as_bool()) != Some(true)
+                            }) {
+                                if let (Some(id), Some(text)) = (
+                                    first_non_other.get("id").cloned(),
+                                    first_non_other.get("text").cloned(),
+                                ) {
+                                    question["answer_choice"] = id;
+                                    question["answer_text"] = text;
+                                    count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        result.push_str(line);
-        result.push('\n');
     }
 
-    // If original didn't have trailing newline and we added one, remove it.
-    // If original had trailing newline, keep it.
-    if !has_trailing_newline && result.ends_with('\n') {
-        result.pop();
-    }
-
-    (result, count)
+    let updated = serde_json::to_string_pretty(&value).unwrap_or_else(|_| content.to_string());
+    (updated, count)
 }
 
 #[tauri::command]
@@ -1734,6 +1708,96 @@ pub fn reset_workflow_step(
             "pending",
             &run.purpose,
         )?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn scan_legacy_clarifications(
+    db: tauri::State<'_, Db>,
+) -> Result<Vec<String>, String> {
+    log::info!("scan_legacy_clarifications: checking for legacy clarifications.md files");
+
+    let skills_path = match read_skills_path(&db) {
+        Some(p) => p,
+        None => return Ok(vec![]),
+    };
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT name FROM skills")
+        .map_err(|e| e.to_string())?;
+    let skill_names: Vec<String> = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut legacy_skills = Vec::new();
+    for name in &skill_names {
+        let md_path = Path::new(&skills_path)
+            .join(name)
+            .join("context")
+            .join("clarifications.md");
+        if md_path.exists() {
+            legacy_skills.push(name.clone());
+        }
+    }
+
+    log::info!(
+        "scan_legacy_clarifications: found {} skills with legacy clarifications.md",
+        legacy_skills.len()
+    );
+    Ok(legacy_skills)
+}
+
+#[tauri::command]
+pub fn reset_legacy_skills(
+    skill_names: Vec<String>,
+    db: tauri::State<'_, Db>,
+) -> Result<(), String> {
+    log::info!("reset_legacy_skills: resetting {} skills", skill_names.len());
+
+    let skills_path = read_skills_path(&db)
+        .ok_or_else(|| "Skills path not configured".to_string())?;
+
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+
+    for name in &skill_names {
+        let skill_root = Path::new(&skills_path).join(name);
+
+        // Delete context/ contents
+        let context_dir = skill_root.join("context");
+        if context_dir.is_dir() {
+            if let Err(e) = std::fs::remove_dir_all(&context_dir) {
+                log::warn!("reset_legacy_skills: failed to remove context/ for {}: {}", name, e);
+            }
+            let _ = std::fs::create_dir_all(&context_dir);
+        }
+
+        // Delete SKILL.md
+        let skill_md = skill_root.join("SKILL.md");
+        if skill_md.exists() {
+            let _ = std::fs::remove_file(&skill_md);
+        }
+
+        // Delete references/ contents
+        let refs_dir = skill_root.join("references");
+        if refs_dir.is_dir() {
+            if let Err(e) = std::fs::remove_dir_all(&refs_dir) {
+                log::warn!("reset_legacy_skills: failed to remove references/ for {}: {}", name, e);
+            }
+            let _ = std::fs::create_dir_all(&refs_dir);
+        }
+
+        // Reset workflow to step 0 in DB
+        conn.execute(
+            "UPDATE workflow_steps SET status = 'pending' WHERE skill_name = ?1",
+            rusqlite::params![name],
+        ).map_err(|e| e.to_string())?;
+
+        log::info!("reset_legacy_skills: reset {}", name);
     }
 
     Ok(())
@@ -2063,9 +2127,9 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
         // Create output files for steps 0, 2, 4, 5 in skills_path/my-skill/
-        // Steps 0 and 2 both use clarifications.md (unified artifact)
+        // Steps 0 and 2 both use clarifications.json (unified artifact)
         std::fs::write(
-            skill_dir.join("context/clarifications.md"),
+            skill_dir.join("context/clarifications.json"),
             "step0+step2",
         )
         .unwrap();
@@ -2076,8 +2140,8 @@ mod tests {
         // Reset from step 4 onwards — steps 0, 2 should be preserved
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
 
-        // Steps 0, 2 output (unified clarifications.md) should still exist
-        assert!(skill_dir.join("context/clarifications.md").exists());
+        // Steps 0, 2 output (unified clarifications.json) should still exist
+        assert!(skill_dir.join("context/clarifications.json").exists());
 
         // Steps 4+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
@@ -2087,7 +2151,7 @@ mod tests {
 
     #[test]
     fn test_clean_step_output_step2_is_noop() {
-        // Step 2 edits clarifications.md in-place (no unique artifact),
+        // Step 2 edits clarifications.json in-place (no unique artifact),
         // so cleaning step 2 has no files to delete.
         let workspace_tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
@@ -2096,13 +2160,13 @@ mod tests {
         let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        std::fs::write(skill_dir.join("context/clarifications.md"), "refined").unwrap();
+        std::fs::write(skill_dir.join("context/clarifications.json"), "refined").unwrap();
         std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
 
         // Clean only step 2 — both files should be untouched (step 2 has no unique output)
         crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, skills_path);
 
-        assert!(skill_dir.join("context/clarifications.md").exists());
+        assert!(skill_dir.join("context/clarifications.json").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
     }
 
@@ -2324,8 +2388,8 @@ mod tests {
         ).unwrap();
         // These context files should be EXCLUDED from the zip
         std::fs::write(
-            source_dir.join("context").join("clarifications.md"),
-            "# Clarifications",
+            source_dir.join("context").join("clarifications.json"),
+            "{}",
         ).unwrap();
         std::fs::write(
             source_dir.join("context").join("decisions.md"),
@@ -2456,8 +2520,8 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(
-            skill_dir.join("context/clarifications.md"),
-            "# Will be wiped",
+            skill_dir.join("context/clarifications.json"),
+            "{}",
         ).unwrap();
 
         let step_id: u32 = 0;
@@ -2470,7 +2534,7 @@ mod tests {
         }
 
         // Context files should have been wiped
-        assert!(!skill_dir.join("context/clarifications.md").exists());
+        assert!(!skill_dir.join("context/clarifications.json").exists());
         // But context directory itself should be recreated
         assert!(skill_dir.join("context").exists());
     }
@@ -2632,7 +2696,7 @@ mod tests {
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = [
-            "clarifications.md",
+            "clarifications.json",
             "decisions.md",
         ];
         for file in &context_files {
@@ -2665,7 +2729,7 @@ mod tests {
     fn test_scope_recommendation_true() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;
-        writeln!(f, "---\nscope_recommendation: true\noriginal_dimensions: 8\n---\n## Scope Recommendation").unwrap();
+        write!(f, r#"{{"metadata":{{"scope_recommendation":true,"original_dimensions":8}},"sections":[]}}"#).unwrap();
         assert!(parse_scope_recommendation(f.path()));
     }
 
@@ -2673,7 +2737,7 @@ mod tests {
     fn test_scope_recommendation_false() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;
-        writeln!(f, "---\nscope_recommendation: false\nsections:\n  - entities\n---\n## Questions").unwrap();
+        write!(f, r#"{{"metadata":{{"scope_recommendation":false}},"sections":[]}}"#).unwrap();
         assert!(!parse_scope_recommendation(f.path()));
     }
 
@@ -2681,20 +2745,20 @@ mod tests {
     fn test_scope_recommendation_absent() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;
-        writeln!(f, "---\nsections:\n  - entities\n---\n## Questions").unwrap();
+        write!(f, r#"{{"metadata":{{}},"sections":[]}}"#).unwrap();
         assert!(!parse_scope_recommendation(f.path()));
     }
 
     #[test]
     fn test_scope_recommendation_missing_file() {
-        assert!(!parse_scope_recommendation(Path::new("/nonexistent/file.md")));
+        assert!(!parse_scope_recommendation(Path::new("/nonexistent/file.json")));
     }
 
     #[test]
-    fn test_scope_recommendation_no_frontmatter() {
+    fn test_scope_recommendation_invalid_json() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         use std::io::Write as _;
-        writeln!(f, "# Just a regular markdown file\nNo frontmatter here.").unwrap();
+        write!(f, "not valid json at all").unwrap();
         assert!(!parse_scope_recommendation(f.path()));
     }
 
@@ -2822,299 +2886,252 @@ mod tests {
         assert!(!parse_decisions_guard(&path));
     }
 
-    // --- autofill_answers tests ---
+    // --- autofill_answers tests (JSON) ---
+
+    /// Helper: build a minimal clarifications JSON with given questions.
+    fn make_clarifications_json(questions: Vec<serde_json::Value>) -> String {
+        serde_json::json!({
+            "metadata": {},
+            "sections": [{
+                "id": "s1",
+                "title": "Section 1",
+                "questions": questions
+            }]
+        }).to_string()
+    }
+
+    /// Helper: build a question JSON object.
+    fn make_question(id: &str, choices: Vec<serde_json::Value>, answer_choice: Option<&str>, answer_text: Option<&str>, refinements: Option<Vec<serde_json::Value>>) -> serde_json::Value {
+        let mut q = serde_json::json!({
+            "id": id,
+            "text": format!("Question {}", id),
+            "choices": choices,
+            "answer_choice": answer_choice,
+            "answer_text": answer_text,
+        });
+        if let Some(refs) = refinements {
+            q["refinements"] = serde_json::json!(refs);
+        }
+        q
+    }
+
+    /// Helper: build a choice JSON object.
+    fn make_choice(id: &str, text: &str, is_other: bool) -> serde_json::Value {
+        serde_json::json!({
+            "id": id,
+            "text": text,
+            "is_other": is_other
+        })
+    }
 
     #[test]
-    fn test_autofill_copies_recommendation_to_empty_answer() {
-        let input = "   - Recommendation: Use X\n   **Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
+    fn test_autofill_copies_first_non_other_choice_to_empty_answer() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Use X", false),
+                make_choice("c2", "Other", true),
+            ], None, None, None),
+        ]);
+        let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
-        assert!(out.contains("**Answer:** Use X"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let q = &v["sections"][0]["questions"][0];
+        assert_eq!(q["answer_choice"], "c1");
+        assert_eq!(q["answer_text"], "Use X");
     }
 
     #[test]
     fn test_autofill_skips_already_answered() {
-        let input = "   - Recommendation: Use X\n   **Answer:** Use Y\n";
-        let (out, count) = super::autofill_answers(input);
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Use X", false),
+            ], Some("c1"), Some("Use X"), None),
+        ]);
+        let (_, count) = super::autofill_answers(&input);
         assert_eq!(count, 0);
-        assert!(out.contains("**Answer:** Use Y"));
-    }
-
-    #[test]
-    fn test_autofill_preserves_trailing_newline() {
-        let input = "   - Recommendation: A\n   **Answer:**\n";
-        let (out, _) = super::autofill_answers(input);
-        assert!(out.ends_with('\n'));
     }
 
     #[test]
     fn test_autofill_handles_multiple_questions() {
-        let input = "   - Recommendation: Rec1\n   **Answer:**\n\n   - Recommendation: Rec2\n   **Answer:** already filled\n\n   - Recommendation: Rec3\n   **Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
+        let choices = vec![make_choice("c1", "Rec", false)];
+        let input = make_clarifications_json(vec![
+            make_question("q1", choices.clone(), None, None, None),
+            make_question("q2", choices.clone(), Some("c1"), Some("already"), None),
+            make_question("q3", choices.clone(), None, None, None),
+        ]);
+        let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 2);
-        assert!(out.contains("**Answer:** Rec1"));
-        assert!(out.contains("**Answer:** already filled"));
-        assert!(out.contains("**Answer:** Rec3"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
+        assert_eq!(v["sections"][0]["questions"][1]["answer_text"], "already");
+        assert_eq!(v["sections"][0]["questions"][2]["answer_choice"], "c1");
     }
 
     #[test]
-    fn test_autofill_handles_whitespace_only_answer() {
-        let input = "   - Recommendation: Use X\n   **Answer:**   \n";
-        let (out, count) = super::autofill_answers(input);
+    fn test_autofill_skips_other_only_choices() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Other option", true),
+            ], None, None, None),
+        ]);
+        let (_, count) = super::autofill_answers(&input);
+        assert_eq!(count, 0, "Should not fill when only 'other' choices available");
+    }
+
+    #[test]
+    fn test_autofill_picks_first_non_other_choice() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Other", true),
+                make_choice("c2", "Second Choice", false),
+                make_choice("c3", "Third Choice", false),
+            ], None, None, None),
+        ]);
+        let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
-        assert!(out.contains("**Answer:** Use X"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c2");
+        assert_eq!(v["sections"][0]["questions"][0]["answer_text"], "Second Choice");
     }
 
     #[test]
-    fn test_autofill_replaces_accepted_recommendation_sentinel() {
-        let input = "   - Recommendation: Use X\n   **Answer:** (accepted recommendation)\n";
+    fn test_autofill_does_not_touch_refinements() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Use X", false),
+            ], Some("c1"), Some("Use X"), Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "Refine Y", false),
+                ], None, None, None),
+            ])),
+        ]);
+        let (out, count) = super::autofill_answers(&input);
+        assert_eq!(count, 0, "autofill_answers should not touch refinements");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"].is_null());
+    }
+
+    #[test]
+    fn test_autofill_invalid_json_returns_unchanged() {
+        let input = "not valid json";
         let (out, count) = super::autofill_answers(input);
+        assert_eq!(count, 0);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn test_autofill_empty_answer_text_treated_as_empty() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Use X", false),
+            ], None, Some(""), None),
+        ]);
+        let (out, count) = super::autofill_answers(&input);
         assert_eq!(count, 1);
-        assert!(out.contains("**Answer:** Use X"));
-        assert!(!out.contains("(accepted recommendation)"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
     }
 
-    #[test]
-    fn test_autofill_does_not_bleed_recommendation_across_questions() {
-        let input = "## Q1\n- Recommendation: Use PostgreSQL\n**Answer:** I prefer MySQL\n\n## Q2\n**Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 0, "Q2 should not get Q1's recommendation");
-        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
-    }
-
-    #[test]
-    fn test_autofill_does_not_bleed_recommendation_across_questions_same_section() {
-        // Two questions in the same ## section, each with a different **Recommendation:**.
-        // The second question's empty **Answer:** should get ITS OWN recommendation,
-        // not the first question's.
-        let input = "\
-## Section 1\n\
-\n\
-### Q1: First Question\n\
-**Recommendation:** Use Redis\n\
-**Answer:** Already using Memcached\n\
-\n\
-### Q2: Second Question\n\
-**Recommendation:** Use gRPC\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 1, "Only Q2's answer should be filled");
-        assert!(out.contains("**Answer:** Use gRPC"), "Q2 should get its own recommendation (Use gRPC)");
-        assert!(out.contains("**Answer:** Already using Memcached"), "Q1's answer should be unchanged");
-        assert!(!out.contains("**Answer:** Use Redis\n"), "Q2 must not get Q1's recommendation");
-    }
-
-    #[test]
-    fn test_autofill_no_bleed_when_q2_has_no_recommendation() {
-        // The actual bug scenario: Q2 has no Recommendation of its own.
-        // Without the ### reset, Q1's recommendation would leak into Q2.
-        let input = "\
-## Section 1\n\
-\n\
-### Q1: First Question\n\
-**Recommendation:** Use Redis\n\
-**Answer:** Already using Memcached\n\
-\n\
-### Q2: Second Question\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 0, "Q2 has no recommendation and should not be filled");
-        assert!(out.contains("**Answer:**\n"), "Q2's empty answer should remain empty");
-    }
-
-    // --- autofill_refinement_answers tests ---
+    // --- autofill_refinement_answers tests (JSON) ---
 
     #[test]
     fn test_autofill_refinement_fills_empty_refinement_answer() {
-        let input = "\
-### Q1: Top-level Question\n\
-**Recommendation:** Use X\n\
-**Answer:** My answer\n\
-\n\
-#### Refinements\n\
-\n\
-##### R1.1: Refinement Question\n\
-**Recommendation:** Use Y\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_refinement_answers(input);
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Q answer", false),
+            ], Some("c1"), Some("Q answer"), Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "Refine Y", false),
+                ], None, None, None),
+            ])),
+        ]);
+        let (out, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 1);
-        assert!(out.contains("**Answer:** Use Y"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let r = &v["sections"][0]["questions"][0]["refinements"][0];
+        assert_eq!(r["answer_choice"], "rc1");
+        assert_eq!(r["answer_text"], "Refine Y");
         // Q-level answer should be unchanged
-        assert!(out.contains("**Answer:** My answer"));
+        assert_eq!(v["sections"][0]["questions"][0]["answer_choice"], "c1");
     }
 
     #[test]
-    fn test_autofill_refinement_skips_q_level_answers() {
-        let input = "\
-### Q1: Top-level Question\n\
-**Recommendation:** Use X\n\
-**Answer:**\n\
-\n\
-#### Refinements\n\
-\n\
-##### R1.1: Refinement Question\n\
-**Recommendation:** Use Y\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_refinement_answers(input);
-        assert_eq!(count, 1, "Only R-level answer should be filled");
-        // Q-level empty answer should remain empty
-        assert!(out.contains("### Q1: Top-level Question\n**Recommendation:** Use X\n**Answer:**\n"));
-        // R-level should be filled
-        assert!(out.contains("**Answer:** Use Y"));
+    fn test_autofill_refinement_skips_answered() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Q answer", false),
+            ], Some("c1"), Some("Q answer"), Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "Refine Y", false),
+                ], Some("rc1"), Some("Refine Y"), None),
+            ])),
+        ]);
+        let (_, count) = super::autofill_refinement_answers(&input);
+        assert_eq!(count, 0);
     }
 
     #[test]
-    fn test_autofill_refinement_handles_multiple_refinements() {
-        let input = "\
-### Q1: Question\n\
-**Recommendation:** Q1 rec\n\
-**Answer:** Q1 answer\n\
-\n\
-#### Refinements\n\
-\n\
-##### R1.1: First Refinement\n\
-**Recommendation:** R1.1 rec\n\
-**Answer:**\n\
-\n\
-### Q2: Question\n\
-**Recommendation:** Q2 rec\n\
-**Answer:**\n\
-\n\
-#### Refinements\n\
-\n\
-##### R2.1: Second Refinement\n\
-**Recommendation:** R2.1 rec\n\
-**Answer:** Already answered\n";
-        let (out, count) = super::autofill_refinement_answers(input);
-        assert_eq!(count, 1, "Only R1.1 should be filled (R2.1 is already answered)");
-        assert!(out.contains("**Answer:** R1.1 rec"));
-        assert!(out.contains("**Answer:** Already answered"));
-        // Q2's empty answer should remain empty (not R-level)
-        assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
+    fn test_autofill_refinement_handles_multiple() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Q1 answer", false),
+            ], Some("c1"), Some("Q1 answer"), Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "R1 rec", false),
+                ], None, None, None),
+                make_question("r2", vec![
+                    make_choice("rc2", "R2 rec", false),
+                ], Some("rc2"), Some("Already"), None),
+            ])),
+        ]);
+        let (out, count) = super::autofill_refinement_answers(&input);
+        assert_eq!(count, 1, "Only r1 should be filled");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"], "rc1");
+        assert_eq!(v["sections"][0]["questions"][0]["refinements"][1]["answer_text"], "Already");
     }
 
     #[test]
-    fn test_autofill_refinement_replaces_sentinel() {
-        let input = "\
-##### R1.1: Refinement\n\
-**Recommendation:** Use Z\n\
-**Answer:** (accepted recommendation)\n";
-        let (out, count) = super::autofill_refinement_answers(input);
+    fn test_autofill_refinement_skips_other_only() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Q answer", false),
+            ], Some("c1"), Some("Q answer"), Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "Other option", true),
+                ], None, None, None),
+            ])),
+        ]);
+        let (_, count) = super::autofill_refinement_answers(&input);
+        assert_eq!(count, 0, "Should not fill when only 'other' choices available");
+    }
+
+    #[test]
+    fn test_autofill_refinement_does_not_touch_q_level() {
+        let input = make_clarifications_json(vec![
+            make_question("q1", vec![
+                make_choice("c1", "Q rec", false),
+            ], None, None, Some(vec![
+                make_question("r1", vec![
+                    make_choice("rc1", "R rec", false),
+                ], None, None, None),
+            ])),
+        ]);
+        let (out, count) = super::autofill_refinement_answers(&input);
         assert_eq!(count, 1);
-        assert!(out.contains("**Answer:** Use Z"));
-        assert!(!out.contains("(accepted recommendation)"));
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        // Q-level should still be null (untouched by refinement autofill)
+        assert!(v["sections"][0]["questions"][0]["answer_choice"].is_null());
+        // R-level should be filled
+        assert_eq!(v["sections"][0]["questions"][0]["refinements"][0]["answer_choice"], "rc1");
     }
 
     #[test]
-    fn test_autofill_refinement_no_bleed_across_sections() {
-        let input = "\
-##### R1.1: First Refinement\n\
-**Recommendation:** Rec A\n\
-**Answer:** My answer\n\
-\n\
-### Q2: Different Question\n\
-**Answer:**\n";
+    fn test_autofill_refinement_invalid_json_returns_unchanged() {
+        let input = "not valid json";
         let (out, count) = super::autofill_refinement_answers(input);
-        assert_eq!(count, 0, "No refinement answers should be filled");
-        // Q2's answer should still be empty (not in_refinement scope)
-        assert!(out.contains("**Answer:**\n"));
-    }
-
-    #[test]
-    fn test_autofill_refinement_preserves_trailing_newline() {
-        let input = "##### R1.1: Refinement\n**Recommendation:** A\n**Answer:**\n";
-        let (out, _) = super::autofill_refinement_answers(input);
-        assert!(out.ends_with('\n'));
-    }
-
-    #[test]
-    fn test_autofill_refinement_no_trailing_newline_when_absent() {
-        let input = "##### R1.1: Refinement\n**Recommendation:** A\n**Answer:**";
-        let (out, _) = super::autofill_refinement_answers(input);
-        assert!(!out.ends_with('\n'));
-    }
-
-    // --- autofill with ### Required / ### Optional sub-headings ---
-
-    #[test]
-    fn test_autofill_with_required_optional_subheadings() {
-        // ### Required and ### Optional are H3 sub-headings that reset
-        // recommendation state (starts_with("### ")). Verify autofill
-        // still works correctly — each question gets its own recommendation.
-        let input = "\
-## Section 1: Core Concepts\n\
-\n\
-### Required\n\
-\n\
-### Q1: Primary Use Case\n\
-**Recommendation:** Focus on common workflow patterns.\n\
-**Answer:**\n\
-\n\
-### Optional\n\
-\n\
-### Q2: Target Expertise Level\n\
-**Recommendation:** Intermediate level.\n\
-**Answer:**\n\
-\n\
-### Q3: Greenfield vs Brownfield\n\
-**Recommendation:** Both with emphasis on greenfield.\n\
-**Answer:** Greenfield only.\n";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 2, "Q1 and Q2 should be filled, Q3 already answered");
-        assert!(out.contains("**Answer:** Focus on common workflow patterns."), "Q1 should get its recommendation");
-        assert!(out.contains("**Answer:** Intermediate level."), "Q2 should get its recommendation");
-        assert!(out.contains("**Answer:** Greenfield only."), "Q3 should keep its answer");
-    }
-
-    #[test]
-    fn test_autofill_required_subheading_resets_recommendation() {
-        // ### Required resets recommendation state. A question after
-        // ### Required with no recommendation should NOT get a previous
-        // question's recommendation.
-        let input = "\
-## Section 1\n\
-\n\
-### Q1: First\n\
-**Recommendation:** Use Redis\n\
-**Answer:** Done\n\
-\n\
-### Required\n\
-\n\
-### Q2: Second\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_answers(input);
-        assert_eq!(count, 0, "Q2 has no recommendation — ### Required reset prevents bleed from Q1");
-        assert!(out.contains("### Q2: Second\n**Answer:**\n"), "Q2 should remain empty");
-    }
-
-    #[test]
-    fn test_autofill_refinement_with_required_optional_subheadings() {
-        // Verify refinement autofill works within the Required/Optional structure.
-        let input = "\
-## Section 1\n\
-\n\
-### Required\n\
-\n\
-### Q1: Question\n\
-**Recommendation:** Q1 rec\n\
-**Answer:** Q1 answer\n\
-\n\
-#### Refinements\n\
-\n\
-##### R1.1: Follow-up\n\
-**Recommendation:** R1.1 rec\n\
-**Answer:**\n\
-\n\
-### Optional\n\
-\n\
-### Q2: Question\n\
-**Recommendation:** Q2 rec\n\
-**Answer:**\n";
-        let (out, count) = super::autofill_refinement_answers(input);
-        assert_eq!(count, 1, "Only R1.1 should be filled");
-        assert!(out.contains("**Answer:** R1.1 rec"), "R1.1 should get its recommendation");
-        // Q2's empty answer must not be touched by refinement autofill
-        assert!(out.contains("### Q2: Question\n**Recommendation:** Q2 rec\n**Answer:**\n"));
+        assert_eq!(count, 0);
+        assert_eq!(out, input);
     }
 
     // --- generate_skills_section tests ---

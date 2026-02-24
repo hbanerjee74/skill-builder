@@ -27,7 +27,7 @@ pub fn detect_furthest_step(
     // Detectable steps: those that write unique output files to skills_path.
     // Steps 0, 4 write context files to skills_path/skill_name/context/.
     // Step 5 writes SKILL.md to skills_path/skill_name/.
-    // Step 2 edits clarifications.md in-place (no unique artifact) — non-detectable.
+    // Step 2 edits clarifications.json in-place (no unique artifact) — non-detectable.
     for step_id in [0u32, 4, 5] {
         let files = get_step_output_files(step_id);
         let (has_all, has_any) = if step_id == 5 {
@@ -78,7 +78,7 @@ pub fn detect_furthest_step(
 
 /// Check if a skill has ANY output files in the skills_path directory.
 /// This includes build output (SKILL.md, references/) and context files
-/// (clarifications, decisions) that are written directly to skills_path.
+/// (clarifications.json, decisions) that are written directly to skills_path.
 pub fn has_skill_output(skill_name: &str, skills_path: &str) -> bool {
     log::debug!(
         "[has_skill_output] skill='{}': skills_path={}",
@@ -141,7 +141,7 @@ mod tests {
         create_step_output(skills_tmp.path(), "my-skill", 0);
         assert_eq!(detect_furthest_step(workspace, "my-skill", skills_path), Some(0));
 
-        // Step 2 output in skills_path (step 2 edits clarifications.md in-place — no unique artifact)
+        // Step 2 output in skills_path (step 2 edits clarifications.json in-place — no unique artifact)
         // Actually step 2 has no output files per get_step_output_files, so it's not detectable alone.
         // Detection goes from 0 to 4.
 
@@ -286,14 +286,14 @@ mod tests {
 
     #[test]
     fn test_detect_step2_is_not_independently_detectable() {
-        // Step 2 edits clarifications.md in-place (no unique artifact).
+        // Step 2 edits clarifications.json in-place (no unique artifact).
         // Detection skips step 2 entirely and goes 0 -> 4 -> 5.
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let skills = tmp.path().join("skills");
 
         std::fs::create_dir_all(workspace.join("my-skill")).unwrap();
-        // Create step 0 context output (clarifications.md) in skills_path
+        // Create step 0 context output (clarifications.json) in skills_path
         create_step_output(&skills, "my-skill", 0);
         // No step 4 output — should detect step 0 only
         let step = detect_furthest_step(
