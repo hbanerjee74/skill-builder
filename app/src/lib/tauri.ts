@@ -64,6 +64,7 @@ export const renameSkill = (
 ) => invoke("rename_skill", { oldName, newName, workspacePath });
 
 export interface FieldSuggestions {
+  description: string;
   domain: string;
   audience: string;
   challenges: string;
@@ -79,7 +80,6 @@ export const generateSuggestions = (
   opts?: {
     industry?: string | null;
     functionRole?: string | null;
-    purposeLabel?: string;
     domain?: string;
     scope?: string;
     audience?: string;
@@ -158,7 +158,6 @@ export const getDisabledSteps = (skillName: string) =>
 
 interface WorkflowRunRow {
   skill_name: string;
-  domain: string;
   current_step: number;
   status: string;
   purpose: string;

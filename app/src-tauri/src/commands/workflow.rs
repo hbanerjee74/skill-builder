@@ -728,19 +728,19 @@ fn build_prompt(
     skill_name: &str,
     workspace_path: &str,
     skills_path: &str,
-    purpose: &str,
+    _purpose: &str,
     author_login: Option<&str>,
     created_at: Option<&str>,
     max_dimensions: u32,
-    industry: Option<&str>,
-    function_role: Option<&str>,
-    intake_json: Option<&str>,
-    description: Option<&str>,
-    version: Option<&str>,
-    skill_model: Option<&str>,
-    argument_hint: Option<&str>,
-    user_invocable: Option<bool>,
-    disable_model_invocation: Option<bool>,
+    _industry: Option<&str>,
+    _function_role: Option<&str>,
+    _intake_json: Option<&str>,
+    _description: Option<&str>,
+    _version: Option<&str>,
+    _skill_model: Option<&str>,
+    _argument_hint: Option<&str>,
+    _user_invocable: Option<bool>,
+    _disable_model_invocation: Option<bool>,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
     let context_dir = Path::new(skills_path).join(skill_name).join("context");
@@ -1035,7 +1035,7 @@ pub async fn run_workflow_step(
 
     let settings = read_workflow_settings(&db, &skill_name, step_id, &workspace_path)?;
     log::info!(
-        "[run_workflow_step] settings: skills_path={} skill_type={} intake={} industry={:?} function={:?}",
+        "[run_workflow_step] settings: skills_path={} purpose={} intake={} industry={:?} function={:?}",
         settings.skills_path, settings.purpose,
         settings.intake_json.is_some(),
         settings.industry, settings.function_role,
