@@ -32,17 +32,17 @@ The user's `user-context.md` file (in the workspace directory) is the single sou
 - **Purpose** — what the user is trying to capture (e.g. "Business process knowledge")
 - **Description** — the skill's trigger pattern for Claude Code activation
 - **Industry** and **Function** — the user's profile
-- **What Claude Needs to Know** — the user's specific environment context (replaces the old domain, scope, challenges, unique_setup fields)
+- **What Claude Needs to Know** — the user's specific environment context
 - **Behaviour settings** — version, model, argument hint, invocation flags
 
-Every agent must read `user-context.md` from the workspace directory and use it to tailor output. The Rust backend does NOT inject user context into the prompt — agents read it themselves.
+Every agent must read `user-context.md` from the workspace directory and use it to tailor output.
 
 **Rules:**
 1. **Read early** — read `user-context.md` in your first step, before any other work.
 2. **Pass to sub-agents** — orchestrators embed the full `user-context.md` content in sub-agent prompts under a `## User Context` heading, so sub-agents have it without reading the file again.
 3. **Error if missing** — if the file does not exist, return an error. Do not proceed without user context.
 
-**Workspace directory contents:** The workspace directory only contains `user-context.md`. Do not read or list any other files or subdirectories (e.g. `logs/`).
+**Workspace directory contents:** Only read the `user-context.md` from the workspace directory.
 
 ### Scope Recommendation Guard
 

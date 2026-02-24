@@ -40,8 +40,91 @@ Guidance for building effective data engineering skills. Agents reference this d
 - If a section grows past a few paragraphs, extract to a reference file.
 - Reference files one level deep. TOC for files over 100 lines.
 - **Required sections:** Metadata (name, description) | Overview (scope, audience, key concepts — no trigger restatement) | Quick reference (top guidance) | Pointers to references (what each file covers, when to read it)
-- **Decision Architecture skills** (Platform, Data Engineering): add a **Getting Started** checklist (5-8 ordered steps) after Quick Reference and before the Decision Dependency Map. Walk a first-time user through the decision sequence.
-- **Interview Architecture skills** (Source, Domain): no Getting Started section — their sections are parallel and order-independent.
+- **Decision Architecture skills** (see Purpose and Architecture below): add a **Getting Started** checklist (5-8 ordered steps) after Quick Reference and before the Decision Dependency Map. Walk a first-time user through the decision sequence.
+- **Interview Architecture skills** (see Purpose and Architecture below): no Getting Started section — their sections are parallel and order-independent.
+
+## Purpose and Architecture
+
+The user's purpose (from user-context.md) determines which SKILL.md architecture to use.
+
+### Purpose → Architecture Mapping
+
+| Purpose | Architecture | Shorthand |
+|---|---|---|
+| Business process knowledge | Interview Architecture | Domain |
+| Source system customizations | Interview Architecture | Source |
+| Organization specific data engineering standards | Decision Architecture | Data Engineering |
+| Organization specific Azure or Fabric standards | Decision Architecture | Platform |
+
+Use the shorthand in section names, annotation budgets, and calibration rules below.
+
+### Interview Architecture (Source, Domain)
+
+Sections organize **questions about the customer's environment**. Sections are parallel — no dependency ordering.
+
+**Source sections (6):**
+1. Field Semantics and Overrides
+2. Data Extraction Gotchas
+3. Reconciliation Rules
+4. State Machine and Lifecycle
+5. System Workarounds
+6. API/Integration Behaviors
+
+**Domain sections (6):**
+1. Metric Definitions
+2. Materiality Thresholds
+3. Segmentation Standards
+4. Period Handling
+5. Business Logic Decisions
+6. Output Standards
+
+### Decision Architecture (Platform, Data Engineering)
+
+Sections organize **implementation decisions with explicit dependency maps**. Each section may have up to three content tiers:
+- **Decision structure** — what to decide and in what order
+- **Resolution criteria** — platform-specific facts (pre-filled assertions)
+- **Context factors** — customer-specific parameters (guided prompts)
+
+Include a **Decision Dependency Map** at the top of SKILL.md showing how decisions constrain each other.
+
+**Platform sections (6):**
+1. Target Architecture Decisions
+2. Materialization Decision Matrix
+3. Incremental Strategy Decisions
+4. Platform Constraint Interactions
+5. Capacity and Cost Decisions
+6. Testing and Deployment
+
+**Data Engineering sections (6):**
+1. Pattern Selection Criteria
+2. Key and Identity Decisions
+3. Temporal Design Decisions
+4. Implementation Approach
+5. Edge Case Resolution
+6. Performance and Operations
+
+### Annotation Budget
+
+Pre-filled factual assertions allowed per purpose:
+- **Source** (Source system customizations): 3-5 — extraction-grade procedural traps
+- **Domain** (Business process knowledge): 0 — domain metrics too variable across customers
+- **Platform** (Azure or Fabric standards): 3-5 — platform-specific resolution criteria
+- **Data Engineering** (Data engineering standards): 2-3 — pattern-platform intersection facts only
+
+### Delta Principle
+
+Skills must encode only the delta between what Claude knows and what the customer's specific environment requires. Two layers of knowledge to exclude:
+
+1. **Claude's parametric knowledge** — restating what Claude already knows from training risks knowledge suppression.
+2. **Publicly available documentation** — do NOT include standard library docs, API references, configuration syntax, CLI usage, or anything a coding agent can look up at runtime via Context7, web search, or `--help`.
+
+What DOES belong: customer-specific decisions, business logic, environment-specific gotchas, and non-obvious platform traps that aren't in public documentation.
+
+**Calibration by purpose:**
+- **Source** — Moderate suppression risk. Platform extraction knowledge varies; procedural annotations for non-obvious traps are safe.
+- **Domain** — Low risk. No pre-filled content; guided prompts only.
+- **Platform** — High suppression risk. Claude knows dbt and Fabric well. Only include platform-specific facts that Claude gets wrong unprompted.
+- **Data Engineering** — Highest suppression risk. Claude knows Kimball methodology, SCD patterns, and dimensional modeling at expert level. Only include the intersection of the pattern with the specific platform where Claude's knowledge breaks down.
 
 ### Evaluations (mandatory)
 

@@ -29,7 +29,7 @@ In **rewrite mode** (`/rewrite` in the prompt), you rewrite an existing skill fo
   - The **workspace directory** path (contains `user-context.md`)
 - Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to tailor the skill's tone, examples, and focus areas.
 - Read `decisions.md` — this is your primary input (in rewrite mode, also read existing skill files)
-- The purpose determines which SKILL.md architecture to use (see Type-Specific Structure below)
+- The purpose determines which SKILL.md architecture to use (see Skill Builder Practices)
 
 </context>
 
@@ -44,7 +44,7 @@ Check if the prompt contains `/rewrite`. This determines how each phase operates
 | | Normal Mode | Rewrite Mode |
 |---|---|---|
 | **Primary input** | `decisions.md` only | Existing SKILL.md + references + `decisions.md` |
-| **Scope guard** | Check for `scope_recommendation: true` | Check for `scope_recommendation: true` |
+| **Guards** | Check `scope_recommendation` + `contradictory_inputs` | Check `scope_recommendation` + `contradictory_inputs` |
 | **Phase 1 goal** | Design structure from decisions | Assess existing structure, plan improvements |
 | **Phase 3 writing** | Write from decisions | Rewrite from existing content + decisions |
 | **Phase 3 review** | Check decisions coverage | Also verify no domain knowledge was dropped |
@@ -52,15 +52,9 @@ Check if the prompt contains `/rewrite`. This determines how each phase operates
 
 ### Guards
 
-Check `decisions.md` and `clarifications.md` in **both normal and rewrite mode** before doing any work. Block if either condition is true:
+Check `decisions.md` and `clarifications.md` before doing any work. Block if either condition is true:
 
 **Scope recommendation** — if `scope_recommendation: true` in clarifications.md or decisions.md, write this stub to `SKILL.md` and return:
-
-0 -> research 
-1 -> human 
-2 -> detailed research 
-3 -> human 
-4 - Decisions 
 
 ```
 ---
@@ -104,78 +98,15 @@ Planning guidelines:
 - File names should be descriptive and use kebab-case (e.g., `entity-model.md`, `pipeline-metrics.md`)
 - SKILL.md is the entry point; reference files provide depth
 
-## Type-Specific SKILL.md Architecture
+## Architecture and Content Rules
 
-The purpose determines the structural pattern for SKILL.md. There are two architectures:
+Follow the **Purpose and Architecture** rules in Skill Builder Practices (loaded via agent instructions) to determine:
+- Which SKILL.md architecture to use (Interview vs Decision)
+- The 6 canonical sections for the purpose
+- Annotation budget and content tier rules
+- Delta principle calibration
 
-### Interview Architecture (Source, Domain)
-
-Sections organize **questions about the customer's environment**. Sections are parallel — no dependency ordering between them.
-
-**Source skill sections (6):**
-1. Field Semantics and Overrides
-2. Data Extraction Gotchas
-3. Reconciliation Rules
-4. State Machine and Lifecycle
-5. System Workarounds
-6. API/Integration Behaviors
-
-**Domain skill sections (6):**
-1. Metric Definitions
-2. Materiality Thresholds
-3. Segmentation Standards
-4. Period Handling
-5. Business Logic Decisions
-6. Output Standards
-
-### Decision Architecture (Platform, Data Engineering)
-
-Sections organize **implementation decisions with explicit dependency maps**. Each section may have up to three content tiers:
-- **Decision structure** — what to decide and in what order
-- **Resolution criteria** — platform-specific facts (pre-filled assertions)
-- **Context factors** — customer-specific parameters (guided prompts)
-
-Include a **Decision Dependency Map** at the top of SKILL.md showing how decisions constrain each other.
-
-**Platform skill sections (6):**
-1. Target Architecture Decisions
-2. Materialization Decision Matrix
-3. Incremental Strategy Decisions
-4. Platform Constraint Interactions
-5. Capacity and Cost Decisions
-6. Testing and Deployment
-
-**Data Engineering skill sections (6):**
-1. Pattern Selection Criteria
-2. Key and Identity Decisions
-3. Temporal Design Decisions
-4. Implementation Approach
-5. Edge Case Resolution
-6. Performance and Operations
-
-### Annotation Budget
-
-Pre-filled factual assertions allowed per type:
-- **Source**: 3-5 (extraction-grade procedural traps)
-- **Domain**: 0 (domain metrics too variable across customers)
-- **Platform**: 3-5 (platform-specific resolution criteria)
-- **Data Engineering**: 2-3 (pattern-platform intersection facts only)
-
-### Delta Principle
-
-Skills must encode only the delta between what Claude knows and what the customer's specific environment requires. There are two layers of knowledge to exclude:
-
-1. **Claude's parametric knowledge** — restating what Claude already knows from training risks knowledge suppression.
-2. **Publicly available documentation** — do NOT include standard library docs, API references, configuration syntax, CLI usage, or anything a coding agent can look up at runtime via Context7, web search, or `--help`. If it's in the official docs, it doesn't belong in the skill.
-
-What DOES belong: customer-specific decisions, business logic, environment-specific gotchas, and non-obvious platform traps that aren't in public documentation.
-
-Calibrate by type:
-
-- **Source** — Moderate suppression risk. Platform extraction knowledge varies; procedural annotations for non-obvious traps are safe.
-- **Domain** — Low risk. No pre-filled content; guided prompts only.
-- **Platform** — High suppression risk. Claude knows dbt and Fabric well. Only include platform-specific facts that Claude gets wrong unprompted (e.g., CU economics, adapter-specific behaviors).
-- **Data Engineering** — Highest suppression risk. Claude knows Kimball methodology, SCD patterns, and dimensional modeling at expert level. Do NOT explain what SCD types are, do NOT describe dbt snapshot configuration, do NOT compare surrogate key patterns. Only include the intersection of the pattern with the specific platform where Claude's knowledge breaks down.
+The purpose label from user-context.md maps to an architecture and shorthand — see the mapping table in Skill Builder Practices.
 
 ## Phase 2: Write SKILL.md
 
@@ -206,9 +137,9 @@ The SKILL.md frontmatter description must follow the trigger pattern provided in
 
 The description already encodes trigger conditions via the trigger pattern — do not repeat them in the body.
 
-**Then add the 6 type-specific sections** from the Type-Specific Structure above.
+**Then add the 6 purpose-specific sections** from the Purpose and Architecture rules in Skill Builder Practices.
 
-**For Decision Architecture types (Platform, DE) only:**
+**For Decision Architecture purposes only (see Skill Builder Practices mapping):**
 - Include a **Getting Started** section immediately after Quick Reference and before the Decision Dependency Map. Write 5-8 ordered steps that walk a first-time user through the decision sequence.
 - Include a Decision Dependency Map section immediately after Getting Started, showing how choosing one option constrains downstream decisions
 - Use the three content tiers (decision structure, resolution criteria, context factors) within each section where applicable
@@ -222,7 +153,7 @@ The description already encodes trigger conditions via the trigger pattern — d
 
 Write each reference file from the plan to the `references/` subdirectory in the skill output directory. For each file:
 - Cover the assigned topic area and its decisions from `decisions.md`
-- Follow content tier rules for the skill type: Source/Domain produce guided prompts only; Platform/DE use the three content tiers and respect the annotation budget
+- Follow content tier rules for the purpose (see Skill Builder Practices): Source/Domain produce guided prompts only; Platform/DE use the three content tiers and respect the annotation budget
 - Keep files self-contained — a reader should understand the file without reading others
 
 **Rewrite mode additionally:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence and consistency with the new SKILL.md structure. Use the existing content as primary source, supplemented by `decisions.md`.
@@ -285,7 +216,7 @@ Sections: Overview → Quick Reference → **Getting Started** → **Decision De
 - 3-8 reference files, each self-contained
 - Every decision from `decisions.md` is addressed in at least one file
 - SKILL.md pointers accurately describe each reference file's content and when to read it
-- SKILL.md uses the correct architecture for the skill type (interview vs decision)
+- SKILL.md uses the correct architecture for the purpose (interview vs decision)
 - Type-specific canonical sections are present (6 per type)
 - Annotation budget respected (Source 3-5, Domain 0, Platform 3-5, DE 2-3)
 - Delta principle followed — no content Claude already knows at expert level
