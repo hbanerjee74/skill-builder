@@ -120,10 +120,48 @@ dimensions_selected: [count]
 | [slug] | [tailored focus line] |
 
 === CLARIFICATIONS ===
-{valid JSON matching the clarifications.json schema from references/consolidation-handoff.md}
+{
+  "version": "1",
+  "metadata": {
+    "title": "Clarifications: [Domain Name]",
+    "question_count": [n],
+    "section_count": [n],
+    "refinement_count": 0,
+    "must_answer_count": [n],
+    "priority_questions": ["Q1", "Q3"],
+    "duplicates_removed": [n],
+    "scope_recommendation": false
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "Section Name",
+      "description": "...",
+      "questions": [
+        {
+          "id": "Q1",
+          "title": "Short Title",
+          "must_answer": true,
+          "text": "Full question text...",
+          "consolidated_from": ["Metrics Research"],
+          "choices": [
+            {"id": "A", "text": "Choice A", "is_other": false},
+            {"id": "B", "text": "Choice B", "is_other": false},
+            {"id": "D", "text": "Other (please specify)", "is_other": true}
+          ],
+          "recommendation": "A — reasoning...",
+          "answer_choice": null,
+          "answer_text": null,
+          "refinements": []
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
 ```
 
-Both sections must be present and well-formed per their canonical formats.
+Both sections must be present. The `=== CLARIFICATIONS ===` section must be valid JSON matching the full schema in `references/consolidation-handoff.md`.
 
 ---
 
