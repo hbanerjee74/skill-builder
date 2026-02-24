@@ -100,7 +100,7 @@ Never write to the skill output directory:
 
 ## Quality Dimensions (scored 1-5)
 
-- **Actionability** — could a data engineer build/modify a dbt model, dlt pipeline, or CI workflow from this?
+- **Actionability** — could a data engineer build/modify a dbt model from this?
 - **Specificity** — concrete Fabric/T-SQL details, exact macro names, real config values vs "configure your warehouse"
 - **Domain Depth** — stack-specific gotchas vs surface-level docs rehash
 - **Self-Containment** — WHAT and WHY without needing Fabric docs or dlt source code
