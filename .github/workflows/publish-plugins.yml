@@ -1,0 +1,89 @@
+name: Publish Plugins
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to publish (e.g. 1.0.0) — omit 'v' prefix"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Strip leading 'v' from tag name (e.g. v1.2.3 → 1.2.3)
+            VERSION="${{ github.event.release.tag_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Download plugin artifact from release
+        env:
+          GH_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+        run: |
+          gh release download "v${{ steps.version.outputs.version }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "SkillBuilder-plugins-v*.zip" \
+            --dir .
+
+      - name: Extract plugin artifact
+        run: unzip -q "SkillBuilder-plugins-v${{ steps.version.outputs.version }}.zip"
+
+      - name: Checkout skills marketplace repo
+        uses: actions/checkout@v4
+        with:
+          repository: hbanerjee74/skills
+          token: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+          path: skills-repo
+
+      - name: Copy plugins to marketplace repo
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          SRC="SkillBuilder-plugins-v${VERSION}"
+          MP="skills-repo/plugins"
+
+          rm -rf "$MP/skill-builder" "$MP/skill-builder-research" "$MP/skill-builder-validate" "$MP/skill-builder-practices"
+          cp -R "${SRC}/plugins/skill-builder"           "$MP/skill-builder"
+          cp -R "${SRC}/plugins/skill-builder-research"  "$MP/skill-builder-research"
+          cp -R "${SRC}/plugins/skill-builder-validate"  "$MP/skill-builder-validate"
+          cp -R "${SRC}/plugins/skill-builder-practices" "$MP/skill-builder-practices"
+
+          mkdir -p skills-repo/.claude-plugin
+          cp "${SRC}/.claude-plugin/marketplace.json" skills-repo/.claude-plugin/marketplace.json
+
+      - name: Open PR on skills marketplace repo
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MARKETPLACE_GITHUB_TOKEN: ${{ secrets.MARKETPLACE_GITHUB_TOKEN }}
+        working-directory: skills-repo
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git diff --quiet && git diff --cached --quiet && echo "No changes to publish" && exit 0
+          BRANCH="release/v${VERSION}"
+          git checkout -b "$BRANCH"
+          git add .
+          git commit -m "Release v${VERSION}: update skill-builder plugins"
+          git push origin "$BRANCH"
+          curl -s -X POST \
+            -H "Authorization: token ${MARKETPLACE_GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/hbanerjee74/skills/pulls" \
+            -d "{\"title\":\"Release v${VERSION}: skill-builder plugins\",\"head\":\"${BRANCH}\",\"base\":\"master\",\"body\":\"Automated plugin update from skill-builder v${VERSION} release.\"}" \
+            | python3 -c "import sys,json; r=json.load(sys.stdin); print('PR created:', r.get('html_url', r.get('message', 'unknown')))"
