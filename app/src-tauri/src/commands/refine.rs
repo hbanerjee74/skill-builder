@@ -543,6 +543,7 @@ pub async fn send_refine_message(
             crate::commands::workflow::write_user_context_file(
                 &workspace_path,
                 &skill_name,
+                &[], // tags not fetched in refine path — lightweight call
                 settings.industry.as_deref(),
                 settings.function_role.as_deref(),
                 intake_json.as_deref(),
@@ -1398,6 +1399,8 @@ mod tests {
         // user-context.md to the workspace directory. format_user_context
         // produces the content; the prompt just points agents at the file.
         let ctx = crate::commands::workflow::format_user_context(
+            None,
+            &[],
             Some("Healthcare"),
             Some("Analytics Lead"),
             Some(r#"{"audience":"Data engineers","challenges":"Legacy ETL"}"#),
@@ -1407,14 +1410,15 @@ mod tests {
         let ctx = ctx.unwrap();
         assert!(ctx.contains("## User Context"));
         assert!(ctx.contains("**Industry**: Healthcare"));
-        assert!(ctx.contains("**Target Audience**: Data engineers"));
+        assert!(ctx.contains("### Target Audience"));
+        assert!(ctx.contains("Data engineers"));
     }
 
     #[test]
     fn test_no_user_context_when_fields_empty() {
         // When no user context fields exist, format_user_context returns None
         // and write_user_context_file is a no-op.
-        let ctx = crate::commands::workflow::format_user_context(None, None, None, None, None, None, None, None, None, None);
+        let ctx = crate::commands::workflow::format_user_context(None, &[], None, None, None, None, None, None, None, None, None, None);
         assert!(ctx.is_none());
     }
 
