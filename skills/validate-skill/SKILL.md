@@ -9,15 +9,11 @@ description: >
 
 # Validate Skill
 
-## What This Skill Does
+Read-only. Produces three inline text outputs (caller writes files):
 
-Given a completed skill, this skill produces three outputs as inline text:
-
-1. Validation log (becomes `agent-validation-log.md`)
-2. Test results (becomes `test-skill.md`)
-3. Companion skill recommendations (becomes `companion-skills.md`)
-
-This is a **read-only computation unit** — it reads skill files, runs validation, and returns findings as inline text. It does not modify any files. The caller (orchestrator) writes the three output files to disk.
+1. Validation log (`agent-validation-log.md`)
+2. Test results (`test-skill.md`)
+3. Companion skill recommendations (`companion-skills.md`)
 
 ---
 
@@ -27,9 +23,9 @@ This is a **read-only computation unit** — it reads skill files, runs validati
 |---|---|
 | `skill_name` | Skill name |
 | `purpose` | `Business process knowledge` \| `Organization specific data engineering standards` \| `Organization specific Azure or Fabric standards` \| `Source system customizations` |
-| `context_dir` | Path to context directory (contains `decisions.md`, `clarifications.md`, `research-plan.md`) |
-| `skill_output_dir` | Path to skill output directory (contains `SKILL.md` and `references/`) |
-| `workspace_dir` | Path to workspace directory (contains `user-context.md`) |
+| `context_dir` | Path to context directory |
+| `skill_output_dir` | Path to skill output directory |
+| `workspace_dir` | Path to workspace directory |
 
 ---
 
@@ -41,9 +37,9 @@ Glob `references/` in `skill_output_dir` to collect all reference file paths.
 
 ## Step 2 — Sub-agents
 
-Read the full content of the three spec files in `references/`. Spawn one sub-agent per spec, passing the spec content as instructions plus the paths below.
+Read the three spec files in `references/`. Spawn one sub-agent per spec with the spec content as instructions plus these paths.
 
-**Quality checker** — `references/validate-quality-spec.md`. Paths:
+**Quality checker** — `references/validate-quality-spec.md`:
 - `decisions.md`: `{context_dir}/decisions.md`
 - `clarifications.md`: `{context_dir}/clarifications.md`
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
