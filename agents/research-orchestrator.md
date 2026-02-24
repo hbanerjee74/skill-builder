@@ -24,13 +24,13 @@ Read `{workspace_dir}/user-context.md`. Pass the full content to the research sk
 Spawn a Task sub-agent with this prompt:
 
 ---
+**DO NOT write any files. Return all output as inline text only.**
+
 Use the research skill to research dimensions and produce clarifications for:
 - purpose: {purpose value from user-context.md}
 
 ## User Context
 {full user-context.md content from Step 0 — pass the complete file content here}
-
-Return the complete output as inline text — do not write files.
 ---
 
 Capture the full tool result as `research_output`.
