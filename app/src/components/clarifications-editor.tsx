@@ -337,7 +337,7 @@ function QuestionCard({
       className="mx-6 mt-3 overflow-hidden rounded-lg border shadow-sm transition-shadow duration-150 hover:shadow"
       style={{
         borderLeftWidth: "3px",
-        borderLeftColor: answered ? "var(--color-seafoam)" : "var(--color-pacific)",
+        borderLeftColor: answered ? "var(--color-pacific)" : "var(--border)",
       }}
     >
       {/* Header */}
@@ -366,7 +366,7 @@ function QuestionCard({
           {answered ? (
             <span
               className="flex-1 truncate text-xs italic"
-              style={{ color: "var(--color-seafoam)" }}
+              style={{ color: "var(--color-pacific)" }}
             >
               {question.answer_text || `Choice ${question.answer_choice}`}
             </span>
@@ -445,12 +445,12 @@ function RefinementBadge({ count, unanswered }: { count: number; unanswered: num
       className="shrink-0 rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
       style={{
         borderColor: allAnswered
-          ? "color-mix(in oklch, var(--color-seafoam), transparent 50%)"
+          ? "color-mix(in oklch, var(--color-pacific), transparent 50%)"
           : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
         background: allAnswered
-          ? "color-mix(in oklch, var(--color-seafoam), transparent 88%)"
+          ? "color-mix(in oklch, var(--color-pacific), transparent 88%)"
           : "color-mix(in oklch, var(--color-ocean), transparent 88%)",
-        color: allAnswered ? "var(--color-seafoam)" : "var(--color-ocean)",
+        color: allAnswered ? "var(--color-pacific)" : "var(--color-ocean)",
       }}
     >
       {count} {count === 1 ? "refinement" : "refinements"}
@@ -479,18 +479,18 @@ function ChoiceList({
             className="flex cursor-pointer items-start gap-2 rounded-md border px-3 py-2 text-left text-xs leading-snug transition-all duration-150"
             style={{
               background: isSelected
-                ? "color-mix(in oklch, var(--color-seafoam), transparent 88%)"
+                ? "color-mix(in oklch, var(--color-pacific), transparent 88%)"
                 : "transparent",
               borderColor: isSelected
-                ? "color-mix(in oklch, var(--color-seafoam), transparent 50%)"
+                ? "color-mix(in oklch, var(--color-pacific), transparent 50%)"
                 : "transparent",
-              color: isSelected ? "var(--color-seafoam)" : "var(--muted-foreground)",
+              color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
             }}
             onClick={() => onSelect(choice.id, choice.is_other ? "" : choice.text)}
           >
             <span
               className="mt-px shrink-0 font-mono text-[11px] font-semibold tabular-nums"
-              style={{ color: isSelected ? "var(--color-seafoam)" : "var(--muted-foreground)" }}
+              style={{ color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)" }}
             >
               {choice.id}.
             </span>
@@ -545,7 +545,7 @@ function AnswerField({
         style={{
           padding: compact ? "6px 12px" : "8px 12px",
           fontSize: compact ? "12px" : "13px",
-          color: "var(--color-seafoam)",
+          color: "var(--color-pacific)",
           lineHeight: "1.6",
           minHeight: compact ? "28px" : "36px",
         }}
@@ -601,7 +601,7 @@ function RefinementItem({
       className="border-b p-3 last:border-b-0"
       style={{
         borderLeftWidth: "2px",
-        borderLeftColor: answered ? "var(--color-seafoam)" : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
+        borderLeftColor: answered ? "var(--color-pacific)" : "color-mix(in oklch, var(--color-ocean), transparent 50%)",
         marginLeft: "-2px",
       }}
     >
