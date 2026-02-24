@@ -132,8 +132,7 @@ fn build_followup_prompt(
 #[allow(clippy::too_many_arguments)]
 fn build_refine_prompt(
     skill_name: &str,
-    domain: &str,
-    skill_type: &str,
+    purpose: &str,
     workspace_path: &str,
     skills_path: &str,
     user_message: &str,
@@ -148,12 +147,11 @@ fn build_refine_prompt(
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!(
-        "The skill name is: {}. The domain is: {}. The skill type is: {}. The command is: {}. \
+        "The skill name is: {}. The skill type is: {}. The command is: {}. \
          The skill directory is: {}. The context directory is: {}. The workspace directory is: {}. \
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
-        domain,
-        skill_type,
+        purpose,
         effective_command,
         skill_dir.display(),
         context_dir.display(),
@@ -516,7 +514,7 @@ pub async fn send_refine_message(
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // 2. Read settings, workflow run data, and user context from DB
-        let (api_key, extended_thinking, model, skills_path, domain, skill_type, user_context) = {
+        let (api_key, extended_thinking, model, skills_path, purpose, user_context) = {
             let conn = db.0.lock().map_err(|e| {
                 log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
                 e.to_string()
@@ -538,11 +536,7 @@ pub async fn send_refine_message(
                 .unwrap_or_else(|| workspace_path.clone());
 
             let run_row = db::get_workflow_run(&conn, &skill_name).ok().flatten();
-            let domain = run_row
-                .as_ref()
-                .map(|r| r.purpose.clone())
-                .unwrap_or_else(|| skill_name.clone());
-            let skill_type = run_row
+            let purpose = run_row
                 .as_ref()
                 .map(|r| r.purpose.clone())
                 .unwrap_or_else(|| "domain".to_string());
@@ -554,7 +548,7 @@ pub async fn send_refine_message(
                 intake_json.as_deref(),
             );
 
-            (key, settings.extended_thinking, model, skills_path, domain, skill_type, ctx)
+            (key, settings.extended_thinking, model, skills_path, purpose, ctx)
         };
 
         // 3. Ensure the skill's workspace dir exists before building the prompt.
@@ -580,20 +574,19 @@ pub async fn send_refine_message(
         // 4. Build full prompt with all paths, metadata, and user context
         let prompt = build_refine_prompt(
             &skill_name,
-            &domain,
-            &skill_type,
+            &purpose,
             &workspace_path,
             &skills_path,
             &user_message,
             target_files.as_deref(),
             command.as_deref(),
-            
+            user_context.as_deref(),
         );
         log::debug!(
-            "[send_refine_message] first message prompt ({} chars) for skill '{}' type={} command={:?}:\n{}",
+            "[send_refine_message] first message prompt ({} chars) for skill '{}' purpose={} command={:?}:\n{}",
             prompt.len(),
             skill_name,
-            skill_type,
+            purpose,
             command,
             prompt
         );
@@ -1136,9 +1129,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_all_three_paths() {
-        let prompt = build_refine_prompt(
-            "my-skill", "Data Engineering", "data-engineering",
-            "/home/user/.vibedata", "/home/user/skills",
+        let prompt = build_refine_prompt("my-skill", "data-engineering", "/home/user/.vibedata", "/home/user/skills",
             "Add metrics section", None, None, None,
         );
         assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
@@ -1148,20 +1139,17 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_metadata() {
-        let prompt = build_refine_prompt(
-            "my-skill", "Data Engineering", "data-engineering",
-            "/ws", "/skills",
+        let prompt = build_refine_prompt("my-skill", "data-engineering", "/ws", "/skills",
             "Fix overview", None, None, None,
         );
         assert!(prompt.contains("The skill name is: my-skill"));
-        assert!(prompt.contains("The domain is: Data Engineering"));
+        // domain no longer in prompt
         assert!(prompt.contains("The skill type is: data-engineering"));
     }
 
     #[test]
     fn test_refine_prompt_default_command_is_refine() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "edit something", None, None, None,
         );
         assert!(prompt.contains("The command is: refine"));
@@ -1169,8 +1157,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_rewrite_command() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "improve clarity", None, Some("rewrite"), None,
         );
         assert!(prompt.contains("The command is: rewrite"));
@@ -1178,8 +1165,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_validate_command() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "", None, Some("validate"), None,
         );
         assert!(prompt.contains("The command is: validate"));
@@ -1188,8 +1174,7 @@ mod tests {
     #[test]
     fn test_refine_prompt_file_targeting() {
         let files = vec!["SKILL.md".to_string(), "references/metrics.md".to_string()];
-        let prompt = build_refine_prompt(
-            "my-skill", "d", "domain", "/ws", "/skills",
+        let prompt = build_refine_prompt("my-skill", "domain", "/ws", "/skills",
             "update these", Some(&files), None, None,
         );
         assert!(prompt.contains("IMPORTANT: Only edit these files:"));
@@ -1199,8 +1184,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_no_file_constraint_when_empty() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "edit freely", None, None, None,
         );
         assert!(!prompt.contains("Only edit these files"));
@@ -1208,8 +1192,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_includes_user_message() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "Add SLA metrics to the overview", None, None, None,
         );
         assert!(prompt.contains("Current request: Add SLA metrics to the overview"));
@@ -1218,8 +1201,7 @@ mod tests {
     #[test]
     fn test_refine_prompt_appends_user_context() {
         let ctx = "## User Context\n**Industry**: Healthcare";
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "edit", None, None, Some(ctx),
         );
         assert!(prompt.contains("## User Context"));
@@ -1228,8 +1210,7 @@ mod tests {
 
     #[test]
     fn test_refine_prompt_no_user_context_when_none() {
-        let prompt = build_refine_prompt(
-            "s", "d", "domain", "/ws", "/sk",
+        let prompt = build_refine_prompt("s", "domain", "/ws", "/sk",
             "edit", None, None, None,
         );
         assert!(!prompt.contains("User Context"));

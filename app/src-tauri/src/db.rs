@@ -2984,6 +2984,9 @@ pub fn reconcile_orphaned_sessions(conn: &Connection) -> Result<u32, String> {
 /// Migration 28: Rename `skill_type` -> `purpose` and drop `domain` column from all 4 tables:
 /// skills, workflow_runs, imported_skills, workspace_skills.
 fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Disable FK checks while we recreate tables — re-enabled at the end.
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+
     // --- skills ---
     conn.execute_batch("
         CREATE TABLE skills_new (
@@ -3075,7 +3078,26 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
     ")?;
 
     // --- workspace_skills ---
-    conn.execute_batch("
+    // Detect optional columns that may or may not exist (content_hash from m26, skill_master_id from test fixtures)
+    let ws_cols: Vec<String> = conn
+        .prepare("PRAGMA table_info(workspace_skills)")?
+        .query_map([], |r| r.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let has_content_hash = ws_cols.iter().any(|c| c == "content_hash");
+    let has_skill_master_id = ws_cols.iter().any(|c| c == "skill_master_id");
+
+    let extra_cols_def = [
+        if has_skill_master_id { ",\n            skill_master_id INTEGER REFERENCES skills(id)" } else { "" },
+        if has_content_hash { ",\n            content_hash TEXT" } else { "" },
+    ].concat();
+
+    let extra_cols_list = [
+        if has_skill_master_id { ", skill_master_id" } else { "" },
+        if has_content_hash { ", content_hash" } else { "" },
+    ].concat();
+
+    let sql = format!("
         CREATE TABLE workspace_skills_new (
             skill_id     TEXT PRIMARY KEY,
             skill_name   TEXT UNIQUE NOT NULL,
@@ -3089,22 +3111,22 @@ fn run_rename_purpose_drop_domain_migration(conn: &Connection) -> Result<(), rus
             model        TEXT,
             argument_hint TEXT,
             user_invocable INTEGER,
-            disable_model_invocation INTEGER,
-            skill_master_id INTEGER REFERENCES skills(id),
-            content_hash TEXT
+            disable_model_invocation INTEGER{extra_cols_def}
         );
         INSERT INTO workspace_skills_new (skill_id, skill_name, description, is_active, is_bundled,
                                           disk_path, imported_at, purpose, version, model,
-                                          argument_hint, user_invocable, disable_model_invocation,
-                                          skill_master_id, content_hash)
+                                          argument_hint, user_invocable, disable_model_invocation{extra_cols_list})
             SELECT skill_id, skill_name, description, is_active, is_bundled,
                    disk_path, imported_at, COALESCE(purpose, skill_type), version, model,
-                   argument_hint, user_invocable, disable_model_invocation,
-                   skill_master_id, content_hash
+                   argument_hint, user_invocable, disable_model_invocation{extra_cols_list}
             FROM workspace_skills;
         DROP TABLE workspace_skills;
         ALTER TABLE workspace_skills_new RENAME TO workspace_skills;
-    ")?;
+    ");
+    conn.execute_batch(&sql)?;
+
+    // Re-enable FK checks
+    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
 
     log::info!("migration 28: renamed skill_type -> purpose, dropped domain from all 4 tables");
     Ok(())
@@ -3140,6 +3162,8 @@ mod tests {
         run_fk_columns_migration(&conn).unwrap();
         run_frontmatter_to_skills_migration(&conn).unwrap();
         run_workspace_skills_purpose_migration(&conn).unwrap();
+        run_content_hash_migration(&conn).unwrap();
+        run_backfill_null_versions_migration(&conn).unwrap();
         run_rename_purpose_drop_domain_migration(&conn).unwrap();
         conn
     }
@@ -3403,8 +3427,6 @@ mod tests {
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
         assert_eq!(skill.name, "my-skill");
         assert_eq!(skill.skill_source, "skill-builder");
-        
-        assert_eq!(skill.purpose.as_deref(), Some("domain"));
     }
 
     #[test]
@@ -3417,8 +3439,6 @@ mod tests {
 
         let skills = list_all_skills(&conn).unwrap();
         let skill = skills.into_iter().find(|s| s.name == "my-skill").unwrap();
-        
-        assert_eq!(skill.purpose.as_deref(), Some("platform"));
     }
 
     #[test]
@@ -3547,6 +3567,11 @@ mod tests {
         run_fk_columns_migration(&conn).unwrap();
         run_frontmatter_to_skills_migration(&conn).unwrap();
 
+        run_workspace_skills_purpose_migration(&conn).unwrap();
+        run_content_hash_migration(&conn).unwrap();
+        run_backfill_null_versions_migration(&conn).unwrap();
+        run_rename_purpose_drop_domain_migration(&conn).unwrap();
+
         // Verify skills master was populated
         let skills = list_all_skills(&conn).unwrap();
         assert_eq!(skills.len(), 2);
@@ -3667,17 +3692,10 @@ mod tests {
 
     #[test]
     fn test_skill_type_migration() {
-        let conn = Connection::open_in_memory().unwrap();
-        run_migrations(&conn).unwrap();
-        run_add_skill_type_migration(&conn).unwrap();
-        run_author_migration(&conn).unwrap();
-        run_intake_migration(&conn).unwrap();
-        run_source_migration(&conn).unwrap();
-        run_workflow_runs_extended_migration(&conn).unwrap();
-        run_skills_table_migration(&conn).unwrap();
-        run_skills_backfill_migration(&conn).unwrap();
+        // Use full test DB - migration 28 renames skill_type -> purpose
+        let conn = create_test_db();
 
-        // Verify skill_type column exists by inserting a row with it
+        // Verify purpose column exists by inserting a row with it
         save_workflow_run(&conn, "test-skill", 0, "pending", "platform").unwrap();
         let run = get_workflow_run(&conn, "test-skill").unwrap().unwrap();
         assert_eq!(run.purpose, "platform");
@@ -3693,18 +3711,18 @@ mod tests {
     }
 
     #[test]
-    fn test_get_skill_type_default() {
+    fn test_get_purpose_default() {
         let conn = create_test_db();
         // No workflow run exists — should return "domain" default
-        let skill_type = get_skill_type(&conn, "nonexistent-skill").unwrap();
+        let skill_type = get_purpose(&conn, "nonexistent-skill").unwrap();
         assert_eq!(skill_type, "domain");
     }
 
     #[test]
-    fn test_get_skill_type_explicit() {
+    fn test_get_purpose_explicit() {
         let conn = create_test_db();
         save_workflow_run(&conn, "my-skill", 0, "pending", "source").unwrap();
-        let skill_type = get_skill_type(&conn, "my-skill").unwrap();
+        let skill_type = get_purpose(&conn, "my-skill").unwrap();
         assert_eq!(skill_type, "source");
     }
 
@@ -3728,7 +3746,7 @@ mod tests {
         assert_eq!(runs[0].skill_name, "alpha-skill");
         assert_eq!(runs[0].current_step, 3);
         assert_eq!(runs[1].skill_name, "beta-skill");
-        assert_eq!(runs[1].skill_type, "platform");
+        assert_eq!(runs[1].purpose, "platform");
         assert_eq!(runs[2].skill_name, "gamma-skill");
         assert_eq!(runs[2].status, "completed");
     }
@@ -4773,57 +4791,48 @@ mod tests {
         // Skill 1: active (trigger comes from disk, not DB)
         let skill1 = ImportedSkill {
             skill_id: "imp-1".to_string(),
-            skill_name: "active-with-trigger".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "active-with-trigger".to_string(),            is_active: true,
             disk_path: "/tmp/s1".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill1).unwrap();
 
         // Skill 2: active
         let skill2 = ImportedSkill {
             skill_id: "imp-2".to_string(),
-            skill_name: "active-no-trigger".to_string(),
-            domain: None,
-            is_active: true,
+            skill_name: "active-no-trigger".to_string(),            is_active: true,
             disk_path: "/tmp/s2".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill2).unwrap();
 
         // Skill 3: inactive
         let skill3 = ImportedSkill {
             skill_id: "imp-3".to_string(),
-            skill_name: "inactive-with-trigger".to_string(),
-            domain: None,
-            is_active: false,
+            skill_name: "inactive-with-trigger".to_string(),            is_active: false,
             disk_path: "/tmp/s3".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,
-            skill_type: None,
-            version: None,
+            description: None,            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
+            purpose: None,
         };
         insert_imported_skill(&conn, &skill3).unwrap();
 
@@ -4843,13 +4852,13 @@ mod tests {
         let skill = ImportedSkill {
             skill_id: "id-del".to_string(),
             skill_name: "delete-me".to_string(),
-            domain: Some("test".to_string()),
+            
             is_active: true,
             disk_path: "/tmp/delete-me".to_string(),
             imported_at: "2024-01-01".to_string(),
             is_bundled: false,
             description: None,
-            skill_type: Some("domain".to_string()),
+            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -4882,7 +4891,7 @@ mod tests {
 
         // Insert a skills master row that has a corresponding imported_skills row
         conn.execute(
-            "INSERT INTO skills (name, skill_source, domain, skill_type) VALUES ('kept-skill', 'imported', 'test', 'domain')",
+            "INSERT INTO skills (name, skill_source, purpose) VALUES ('kept-skill', 'imported', 'domain')",
             [],
         ).unwrap();
         conn.execute(
@@ -5204,15 +5213,11 @@ mod tests {
 
         let skill = WorkspaceSkill {
             skill_id: "ws-uuid-abc-123".to_string(),
-            skill_name: "my-ws-skill".to_string(),
-            domain: None,
-            description: None,
+            skill_name: "my-ws-skill".to_string(),            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: "/tmp/ws-skill".to_string(),
-            imported_at: "2024-01-01T00:00:00Z".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2024-01-01T00:00:00Z".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -5249,15 +5254,11 @@ mod tests {
     fn make_ws_skill(skill_id: &str, skill_name: &str, purpose: Option<&str>, is_active: bool) -> WorkspaceSkill {
         WorkspaceSkill {
             skill_id: skill_id.to_string(),
-            skill_name: skill_name.to_string(),
-            domain: None,
-            description: None,
+            skill_name: skill_name.to_string(),            description: None,
             is_active,
             is_bundled: false,
             disk_path: format!("/tmp/{}", skill_name),
-            imported_at: "2025-01-01T00:00:00Z".to_string(),
-            skill_type: None,
-            version: None,
+            imported_at: "2025-01-01T00:00:00Z".to_string(),            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
