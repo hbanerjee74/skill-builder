@@ -77,6 +77,15 @@ const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
   3: { relativePath: "context/clarifications.json" },
 };
 
+/** Try to parse JSON clarifications data from raw file content. Returns null on failure. */
+function parseClarifications(content: string | null): ClarificationsFile | null {
+  if (!content) return null;
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -206,13 +215,9 @@ export default function WorkflowPage() {
   const [clarificationsData, setClarificationsData] = useState<ClarificationsFile | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Markdown editor state
-  const [editorContent, setEditorContent] = useState<string>("");
-  const [, setIsSaving] = useState(false);
   // Explicit dirty flag — set on user edits, cleared on save/reload/load
   const [editorDirty, setEditorDirty] = useState(false);
   const hasUnsavedChanges = editorDirty;
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
 
   // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
   // Scoped to human review steps so it doesn't block on non-review steps.
@@ -220,14 +225,6 @@ export default function WorkflowPage() {
   useEffect(() => {
     hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
   }, [isHumanReviewStep, hasUnsavedChanges]);
-
-  // Sync editorContent when reviewContent loads or reloads (clears dirty flag)
-  useEffect(() => {
-    if (reviewContent !== null) {
-      setEditorContent(reviewContent);
-      setEditorDirty(false);
-    }
-  }, [reviewContent]);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -445,21 +442,16 @@ export default function WorkflowPage() {
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
-        if (content) {
-          try {
-            setClarificationsData(JSON.parse(content));
-          } catch {
-            setClarificationsData(null); // legacy markdown file
-          }
-        } else {
-          setClarificationsData(null);
-        }
+        setClarificationsData(parseClarifications(content ?? null));
       })
       .catch(() => {
         setReviewContent(null);
         setClarificationsData(null);
       })
-      .finally(() => setLoadingReview(false));
+      .finally(() => {
+        setLoadingReview(false);
+        setEditorDirty(false);
+      });
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
@@ -730,9 +722,10 @@ export default function WorkflowPage() {
       try {
         const content = clarificationsData
           ? JSON.stringify(clarificationsData, null, 2)
-          : (editorDirty ? editorContent : (reviewContent ?? ""));
+          : (reviewContent ?? "");
         await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
         setReviewContent(content);
+        setEditorDirty(false);
       } catch (err) {
         toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
         return;
@@ -903,23 +896,18 @@ export default function WorkflowPage() {
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
-        if (content) {
-          try {
-            setClarificationsData(JSON.parse(content));
-          } catch {
-            setClarificationsData(null);
-          }
-        } else {
-          setClarificationsData(null);
-          toast.error("Failed to reload file", { duration: Infinity });
-        }
+        setClarificationsData(parseClarifications(content ?? null));
+        if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
       .catch(() => {
         setReviewContent(null);
         setClarificationsData(null);
         toast.error("Failed to reload file", { duration: Infinity });
       })
-      .finally(() => setLoadingReview(false));
+      .finally(() => {
+        setLoadingReview(false);
+        setEditorDirty(false);
+      });
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
@@ -933,11 +921,10 @@ export default function WorkflowPage() {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
-    setIsSaving(true);
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
-        : editorContent;
+        : (reviewContent ?? "");
       await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
       setReviewContent(content);
       setEditorDirty(false);
@@ -946,10 +933,8 @@ export default function WorkflowPage() {
     } catch (err) {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
       return false;
-    } finally {
-      setIsSaving(false);
     }
-  }, [currentStep, skillsPath, editorContent, clarificationsData, skillName]);
+  }, [currentStep, skillsPath, reviewContent, clarificationsData, skillName]);
 
   // Debounce autosave — fires 1500ms after the last edit on a human review step.
   // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
@@ -961,11 +946,9 @@ export default function WorkflowPage() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [editorContent, clarificationsData, editorDirty, isHumanReviewStep, handleSave]);
+  }, [clarificationsData, editorDirty, isHumanReviewStep, handleSave]);
 
   const currentStepDef = steps[currentStep];
-
-  // --- Render content ---
 
   // --- Render helpers ---
 
@@ -1239,39 +1222,6 @@ export default function WorkflowPage() {
                 performStepReset(currentStep);
               }}>
                 Reset
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {/* Unsaved changes confirmation dialog — shown when completing step with unsaved edits */}
-      {showUnsavedDialog && (
-        <Dialog open onOpenChange={(open) => { if (!open) setShowUnsavedDialog(false); }}>
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Unsaved Changes</DialogTitle>
-              <DialogDescription>
-                You have unsaved edits. Would you like to save before continuing?
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowUnsavedDialog(false)}>
-                Cancel
-              </Button>
-              <Button variant="outline" onClick={() => {
-                setShowUnsavedDialog(false);
-                setEditorDirty(false);
-                runGateOrAdvance();
-              }}>
-                Discard & Continue
-              </Button>
-              <Button onClick={async () => {
-                setShowUnsavedDialog(false);
-                const saved = await handleSave();
-                if (saved) runGateOrAdvance();
-              }}>
-                Save & Continue
               </Button>
             </DialogFooter>
           </DialogContent>
