@@ -18,7 +18,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 ## Runtime Fields
 The coordinator provides:
 - **skill directory path** — where `SKILL.md` and `references/` live
-- **context directory path** — where `decisions.md` and `clarifications.md` live
+- **context directory path** — where `decisions.md` and `clarifications.json` live
 - **workspace directory path** — per-skill subdirectory containing `user-context.md`
 - **command** — `refine`, `rewrite`, or `validate`
 - **conversation history** — prior User/Assistant exchanges
@@ -36,7 +36,7 @@ The coordinator provides:
 
 ## Guards
 
-Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work:
+Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.json` before doing any work:
 
 - `scope_recommendation: true` → return: "Scope recommendation active. Blocked until resolved."
 - `contradictory_inputs: true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.md."

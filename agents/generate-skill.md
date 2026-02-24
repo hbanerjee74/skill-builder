@@ -32,9 +32,9 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Guards
 
-Check `decisions.md` and `clarifications.md` before doing any work. Block if either condition is true:
+Check `decisions.md` and `clarifications.json` before doing any work. Block if either condition is true:
 
-**Scope recommendation** — if `scope_recommendation: true` in clarifications.md or decisions.md, write this stub to `SKILL.md` and return:
+**Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in `decisions.md`, write this stub to `SKILL.md` and return:
 
 ```
 ---
@@ -44,7 +44,7 @@ scope_recommendation: true
 ---
 ## Scope Recommendation Active
 
-The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No skill was generated.
+The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No skill was generated.
 ```
 
 **Contradictory inputs** — if `contradictory_inputs: true` in decisions.md, write this stub to `SKILL.md` and return:

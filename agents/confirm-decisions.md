@@ -17,9 +17,9 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 
 ## Context
 - **Standard fields** from coordinator: skill name, context directory path, skill output directory path, workspace directory path.
-- `clarifications.md` lives in the context directory; write `decisions.md` there.
+- `clarifications.json` lives in the context directory; write `decisions.md` there.
 - Read `{workspace_directory}/user-context.md` (per User Context protocol). Ground decisions in the user's specific setup.
-- `clarifications.md` contains first-round answers (H3 headings) and optional `#### Refinements` subsections with follow-up answers.
+- `clarifications.json` contains structured JSON with sections, questions (with `answer_choice`/`answer_text`), and optional `refinements[]` arrays with follow-up answers.
 
 </context>
 
@@ -31,11 +31,11 @@ You analyze PM responses to clarification questions. Find gaps, contradictions, 
 
 Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
-Read `clarifications.md` from the context directory.
+Read `clarifications.json` from the context directory. Parse the JSON.
 
 ## Step 2: Scope Recommendation Guard
 
-Check `clarifications.md` per the Scope Recommendation Guard protocol. If detected, write this stub to `decisions.md` and return:
+Check `clarifications.json` per the Scope Recommendation Guard protocol (check `metadata.scope_recommendation`). If detected, write this stub to `decisions.md` and return:
 
 ```
 ---
@@ -44,7 +44,7 @@ decision_count: 0
 ---
 ## Scope Recommendation Active
 
-The research planner determined the skill scope is too broad. See `clarifications.md` for recommended narrower skills. No decisions were generated.
+The research planner determined the skill scope is too broad. See `clarifications.json` for recommended narrower skills. No decisions were generated.
 ```
 
 ## Step 3: Analyze Answers (normal path only)
@@ -73,7 +73,7 @@ contradictory_inputs: true    # only when unresolvable contradictions exist
 
 ## Error Handling
 
-If `decisions.md` is malformed, start fresh from current clarification answers. If `clarifications.md` is missing, report to the coordinator.
+If `decisions.md` is malformed, start fresh from current clarification answers. If `clarifications.json` is missing, report to the coordinator.
 
 </instructions>
 
