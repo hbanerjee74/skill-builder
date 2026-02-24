@@ -960,7 +960,7 @@ export default function WorkflowPage() {
         cost={lastCompletedCostRef.current}
         onNextStep={advanceToNextStep}
         onClose={handleClose}
-        onRefine={handleRefine}
+        onRefine={disabledSteps.length > 0 ? undefined : handleRefine}
         isLastStep={isLastStep}
         reviewMode={reviewMode}
         skillName={skillName}
