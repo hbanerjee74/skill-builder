@@ -642,10 +642,6 @@ export default function DashboardPage() {
           onCreated={async () => { await Promise.all([loadSkills(), loadTags()]); }}
           tagSuggestions={availableTags}
           existingNames={existingSkillNames}
-          onOpenMarketplace={() => {
-            setSkillLibraryMarketplaceOpen(true)
-            setCreateOpen(false)
-          }}
         />
       )}
 
