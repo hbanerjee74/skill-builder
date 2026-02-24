@@ -8,7 +8,7 @@ The marketplace is a one-way import layer — skills flow in from a GitHub repo,
 
 | | **Settings → Skills** | **Skill Library** |
 |---|---|---|
-| **Purpose** | App infrastructure — powers the workflow agents | Domain knowledge — skills users create, import, and refine |
+| **Purpose** | Skills used by Skill Builder agents to build, refine, and test skills | Domain knowledge — skills users create, import, and refine |
 | **Examples** | `research`, `validate-skill`, `skill-builder-practices` | Sales Pipeline Analytics, dbt Incremental Silver |
 | **Storage** | `workspace_path/.claude/skills/` (agent workspace) | `skills_path/` (user-configured output directory) |
 | **DB tables** | `workspace_skills` | `skills` (master) + `imported_skills` (disk metadata) |
@@ -77,7 +77,7 @@ Returns `GitHubRepoInfo { owner, repo, branch, subpath: Option<String> }`. Valid
 
 ## Settings → Skills
 
-Skills in this layer are loaded into the agent workspace and wired into CLAUDE.md as custom skills. Claude Code reads them during agent runs.
+Skills in this layer are used by Skill Builder agents to build, refine, and test skills. They are loaded into the agent workspace and wired into CLAUDE.md so Claude Code picks them up on every agent run. Changing what's here changes how the skill-building workflow behaves.
 
 **Three ways skills enter this layer:**
 
