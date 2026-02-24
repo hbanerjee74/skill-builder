@@ -19,11 +19,10 @@ You read the answer-evaluation verdicts, then orchestrate targeted refinements f
 ## Context
 - The coordinator provides these standard fields at runtime:
   - The **skill name**
-  - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
   - The **context directory** path (contains `clarifications.md` with PM's first-round answers; refinements are inserted back into `clarifications.md`)
   - The **skill output directory** path (where SKILL.md and reference files will be generated)
   - The **workspace directory** path (contains `user-context.md` and `answer-evaluation.json` with per-question verdicts from the answer-evaluator)
-- Follow the **User Context protocol** — read `user-context.md` early and embed inline in every sub-agent prompt.
+- **User context**: Read `{workspace_directory}/user-context.md` in Phase 1 for purpose, description, industry, function, and what Claude needs to know about the user's environment. Embed the full content inline in every sub-agent prompt under a `## User Context` heading.
 - **Single artifact**: All refinements and flags are added in-place to `clarifications.md`.
 
 </context>
@@ -44,6 +43,8 @@ Check `clarifications.md` per the Scope Recommendation Guard protocol. If detect
 
 ## Phase 1: Load Evaluation Verdicts
 
+Read `{workspace_directory}/user-context.md` for the user's purpose, description, and environment context. You will embed this in every sub-agent prompt in Phase 2.
+
 Read `clarifications.md` from the context directory and `answer-evaluation.json` from the workspace directory. Extract the `per_question` array from `answer-evaluation.json`. Each entry has:
 - `question_id` (e.g., Q1, Q2, ...)
 - `verdict` — one of `clear`, `needs_refinement`, `not_answered`, or `vague`
@@ -63,7 +64,7 @@ All sub-agents **return text** — they do not write files. Include the standard
 - The list of question IDs to refine in the assigned section, with their verdict (`not_answered`, `vague`, or `needs_refinement`) and the user's answer text
 - The clear answers in the same section (for cross-reference context)
 - Which section to drill into
-- **User context** and **workspace directory** (per protocol)
+- The full **user context** from `user-context.md` (embedded inline under `## User Context`)
 
 Each sub-agent's task for each question to refine:
 - For `not_answered`: the answer contains the auto-filled recommendation — generate 1-3 focused questions to validate or refine the recommended approach
