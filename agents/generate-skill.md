@@ -154,10 +154,9 @@ Write each reference file from the plan to the `references/` subdirectory in the
 - Cover the assigned topic area and its decisions from `decisions.md`
 - Follow the structure pattern rules from Skill Builder Practices — knowledge-capture skills use question-oriented sections; standards skills use decision-oriented sections with content assertions where Claude's training is wrong
 - Keep files self-contained — a reader should understand the file without reading others
+- **Rewrite mode additionally:** read the existing version first. Preserve all domain knowledge while rewriting for coherence. Use existing content as primary source, supplemented by `decisions.md`.
 
-**Rewrite mode additionally:** For each reference file, read the existing version first. Preserve all domain knowledge while rewriting for coherence and consistency with the new SKILL.md structure. Use the existing content as primary source, supplemented by `decisions.md`.
-
-After writing the reference files from the plan, always write `references/evaluations.md`. This file is mandatory for every skill. Write at least 3 evaluation scenarios — concrete test prompts a consumer can run against Claude with this skill active to verify it produces correct output. Scenarios must cover distinct topic areas from the skill. Each scenario: a prompt, expected behavior, and observable pass criteria.
+**Always write `references/evaluations.md`** (both normal and rewrite mode). Follow the evaluations spec in Skill Builder Practices — at least 3 scenarios covering distinct topic areas.
 
 After all files are written, self-review:
 - Re-read `decisions.md` and verify every decision is addressed in at least one file
