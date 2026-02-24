@@ -258,7 +258,7 @@ D. Other (please specify)
 
 ## Parser Compatibility
 
-The Rust autofill parser and UI renderer depend on these exact patterns. Do not deviate.
+These exact patterns are required. Do not deviate.
 
 | Field | Regex | Notes |
 |---|---|---|
