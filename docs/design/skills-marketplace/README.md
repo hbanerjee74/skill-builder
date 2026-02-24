@@ -20,9 +20,9 @@ The `skill_type` frontmatter field drives routing: `skill-builder` type skills b
 
 ## Registry Model
 
-The marketplace is a GitHub repository with a required `.claude-plugin/marketplace.json` catalog at the repo root. There is no folder-scan fallback: if the file is absent or fails schema validation, the operation returns a descriptive error.
+A marketplace is a GitHub repository. The repo must contain a `.claude-plugin/marketplace.json` at its root (or at the configured subpath). This file is the catalog — it lists the skills the marketplace publishes. There is no folder-scan fallback: a missing or malformed file is an error surfaced to the user, not a silent empty result.
 
-**`marketplace.json` structure** (`MarketplaceJson` → `Vec<MarketplacePlugin>`):
+**`marketplace.json`** is a `plugins` array. Each entry names a skill and points to its directory in the repo:
 
 ```json
 {
@@ -40,38 +40,13 @@ The marketplace is a GitHub repository with a required `.claude-plugin/marketpla
 }
 ```
 
-`source` is either a path string (relative, e.g. `"./skills/dbt-fabric-patterns"`) or an external object (unsupported — skipped with a log warning). Each path-type entry must contain a `SKILL.md` in the repo; entries without one are silently excluded.
+The `source` field is a repo-relative path to the skill directory. The app reads name, description, category, and version from this file, then fetches each skill's `SKILL.md` to read `skill_type` and any frontmatter fields not present in the catalog. Skills listed in the catalog but missing a `SKILL.md` in the repo are excluded.
 
-**`parse_github_url`** — pure parse, no network. Accepts:
-- `owner/repo`
-- `github.com/owner/repo`
-- `https://github.com/owner/repo`
-- `https://github.com/owner/repo/tree/branch/optional/subpath`
+**Configuration** — a single `marketplace_url` in Settings → GitHub. Accepts `owner/repo`, `github.com/owner/repo`, `https://github.com/owner/repo`, or a full tree URL with branch and subpath. The "Test" button validates the URL immediately — it confirms the repo is reachable and the `marketplace.json` is present and valid. Bad URLs are caught at configuration time, not during import.
 
-Returns `GitHubRepoInfo { owner, repo, branch, subpath: Option<String> }`. Validates against path traversal (`..`, `\`). Defaults `branch` to `"main"` if not present in the URL.
+**Branch resolution** — the configured branch is a hint. On every operation, the app resolves the repo's actual default branch via the GitHub API. This avoids 404s on repos where the default is `master` or a custom name rather than `main`.
 
-**`list_github_skills_inner`** — the core discovery function used by all marketplace operations:
-
-1. Calls `get_default_branch()` via GitHub repos API to resolve the actual default branch (avoids 404s on repos where it is `master` or a custom name).
-2. Fetches `marketplace.json` from `raw.githubusercontent.com` at `{resolved_branch}/.claude-plugin/marketplace.json` (or `{subpath}/.claude-plugin/marketplace.json` when a subpath is set). Returns an error if the file is absent or fails to parse.
-3. Extracts path-type entries from the plugins array, strips the leading `./`.
-4. Fetches the full recursive repo tree to validate that each plugin path contains a `SKILL.md`.
-5. Concurrently fetches each `SKILL.md`, parses YAML frontmatter to extract `version`, `skill_type`, and optional fields.
-6. Returns `Vec<AvailableSkill>`.
-
-`AvailableSkill` fields:
-
-| Field | Source |
-|---|---|
-| `path` | Plugin path from marketplace.json (stripped `./`) |
-| `name` | `plugin.name` from marketplace.json |
-| `description` | `plugin.description` from marketplace.json |
-| `domain` | `plugin.category` from marketplace.json |
-| `skill_type` | SKILL.md frontmatter |
-| `version` | SKILL.md frontmatter |
-| `model`, `argument_hint`, `user_invocable`, `disable_model_invocation` | SKILL.md frontmatter (all optional) |
-
-**`check_marketplace_url`** — called by the "Test" button in Settings → GitHub. Confirms the repo is accessible (via repos API) and that `marketplace.json` exists and deserializes correctly. Returns a clear error string on any failure so bad URLs are caught at configuration time, not at import time.
+**Subpath** — when the marketplace URL includes a subpath (e.g. `.../tree/main/skills`), the catalog is expected at `{subpath}/.claude-plugin/marketplace.json` and all plugin paths are resolved relative to that subpath.
 
 ---
 
