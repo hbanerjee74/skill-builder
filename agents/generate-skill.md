@@ -56,6 +56,12 @@ Check `decisions.md` and `clarifications.md` in **both normal and rewrite mode**
 
 **Scope recommendation** — if `scope_recommendation: true` in clarifications.md or decisions.md, write this stub to `SKILL.md` and return:
 
+0 -> research 
+1 -> human 
+2 -> detailed research 
+3 -> human 
+4 - Decisions 
+
 ```
 ---
 name: (scope too broad)
