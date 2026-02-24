@@ -220,16 +220,24 @@ pub async fn check_marketplace_url(
         settings.github_oauth_token.clone()
     };
     let client = build_github_client(token.as_deref());
-    let resolved_branch = get_default_branch(&client, &repo_info.owner, &repo_info.repo).await?;
+    let owner = &repo_info.owner;
+    let repo = &repo_info.repo;
+    let resolved_branch = get_default_branch(&client, owner, repo).await?;
 
     // Verify that .claude-plugin/marketplace.json exists and is valid JSON.
+    let manifest_path = ".claude-plugin/marketplace.json";
     let raw_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}/.claude-plugin/marketplace.json",
-        repo_info.owner, repo_info.repo, resolved_branch
+        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        owner, repo, resolved_branch, manifest_path
     );
     log::info!(
         "[check_marketplace_url] fetching marketplace.json from {}/{} branch={}",
-        repo_info.owner, repo_info.repo, resolved_branch
+        owner, repo, resolved_branch
+    );
+
+    let not_found_msg = format!(
+        "marketplace.json not found at {} in {}/{}. Ensure the repository has this file.",
+        manifest_path, owner, repo
     );
 
     let response = client
@@ -237,54 +245,29 @@ pub async fn check_marketplace_url(
         .send()
         .await
         .map_err(|e| {
-            log::error!(
-                "[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}",
-                repo_info.owner, repo_info.repo, e
-            );
-            format!(
-                "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-                repo_info.owner, repo_info.repo
-            )
+            log::error!("[check_marketplace_url] failed to fetch marketplace.json for {}/{}: {}", owner, repo, e);
+            format!("Failed to reach {}/{}: {}", owner, repo, e)
         })?;
 
-    let status = response.status();
-    if !status.is_success() {
+    if !response.status().is_success() {
         log::error!(
             "[check_marketplace_url] marketplace.json not found for {}/{}: HTTP {}",
-            repo_info.owner, repo_info.repo, status
+            owner, repo, response.status()
         );
-        return Err(format!(
-            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-            repo_info.owner, repo_info.repo
-        ));
+        return Err(not_found_msg);
     }
 
-    let body = response
-        .text()
-        .await
-        .map_err(|e| {
-            log::error!(
-                "[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}",
-                repo_info.owner, repo_info.repo, e
-            );
-            format!("Failed to read marketplace.json: {}", e)
-        })?;
-
-    serde_json::from_str::<serde_json::Value>(&body).map_err(|e| {
-        log::error!(
-            "[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}",
-            repo_info.owner, repo_info.repo, e
-        );
-        format!(
-            "marketplace.json at .claude-plugin/marketplace.json in {}/{} is not valid JSON.",
-            repo_info.owner, repo_info.repo
-        )
+    let body = response.text().await.map_err(|e| {
+        log::error!("[check_marketplace_url] failed to read marketplace.json body for {}/{}: {}", owner, repo, e);
+        format!("Failed to read marketplace.json: {}", e)
     })?;
 
-    log::info!(
-        "[check_marketplace_url] marketplace.json validated for {}/{}",
-        repo_info.owner, repo_info.repo
-    );
+    serde_json::from_str::<serde_json::Value>(&body).map_err(|e| {
+        log::error!("[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}", owner, repo, e);
+        format!("marketplace.json at {} in {}/{} is not valid JSON.", manifest_path, owner, repo)
+    })?;
+
+    log::info!("[check_marketplace_url] marketplace.json validated for {}/{}", owner, repo);
     Ok(())
 }
 
@@ -1573,58 +1556,15 @@ mod tests {
         assert_eq!(relative[2], "references/patterns.md");
     }
 
-    // --- check_marketplace_url error message format tests ---
-
-    #[test]
-    fn test_check_marketplace_url_not_found_error_message() {
-        // Verify the exact error message produced when marketplace.json returns non-200.
-        // This mirrors the logic in check_marketplace_url so that the frontend can
-        // display a clear, actionable message to the user.
-        let owner = "acme";
-        let repo = "skills";
-        let msg = format!(
-            "marketplace.json not found at .claude-plugin/marketplace.json in {}/{}. Ensure the repository has this file.",
-            owner, repo
-        );
-        assert!(msg.contains("marketplace.json not found"));
-        assert!(msg.contains(".claude-plugin/marketplace.json"));
-        assert!(msg.contains("acme/skills"));
-        assert!(msg.contains("Ensure the repository has this file."));
-    }
-
-    #[test]
-    fn test_check_marketplace_url_invalid_json_error_message() {
-        // Verify the exact error message produced when marketplace.json is not valid JSON.
-        let owner = "acme";
-        let repo = "skills";
-        let msg = format!(
-            "marketplace.json at .claude-plugin/marketplace.json in {}/{} is not valid JSON.",
-            owner, repo
-        );
-        assert!(msg.contains("marketplace.json at .claude-plugin/marketplace.json"));
-        assert!(msg.contains("acme/skills"));
-        assert!(msg.contains("is not valid JSON."));
-    }
+    // --- check_marketplace_url JSON validation test ---
 
     #[test]
     fn test_check_marketplace_url_json_validation_logic() {
-        // Simulate the serde_json parse step used in check_marketplace_url.
-        // Valid JSON must succeed; invalid JSON must produce the expected error.
-
-        // Valid marketplace JSON
-        let valid = r#"{"plugins": []}"#;
-        let result = serde_json::from_str::<serde_json::Value>(valid);
-        assert!(result.is_ok(), "valid JSON should parse successfully");
-
-        // Invalid JSON (bare text, not JSON)
-        let invalid = "Not found";
-        let result = serde_json::from_str::<serde_json::Value>(invalid);
-        assert!(result.is_err(), "invalid JSON should fail to parse");
-
-        // Empty string
-        let empty = "";
-        let result = serde_json::from_str::<serde_json::Value>(empty);
-        assert!(result.is_err(), "empty body should fail to parse");
+        // Exercise the serde_json parse step used in check_marketplace_url.
+        // Valid JSON must succeed; invalid JSON must produce an error.
+        assert!(serde_json::from_str::<serde_json::Value>(r#"{"plugins": []}"#).is_ok());
+        assert!(serde_json::from_str::<serde_json::Value>("Not found").is_err());
+        assert!(serde_json::from_str::<serde_json::Value>("").is_err());
     }
 
     // --- Branch resolution tests ---
