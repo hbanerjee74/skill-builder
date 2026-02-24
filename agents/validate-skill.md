@@ -27,9 +27,13 @@ The coordinator provides:
 
 Read `{workspace_directory}/user-context.md` (per User Context protocol). Use this to validate the skill against the user's actual needs.
 
-## Scope Recommendation Guard
+## Guards
 
-Per the Scope Recommendation Guard protocol in workspace CLAUDE.md: check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` for `scope_recommendation: true` before doing any work. If detected, write these stub files and return immediately:
+Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.md` before doing any work. Block if either condition is true:
+
+**Scope recommendation** — if `scope_recommendation: true`, or **Contradictory inputs** — if `contradictory_inputs: true` in decisions.md.
+
+If either is detected, write these stub files and return immediately (use "Scope recommendation" or "Contradictory inputs" as appropriate in the text):
 
 **`{context_dir}/agent-validation-log.md`:**
 ```
