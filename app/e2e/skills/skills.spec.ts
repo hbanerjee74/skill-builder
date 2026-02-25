@@ -50,8 +50,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.locator("nav button", { hasText: "Skills" })).toBeVisible();
 
-    // Action buttons — Marketplace button exists (may be disabled without marketplaceUrl)
-    await expect(page.getByRole("button", { name: /marketplace/i }).first()).toBeVisible();
+    // Action buttons — Marketplace import button exists (has GitHub SVG icon, may be disabled without registries)
+    await expect(page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") })).toBeVisible();
     await expect(page.getByRole("button", { name: /upload skill/i }).first()).toBeVisible();
   });
 
@@ -161,7 +161,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
           anthropic_api_key: "sk-ant-test",
           workspace_path: "/tmp/test-workspace",
           skills_path: "/tmp/test-skills",
-          marketplace_url: "https://github.com/test-owner/test-repo",
+          marketplace_registries: [{ name: "Test Registry", source_url: "https://github.com/test-owner/test-repo", enabled: true }],
         },
         parse_github_url: {
           owner: "test-owner",
@@ -176,8 +176,8 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
 
-    // Click Marketplace button (enabled when marketplace_url is configured)
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    // Click Marketplace import button (has GitHub SVG icon, enabled when registries are configured)
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
 
     // Dialog should open and auto-browse
     await expect(page.getByRole("dialog")).toBeVisible();
@@ -337,7 +337,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToSkillsLibrary(page);
 
-    const marketplaceButton = page.getByRole("button", { name: /marketplace/i }).first();
+    const marketplaceButton = page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") });
     await expect(marketplaceButton).toBeVisible();
     await expect(marketplaceButton).toBeDisabled();
   });
@@ -460,7 +460,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       anthropic_api_key: "sk-ant-test",
       workspace_path: "/tmp/ws",
       skills_path: "/tmp/skills",
-      marketplace_url: "https://github.com/test-owner/test-repo",
+      marketplace_registries: [{ name: "Test Registry", source_url: "https://github.com/test-owner/test-repo", enabled: true }],
     },
     parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
     get_installed_skill_names: [],
@@ -505,7 +505,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     });
 
     await navigateToSkillsLibrary(page);
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
@@ -559,7 +559,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     });
 
     await navigateToSkillsLibrary(page);
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
@@ -596,7 +596,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     });
 
     await navigateToSkillsLibrary(page);
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await page.waitForTimeout(500);
 
@@ -649,7 +649,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     });
 
     await navigateToSkillsLibrary(page);
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
     await page.waitForTimeout(500);
@@ -672,7 +672,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
       anthropic_api_key: "sk-ant-test",
       workspace_path: "/tmp/ws",
       skills_path: "/tmp/skills",
-      marketplace_url: "https://github.com/test-owner/test-repo",
+      marketplace_registries: [{ name: "Test Registry", source_url: "https://github.com/test-owner/test-repo", enabled: true }],
       dashboard_view_mode: null,
     },
     parse_github_url: { owner: "test-owner", repo: "test-repo", branch: "main", subpath: null },
@@ -727,7 +727,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
 
     await navigateToDashboard(page);
     // Open skill-library marketplace dialog via top-bar Marketplace button
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     const marketplaceDialog = page.getByRole("dialog").first();
     await expect(marketplaceDialog).toBeVisible();
     await page.waitForTimeout(500);
@@ -736,7 +736,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(marketplaceDialog.getByText("Update available")).toBeVisible();
 
     // Click the edit & import button to open the edit form
-    await marketplaceDialog.getByLabel("Import data-analytics").click();
+    await marketplaceDialog.getByLabel("Update data-analytics").click();
 
     // Edit & Import Skill dialog should open
     await expect(page.getByText("Edit & Import Skill")).toBeVisible();
@@ -792,7 +792,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     });
 
     await navigateToDashboard(page);
-    await page.getByRole("button", { name: /marketplace/i }).first().click();
+    await page.getByRole("button", { name: /marketplace/i }).filter({ has: page.locator("svg") }).click();
     const marketplaceDialog = page.getByRole("dialog").first();
     await expect(marketplaceDialog).toBeVisible();
     await page.waitForTimeout(500);
@@ -801,7 +801,7 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(marketplaceDialog.getByText("Update available")).toBeVisible();
 
     // Click the edit & import button
-    await marketplaceDialog.getByLabel("Import data-analytics").click();
+    await marketplaceDialog.getByLabel("Update data-analytics").click();
 
     await expect(page.getByText("Edit & Import Skill")).toBeVisible();
 

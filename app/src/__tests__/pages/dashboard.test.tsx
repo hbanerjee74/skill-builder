@@ -157,7 +157,7 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("No skills yet")).toBeInTheDocument();
       expect(
-        screen.getByText("Create your first skill to get started.")
+        screen.getByText(/Create your first skill to get started\./)
       ).toBeInTheDocument();
     });
   });
