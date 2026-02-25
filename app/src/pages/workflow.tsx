@@ -1108,7 +1108,7 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Transition gate dialog — shown after step 1 review (gate 1) or step 3 review (gate 2) */}
+      {/* Transition gate dialog — shown after step 0 (gate 1) or step 1 (gate 2) */}
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
