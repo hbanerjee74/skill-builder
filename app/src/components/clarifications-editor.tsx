@@ -175,7 +175,7 @@ export function ClarificationsEditor({
           {onReset && (
             <Button variant="outline" size="sm" onClick={onReset}>
               <RotateCcw className="size-3.5" />
-              Re-run Research
+              Re-run
             </Button>
           )}
           {onReload && (
