@@ -202,6 +202,9 @@ export const readFile = (filePath: string) =>
 export const writeFile = (path: string, content: string) =>
   invoke<void>("write_file", { path, content });
 
+export const listSkillFiles = (workspacePath: string, skillName: string) =>
+  invoke<import("./types").SkillFileEntry[]>("list_skill_files", { workspacePath, skillName });
+
 // --- Lifecycle ---
 
 export const hasRunningAgents = (workflowSessionId?: string | null) =>

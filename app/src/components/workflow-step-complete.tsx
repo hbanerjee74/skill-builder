@@ -5,7 +5,8 @@ import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile, getStepAgentRuns } from "@/lib/tauri";
+import { readFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
@@ -102,6 +103,8 @@ export function WorkflowStepComplete({
   evaluating,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
+  const [resolvedFiles, setResolvedFiles] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
 
@@ -120,45 +123,66 @@ export function WorkflowStepComplete({
   useEffect(() => {
     if (!skillName || outputFiles.length === 0) {
       setFileContents(new Map());
+      setResolvedFiles([]);
+      setSelectedFile(null);
       return;
     }
 
     let cancelled = false;
     setLoadingFiles(true);
-    const results = new Map<string, string>();
 
-    const loadPromises = outputFiles
-      .filter((f) => !f.endsWith("/"))
-      .map(async (relativePath) => {
-        // Try skills path first (strip "skill/" prefix since skill output dir
-        // already nests under skillName), then workspace path (uses path as-is)
-        let content: string | null = null;
-        const skillsRelative = relativePath.startsWith("skill/")
-          ? relativePath.slice("skill/".length)
-          : relativePath;
+    (async () => {
+      // Expand directory paths (ending with "/") into individual files
+      const expandedFiles: string[] = [];
+      const dirPaths = outputFiles.filter((f) => f.endsWith("/"));
+      const filePaths = outputFiles.filter((f) => !f.endsWith("/"));
+      expandedFiles.push(...filePaths);
 
-        // skills_path is required — no workspace fallback
-        if (skillsPath) {
-          try {
-            content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
-          } catch {
-            // not found in skills path
+      if (dirPaths.length > 0 && skillsPath) {
+        try {
+          const allEntries = await listSkillFiles(skillsPath, skillName);
+          for (const dir of dirPaths) {
+            // dir is like "skill/references/" — strip "skill/" prefix to match on-disk paths
+            const diskPrefix = dir.startsWith("skill/") ? dir.slice("skill/".length) : dir;
+            for (const entry of allEntries) {
+              if (!entry.is_directory && entry.relative_path.startsWith(diskPrefix)) {
+                expandedFiles.push(`skill/${entry.relative_path}`);
+              }
+            }
           }
+        } catch {
+          // list failed — directory paths won't be expanded
         }
+      }
 
-        if (content) {
-          results.set(relativePath, content);
-        } else {
-          results.set(relativePath, "__NOT_FOUND__");
-        }
-      });
+      const results = new Map<string, string>();
 
-    Promise.all(loadPromises).then(() => {
+      await Promise.all(
+        expandedFiles.map(async (relativePath) => {
+          let content: string | null = null;
+          const skillsRelative = relativePath.startsWith("skill/")
+            ? relativePath.slice("skill/".length)
+            : relativePath;
+
+          if (skillsPath) {
+            try {
+              content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
+            } catch {
+              // not found in skills path
+            }
+          }
+
+          results.set(relativePath, content ?? "__NOT_FOUND__");
+        })
+      );
+
       if (!cancelled) {
         setFileContents(new Map(results));
+        setResolvedFiles(expandedFiles);
+        setSelectedFile(expandedFiles[0] ?? null);
         setLoadingFiles(false);
       }
-    });
+    })();
 
     return () => { cancelled = true; };
   }, [skillName, workspacePath, skillsPath, outputFiles]);
@@ -360,8 +384,19 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Default: show file contents individually (both review and non-review mode)
-  if (hasFileContents && outputFiles.length > 0) {
+  // Default: show file contents with a dropdown selector when multiple files exist
+  const visibleFiles = resolvedFiles.filter((f) => !f.endsWith("/"));
+  if (hasFileContents && visibleFiles.length > 0) {
+    const activeFile = selectedFile && visibleFiles.includes(selectedFile) ? selectedFile : visibleFiles[0];
+    const activeContent = fileContents.get(activeFile);
+    const activeNotFound = activeContent === "__NOT_FOUND__";
+
+    /** Display label for a file path: SKILL.md or references/foo.md */
+    const fileLabel = (f: string) => {
+      const stripped = f.startsWith("skill/") ? f.slice("skill/".length) : f;
+      return stripped;
+    };
+
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
         {reviewMode && agentRuns.length > 0 && (
@@ -369,11 +404,38 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        {!reviewMode && (
-          <div className="flex items-center gap-2 pb-4">
-            <CheckCircle2 className="size-4" style={{ color: "var(--color-seafoam)" }} />
-            <h3 className="text-sm font-semibold">{stepName} Complete</h3>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
+        {/* Header row: step complete badge + file selector */}
+        <div className="flex items-center gap-3 shrink-0">
+          {!reviewMode && (
+            <>
+              <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+              <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
+            </>
+          )}
+          {visibleFiles.length > 1 && (
+            <Select value={activeFile} onValueChange={setSelectedFile}>
+              <SelectTrigger size="sm" className="font-mono text-xs">
+                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleFiles.map((f) => (
+                  <SelectItem key={f} value={f} className="font-mono text-xs">
+                    {fileLabel(f)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {visibleFiles.length === 1 && (
+            <span className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+              <FileText className="size-3.5 shrink-0" />
+              {fileLabel(activeFile)}
+            </span>
+          )}
+          <div className="flex-1" />
+          {!reviewMode && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {duration !== undefined && (
                 <span className="flex items-center gap-1">
                   <Clock className="size-3" />
@@ -387,33 +449,17 @@ export function WorkflowStepComplete({
                 </span>
               )}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        {/* File content */}
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-6 pr-4">
-            {outputFiles
-              .filter((f) => !f.endsWith("/"))
-              .map((file) => {
-                const content = fileContents.get(file);
-                const notFound = content === "__NOT_FOUND__";
-
-                return (
-                  <div key={file} className="flex flex-col gap-2">
-                    <p className="text-xs font-mono text-muted-foreground flex items-center gap-2">
-                      <FileText className="size-3.5 shrink-0" />
-                      {file}
-                    </p>
-                    {notFound && (
-                      <p className="text-sm text-muted-foreground italic">
-                        File not found
-                      </p>
-                    )}
-                    {!notFound && content && (
-                      <FileContentRenderer file={file} content={content} />
-                    )}
-                  </div>
-                );
-              })}
+          <div className="pr-4">
+            {activeNotFound && (
+              <p className="text-sm text-muted-foreground italic">File not found</p>
+            )}
+            {!activeNotFound && activeContent && (
+              <FileContentRenderer file={activeFile} content={activeContent} />
+            )}
           </div>
         </ScrollArea>
         <StepActionBar
