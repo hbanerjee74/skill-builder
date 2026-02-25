@@ -90,13 +90,13 @@ describe("Canonical format: anti-pattern checks (all markdown files)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// clarifications.json structural checks (step0 + step2 + review-content.json)
+// clarifications.json structural checks (step0 + step1 + review-content.json)
 // ---------------------------------------------------------------------------
 
 describe("Canonical format: clarifications.json structure", () => {
   const clarificationFiles = [
     path.join(MOCK_ROOT, "step0/context/clarifications.json"),
-    path.join(MOCK_ROOT, "step2/context/clarifications.json"),
+    path.join(MOCK_ROOT, "step1/context/clarifications.json"),
     path.join(FIXTURE_ROOT, "review-content.json"),
   ].filter((f) => fs.existsSync(f));
 
@@ -184,11 +184,11 @@ describe("Canonical format: clarifications.json structure", () => {
     });
   }
 
-  // Step2-specific refinement checks
-  const step2 = path.join(MOCK_ROOT, "step2/context/clarifications.json");
-  if (fs.existsSync(step2)) {
-    describe("step2 refinements", () => {
-      const data = JSON.parse(readFile(step2));
+  // Step1-specific refinement checks (Detailed Research)
+  const step1 = path.join(MOCK_ROOT, "step1/context/clarifications.json");
+  if (fs.existsSync(step1)) {
+    describe("step1 refinements", () => {
+      const data = JSON.parse(readFile(step1));
 
       it("has refinement_count > 0", () => {
         expect(data.metadata.refinement_count).toBeGreaterThan(0);
@@ -216,11 +216,11 @@ describe("Canonical format: clarifications.json structure", () => {
 });
 
 // ---------------------------------------------------------------------------
-// decisions.md structural checks (step4)
+// decisions.md structural checks (step2)
 // ---------------------------------------------------------------------------
 
 describe("Canonical format: decisions.md structure", () => {
-  const decisionsFile = path.join(MOCK_ROOT, "step4/context/decisions.md");
+  const decisionsFile = path.join(MOCK_ROOT, "step2/context/decisions.md");
 
   it("decisions.md exists", () => {
     expect(fs.existsSync(decisionsFile)).toBe(true);

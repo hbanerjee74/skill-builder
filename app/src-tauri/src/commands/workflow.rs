@@ -1315,8 +1315,8 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 
 /// Check if at least one expected output file exists for a completed step.
 /// Returns `true` if the step produced output, `false` if no files were written.
-/// Human review steps (1, 3) always return `true` since they
-/// produce no files by design.
+/// Step 1 (Detailed Research) always returns `true` because it edits
+/// clarifications.json in-place and has no unique output file to check.
 #[tauri::command]
 pub fn verify_step_output(
     _workspace_path: String,
