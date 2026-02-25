@@ -44,7 +44,7 @@ async function checkForMarketplaceUpdates(
     if (settings.auto_update) {
       await handleAutoUpdate(library, workspace, sourceUrl, info, cancelledRef);
     } else {
-      showManualUpdateToasts(library, workspace, router);
+      showManualUpdateToasts(library, workspace, router, registry_name ?? null);
     }
     return registry_name ?? null;
   } catch (err) {
@@ -110,9 +110,11 @@ function showManualUpdateToasts(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
+  registryName: string | null,
 ): void {
+  const qualify = (name: string) => registryName ? `${registryName}::${name}` : name;
   if (library.length > 0) {
-    const names = library.map((s) => s.name);
+    const names = library.map((s) => qualify(s.name));
     toast.info(
       `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
@@ -128,7 +130,7 @@ function showManualUpdateToasts(
     );
   }
   if (workspace.length > 0) {
-    const names = workspace.map((s) => s.name);
+    const names = workspace.map((s) => qualify(s.name));
     toast.info(
       `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
