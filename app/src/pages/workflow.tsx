@@ -806,7 +806,7 @@ export default function WorkflowPage() {
     clearRuns();
     resetToStep(effectiveStep);
     autoStartAfterReset(effectiveStep);
-    toast.success(`Reset to step ${effectiveStep + 1}`);
+    toast.success(stepId === 1 ? "Reset to Research step" : `Reset to step ${effectiveStep + 1}`);
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
