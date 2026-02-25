@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir } from "@/lib/tauri"
+import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -67,8 +67,16 @@ export default function SettingsPage() {
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const [addingRegistry, setAddingRegistry] = useState(false)
-  const [newRegistryName, setNewRegistryName] = useState("")
   const [newRegistryUrl, setNewRegistryUrl] = useState("")
+  const [registryTestState, setRegistryTestState] = useState<Record<string, "checking" | "valid" | "invalid">>({})
+
+  function nameFromRegistryUrl(url: string): string {
+    try {
+      return new URL(url.trim()).pathname.replace(/^\//, "").replace(/\/$/, "") || url.trim()
+    } catch {
+      return url.trim()
+    }
+  }
   const availableModels = useSettingsStore((s) => s.availableModels)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, logout } = useAuthStore()
@@ -587,11 +595,12 @@ export default function SettingsPage() {
                 <div className="rounded-md border">
                   <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
                     <span className="flex-1">Name</span>
-                    <span className="w-20">Enabled</span>
-                    <span className="w-8" />
+                    <span className="w-16">Enabled</span>
+                    <span className="w-16" />
                   </div>
                   {marketplaceRegistries.map((registry, idx) => {
                     const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
+                    const testState = registryTestState[registry.source_url]
                     return (
                       <div
                         key={registry.source_url}
@@ -606,7 +615,7 @@ export default function SettingsPage() {
                           </div>
                           <div className="text-xs text-muted-foreground truncate font-mono">{registry.source_url}</div>
                         </div>
-                        <div className="w-20 shrink-0 flex items-center gap-2">
+                        <div className="w-16 shrink-0 flex items-center gap-2">
                           <Switch
                             checked={registry.enabled}
                             onCheckedChange={(checked) => {
@@ -620,7 +629,27 @@ export default function SettingsPage() {
                             aria-label={`Toggle ${registry.name}`}
                           />
                         </div>
-                        <div className="w-8 shrink-0 flex items-center justify-end">
+                        <div className="w-16 shrink-0 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+                            aria-label={`Test ${registry.name}`}
+                            title="Check marketplace.json is reachable"
+                            onClick={async () => {
+                              setRegistryTestState((s) => ({ ...s, [registry.source_url]: "checking" }))
+                              try {
+                                await checkMarketplaceUrl(registry.source_url)
+                                setRegistryTestState((s) => ({ ...s, [registry.source_url]: "valid" }))
+                              } catch {
+                                setRegistryTestState((s) => ({ ...s, [registry.source_url]: "invalid" }))
+                              }
+                            }}
+                          >
+                            {testState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
+                            {testState === "valid" && <CheckCircle2 className="size-3.5 text-green-500" />}
+                            {testState === "invalid" && <XCircle className="size-3.5 text-destructive" />}
+                            {!testState && <span className="text-xs">Test</span>}
+                          </button>
                           {!isDefault && (
                             <button
                               type="button"
@@ -655,15 +684,6 @@ export default function SettingsPage() {
                 ) : (
                   <div className="flex flex-col gap-3 rounded-md border p-4">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="new-registry-name">Name</Label>
-                      <Input
-                        id="new-registry-name"
-                        placeholder="My Skills"
-                        value={newRegistryName}
-                        onChange={(e) => setNewRegistryName(e.target.value)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
                       <Label htmlFor="new-registry-url">GitHub URL</Label>
                       <Input
                         id="new-registry-url"
@@ -675,16 +695,17 @@ export default function SettingsPage() {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        disabled={!newRegistryName.trim() || !newRegistryUrl.trim()}
+                        disabled={!newRegistryUrl.trim()}
                         onClick={() => {
-                          console.log(`[settings] registry added: name=${newRegistryName.trim()}, url=${newRegistryUrl.trim()}`)
+                          const url = newRegistryUrl.trim()
+                          const name = nameFromRegistryUrl(url)
+                          console.log(`[settings] registry added: name=${name}, url=${url}`)
                           const entry: MarketplaceRegistry = {
-                            name: newRegistryName.trim(),
-                            source_url: newRegistryUrl.trim(),
+                            name,
+                            source_url: url,
                             enabled: true,
                           }
                           autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
-                          setNewRegistryName("")
                           setNewRegistryUrl("")
                           setAddingRegistry(false)
                         }}
@@ -695,7 +716,6 @@ export default function SettingsPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => {
-                          setNewRegistryName("")
                           setNewRegistryUrl("")
                           setAddingRegistry(false)
                         }}
@@ -712,21 +732,16 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Auto-update</CardTitle>
                 <CardDescription>
-                  Automatically apply marketplace updates at startup.
+                  Automatically apply updates from all enabled registries at startup.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col gap-0.5">
-                    <Label htmlFor="auto-update">Auto-update</Label>
-                    <span className="text-sm text-muted-foreground">Apply updates from all enabled registries at startup.</span>
-                  </div>
-                  <Switch
-                    id="auto-update"
-                    checked={autoUpdate}
-                    onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
-                  />
-                </div>
+                <Switch
+                  id="auto-update"
+                  checked={autoUpdate}
+                  onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
+                  aria-label="Enable auto-update"
+                />
               </CardContent>
             </Card>
           </div>

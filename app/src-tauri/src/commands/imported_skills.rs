@@ -574,6 +574,21 @@ fn toggle_skill_active_inner(
             return Err(format!("Failed to create destination directory: {}", e));
         }
 
+        // If dst already exists (disk/DB desync: skill is in both places), remove the stale
+        // destination before renaming so we don't hit ENOTEMPTY on macOS/Linux.
+        if dst.exists() {
+            log::warn!(
+                "[toggle_skill_active] destination already exists, removing stale copy: {}",
+                dst.display()
+            );
+            if let Err(e) = fs::remove_dir_all(dst) {
+                let _ = crate::db::update_workspace_skill_active(
+                    conn, skill_id, !active, &old_disk_path,
+                );
+                return Err(format!("Failed to clear stale destination for '{}': {}", skill_name, e));
+            }
+        }
+
         if let Err(move_err) = fs::rename(src, dst) {
             // Revert the DB update
             let _ = crate::db::update_workspace_skill_active(
@@ -586,6 +601,13 @@ fn toggle_skill_active_inner(
                 move_err
             ));
         }
+    } else if active && dst.exists() {
+        // Skill is already at the active path but DB thought it was inactive — disk/DB desync.
+        // DB was already updated above; nothing to move.
+        log::warn!(
+            "[toggle_skill_active] activating '{}': src not found but dst exists, DB updated only",
+            skill_name
+        );
     }
 
     Ok(())

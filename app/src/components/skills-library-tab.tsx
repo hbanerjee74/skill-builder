@@ -202,7 +202,7 @@ export function SkillsLibraryTab() {
                   {skill.is_bundled && (
                     <Badge variant="secondary" className="text-xs">Built-in</Badge>
                   )}
-                  {skill.purpose && (
+                  {skill.purpose && PURPOSE_OPTIONS.some(o => o.value === skill.purpose) && (
                     <Badge variant="outline" className="text-xs capitalize">
                       {skill.purpose}
                     </Badge>
