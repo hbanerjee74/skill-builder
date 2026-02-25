@@ -467,7 +467,7 @@ export default function GitHubImportDialog({
           <div className="rounded-md border">
             <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground sticky top-0 z-10 rounded-t-md">
               <span className="flex-1">Name</span>
-              <span className="w-20 shrink-0">Version</span>
+              <span className="w-24 shrink-0">Version</span>
               <span className="w-28 shrink-0">Status</span>
               <span className="w-8 shrink-0" />
             </div>
@@ -490,6 +490,9 @@ export default function GitHubImportDialog({
                         <span className="truncate text-sm font-medium">
                           {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
                         </span>
+                        {skill.purpose && (
+                          <Badge variant="outline" className="text-xs capitalize">{skill.purpose}</Badge>
+                        )}
                         {mode === 'skill-library' && !skill.purpose && !isDisabled && (
                           <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                             Missing purpose
@@ -502,7 +505,7 @@ export default function GitHubImportDialog({
                         <div className="text-xs text-amber-600">No description</div>
                       ) : null}
                     </div>
-                    <div className="w-20 shrink-0">
+                    <div className="w-24 shrink-0">
                       {skill.version ? (
                         <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                       ) : (
