@@ -591,8 +591,15 @@ pub(crate) async fn list_github_skills_inner(
     for (skill, content_opt) in skills.iter_mut().zip(contents) {
         if let Some(content) = content_opt {
             let fm = super::imported_skills::parse_frontmatter_full(&content);
+            // SKILL.md frontmatter is authoritative for all fields it defines.
+            if let Some(name) = fm.name { skill.name = name; }
+            if let Some(desc) = fm.description { skill.description = Some(desc); }
             skill.version = fm.version;
             skill.purpose = fm.purpose;
+            skill.model = fm.model;
+            skill.argument_hint = fm.argument_hint;
+            skill.user_invocable = fm.user_invocable;
+            skill.disable_model_invocation = fm.disable_model_invocation;
         }
     }
 
