@@ -720,11 +720,14 @@ export default function SettingsPage() {
                       {newRegistryTestState === "invalid" && (
                         <p className="text-xs text-destructive">Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.</p>
                       )}
+                      {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
+                        <p className="text-xs text-destructive">This registry is already added.</p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        disabled={!newRegistryUrl.trim()}
+                        disabled={!newRegistryUrl.trim() || marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())}
                         onClick={() => {
                           const url = newRegistryUrl.trim()
                           const name = nameFromRegistryUrl(url)
