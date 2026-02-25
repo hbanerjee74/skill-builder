@@ -144,7 +144,6 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
             }
         }
     }
-
 }
 
 /// Delete output files for the given step and all subsequent steps.

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
 import { type SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile, type Question } from "@/lib/clarifications-types";
+import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
 import {
   Play,
   AlertCircle,
@@ -66,33 +66,6 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
   2: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
 };
-
-/** Parse and normalize JSON clarifications from raw file content.
- *  Ensures every question has a `refinements` array (agents may omit it). */
-function parseClarifications(content: string | null): ClarificationsFile | null {
-  if (!content) return null;
-  try {
-    const raw = JSON.parse(content) as ClarificationsFile;
-    // Normalize: ensure every question has refinements[] (agent output may omit it)
-    function normalizeQ(q: Question): Question {
-      return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-    }
-    return {
-      ...raw,
-      metadata: {
-        ...raw.metadata,
-        priority_questions: raw.metadata?.priority_questions ?? [],
-      },
-      sections: (raw.sections ?? []).map((s) => ({
-        ...s,
-        questions: (s.questions ?? []).map(normalizeQ),
-      })),
-      notes: raw.notes ?? [],
-    };
-  } catch {
-    return null;
-  }
-}
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -264,7 +237,6 @@ export default function WorkflowPage() {
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
   const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
-  // isAutofilling state removed — auto-fill buttons removed from gate dialog
   const gateAgentIdRef = useRef<string | null>(null);
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
@@ -612,8 +584,6 @@ export default function WorkflowPage() {
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
-  // (Review agent logic removed — direct completion is faster and sufficient)
-
   // --- Step handlers ---
 
   const handleStartAgentStep = async () => {
@@ -650,11 +620,6 @@ export default function WorkflowPage() {
         { duration: Infinity },
       );
     }
-  };
-
-  const handleStartStep = async () => {
-    if (!stepConfig) return;
-    return handleStartAgentStep();
   };
 
   const runGateEvaluation = async () => {
@@ -795,8 +760,6 @@ export default function WorkflowPage() {
       skipToDecisions("Skipped detailed research — answers were sufficient");
     }
   };
-
-  // Auto-fill handlers removed — gate dialog now uses "Let Me Answer" / "Continue Anyway" only
 
   /** Sufficient override: run research anyway (gate 1) or continue to decisions (gate 2). */
   const handleGateResearch = () => {
@@ -965,7 +928,7 @@ export default function WorkflowPage() {
                 <RotateCcw className="size-3.5" />
                 Reset Step
               </Button>
-              <Button size="sm" onClick={() => handleStartStep()}>
+              <Button size="sm" onClick={handleStartAgentStep}>
                 <Play className="size-3.5" />
                 Retry
               </Button>
@@ -993,7 +956,7 @@ export default function WorkflowPage() {
           <p className="font-medium">Ready to run</p>
           <p className="mt-1 text-sm">Click Start to begin this step.</p>
         </div>
-        <Button size="sm" onClick={handleStartStep}>
+        <Button size="sm" onClick={handleStartAgentStep}>
           <Play className="size-3.5" />
           Start Step
         </Button>
@@ -1156,8 +1119,6 @@ export default function WorkflowPage() {
               <p className="text-sm text-muted-foreground">
                 {currentStepDef?.description}
               </p>
-            </div>
-            <div className="flex items-center gap-3">
             </div>
           </div>
 

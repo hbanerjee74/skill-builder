@@ -10,8 +10,9 @@ import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
 import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
-import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
+import { formatElapsed } from "@/lib/utils";
 
 interface WorkflowStepCompleteProps {
   stepName: string;
@@ -33,14 +34,6 @@ interface WorkflowStepCompleteProps {
   onClarificationsContinue?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
 }
 
 /** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
@@ -221,26 +214,8 @@ export function WorkflowStepComplete({
       );
     }
 
-    // Invalid JSON = error
-    let clarData: ClarificationsFile | null = null;
-    try {
-      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
-      function normalizeQ(q: Question): Question {
-        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-      }
-      clarData = {
-        ...raw,
-        metadata: {
-          ...raw.metadata,
-          priority_questions: raw.metadata?.priority_questions ?? [],
-        },
-        sections: (raw.sections ?? []).map((s) => ({
-          ...s,
-          questions: (s.questions ?? []).map(normalizeQ),
-        })),
-        notes: raw.notes ?? [],
-      };
-    } catch {
+    const clarData = parseClarifications(clarificationsContent!);
+    if (!clarData) {
       return (
         <div className="flex h-full flex-col gap-4 overflow-hidden">
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -313,27 +288,7 @@ export function WorkflowStepComplete({
     && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
 
   if (isClarificationsOnlyStep) {
-    let clarOnlyData: ClarificationsFile | null = null;
-    try {
-      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
-      function normalizeQ(q: Question): Question {
-        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-      }
-      clarOnlyData = {
-        ...raw,
-        metadata: {
-          ...raw.metadata,
-          priority_questions: raw.metadata?.priority_questions ?? [],
-        },
-        sections: (raw.sections ?? []).map((s) => ({
-          ...s,
-          questions: (s.questions ?? []).map(normalizeQ),
-        })),
-        notes: raw.notes ?? [],
-      };
-    } catch {
-      // Invalid JSON — fall through to default renderer
-    }
+    const clarOnlyData = parseClarifications(clarificationsContent!);
 
     if (clarOnlyData) {
       return (
@@ -422,7 +377,7 @@ export function WorkflowStepComplete({
               {duration !== undefined && (
                 <span className="flex items-center gap-1">
                   <Clock className="size-3" />
-                  {formatDuration(duration)}
+                  {formatElapsed(duration)}
                 </span>
               )}
               {displayCost !== undefined && (
@@ -500,7 +455,7 @@ export function WorkflowStepComplete({
             {duration !== undefined && (
               <span className="flex items-center gap-1">
                 <Clock className="size-3" />
-                {formatDuration(duration)}
+                {formatElapsed(duration)}
               </span>
             )}
             {displayCost !== undefined && (
@@ -528,33 +483,13 @@ export function WorkflowStepComplete({
 function FileContentRenderer({ file, content }: { file: string; content: string }) {
   // Detect clarifications.json — render with the structured editor in read-only mode
   if (file.endsWith("clarifications.json")) {
-    try {
-      const raw = JSON.parse(content) as ClarificationsFile;
-      // Normalize: ensure every question has refinements[]
-      function normalizeQ(q: Question): Question {
-        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-      }
-      const data: ClarificationsFile = {
-        ...raw,
-        metadata: {
-          ...raw.metadata,
-          priority_questions: raw.metadata?.priority_questions ?? [],
-        },
-        sections: (raw.sections ?? []).map((s) => ({
-          ...s,
-          questions: (s.questions ?? []).map(normalizeQ),
-        })),
-        notes: raw.notes ?? [],
-      };
-      if (data.version && data.sections) {
-        return (
-          <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
-            <ClarificationsEditor data={data} onChange={() => {}} readOnly />
-          </div>
-        );
-      }
-    } catch {
-      // Fall through to markdown renderer if JSON parse fails
+    const data = parseClarifications(content);
+    if (data?.version && data.sections) {
+      return (
+        <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
+          <ClarificationsEditor data={data} onChange={() => {}} readOnly />
+        </div>
+      );
     }
   }
 

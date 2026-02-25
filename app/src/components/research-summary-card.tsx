@@ -3,6 +3,7 @@ import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyN
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
+import { formatElapsed } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,14 +93,6 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   return result;
 }
 
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ResearchSummaryCard({
@@ -149,7 +142,7 @@ export function ResearchSummaryCard({
           {duration !== undefined && (
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
-              {formatDuration(duration)}
+              {formatElapsed(duration)}
             </span>
           )}
           {cost !== undefined && cost > 0 && (
