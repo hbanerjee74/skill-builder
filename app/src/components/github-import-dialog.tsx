@@ -467,16 +467,14 @@ export default function GitHubImportDialog({
           <div className="flex-1 min-h-0 overflow-y-auto rounded-md border mt-2">
             <table className="w-full text-sm table-fixed border-separate border-spacing-0">
               <colgroup>
-                <col style={{ width: "42%" }} />
+                <col style={{ width: "76%" }} />
                 <col style={{ width: "14%" }} />
-                <col style={{ width: "32%" }} />
-                <col style={{ width: "12%" }} />
+                <col style={{ width: "10%" }} />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-background">
                 <tr>
                   <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Name</th>
                   <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Version</th>
-                  <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">In library</th>
                   <th className="pr-4 py-1.5 border-b" />
                 </tr>
               </thead>
@@ -496,8 +494,22 @@ export default function GitHubImportDialog({
                     >
                       <td className="pl-4 py-2.5 border-b overflow-hidden">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium">
-                            {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="truncate text-sm font-medium min-w-0">
+                              {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
+                            </div>
+                            {state === "imported" && (
+                              <Badge variant="outline" className="shrink-0 text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                            )}
+                            {isSameVersion && (
+                              <Badge variant="secondary" className="shrink-0 text-xs text-muted-foreground">Up to date</Badge>
+                            )}
+                            {isUpgrade && (
+                              <Badge variant="outline" className="shrink-0 text-xs text-amber-600 border-amber-300">Update available</Badge>
+                            )}
+                            {isExists && (
+                              <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">Already installed</Badge>
+                            )}
                           </div>
                           {skill.description ? (
                             <div className="truncate text-xs text-muted-foreground">
@@ -511,20 +523,6 @@ export default function GitHubImportDialog({
                           <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="pl-4 py-2.5 border-b">
-                        {state === "imported" && (
-                          <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
-                        )}
-                        {isSameVersion && (
-                          <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
-                        )}
-                        {isUpgrade && (
-                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
-                        )}
-                        {isExists && (
-                          <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
                         )}
                       </td>
                       <td className="pr-4 py-2.5 border-b">
