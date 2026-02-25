@@ -620,7 +620,7 @@ export default function SkillDialog(props: SkillDialogProps) {
             )}
           </div>
 
-          <DialogFooter className="gap-3">
+          <DialogFooter>
             {step === 1 && (
               <>
                 <Button

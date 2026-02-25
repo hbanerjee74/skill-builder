@@ -79,7 +79,7 @@ export function RuntimeErrorDialog({ error, onDismiss }: RuntimeErrorDialogProps
             </div>
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="flex-row justify-end gap-2">
+        <DialogFooter>
           {showNodeLink(error.error_type) && (
             <Button
               variant="outline"
