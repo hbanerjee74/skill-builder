@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react"
-import { Loader2, AlertCircle, PencilLine, CheckCircle2, CheckCheck } from "lucide-react"
+import { Loader2, AlertCircle, Download, RefreshCw, CheckCircle2, CheckCheck } from "lucide-react"
 import { toast } from "sonner"
 import {
   Dialog,
@@ -536,7 +536,7 @@ export default function GitHubImportDialog({
                               type="button"
                               className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                               disabled={isImporting}
-                              aria-label={`Import ${skill.name}`}
+                              aria-label={isUpgrade ? `Update ${skill.name}` : `Install ${skill.name}`}
                               onClick={async () => {
                                 if (isUpgrade && mode === 'settings-skills') {
                                   // Check for customization before opening edit form
@@ -556,8 +556,10 @@ export default function GitHubImportDialog({
                             >
                               {isImporting ? (
                                 <Loader2 className="size-3.5 animate-spin" />
+                              ) : isUpgrade ? (
+                                <RefreshCw className="size-3.5" />
                               ) : (
-                                <PencilLine className="size-3.5" />
+                                <Download className="size-3.5" />
                               )}
                             </button>
                           )}
