@@ -9,6 +9,7 @@ import { readFile, getStepAgentRuns } from "@/lib/tauri";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
+import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
 import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 
@@ -255,6 +256,39 @@ export function WorkflowStepComplete({
             <ResearchSummaryCard
               researchPlan={researchPlanContent!}
               clarificationsData={clarData}
+              duration={!reviewMode ? duration : undefined}
+              cost={displayCost}
+            />
+          </div>
+        </ScrollArea>
+        <StepActionBar
+          isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
+      </div>
+    );
+  }
+
+  // Decisions step: show summary card when decisions.md is the output
+  const decisionsContent = fileContents.get("context/decisions.md");
+  const isDecisionsStep = outputFiles.includes("context/decisions.md")
+    && decisionsContent && decisionsContent !== "__NOT_FOUND__";
+
+  if (isDecisionsStep) {
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {reviewMode && agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pr-4">
+            <DecisionsSummaryCard
+              decisionsContent={decisionsContent}
               duration={!reviewMode ? duration : undefined}
               cost={displayCost}
             />
