@@ -99,6 +99,14 @@ export function TransitionGateDialog({
 
   const isRefinements = context === "refinements";
 
+  // Check if the only issues are needs_refinement (no missing/vague/contradictory)
+  const pq = evaluation?.per_question ?? [];
+  const hasMissing = pq.some(q => q.verdict === "not_answered");
+  const hasVague = pq.some(q => q.verdict === "vague");
+  const hasContradictory = pq.some(q => q.verdict === "contradictory");
+  const onlyNeedsRefinement = !hasMissing && !hasVague && !hasContradictory
+    && pq.some(q => q.verdict === "needs_refinement");
+
   // Sufficient: all answers are detailed
   if (verdict === "sufficient") {
     if (isRefinements) {
@@ -145,7 +153,36 @@ export function TransitionGateDialog({
     );
   }
 
-  // Mixed: some answers present, some missing
+  // Mixed with only needs_refinement (gate 1): detailed research will handle these
+  if (verdict === "mixed" && onlyNeedsRefinement && !isRefinements) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Some Answers Need Deeper Research</DialogTitle>
+            <DialogDescription asChild>
+              <div>
+                <p>
+                  Your answers are substantive but some introduce parameters that need
+                  pinning down. The detailed research step will generate follow-up
+                  questions for these:
+                </p>
+                {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={onLetMeAnswer}>
+              Let Me Revise
+            </Button>
+            <Button onClick={onResearch}>Continue to Research</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Mixed: some answers missing or vague
   if (verdict === "mixed") {
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>

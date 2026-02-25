@@ -406,14 +406,16 @@ function QuestionCard({
             </p>
           )}
 
-          <AnswerField
-            value={question.answer_text ?? ""}
-            onChange={(text) => {
-              if (readOnly) return;
-              updateQuestion(question.id, makeAnswerUpdater(text));
-            }}
-            readOnly={readOnly}
-          />
+          {question.answer_choice !== null && (
+            <AnswerField
+              value={question.answer_text ?? ""}
+              onChange={(text) => {
+                if (readOnly) return;
+                updateQuestion(question.id, makeAnswerUpdater(text));
+              }}
+              readOnly={readOnly}
+            />
+          )}
 
           {question.refinements.length > 0 && (
             <RefinementsBlock
