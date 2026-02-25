@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, RotateCw, AlertTriangle, ChevronRight } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
         )}
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-3 divide-x">
+        <div className="grid grid-cols-2 divide-x">
           {/* Decisions Column */}
           <div className="p-4">
             <div className="flex items-center gap-1.5 mb-3">
@@ -197,25 +197,6 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
             )}
           </div>
 
-          {/* Metadata Column */}
-          <div className="p-4">
-            <div className="flex items-center gap-1.5 mb-3">
-              <RotateCw className="size-3.5" style={{ color: "var(--color-ocean)" }} />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Metadata
-              </span>
-            </div>
-            <div className="flex flex-col gap-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Round</span>
-                <span className="font-medium text-foreground">{fm.round}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Next step</span>
-                <span className="font-medium text-foreground">Generate Skill</span>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
