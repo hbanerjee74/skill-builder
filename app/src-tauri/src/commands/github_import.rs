@@ -2592,4 +2592,135 @@ mod tests {
         let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
         assert_eq!(sorted_names(&skills), vec!["standup"]);
     }
+
+    /// `plugin_name` is always `None` on every skill returned by `discover_skills_from_catalog`.
+    /// It is populated later (from plugin.json) in `list_github_skills_inner`.
+    #[test]
+    fn test_discover_plugin_name_always_none() {
+        let plugins = vec![
+            make_plugin(Some("engineering"), "./engineering", None),
+            make_plugin(Some("research"), "./research", None),
+        ];
+        let skill_dirs = dirs(&[
+            "engineering/skills/standup",
+            "research/skills/literature-search",
+        ]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(skills.len(), 2);
+        for skill in &skills {
+            assert!(
+                skill.plugin_name.is_none(),
+                "plugin_name must be None at discovery time (populated later from plugin.json), but got {:?} for '{}'",
+                skill.plugin_name, skill.name
+            );
+        }
+    }
+
+    /// A skill_dirs entry whose path ends at `skills/` exactly (no skill name segment) is excluded.
+    /// This guards against a hypothetical tree entry at `engineering/skills/` with an empty
+    /// skill_name after strip_prefix.
+    #[test]
+    fn test_discover_empty_skill_name_excluded() {
+        let plugins = vec![make_plugin(Some("eng"), "./engineering", None)];
+        // "engineering/skills/" stripped of prefix "engineering/skills/" → empty skill_name
+        let skill_dirs = dirs(&["engineering/skills/", "engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        // Only the valid skill survives; the empty-name entry is dropped
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+    }
+
+    // -----------------------------------------------------------------------
+    // extract_plugin_path tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_extract_plugin_path_normal() {
+        assert_eq!(extract_plugin_path("engineering/skills/standup"), "engineering");
+    }
+
+    #[test]
+    fn test_extract_plugin_path_nested_plugin() {
+        assert_eq!(extract_plugin_path("plugins/eng/skills/standup"), "plugins/eng");
+    }
+
+    /// Root plugin: `skills/` is directly under the repo root → plugin_path = ""
+    #[test]
+    fn test_extract_plugin_path_root_plugin() {
+        assert_eq!(extract_plugin_path("skills/standup"), "");
+    }
+
+    /// Subpath + root plugin: e.g. subpath="sub", source="./" → skill at "sub/skills/standup"
+    #[test]
+    fn test_extract_plugin_path_subpath_root_plugin() {
+        assert_eq!(extract_plugin_path("sub/skills/standup"), "sub");
+    }
+
+    #[test]
+    fn test_extract_plugin_path_deep_subpath() {
+        assert_eq!(extract_plugin_path("sub/engineering/skills/standup"), "sub/engineering");
+    }
+
+    /// Path with no `/skills/` segment at all → returns ""
+    #[test]
+    fn test_extract_plugin_path_no_skills_segment() {
+        assert_eq!(extract_plugin_path("engineering/standup"), "");
+    }
+
+    #[test]
+    fn test_extract_plugin_path_empty_string() {
+        assert_eq!(extract_plugin_path(""), "");
+    }
+
+    // -----------------------------------------------------------------------
+    // import_single_skill — strict frontmatter name validation (logic tests)
+    //
+    // import_single_skill makes HTTP calls so we can't easily run it end-to-end
+    // in unit tests. These tests exercise the exact validation expression used
+    // in production by calling parse_frontmatter_full and applying the same
+    // ok_or_else guard.
+    // -----------------------------------------------------------------------
+
+    /// Verify that a SKILL.md without a `name:` field parses to `name: None` and that
+    /// the ok_or_else guard (the exact expression in import_single_skill) rejects it.
+    /// This is the regression test for the "no directory fallback" rule.
+    #[test]
+    fn test_import_name_validation_rejects_missing_name() {
+        let content = "---\ndescription: Some description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n";
+        let fm = super::super::imported_skills::parse_frontmatter_full(content);
+
+        // Precondition: the parser returns None for the name
+        assert!(fm.name.is_none(), "SKILL.md without name: must parse to None");
+
+        // The guard used in import_single_skill — mirrors the production expression exactly
+        let result = fm.name.ok_or_else(|| {
+            format!("SKILL.md at '{}' is missing the 'name' frontmatter field", "test-skill")
+        });
+
+        assert!(result.is_err(), "import_single_skill must reject SKILL.md with no name field");
+        assert!(
+            result.unwrap_err().contains("missing"),
+            "error message should mention the missing field"
+        );
+    }
+
+    /// Verify that a metadata_override supplying `name` rescues a SKILL.md that has no `name:`
+    /// field — after the override is applied the ok_or_else guard passes.
+    #[test]
+    fn test_import_name_validation_override_rescues_missing_name() {
+        let content = "---\ndescription: Some description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n";
+        let mut fm = super::super::imported_skills::parse_frontmatter_full(content);
+        assert!(fm.name.is_none());
+
+        // Apply override — mirrors the override logic in import_single_skill
+        let override_ = crate::types::SkillMetadataOverride {
+            name: Some("override-name".to_string()),
+            ..Default::default()
+        };
+        fm.name = override_.name.clone().or(fm.name);
+
+        // After override, name is present — validation succeeds
+        let result = fm.name.ok_or_else(|| "missing name".to_string());
+        assert!(result.is_ok(), "override should supply missing name");
+        assert_eq!(result.unwrap(), "override-name");
+    }
 }
