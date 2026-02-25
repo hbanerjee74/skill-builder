@@ -464,14 +464,14 @@ export default function GitHubImportDialog({
               {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border flex flex-col flex-1 min-h-0">
-            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground shrink-0">
+          <div className="rounded-md border">
+            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
               <span className="flex-1">Name</span>
               <span className="w-20 shrink-0">Version</span>
               <span className="w-28 shrink-0">Status</span>
               <span className="w-8 shrink-0" />
             </div>
-            <ScrollArea className="flex-1">
+            <div>
               {skills.map((skill) => {
                 const state = skillStates.get(skill.path) ?? "idle"
                 const isImporting = state === "importing"
@@ -562,7 +562,7 @@ export default function GitHubImportDialog({
                   </div>
                 )
               })}
-            </ScrollArea>
+            </div>
           </div>
         </>
       )
@@ -574,14 +574,14 @@ export default function GitHubImportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-3xl flex flex-col max-h-[90vh]">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           {registries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No enabled registries. Configure registries in Settings → Marketplace.
             </p>
           ) : (
-            <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col flex-1 min-h-0">
-              <TabsList className="w-full justify-start shrink-0">
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
+              <TabsList className="w-full justify-start">
                 {registries.map((r) => (
                   <TabsTrigger key={r.source_url} value={r.source_url}>
                     {r.name}
@@ -589,7 +589,7 @@ export default function GitHubImportDialog({
                 ))}
               </TabsList>
               {registries.map((r) => (
-                <TabsContent key={r.source_url} value={r.source_url} className="flex flex-col flex-1 min-h-0">
+                <TabsContent key={r.source_url} value={r.source_url}>
                   {activeTab === r.source_url && renderSkillList()}
                 </TabsContent>
               ))}
