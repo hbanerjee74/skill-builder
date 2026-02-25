@@ -474,10 +474,10 @@ export default function GitHubImportDialog({
               </colgroup>
               <thead className="sticky top-0 z-10 bg-background">
                 <tr>
-                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Name</th>
-                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Version</th>
-                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Status</th>
-                  <th className="px-4 py-1.5 border-b" />
+                  <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Name</th>
+                  <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Version</th>
+                  <th className="pl-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">In library</th>
+                  <th className="pr-4 py-1.5 border-b" />
                 </tr>
               </thead>
               <tbody>
@@ -494,36 +494,26 @@ export default function GitHubImportDialog({
                       key={skill.path}
                       className="hover:bg-muted/30 transition-colors"
                     >
-                      <td className="px-4 py-2.5 border-b overflow-hidden">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="truncate text-sm font-medium">
+                      <td className="pl-4 py-2.5 border-b overflow-hidden">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">
                             {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
-                          </span>
-                          {skill.purpose && (
-                            <Badge variant="outline" className="text-xs capitalize shrink-0">{skill.purpose}</Badge>
-                          )}
-                          {mode === 'skill-library' && !skill.purpose && !isDisabled && (
-                            <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
-                              Missing purpose
-                            </Badge>
-                          )}
-                        </div>
-                        {skill.description ? (
-                          <div className="text-xs text-muted-foreground truncate">
-                            {skill.description.length > 60 ? `${skill.description.slice(0, 60)}...` : skill.description}
                           </div>
-                        ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
-                          <div className="text-xs text-amber-600">No description</div>
-                        ) : null}
+                          {skill.description ? (
+                            <div className="truncate text-xs text-muted-foreground">
+                              {skill.description.length > 60 ? `${skill.description.slice(0, 60)}...` : skill.description}
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
-                      <td className="px-4 py-2.5 border-b align-middle">
+                      <td className="pl-4 py-2.5 border-b">
                         {skill.version ? (
                           <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 border-b align-middle">
+                      <td className="pl-4 py-2.5 border-b">
                         {state === "imported" && (
                           <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
                         )}
@@ -537,7 +527,7 @@ export default function GitHubImportDialog({
                           <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 border-b align-middle">
+                      <td className="pr-4 py-2.5 border-b">
                         <div className="flex items-center justify-end">
                           {state === "imported" ? (
                             <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
