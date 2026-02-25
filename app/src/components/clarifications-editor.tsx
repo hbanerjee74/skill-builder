@@ -219,7 +219,7 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
         <span className="text-muted-foreground">refinements</span>{": "}
         <span style={{ color: "var(--color-pacific)" }}>{m.refinement_count}</span>
       </span>
-      {m.priority_questions.length > 0 && (
+      {m.priority_questions && m.priority_questions.length > 0 && (
         <span>
           <span className="text-muted-foreground">priority</span>{": "}
           <span className="text-amber-600 dark:text-amber-400">

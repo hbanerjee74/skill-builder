@@ -1,6 +1,4 @@
-import { useState } from "react";
-import { CheckCircle2, Clock, DollarSign, ChevronDown, Layers, MessageCircleQuestion, StickyNote, AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
 
@@ -102,7 +100,6 @@ export function ResearchSummaryCard({
   duration,
   cost,
 }: ResearchSummaryCardProps) {
-  const [showClarifications, setShowClarifications] = useState(false);
   const plan = parseResearchPlan(researchPlan);
   const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
@@ -277,29 +274,10 @@ export function ResearchSummaryCard({
         </div>
       </div>
 
-      {/* Expand/Collapse Clarifications */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start"
-        onClick={() => setShowClarifications(!showClarifications)}
-      >
-        <ChevronDown
-          className="size-3.5 transition-transform duration-150"
-          style={{ transform: showClarifications ? "rotate(180deg)" : "rotate(0deg)" }}
-        />
-        {showClarifications ? "Hide Clarifications" : "View Clarifications"}
-        <span className="ml-1 text-[10px] text-muted-foreground">
-          ({meta.question_count} questions)
-        </span>
-      </Button>
-
-      {/* Expandable ClarificationsEditor */}
-      {showClarifications && (
-        <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
-          <ClarificationsEditor data={clarificationsData} onChange={() => {}} readOnly />
-        </div>
-      )}
+      {/* Clarifications — always visible */}
+      <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
+        <ClarificationsEditor data={clarificationsData} onChange={() => {}} readOnly />
+      </div>
     </div>
   );
 }
