@@ -475,7 +475,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     }
 
     return (
-      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-green-700 dark:text-green-400`}>
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm`} style={{ color: "var(--color-seafoam)" }}>
         <CheckCircle2 className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
         <span><span className="font-medium">Result: </span>{message.content ?? "Agent completed"}</span>
       </div>

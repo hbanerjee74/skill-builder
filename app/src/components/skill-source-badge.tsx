@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react"
 import { Hammer, Store, Upload } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -6,6 +7,7 @@ const SOURCE_CONFIG: Record<string, {
   icon: typeof Hammer
   label: string
   colors: string
+  style?: CSSProperties
 }> = {
   "skill-builder": {
     icon: Hammer,
@@ -15,7 +17,8 @@ const SOURCE_CONFIG: Record<string, {
   marketplace: {
     icon: Store,
     label: "Marketplace",
-    colors: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+    colors: "",
+    style: { background: "color-mix(in oklch, var(--color-pacific), transparent 85%)", color: "var(--color-pacific)" },
   },
   imported: {
     icon: Upload,
@@ -44,7 +47,7 @@ export function SkillSourceBadge({ skillSource, className }: SkillSourceBadgePro
   const Icon = config.icon
 
   return (
-    <Badge className={cn("px-1.5 py-0 text-xs gap-1", config.colors, className)}>
+    <Badge className={cn("px-1.5 py-0 text-xs gap-1", config.colors, className)} style={config.style}>
       <Icon className="size-3" />
       {config.label}
     </Badge>

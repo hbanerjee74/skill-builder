@@ -119,9 +119,9 @@ export function AgentStatusHeader({
     : Date.now() - elapsedOrigin;
 
   const statusIcon: Record<DisplayStatus, React.ReactNode> = {
-    initializing: <Loader2 className="size-3.5 animate-spin text-yellow-500" />,
+    initializing: <Loader2 className="size-3.5 animate-spin" style={{ color: "var(--color-pacific)" }} />,
     running: <Loader2 className="size-3.5 animate-spin" />,
-    completed: <CheckCircle2 className="size-3.5 text-green-500" />,
+    completed: <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />,
     error: <XCircle className="size-3.5 text-destructive" />,
   };
 
