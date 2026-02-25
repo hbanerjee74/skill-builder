@@ -8,6 +8,7 @@
 | [skills/](skills/README.md) | Bundled skills: purpose slots, research skill, validate-skill, skill-test skill |
 | [skill-tester/](skill-tester/README.md) | Skill tester: two-agent comparison + evaluator design |
 | [skills-marketplace/](skills-marketplace/README.md) | Skills marketplace design |
+| [../user-guide/](../user-guide/) | User-facing docs site (VitePress). Source markdown; deployed to GitHub Pages via `docs.yml`. Route → docs URL map: `app/src/lib/help-urls.ts` |
 | [branding/](branding/ad-brand.md) | Brand and visual identity |
 | [release/](release/README.md) | Release pipeline: CI/CD workflows, desktop app build, plugin package assembly, credentials |
 | [startup-recon/](startup-recon/README.md) | Startup reconciliation: three-pass state machine, discovery scenarios, ACK dialog |

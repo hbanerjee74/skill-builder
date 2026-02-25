@@ -4,7 +4,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
 import { FeedbackDialog } from "@/components/feedback-dialog";
 import { ReviewModeToggle } from "@/components/review-mode-toggle";
-import { getHelpUrl } from "@/lib/help-urls";
+import { getHelpUrl, getWorkflowStepUrl } from "@/lib/help-urls";
+import { useWorkflowStore } from "@/stores/workflow-store";
 
 function getPageTitle(path: string): string {
   if (path === "/") return "Skill Library";
@@ -19,6 +20,12 @@ export function Header() {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const isWorkflow = currentPath.startsWith("/skill/");
+  const currentStep = useWorkflowStore((s) => s.currentStep);
+
+  function helpUrl() {
+    if (isWorkflow) return getWorkflowStepUrl(currentStep);
+    return getHelpUrl(currentPath);
+  }
 
   return (
     <header className="flex h-14 items-center justify-between border-b px-6">
@@ -30,7 +37,7 @@ export function Header() {
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => openUrl(getHelpUrl(currentPath))}
+          onClick={() => openUrl(helpUrl())}
           title="Help"
         >
           <CircleHelp className="size-4" />

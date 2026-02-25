@@ -44,6 +44,19 @@ Summary:
   - Linux: `~/.local/share/com.skillbuilder.app/skill-builder.db`
 - **GitHub integration:** `commands/github_auth.rs` (OAuth device flow), `commands/github_import.rs` (marketplace skill discovery + import), `commands/team_import.rs` (team-scoped imports), `git.rs` (local git operations)
 
+## User Guide
+
+Source lives in `docs/user-guide/` (VitePress). Deployed to `https://hbanerjee74.github.io/skill-builder/` via `docs.yml` on every push to `main` that touches `docs/user-guide/**` or `docs/.vitepress/**`.
+
+**Route → docs page mapping:** `app/src/lib/help-urls.ts`
+- `HELP_URLS` maps each app route to its docs URL
+- `getWorkflowStepUrl(step)` maps workflow step number (0–3) to the step-specific doc page
+- The header's CircleHelp button calls `getWorkflowStepUrl(currentStep)` on workflow pages and `getHelpUrl(path)` everywhere else
+
+**Adding a docs link to a new UI surface:** import `getHelpUrl` or `getWorkflowStepUrl` from `@/lib/help-urls`, call `openUrl(url)` from `@tauri-apps/plugin-opener`.
+
+**Adding a new docs page:** create the markdown file in `docs/user-guide/`, add it to the sidebar in `docs/.vitepress/config.ts`, and add the route → URL entry in `help-urls.ts`.
+
 ## Code Style
 
 - TypeScript strict mode, no `any`
