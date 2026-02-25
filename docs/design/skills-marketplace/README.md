@@ -93,7 +93,6 @@ disable-model-invocation: false
 |---|---|---|
 | `name` | Yes | Kebab-case identifier. Two skills with the same name conflict. |
 | `description` | Yes | Shown in the browse dialog and wired into CLAUDE.md so agents know when to invoke the skill. |
-| `purpose` | Yes | Routes to the right layer. `domain`, `platform`, `source`, `data-engineering` → Skill Library. `skill-builder` → Settings → Skills. |
 | `version` | Yes | Semver string. Required for update detection. Defaults to `"1.0.0"` if absent at import time. |
 | `model` | No | Preferred Claude model. Overrides the app default when the skill is invoked. |
 | `argument-hint` | No | Short hint shown when invoking the skill as a slash command. |
