@@ -52,17 +52,14 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 ~/skill-builder/
 ├── .git/                         # Git repo, initialized on first configuration
 └── {skill-name}/
-    ├── SKILL.md                  # Final skill output — written by generate-skill agent (step 5)
+    ├── SKILL.md                  # Final skill output — written by generate-skill agent (step 3)
     ├── context/                  # Created empty by Rust on skill creation
-    │   ├── clarifications.md     # Written by research-orchestrator (step 0); updated by detailed-research (step 2)
+    │   ├── clarifications.json   # Written by research-orchestrator (step 0); updated by detailed-research (step 1)
     │   ├── research-plan.md      # Written by research-orchestrator (step 0)
-    │   ├── answer-evaluation.json # Written by answer-evaluator (steps 2 and 4)
-    │   ├── decisions.md          # Written by confirm-decisions (step 4)
-    │   ├── agent-validation-log.md # Written by validate-skill (step 6)
-    │   ├── test-skill.md         # Written by validate-skill (step 6)
-    │   └── companion-skills.md   # Written by validate-skill (step 6)
+    │   ├── answer-evaluation.json # Written by answer-evaluator (gate check at steps 0 and 1)
+    │   └── decisions.md          # Written by confirm-decisions (step 2)
     └── references/               # Created empty by Rust on skill creation
-        └── *.md                  # Written by generate-skill agent (step 5)
+        └── *.md                  # Written by generate-skill agent (step 3)
 ```
 
 ---
@@ -80,16 +77,13 @@ The per-skill directory (`{skill-name}/`) is a **marker directory**: its existen
 | `{skill}/logs/*.jsonl` | Rust (sidecar) | Each agent run | `{workspace}/{skill}/logs/` |
 | `{skill}/context/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
 | `{skill}/references/` (empty) | Rust | `create_skill` | `{skills_path}/{skill}/` |
-| `context/clarifications.md` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
+| `context/clarifications.json` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
 | `context/research-plan.md` | `research-orchestrator` | Step 0 | `{skills_path}/{skill}/context/` |
-| `context/clarifications.md` | `detailed-research` | Step 2 (adds refinements in-place) | `{skills_path}/{skill}/context/` |
-| `context/answer-evaluation.json` | `answer-evaluator` | Steps 2 and 4 | `{skills_path}/{skill}/context/` |
-| `context/decisions.md` | `confirm-decisions` | Step 4 | `{skills_path}/{skill}/context/` |
-| `SKILL.md` | `generate-skill` | Step 5 | `{skills_path}/{skill}/` |
-| `references/*.md` | `generate-skill` | Step 5 | `{skills_path}/{skill}/references/` |
-| `context/agent-validation-log.md` | `validate-skill` | Step 6 | `{skills_path}/{skill}/context/` |
-| `context/test-skill.md` | `validate-skill` | Step 6 | `{skills_path}/{skill}/context/` |
-| `context/companion-skills.md` | `validate-skill` | Step 6 | `{skills_path}/{skill}/context/` |
+| `context/clarifications.json` | `detailed-research` | Step 1 (adds refinements in-place) | `{skills_path}/{skill}/context/` |
+| `context/answer-evaluation.json` | `answer-evaluator` | Gate check at steps 0 and 1 | `{skills_path}/{skill}/context/` |
+| `context/decisions.md` | `confirm-decisions` | Step 2 | `{skills_path}/{skill}/context/` |
+| `SKILL.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/` |
+| `references/*.md` | `generate-skill` | Step 3 | `{skills_path}/{skill}/references/` |
 
 ---
 
@@ -150,13 +144,10 @@ The reconciler can infer step completion from files on disk:
 
 | Step | Detectable? | Evidence files (in `{skills_path}/{skill-name}/`) |
 |---|---|---|
-| 0 | Yes | `context/clarifications.md` |
-| 1 (human review) | No | — |
-| 2 | No | Updates `clarifications.md` in-place; no unique artifact |
-| 3 (human review) | No | — |
-| 4 | Yes | `context/decisions.md` |
-| 5 | Yes | `SKILL.md` |
-| 6 | No | Validate-skill outputs exist in context/ but are not step-gated |
+| 0 (Research) | Yes | `context/research-plan.md`, `context/clarifications.json` |
+| 1 (Detailed Research) | No | Edits `clarifications.json` in-place; no unique artifact |
+| 2 (Confirm Decisions) | Yes | `context/decisions.md` |
+| 3 (Generate Skill) | Yes | `SKILL.md` |
 
 A step is only counted if **all** expected files exist. Partial output is cleaned up.
 

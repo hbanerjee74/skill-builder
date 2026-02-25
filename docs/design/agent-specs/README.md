@@ -27,13 +27,12 @@ Two agents delegate to skills:
 
 | Step | Agent | Reads | Writes |
 |---|---|---|---|
-| 0 | `research-orchestrator` (→ research skill) | [user-context.md](canonical-format.md#canonical-user-contextmd-format) | [research-plan.md](canonical-format.md#canonical-research-planmd-format), [clarifications.md](canonical-format.md#canonical-clarificationsmd-format) |
-| 2 | `answer-evaluator` | [clarifications.md](canonical-format.md#canonical-clarificationsmd-format) | [answer-evaluation.json](canonical-format.md#canonical-answer-evaluationjson-format) |
-| 3 | `detailed-research` | [clarifications.md](canonical-format.md#canonical-clarificationsmd-format), [answer-evaluation.json](canonical-format.md#canonical-answer-evaluationjson-format) | [clarifications.md](canonical-format.md#canonical-clarificationsmd-format) (adds refinements) |
-| 4 | `answer-evaluator` | [clarifications.md](canonical-format.md#canonical-clarificationsmd-format) | [answer-evaluation.json](canonical-format.md#canonical-answer-evaluationjson-format) |
-| 5 | `confirm-decisions` | [clarifications.md](canonical-format.md#canonical-clarificationsmd-format) | [decisions.md](canonical-format.md#canonical-decisionsmd-format) |
-| 6 | `generate-skill` | [decisions.md](canonical-format.md#canonical-decisionsmd-format) | `SKILL.md`, `references/` |
-| 7 | `validate-skill` (→ validate-skill skill) | [decisions.md](canonical-format.md#canonical-decisionsmd-format), `SKILL.md`, `references/` | [agent-validation-log.md](canonical-format.md#canonical-agent-validation-logmd-format), [test-skill.md](canonical-format.md#canonical-test-skillmd-format), [companion-skills.md](canonical-format.md#canonical-companion-skillsmd-format) |
+| 0 | `research-orchestrator` (→ research skill) | [user-context.md](canonical-format.md#canonical-user-contextmd-format) | [research-plan.md](canonical-format.md#canonical-research-planmd-format), [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) |
+| 1 | `detailed-research` | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format), [answer-evaluation.json](canonical-format.md#canonical-answer-evaluationjson-format) | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) (adds refinements) |
+| 2 | `confirm-decisions` | [clarifications.json](canonical-format.md#canonical-clarificationsjson-format) | [decisions.md](canonical-format.md#canonical-decisionsmd-format) |
+| 3 | `generate-skill` | [decisions.md](canonical-format.md#canonical-decisionsmd-format) | `SKILL.md`, `references/` |
+
+`answer-evaluator` runs as a gate check before advancing from steps 0 and 1 — it is not a numbered step.
 
 Canonical format for every artifact: [canonical-format.md](canonical-format.md).
 
@@ -52,4 +51,4 @@ Written by Rust before each agent step (desktop app) or by the plugin coordinato
 One file per agent run. Written by the Rust sidecar as the agent executes — each line is a JSON object capturing the full SDK conversation: prompt, assistant messages, tool use, and tool results. The first line is a config object (API key redacted). Used for debugging; inspect with `tail -f` or any JSONL viewer.
 
 **`{skills_path}/{skill}/context/answer-evaluation.json`**
-Written by `answer-evaluator` at steps 2 and 4. Contains structured evaluation of the user's answers to clarification questions — gap analysis, contradiction detection, and readiness signal. Read by `detailed-research` (step 3) and `confirm-decisions` (step 5) to guide their work. Format: [canonical-format.md](canonical-format.md#canonical-answer-evaluationjson-format).
+Written by `answer-evaluator` as a gate check before advancing from steps 0 and 1. Contains structured evaluation of the user's answers to clarification questions — gap analysis, contradiction detection, and readiness signal. Read by `detailed-research` (step 1) and `confirm-decisions` (step 2) to guide their work. Format: [canonical-format.md](canonical-format.md#canonical-answer-evaluationjson-format).
