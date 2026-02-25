@@ -269,6 +269,51 @@ describe("Gate 2 (refinements)", () => {
   });
 });
 
+// ─── Contradictory answers block ──────────────────────────────────────────────
+
+describe("Contradictory answers block forward progress", () => {
+  const props = { open: true, context: "clarifications" as const, ...defaultHandlers };
+  beforeEach(resetHandlers);
+
+  const contradictoryEval = makeEvaluation("mixed", [
+    { question_id: "Q1", verdict: "clear" },
+    { question_id: "Q2", verdict: "contradictory", contradicts: "Q3" },
+    { question_id: "Q3", verdict: "clear" },
+    { question_id: "Q4", verdict: "vague" },
+  ]);
+
+  it("shows Contradictory Answers title", () => {
+    render(<TransitionGateDialog {...props} verdict="mixed" evaluation={contradictoryEval} />);
+    expect(screen.getByText("Contradictory Answers")).toBeInTheDocument();
+  });
+
+  it("shows only Let Me Answer button — no Continue Anyway", () => {
+    render(<TransitionGateDialog {...props} verdict="mixed" evaluation={contradictoryEval} />);
+    expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Continue Anyway/i })).not.toBeInTheDocument();
+  });
+
+  it("Let Me Answer calls onLetMeAnswer", async () => {
+    const user = userEvent.setup();
+    render(<TransitionGateDialog {...props} verdict="mixed" evaluation={contradictoryEval} />);
+    await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
+    expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
+  });
+
+  it("shows breakdown with contradictory question and conflict info", () => {
+    render(<TransitionGateDialog {...props} verdict="mixed" evaluation={contradictoryEval} />);
+    const breakdown = screen.getByTestId("question-breakdown");
+    expect(breakdown).toHaveTextContent(/Contradictory:/);
+    expect(breakdown).toHaveTextContent("Q2 (conflicts with Q3)");
+  });
+
+  it("blocks on gate 2 (refinements) as well", () => {
+    render(<TransitionGateDialog {...props} context="refinements" verdict="mixed" evaluation={contradictoryEval} />);
+    expect(screen.getByText("Contradictory Answers")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Continue Anyway/i })).not.toBeInTheDocument();
+  });
+});
+
 // ─── Evaluation Breakdown ─────────────────────────────────────────────────────
 
 describe("EvaluationBreakdown", () => {

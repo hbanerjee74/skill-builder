@@ -178,7 +178,33 @@ export function TransitionGateDialog({
     );
   }
 
-  // ── Mixed / Insufficient: show breakdown + Let Me Answer / Continue Anyway ─
+  // ── Contradictory answers: block forward progress ─────────────────────────
+
+  if (hasContradictory) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Contradictory Answers</DialogTitle>
+            <DialogDescription asChild>
+              <div>
+                <p>
+                  Some answers contradict each other. Please resolve these before
+                  continuing — the decisions phase cannot reconcile conflicting answers.
+                </p>
+                {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={onLetMeAnswer}>Let Me Answer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── Mixed / Insufficient (no contradictions): Let Me Answer / Continue Anyway
 
   const title = verdict === "mixed"
     ? (isRefinements ? "Some Refinements Unanswered" : "Review Answer Quality")
