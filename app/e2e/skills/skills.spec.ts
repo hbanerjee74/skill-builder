@@ -300,10 +300,10 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await navigateToDashboard(page);
     await page.getByRole("button", { name: "List view" }).click();
 
-    // data-analytics has purpose "domain" → "Domain" label
-    await expect(page.getByText("Domain", { exact: true })).toBeVisible();
-    // api-design has purpose "platform" → "Platform" label
-    await expect(page.getByText("Platform", { exact: true })).toBeVisible();
+    // data-analytics has purpose "domain" → full label text
+    await expect(page.getByText("Business process knowledge", { exact: true })).toBeVisible();
+    // api-design has purpose "platform" → full label text
+    await expect(page.getByText("Organization specific Azure or Fabric standards", { exact: true })).toBeVisible();
   });
 
   test("can sort skills by name in list view", async ({ page }) => {
@@ -314,15 +314,14 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await navigateToDashboard(page);
     await page.getByRole("button", { name: "List view" }).click();
 
-    // Default: ascending by name — "api-design" comes before "data-analytics"
+    // Click Name once → sort by name ascending: "api-design" before "data-analytics"
+    await page.getByRole("button", { name: "Name" }).click();
     const apiBoxAsc = await page.getByText("api-design").first().boundingBox();
     const dataBoxAsc = await page.getByText("data-analytics").first().boundingBox();
     expect(apiBoxAsc!.y).toBeLessThan(dataBoxAsc!.y);
 
-    // Click Name to reverse to descending
+    // Click Name again → sort descending: "data-analytics" before "api-design"
     await page.getByRole("button", { name: "Name" }).click();
-
-    // Now "data-analytics" comes before "api-design"
     const apiBoxDesc = await page.getByText("api-design").first().boundingBox();
     const dataBoxDesc = await page.getByText("data-analytics").first().boundingBox();
     expect(dataBoxDesc!.y).toBeLessThan(apiBoxDesc!.y);
