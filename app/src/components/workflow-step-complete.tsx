@@ -411,14 +411,30 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        {/* Header row: step complete badge + file selector */}
-        <div className="flex items-center gap-3 shrink-0">
-          {!reviewMode && (
-            <>
-              <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-              <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
-            </>
-          )}
+        {/* Header row: step complete badge + stats */}
+        {!reviewMode && (
+          <div className="flex items-center gap-3 shrink-0">
+            <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+            <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
+            <div className="flex-1" />
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              {duration !== undefined && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3" />
+                  {formatElapsed(duration)}
+                </span>
+              )}
+              {displayCost !== undefined && (
+                <span className="flex items-center gap-1">
+                  <DollarSign className="size-3" />
+                  ${displayCost.toFixed(4)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+        {/* File selector — below header, above content */}
+        <div className="shrink-0">
           {visibleFiles.length > 1 && (
             <Select value={activeFile} onValueChange={setSelectedFile}>
               <SelectTrigger size="sm" className="font-mono text-xs">
@@ -439,23 +455,6 @@ export function WorkflowStepComplete({
               <FileText className="size-3.5 shrink-0" />
               {fileLabel(activeFile)}
             </span>
-          )}
-          <div className="flex-1" />
-          {!reviewMode && (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {duration !== undefined && (
-                <span className="flex items-center gap-1">
-                  <Clock className="size-3" />
-                  {formatElapsed(duration)}
-                </span>
-              )}
-              {displayCost !== undefined && (
-                <span className="flex items-center gap-1">
-                  <DollarSign className="size-3" />
-                  ${displayCost.toFixed(4)}
-                </span>
-              )}
-            </div>
           )}
         </div>
         {/* File content */}
