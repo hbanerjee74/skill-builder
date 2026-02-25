@@ -25,6 +25,7 @@
             { "id": "C", "text": "Cover both common and advanced patterns with equal depth", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -40,6 +41,7 @@
             { "id": "C", "text": "Advanced — already knows best practices, needs deep domain-specific insight", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "B",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -55,6 +57,7 @@
             { "id": "C", "text": "Both with equal depth", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "B",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -76,6 +79,7 @@
             { "id": "C", "text": "Focus on opinionated best-practice patterns only", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -91,6 +95,7 @@
             { "id": "C", "text": "Technology-agnostic only — no tool-specific examples", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -106,6 +111,7 @@
             { "id": "C", "text": "Inline performance guidance alongside each pattern", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -127,6 +133,7 @@
             { "id": "C", "text": "Full working examples with test harnesses", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -142,6 +149,7 @@
             { "id": "C", "text": "Comprehensive testing guide as a separate reference file", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -157,6 +165,7 @@
             { "id": "C", "text": "Detailed error taxonomy with per-pattern recovery strategies", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []

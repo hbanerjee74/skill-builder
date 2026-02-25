@@ -23,6 +23,7 @@
             { "id": "B", "text": "Pipeline management — track deal progression", "is_other": false },
             { "id": "C", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "B",
           "answer_text": null,
           "refinements": []
@@ -43,6 +44,7 @@
             { "id": "B", "text": "Snowflake", "is_other": false },
             { "id": "C", "text": "BigQuery", "is_other": false }
           ],
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
