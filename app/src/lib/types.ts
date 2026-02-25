@@ -22,6 +22,12 @@ export const PURPOSE_COLORS: Record<Purpose, string> = {
   "data-engineering": "bg-[#F0ECF5] text-[#5E4B8B] dark:bg-[#5E4B8B]/15 dark:text-[#A08DC4]",
 };
 
+export interface MarketplaceRegistry {
+  name: string
+  source_url: string
+  enabled: boolean
+}
+
 export interface AppSettings {
   anthropic_api_key: string | null
   workspace_path: string | null
@@ -36,6 +42,7 @@ export interface AppSettings {
   github_user_avatar: string | null
   github_user_email: string | null
   marketplace_url: string | null
+  marketplace_registries: MarketplaceRegistry[]
   max_dimensions: number
   industry: string | null
   function_role: string | null
