@@ -259,6 +259,20 @@ fn reconcile_skill_builder(
         return Ok(());
     }
 
+    // Fix stale in_progress steps: no live PID means any in_progress step is a
+    // leftover from a crash or unclean shutdown. Reset to pending so the user
+    // can re-run instead of seeing a permanently stuck step.
+    let steps = crate::db::get_workflow_steps(conn, name)?;
+    for step in &steps {
+        if step.status == "in_progress" {
+            log::info!(
+                "[reconcile] '{}': resetting stale in_progress step {} to pending (no active session)",
+                name, step.step_id
+            );
+            crate::db::save_workflow_step(conn, name, step.step_id, "pending")?;
+        }
+    }
+
     // Look up workflow_runs row
     let maybe_run = crate::db::get_workflow_run(conn, name)?;
 
@@ -386,9 +400,11 @@ fn reconcile_skill_builder(
                 crate::db::save_workflow_step(conn, name, s, "completed")?;
             }
         }
-        // If no reset: also mark non-detectable steps between disk and current_step as completed
+        // If no reset: also mark non-detectable steps between disk and current_step as completed.
+        // Use inclusive range (..=) so that if current_step itself is non-detectable (e.g. step 1),
+        // it gets marked completed too.
         if !did_reset {
-            for s in (disk_step + 1)..run.current_step {
+            for s in (disk_step + 1)..=run.current_step {
                 if !DETECTABLE_STEPS.contains(&s) {
                     crate::db::save_workflow_step(conn, name, s, "completed")?;
                 }
@@ -428,11 +444,14 @@ fn reconcile_skill_builder(
             name, run.current_step
         ));
     } else {
-        // Scenario 8: Fresh skill (step 0, no output) — no action
+        // Scenario 8: Fresh skill (step 0, no output).
+        // Also reset any spuriously completed steps — DB may claim step 0 is
+        // completed but disk artifacts are gone (e.g. user deleted files).
         log::debug!(
-            "[reconcile] '{}': skill_source=skill-builder, action=none (fresh skill at step 0)",
+            "[reconcile] '{}': skill_source=skill-builder, action=reset_steps (fresh skill at step 0, clearing stale completions)",
             name
         );
+        crate::db::reset_workflow_steps_from(conn, name, 0)?;
     }
 
     // Warn if a completed skill is missing its skills_path output
