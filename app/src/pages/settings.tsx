@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -17,11 +17,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { AppSettings } from "@/lib/types"
+import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
+import { getDataDir } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -33,6 +33,7 @@ const sections = [
   { id: "skill-building", label: "Skill Building" },
   { id: "skills", label: "Skills" },
   { id: "github", label: "GitHub" },
+  { id: "marketplace", label: "Marketplace" },
   { id: "advanced", label: "Advanced" },
 ] as const
 
@@ -61,12 +62,12 @@ export default function SettingsPage() {
   const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
-  const [marketplaceUrl, setMarketplaceUrl] = useState("")
-  const [marketplaceTesting, setMarketplaceTesting] = useState(false)
-  const [marketplaceValid, setMarketplaceValid] = useState<boolean | null>(null)
-  const [urlCheckState, setUrlCheckState] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
   const [autoUpdate, setAutoUpdate] = useState(false)
   const setStoreSettings = useSettingsStore((s) => s.setSettings)
+  const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
+  const [addingRegistry, setAddingRegistry] = useState(false)
+  const [newRegistryName, setNewRegistryName] = useState("")
+  const [newRegistryUrl, setNewRegistryUrl] = useState("")
   const availableModels = useSettingsStore((s) => s.availableModels)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, logout } = useAuthStore()
@@ -95,8 +96,8 @@ export default function SettingsPage() {
             setMaxDimensions(result.max_dimensions ?? 5)
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
-            setMarketplaceUrl(result.marketplace_url ?? "")
             setAutoUpdate(result.auto_update ?? false)
+            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [] })
             setLoading(false)
             // Fetch available models once we have an API key
             if (result.anthropic_api_key) {
@@ -151,7 +152,7 @@ export default function SettingsPage() {
     logLevel: string;
     extendedThinking: boolean;
     maxDimensions: number;
-    marketplaceUrl: string | null;
+    marketplaceRegistries?: MarketplaceRegistry[];
     industry: string | null;
     functionRole: string | null;
     autoUpdate: boolean;
@@ -171,7 +172,8 @@ export default function SettingsPage() {
       github_user_login: useSettingsStore.getState().githubUserLogin ?? null,
       github_user_avatar: useSettingsStore.getState().githubUserAvatar ?? null,
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
-      marketplace_url: overrides.marketplaceUrl !== undefined ? overrides.marketplaceUrl : (useSettingsStore.getState().marketplaceUrl ?? null),
+      marketplace_url: null,
+      marketplace_registries: overrides.marketplaceRegistries !== undefined ? overrides.marketplaceRegistries : (useSettingsStore.getState().marketplaceRegistries ?? []),
       industry: overrides.industry !== undefined ? overrides.industry : (industry || null),
       function_role: overrides.functionRole !== undefined ? overrides.functionRole : (functionRole || null),
       dashboard_view_mode: useSettingsStore.getState().dashboardViewMode ?? null,
@@ -188,7 +190,7 @@ export default function SettingsPage() {
         logLevel: settings.log_level,
         extendedThinking: settings.extended_thinking,
         maxDimensions: settings.max_dimensions,
-        marketplaceUrl: settings.marketplace_url,
+        marketplaceRegistries: settings.marketplace_registries,
         industry: settings.industry,
         functionRole: settings.function_role,
         autoUpdate: settings.auto_update,
@@ -227,28 +229,6 @@ export default function SettingsPage() {
       )
     } finally {
       setTesting(false)
-    }
-  }
-
-  const handleTestMarketplace = async () => {
-    setMarketplaceTesting(true)
-    setMarketplaceValid(null)
-    setUrlCheckState("checking")
-    try {
-      await checkMarketplaceUrl(marketplaceUrl.trim())
-      setMarketplaceValid(true)
-      setUrlCheckState("valid")
-      toast.success("Marketplace is accessible")
-    } catch (err) {
-      console.error("settings: marketplace test failed", err)
-      setMarketplaceValid(false)
-      setUrlCheckState("invalid")
-      toast.error(
-        `Cannot access marketplace: ${err instanceof Error ? err.message : String(err)}`,
-        { duration: Infinity },
-      )
-    } finally {
-      setMarketplaceTesting(false)
     }
   }
 
@@ -589,69 +569,145 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
+          </div>
+          )}
+
+          {activeSection === "marketplace" && (
+          <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
-                <CardTitle>Marketplace URL</CardTitle>
+                <CardTitle>Registries</CardTitle>
                 <CardDescription>
-                  GitHub repository URL for importing skills from a shared marketplace. Example: https://github.com/your-org/skill-library
+                  GitHub repositories to browse for marketplace skills. The Vibedata Skills registry is built-in and cannot be removed.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="marketplace-url">Repository URL</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="marketplace-url"
-                      placeholder="https://github.com/owner/skill-library"
-                      value={marketplaceUrl}
-                      onChange={(e) => {
-                        setMarketplaceUrl(e.target.value)
-                        setMarketplaceValid(null)
-                        setUrlCheckState("idle")
-                      }}
-                      onBlur={(e) => autoSave({ marketplaceUrl: e.target.value.trim() || null })}
-                      className="text-sm"
-                    />
-                    {marketplaceUrl && (
-                      <Button
-                        variant={marketplaceValid ? "default" : "outline"}
-                        size="sm"
-                        onClick={handleTestMarketplace}
-                        disabled={marketplaceTesting}
-                        className={marketplaceValid ? "text-white" : ""}
-                        style={marketplaceValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
-                      >
-                        {marketplaceTesting ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : marketplaceValid ? (
-                          <CheckCircle2 className="size-3.5" />
-                        ) : null}
-                        {marketplaceValid ? "Valid" : "Test"}
-                      </Button>
-                    )}
-                    {urlCheckState === "checking" && <Loader2 className="size-4 animate-spin text-muted-foreground self-center" />}
-                    {urlCheckState === "valid" && <CheckCircle2 className="size-4 self-center" style={{ color: "var(--color-seafoam)" }} />}
-                    {urlCheckState === "invalid" && <XCircle className="size-4 text-destructive self-center" />}
+                <div className="rounded-md border">
+                  <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+                    <span>Name</span>
+                    <span>URL</span>
+                    <span>Enabled</span>
+                    <span />
                   </div>
-                  {marketplaceValid === false && (
-                    <p className="text-xs text-destructive">
-                      Could not reach this URL. Check it is a public GitHub repository.
-                    </p>
-                  )}
+                  {marketplaceRegistries.map((registry, idx) => {
+                    const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
+                    return (
+                      <div
+                        key={idx}
+                        className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-3 border-b last:border-b-0 px-4 py-2"
+                      >
+                        <span className="text-sm font-medium truncate">{registry.name}</span>
+                        <span className="text-sm text-muted-foreground truncate font-mono">{registry.source_url}</span>
+                        <Switch
+                          checked={registry.enabled}
+                          onCheckedChange={(checked) => {
+                            const updated = marketplaceRegistries.map((r, i) =>
+                              i === idx ? { ...r, enabled: checked } : r
+                            )
+                            autoSave({ marketplaceRegistries: updated })
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          disabled={isDefault}
+                          onClick={() => {
+                            const updated = marketplaceRegistries.filter((_, i) => i !== idx)
+                            autoSave({ marketplaceRegistries: updated })
+                          }}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    )
+                  })}
                 </div>
-                {marketplaceUrl && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-0.5">
-                      <Label htmlFor="auto-update">Auto-update</Label>
-                      <span className="text-sm text-muted-foreground">Automatically apply marketplace updates at startup.</span>
+
+                {!addingRegistry ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={() => setAddingRegistry(true)}
+                  >
+                    <Plus className="size-4" />
+                    Add registry
+                  </Button>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-md border p-4">
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="new-registry-name">Name</Label>
+                      <Input
+                        id="new-registry-name"
+                        placeholder="My Skills"
+                        value={newRegistryName}
+                        onChange={(e) => setNewRegistryName(e.target.value)}
+                      />
                     </div>
-                    <Switch
-                      id="auto-update"
-                      checked={autoUpdate}
-                      onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
-                    />
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="new-registry-url">GitHub URL</Label>
+                      <Input
+                        id="new-registry-url"
+                        placeholder="https://github.com/owner/skill-library"
+                        value={newRegistryUrl}
+                        onChange={(e) => setNewRegistryUrl(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={!newRegistryName.trim() || !newRegistryUrl.trim()}
+                        onClick={() => {
+                          const entry: MarketplaceRegistry = {
+                            name: newRegistryName.trim(),
+                            source_url: newRegistryUrl.trim(),
+                            enabled: true,
+                          }
+                          autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
+                          setNewRegistryName("")
+                          setNewRegistryUrl("")
+                          setAddingRegistry(false)
+                        }}
+                      >
+                        Add
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setNewRegistryName("")
+                          setNewRegistryUrl("")
+                          setAddingRegistry(false)
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Auto-update</CardTitle>
+                <CardDescription>
+                  Automatically apply marketplace updates at startup.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="auto-update">Auto-update</Label>
+                    <span className="text-sm text-muted-foreground">Apply updates from all enabled registries at startup.</span>
+                  </div>
+                  <Switch
+                    id="auto-update"
+                    checked={autoUpdate}
+                    onCheckedChange={(checked) => { setAutoUpdate(checked); autoSave({ autoUpdate: checked }); }}
+                  />
+                </div>
               </CardContent>
             </Card>
           </div>
