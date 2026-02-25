@@ -106,7 +106,7 @@ export function ResearchSummaryCard({
   saveStatus,
   evaluating,
 }: ResearchSummaryCardProps) {
-  const [planExpanded, setPlanExpanded] = useState(!editable);
+  const [planExpanded, setPlanExpanded] = useState(true);
   const plan = parseResearchPlan(researchPlan);
   const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
@@ -124,15 +124,13 @@ export function ResearchSummaryCard({
       <button
         type="button"
         className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left"
-        onClick={() => editable && setPlanExpanded((prev) => !prev)}
-        style={{ cursor: editable ? "pointer" : "default" }}
+        onClick={() => setPlanExpanded((prev) => !prev)}
+        style={{ cursor: "pointer" }}
       >
-        {editable && (
-          <ChevronRight
-            className="size-4 shrink-0 text-muted-foreground transition-transform duration-150"
-            style={{ transform: planExpanded ? "rotate(90deg)" : undefined }}
-          />
-        )}
+        <ChevronRight
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: planExpanded ? "rotate(90deg)" : undefined }}
+        />
         <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
         <span className="text-sm font-semibold tracking-tight text-foreground">
           Research Complete
