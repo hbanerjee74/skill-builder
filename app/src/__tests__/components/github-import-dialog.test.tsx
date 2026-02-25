@@ -944,12 +944,12 @@ describe("GitHubImportDialog", () => {
       expect(content.className).toContain("max-h-[90vh]");
     });
 
-    it("applies line-clamp-2 class to skill description text", async () => {
+    it("applies truncate class to skill description text for single-line clipping", async () => {
       renderDialog();
       await waitFor(() => expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument());
 
       const descEl = screen.getByText("Analyze your sales pipeline");
-      expect(descEl.className).toContain("line-clamp-2");
+      expect(descEl.className).toContain("truncate");
     });
 
     it("all skills in a long list are present in the DOM (no scroll clipping)", async () => {

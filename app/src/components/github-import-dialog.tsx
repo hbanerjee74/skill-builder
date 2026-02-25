@@ -464,108 +464,114 @@ export default function GitHubImportDialog({
               {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border">
-            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground sticky top-0 z-10 rounded-t-md">
-              <span className="flex-1">Name</span>
-              <span className="w-24 shrink-0">Version</span>
-              <span className="w-28 shrink-0">Status</span>
-              <span className="w-8 shrink-0" />
-            </div>
-            <div>
-              {skills.map((skill) => {
-                const state = skillStates.get(skill.path) ?? "idle"
-                const isImporting = state === "importing"
-                const isSameVersion = state === "same-version"
-                const isUpgrade = state === "upgrade"
-                const isExists = state === "exists"
-                const isDisabled = isExists || isSameVersion
+          <div className="rounded-md border overflow-hidden">
+            <table className="w-full text-sm table-fixed">
+              <thead>
+                <tr>
+                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground">Name</th>
+                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground w-24">Version</th>
+                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground w-28">Status</th>
+                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 w-14" />
+                </tr>
+              </thead>
+              <tbody>
+                {skills.map((skill) => {
+                  const state = skillStates.get(skill.path) ?? "idle"
+                  const isImporting = state === "importing"
+                  const isSameVersion = state === "same-version"
+                  const isUpgrade = state === "upgrade"
+                  const isExists = state === "exists"
+                  const isDisabled = isExists || isSameVersion
 
-                return (
-                  <div
-                    key={skill.path}
-                    className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="truncate text-sm font-medium">
-                          {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
-                        </span>
-                        {skill.purpose && (
-                          <Badge variant="outline" className="text-xs capitalize">{skill.purpose}</Badge>
-                        )}
-                        {mode === 'skill-library' && !skill.purpose && !isDisabled && (
-                          <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
-                            Missing purpose
-                          </Badge>
-                        )}
-                      </div>
-                      {skill.description ? (
-                        <div className="text-xs text-muted-foreground line-clamp-2">{skill.description}</div>
-                      ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
-                        <div className="text-xs text-amber-600">No description</div>
-                      ) : null}
-                    </div>
-                    <div className="w-24 shrink-0">
-                      {skill.version ? (
-                        <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </div>
-                    <div className="w-28 shrink-0">
-                      {state === "imported" && (
-                        <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
-                      )}
-                      {isSameVersion && (
-                        <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
-                      )}
-                      {isUpgrade && (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
-                      )}
-                      {isExists && (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
-                      )}
-                    </div>
-                    <div className="w-8 shrink-0 flex items-center justify-end">
-                      {state === "imported" ? (
-                        <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                      ) : isDisabled ? (
-                        <CheckCheck className="size-3.5 text-muted-foreground" />
-                      ) : (
-                        <button
-                          type="button"
-                          className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                          disabled={isImporting}
-                          aria-label={`Import ${skill.name}`}
-                          onClick={async () => {
-                            if (isUpgrade && mode === 'settings-skills') {
-                              // Check for customization before opening edit form
-                              try {
-                                const isCustomized = await checkSkillCustomized(skill.name)
-                                if (isCustomized) {
-                                  setPendingUpgradeSkill(skill)
-                                  setShowCustomizationWarning(true)
-                                  return
-                                }
-                              } catch (err) {
-                                console.warn("[github-import] checkSkillCustomized failed:", err)
-                              }
-                            }
-                            openEditForm(skill)
-                          }}
-                        >
-                          {isImporting ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : (
-                            <PencilLine className="size-3.5" />
+                  return (
+                    <tr
+                      key={skill.path}
+                      className="border-b last:border-b-0 hover:bg-muted/30 transition-colors"
+                    >
+                      <td className="px-4 py-2 overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="truncate text-sm font-medium">
+                            {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
+                          </span>
+                          {skill.purpose && (
+                            <Badge variant="outline" className="text-xs capitalize shrink-0">{skill.purpose}</Badge>
                           )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                          {mode === 'skill-library' && !skill.purpose && !isDisabled && (
+                            <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
+                              Missing purpose
+                            </Badge>
+                          )}
+                        </div>
+                        {skill.description ? (
+                          <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
+                        ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
+                          <div className="text-xs text-amber-600">No description</div>
+                        ) : null}
+                      </td>
+                      <td className="w-24 px-4 py-2 align-middle">
+                        {skill.version ? (
+                          <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="w-28 px-4 py-2 align-middle">
+                        {state === "imported" && (
+                          <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                        )}
+                        {isSameVersion && (
+                          <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
+                        )}
+                        {isUpgrade && (
+                          <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
+                        )}
+                        {isExists && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
+                        )}
+                      </td>
+                      <td className="w-14 px-4 py-2 align-middle">
+                        <div className="flex items-center justify-end">
+                          {state === "imported" ? (
+                            <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                          ) : isDisabled ? (
+                            <CheckCheck className="size-3.5 text-muted-foreground" />
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                              disabled={isImporting}
+                              aria-label={`Import ${skill.name}`}
+                              onClick={async () => {
+                                if (isUpgrade && mode === 'settings-skills') {
+                                  // Check for customization before opening edit form
+                                  try {
+                                    const isCustomized = await checkSkillCustomized(skill.name)
+                                    if (isCustomized) {
+                                      setPendingUpgradeSkill(skill)
+                                      setShowCustomizationWarning(true)
+                                      return
+                                    }
+                                  } catch (err) {
+                                    console.warn("[github-import] checkSkillCustomized failed:", err)
+                                  }
+                                }
+                                openEditForm(skill)
+                              }}
+                            >
+                              {isImporting ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <PencilLine className="size-3.5" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </>
       )
