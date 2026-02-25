@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct MarketplaceJson {
+    pub name: Option<String>,
     pub plugins: Vec<MarketplacePlugin>,
 }
 

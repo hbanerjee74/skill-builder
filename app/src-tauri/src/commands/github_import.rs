@@ -240,11 +240,13 @@ fn marketplace_manifest_path(subpath: Option<&str>) -> String {
 /// After confirming the repo is accessible it fetches
 /// `.claude-plugin/marketplace.json` via `raw.githubusercontent.com` and
 /// returns a clear error if the file is missing or not valid JSON.
+/// Returns the `name` field from `.claude-plugin/marketplace.json`, falling back
+/// to `"{owner}/{repo}"` if the field is absent.
 #[tauri::command]
 pub async fn check_marketplace_url(
     db: tauri::State<'_, Db>,
     url: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     log::info!("[check_marketplace_url] url={}", url);
     let repo_info = parse_github_url_inner(&url)?;
     let token = {
@@ -299,13 +301,17 @@ pub async fn check_marketplace_url(
         format!("Failed to read marketplace.json: {}", e)
     })?;
 
-    serde_json::from_str::<MarketplaceJson>(&body).map_err(|e| {
+    let manifest = serde_json::from_str::<MarketplaceJson>(&body).map_err(|e| {
         log::error!("[check_marketplace_url] marketplace.json is not valid JSON for {}/{}: {}", owner, repo, e);
         format!("marketplace.json at {} in {}/{} is not valid JSON.", manifest_path, owner, repo)
     })?;
 
-    log::info!("[check_marketplace_url] marketplace.json validated for {}/{}", owner, repo);
-    Ok(())
+    let name = manifest.name
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| format!("{}/{}", owner, repo));
+
+    log::info!("[check_marketplace_url] marketplace.json validated for {}/{} name={}", owner, repo, name);
+    Ok(name)
 }
 
 // ---------------------------------------------------------------------------

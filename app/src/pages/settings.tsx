@@ -68,16 +68,9 @@ export default function SettingsPage() {
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const [addingRegistry, setAddingRegistry] = useState(false)
   const [newRegistryUrl, setNewRegistryUrl] = useState("")
-  const [newRegistryTestState, setNewRegistryTestState] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
+  const [newRegistryAdding, setNewRegistryAdding] = useState(false)
   const [registryTestState, setRegistryTestState] = useState<Record<string, "checking" | "valid" | "invalid">>({})
 
-  function nameFromRegistryUrl(url: string): string {
-    try {
-      return new URL(url.trim()).pathname.replace(/^\//, "").replace(/\/$/, "") || url.trim()
-    } catch {
-      return url.trim()
-    }
-  }
   const availableModels = useSettingsStore((s) => s.availableModels)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, logout } = useAuthStore()
@@ -692,7 +685,6 @@ export default function SettingsPage() {
                         value={newRegistryUrl}
                         onChange={(e) => {
                           setNewRegistryUrl(e.target.value)
-                          setNewRegistryTestState("idle")
                         }}
                       />
                       {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
@@ -704,21 +696,20 @@ export default function SettingsPage() {
                         size="sm"
                         disabled={
                           !newRegistryUrl.trim() ||
-                          newRegistryTestState === "checking" ||
+                          newRegistryAdding ||
                           marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())
                         }
                         onClick={async () => {
                           const url = newRegistryUrl.trim()
-                          setNewRegistryTestState("checking")
+                          setNewRegistryAdding(true)
+                          let name: string
                           try {
-                            await checkMarketplaceUrl(url)
+                            name = await checkMarketplaceUrl(url)
                           } catch {
-                            setNewRegistryTestState("invalid")
+                            setNewRegistryAdding(false)
                             toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
                             return
                           }
-                          setNewRegistryTestState("valid")
-                          const name = nameFromRegistryUrl(url)
                           console.log(`[settings] registry added: name=${name}, url=${url}`)
                           const entry: MarketplaceRegistry = {
                             name,
@@ -727,18 +718,18 @@ export default function SettingsPage() {
                           }
                           autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
                           setNewRegistryUrl("")
-                          setNewRegistryTestState("idle")
+                          setNewRegistryAdding(false)
                           setAddingRegistry(false)
                         }}
                       >
-                        {newRegistryTestState === "checking" ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
+                        {newRegistryAdding ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
                       </Button>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => {
                           setNewRegistryUrl("")
-                          setNewRegistryTestState("idle")
+                          setNewRegistryAdding(false)
                           setAddingRegistry(false)
                         }}
                       >

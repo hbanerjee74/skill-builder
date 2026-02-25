@@ -373,8 +373,9 @@ export const listWorkspaceSkills = () =>
 export const parseGitHubUrl = (url: string) =>
   invoke<GitHubRepoInfo>("parse_github_url", { url });
 
+/** Validates the URL and returns the registry name from marketplace.json. */
 export const checkMarketplaceUrl = (url: string) =>
-  invoke<void>("check_marketplace_url", { url });
+  invoke<string>("check_marketplace_url", { url });
 
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
