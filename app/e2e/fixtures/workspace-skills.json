@@ -11,7 +11,8 @@
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   },
   {
     "skill_id": "skill-002",
@@ -25,7 +26,8 @@
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   },
   {
     "skill_id": "bundled-skill-builder-practices",
@@ -39,6 +41,7 @@
     "model": null,
     "argument_hint": null,
     "user_invocable": null,
-    "disable_model_invocation": null
+    "disable_model_invocation": null,
+    "marketplace_source_url": null
   }
 ]

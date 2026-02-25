@@ -37,7 +37,7 @@ async function checkForMarketplaceUpdates(
   try {
     const info = await parseGitHubUrl(sourceUrl);
     const { library, workspace, registry_name } = await checkMarketplaceUpdates(
-      info.owner, info.repo, info.branch, info.subpath ?? undefined
+      info.owner, info.repo, info.branch, info.subpath ?? undefined, sourceUrl
     );
     if (cancelledRef.current) return null;
 
@@ -80,7 +80,8 @@ async function handleAutoUpdate(
     wsFiltered.length > 0
       ? importGitHubSkills(
           info.owner, info.repo, info.branch,
-          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version }))
+          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version })),
+          sourceUrl
         ).catch((err) =>
           console.warn("[app-layout] Auto-update workspace failed:", err)
         )

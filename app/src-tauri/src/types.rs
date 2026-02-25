@@ -351,6 +351,9 @@ pub struct ImportedSkill {
     pub user_invocable: Option<bool>,
     #[serde(default)]
     pub disable_model_invocation: Option<bool>,
+    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
+    #[serde(default)]
+    pub marketplace_source_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -368,6 +371,9 @@ pub struct WorkspaceSkill {
     pub argument_hint: Option<String>,
     pub user_invocable: Option<bool>,
     pub disable_model_invocation: Option<bool>,
+    /// Source registry URL this skill was imported from. NULL for bundled/manually uploaded skills.
+    #[serde(default)]
+    pub marketplace_source_url: Option<String>,
 }
 
 impl From<ImportedSkill> for WorkspaceSkill {
@@ -386,6 +392,7 @@ impl From<ImportedSkill> for WorkspaceSkill {
             argument_hint: s.argument_hint,
             user_invocable: s.user_invocable,
             disable_model_invocation: s.disable_model_invocation,
+            marketplace_source_url: s.marketplace_source_url,
         }
     }
 }

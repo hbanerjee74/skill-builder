@@ -400,7 +400,7 @@ export default function GitHubImportDialog({
         },
       }]
       console.log(`[github-import] calling import_github_skills with ${requests.length} request(s)`)
-      await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests)
+      await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests, activeTab)
       console.log(`[github-import] "${skillName}" imported successfully`)
       setSkillState(skillPath, "imported")
       toast.success(`Imported "${skillName}"`)

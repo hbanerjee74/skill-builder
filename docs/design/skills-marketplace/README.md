@@ -218,3 +218,5 @@ disable-model-invocation: false
 | `argument-hint` | No | Short hint shown when invoking the skill as a slash command. |
 | `user-invocable` | No | Whether the skill can be invoked directly as a slash command. |
 | `disable-model-invocation` | No | Suppresses model selection UI for this skill. |
+
+All other keys (`domain:`, `type:`, `purpose:`, `tools:`, `trigger:`, etc.) are silently ignored by the importer. `purpose` is a database field set at import time based on where the user is importing to — it is not read from the file.

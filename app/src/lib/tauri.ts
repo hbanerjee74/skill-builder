@@ -380,8 +380,8 @@ export const checkMarketplaceUrl = (url: string) =>
 export const listGitHubSkills = (owner: string, repo: string, branch: string, subpath?: string) =>
   invoke<AvailableSkill[]>("list_github_skills", { owner, repo, branch, subpath: subpath ?? null });
 
-export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[]) =>
-  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests });
+export const importGitHubSkills = (owner: string, repo: string, branch: string, skillRequests: WorkspaceSkillImportRequest[], sourceUrl?: string | null) =>
+  invoke<ImportedSkill[]>("import_github_skills", { owner, repo, branch, skillRequests, sourceUrl: sourceUrl ?? null });
 
 export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null) =>
   invoke<void>("set_workspace_skill_purpose", { skillId, purpose });
@@ -395,9 +395,10 @@ export const checkMarketplaceUpdates = (
   owner: string,
   repo: string,
   branch: string,
-  subpath?: string,
+  subpath: string | undefined,
+  sourceUrl: string,
 ): Promise<MarketplaceUpdateResult> =>
-  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+  invoke<MarketplaceUpdateResult>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null, sourceUrl })
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })

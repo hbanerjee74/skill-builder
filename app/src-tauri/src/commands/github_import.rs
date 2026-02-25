@@ -629,7 +629,6 @@ pub(crate) async fn list_github_skills_inner(
                         skill.name = name;
                         if let Some(desc) = fm.description { skill.description = Some(desc); }
                         skill.version = fm.version;
-                        skill.purpose = fm.purpose;
                         skill.model = fm.model;
                         skill.argument_hint = fm.argument_hint;
                         skill.user_invocable = fm.user_invocable;
@@ -743,10 +742,11 @@ pub async fn import_github_skills(
     repo: String,
     branch: String,
     skill_requests: Vec<WorkspaceSkillImportRequest>,
+    source_url: Option<String>,
 ) -> Result<Vec<ImportedSkill>, String> {
     log::info!(
-        "[import_github_skills] owner={} repo={} branch={} count={}",
-        owner, repo, branch, skill_requests.len()
+        "[import_github_skills] owner={} repo={} branch={} count={} source_url={:?}",
+        owner, repo, branch, skill_requests.len(), source_url
     );
     // Read settings
     let (workspace_path, token) = {
@@ -855,6 +855,7 @@ pub async fn import_github_skills(
 
                 let mut ws_skill: crate::types::WorkspaceSkill = skill.clone().into();
                 ws_skill.purpose = purpose.clone();
+                ws_skill.marketplace_source_url = source_url.clone();
 
                 if let Some(ref existing_skill) = existing {
                     // Preserve is_active, is_bundled, skill_id, imported_at from the existing row
@@ -1025,6 +1026,9 @@ pub async fn import_marketplace_to_library(
                     e.to_string()
                 })?;
 
+                // Tag the skill with the registry it was imported from
+                skill.marketplace_source_url = Some(source_url.clone());
+
                 // Fetch existing imported skill metadata (if any) for merging on upgrade
                 let existing_imported = crate::db::get_imported_skill(&conn, &skill.skill_name).unwrap_or(None);
 
@@ -1173,8 +1177,6 @@ fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -
     };
     add_field("name", &fm.name);
     add_field("description", &fm.description);
-    // domain: no longer written — dropped in migration 28
-    add_field("type", &fm.purpose);
     add_field("version", &fm.version);
     add_field("model", &fm.model);
     add_field("argument-hint", &fm.argument_hint);
@@ -1288,11 +1290,13 @@ pub(crate) async fn import_single_skill(
 
     let mut fm = super::imported_skills::parse_frontmatter_full(&skill_md_content);
 
+    // purpose is set by the caller at import time (DB-only), not read from frontmatter.
+    let override_purpose: Option<String> = metadata_override.and_then(|ov| ov.purpose.clone());
+
     // Apply metadata overrides if provided (before validation, so user-supplied values satisfy requirements)
     if let Some(ov) = metadata_override {
         fm.name = ov.name.clone().or(fm.name);
         fm.description = ov.description.clone().or(fm.description);
-        fm.purpose = ov.purpose.clone().or(fm.purpose);
         fm.version = ov.version.clone().or(fm.version);
         // Empty string means "App default" — explicitly clear any model from frontmatter.
         fm.model = match ov.model.as_deref() {
@@ -1305,7 +1309,7 @@ pub(crate) async fn import_single_skill(
         fm.disable_model_invocation = ov.disable_model_invocation.or(fm.disable_model_invocation);
         log::debug!(
             "[import_single_skill] applied metadata override for '{}': name={:?} purpose={:?}",
-            dir_name, fm.name, fm.purpose
+            dir_name, fm.name, override_purpose
         );
     }
 
@@ -1463,14 +1467,15 @@ pub(crate) async fn import_single_skill(
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
-        // Populated from frontmatter for the response, not stored in DB
+        // Populated from frontmatter/override for the response, not stored in DB here
         description: fm.description,
-        purpose: fm.purpose,
+        purpose: override_purpose,
         version: fm.version,
         model: fm.model,
         argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
+        marketplace_source_url: None,
     })
 }
 
@@ -1513,6 +1518,8 @@ pub struct MarketplaceUpdateResult {
 
 /// Check the marketplace for skills that have a newer version than those installed.
 /// Returns separate lists for library (imported_skills) and workspace (workspace_skills) skills.
+/// Only reports updates for skills that were imported from this specific registry (source_url),
+/// preventing false positives when bundled skills share a name with marketplace skills.
 #[tauri::command]
 pub async fn check_marketplace_updates(
     db: tauri::State<'_, Db>,
@@ -1520,10 +1527,11 @@ pub async fn check_marketplace_updates(
     repo: String,
     branch: String,
     subpath: Option<String>,
+    source_url: String,
 ) -> Result<MarketplaceUpdateResult, String> {
     log::info!(
-        "[check_marketplace_updates] owner={} repo={} branch={} subpath={:?}",
-        owner, repo, branch, subpath
+        "[check_marketplace_updates] owner={} repo={} branch={} subpath={:?} source_url={}",
+        owner, repo, branch, subpath, source_url
     );
 
     let token = {
@@ -1552,18 +1560,18 @@ pub async fn check_marketplace_updates(
                 continue;
             }
 
-            // Check workspace_skills independently.
-            // Skills imported before version tracking was added have no version — treat
-            // a missing/empty installed version as always needing an update.
-            if let Some(ws) = crate::db::get_workspace_skill_by_name(&conn, &skill.name)? {
+            // Check workspace_skills: only match skills imported from this specific registry.
+            // This prevents false-positive notifications for bundled skills that share a name
+            // with a marketplace skill (bundled skills have marketplace_source_url = NULL).
+            if let Some(ws) = crate::db::get_workspace_skill_by_name_and_source(&conn, &skill.name, &source_url)? {
                 let inst_ver = ws.version.as_deref().unwrap_or("");
                 if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
                     workspace.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
                 }
             }
 
-            // Check imported_skills independently.
-            if let Some(imp) = crate::db::get_imported_skill(&conn, &skill.name).unwrap_or(None) {
+            // Check imported_skills: only match skills imported from this specific registry.
+            if let Some(imp) = crate::db::get_imported_skill_by_name_and_source(&conn, &skill.name, &source_url).unwrap_or(None) {
                 let inst_ver = imp.version.as_deref().unwrap_or("");
                 if inst_ver.is_empty() || semver_gt(marketplace_ver, inst_ver) {
                     library.push(SkillUpdateInfo { name: skill.name.clone(), path: skill.path.clone(), version: marketplace_ver.to_string() });
@@ -1807,13 +1815,11 @@ mod tests {
     #[test]
     fn test_parse_frontmatter_accessible() {
         // Verify that the pub(crate) parse_frontmatter is callable from here
-        let (name, desc, purpose) = super::super::imported_skills::parse_frontmatter(
-            "---\nname: test\ndescription: a test\ndomain: analytics\n---\n# Content",
+        let (name, desc) = super::super::imported_skills::parse_frontmatter(
+            "---\nname: test\ndescription: a test\n---\n# Content",
         );
         assert_eq!(name.as_deref(), Some("test"));
         assert_eq!(desc.as_deref(), Some("a test"));
-        // domain dropped
-        assert!(purpose.is_none());
     }
 
     // --- validate_skill_name reuse test ---
@@ -1965,50 +1971,29 @@ mod tests {
         // the production parsing or predicate are caught here.
         let parse = super::super::imported_skills::parse_frontmatter_full;
 
-        // Complete, valid frontmatter — all four required fields present.
-        // Note: the YAML key for skill_type is "type:" per the parser.
+        // Complete, valid frontmatter — name and description are the spec fields.
+        // domain:, type:, purpose: and other unknown keys are silently ignored.
         let complete = parse(
-            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\ntype: domain\n---\n# Body",
+            "---\nname: analytics\ndescription: Does analytics stuff\n---\n# Body",
         );
         assert_eq!(complete.name.as_deref(), Some("analytics"));
         assert_eq!(complete.description.as_deref(), Some("Does analytics stuff"));
-        // domain: is ignored; purpose comes from type: key
-        assert_eq!(complete.purpose.as_deref(), Some("domain"));
 
-        // Missing skill_type (no "type:" key) — must be treated as a missing required field.
-        let missing_skill_type = parse(
-            "---\nname: analytics\ndescription: Does analytics stuff\ndomain: data\n---\n# Body",
-        );
-        assert!(missing_skill_type.purpose.is_none(), "absent skill_type must be None");
-
-        // Whitespace-only type — trim_opt must convert to None.
-        let whitespace_skill_type = parse(
-            "---\nname: analytics\ndescription: Desc\ndomain: data\ntype:   \n---\n",
-        );
-        assert!(whitespace_skill_type.purpose.is_none(), "whitespace-only skill_type must be None");
-
-        // Whitespace-only values: trim_opt converts these to None, so the skill
-        // should be treated as missing the field.
+        // Whitespace-only values: trim_opt converts these to None.
         let whitespace_name = parse(
-            "---\nname:    \ndescription: Desc\ndomain: data\n---\n",
+            "---\nname:    \ndescription: Desc\n---\n",
         );
         assert!(whitespace_name.name.is_none(), "whitespace-only name must be None");
 
         let whitespace_desc = parse(
-            "---\nname: reporting\ndescription:   \ndomain: data\n---\n",
+            "---\nname: reporting\ndescription:   \n---\n",
         );
         assert!(whitespace_desc.description.is_none(), "whitespace-only description must be None");
-
-        let whitespace_domain = parse(
-            "---\nname: research\ndescription: Desc\ndomain:  \n---\n",
-        );
-        assert!(whitespace_domain.purpose.is_none(), "whitespace-only domain must be None");
 
         // No frontmatter at all — all fields None.
         let empty = parse("# Just a heading\nNo frontmatter here.");
         assert!(empty.name.is_none());
         assert!(empty.description.is_none());
-        assert!(empty.purpose.is_none());
     }
 
     #[test]
@@ -2164,13 +2149,12 @@ mod tests {
 
         // Body contains a markdown horizontal rule (---) on its own line.
         // The old code would truncate the body at that line; the new code must not.
-        let original = "---\nname: old-name\ndescription: old-desc\ndomain: old-domain\ntype: domain\n---\n# Heading\n\nSome content.\n\n---\n\nMore content after the HR.\n";
+        let original = "---\nname: old-name\ndescription: old-desc\n---\n# Heading\n\nSome content.\n\n---\n\nMore content after the HR.\n";
         fs::write(&skill_md, original).unwrap();
 
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("new-name".to_string()),
             description: Some("new-desc".to_string()),
-            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -2209,7 +2193,6 @@ mod tests {
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("my-skill".to_string()),
             description: Some("desc".to_string()),
-            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -2235,13 +2218,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let skill_md = dir.path().join("SKILL.md");
 
-        let original = "---\nname: legit\ndescription: desc\ndomain: data\ntype: domain\n---\n# Body\n";
+        let original = "---\nname: legit\ndescription: desc\n---\n# Body\n";
         fs::write(&skill_md, original).unwrap();
 
         let fm = super::super::imported_skills::Frontmatter {
             name: Some("legit\nmalicious-key: injected".to_string()),
             description: Some("desc".to_string()),
-            purpose: Some("domain".to_string()),
             version: None,
             model: None,
             argument_hint: None,
@@ -2287,7 +2269,7 @@ mod tests {
         use tempfile::TempDir;
 
         let tmp = TempDir::new().unwrap();
-        let original = "---\nname: old-name\ndomain: OldDomain\n---\n# Skill Body\n\nSome content here.\n";
+        let original = "---\nname: old-name\n---\n# Skill Body\n\nSome content here.\n";
         fs::write(tmp.path().join("SKILL.md"), original).unwrap();
 
         let fm = super::super::imported_skills::Frontmatter {
@@ -2344,13 +2326,12 @@ mod tests {
             let dir = TempDir::new().unwrap();
             let skill_md = dir.path().join("SKILL.md");
 
-            let original = "---\nname: my-skill\ndescription: original desc\ndomain: analytics\ntype: domain\n---\n# Instructions\n\nDo the thing.\n\nMore body content here.\n";
+            let original = "---\nname: my-skill\ndescription: original desc\n---\n# Instructions\n\nDo the thing.\n\nMore body content here.\n";
             fs::write(&skill_md, original).unwrap();
 
             let fm = super::super::imported_skills::Frontmatter {
                 name: Some("my-skill".to_string()),
                 description: Some("overridden desc".to_string()),
-                purpose: Some("domain".to_string()),
                 version: None,
                 model: None,
                 argument_hint: None,
@@ -2412,7 +2393,7 @@ mod tests {
         let skill_md = dir.path().join("SKILL.md");
 
         // Original SKILL.md has version and model set
-        let original = "---\nname: original-name\ndescription: original-desc\ndomain: original-domain\ntype: domain\nversion: \"1.0.0\"\nmodel: claude-3-haiku\n---\n# Body content\n";
+        let original = "---\nname: original-name\ndescription: original-desc\nversion: \"1.0.0\"\nmodel: claude-3-haiku\n---\n# Body content\n";
         fs::write(&skill_md, original).unwrap();
 
         // Simulate what import_single_skill does: parse original, then apply partial override

@@ -246,6 +246,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -661,6 +662,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -700,6 +702,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -860,6 +863,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
       // Workspace skill 2: another active skill already occupying "research" purpose
       const occupyingWs: WorkspaceSkill = {
@@ -876,6 +880,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       };
 
       // Available skill with a newer version (triggers "upgrade" state → selectable)
@@ -994,6 +999,7 @@ describe("GitHubImportDialog", () => {
         argument_hint: null,
         user_invocable: null,
         disable_model_invocation: null,
+        marketplace_source_url: null,
       }));
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,

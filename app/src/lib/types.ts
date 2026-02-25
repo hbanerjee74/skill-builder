@@ -238,6 +238,8 @@ export interface ImportedSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
+  marketplace_source_url: string | null
 }
 
 /** Workspace skill stored in the workspace_skills table (Settings > Skills tab). */
@@ -255,6 +257,8 @@ export interface WorkspaceSkill {
   argument_hint: string | null
   user_invocable: boolean | null
   disable_model_invocation: boolean | null
+  /** Source registry URL this skill was imported from. null for bundled/manually uploaded skills. */
+  marketplace_source_url: string | null
 }
 
 export interface GitHubRepoInfo {
