@@ -19,12 +19,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import {
   useAgentStore,
   type AgentMessage,
 } from "@/stores/agent-store";
-import { AgentStatusHeader } from "@/components/agent-status-header";
+import { AgentRunFooter } from "@/components/agent-run-footer";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { parseAgentResponseType } from "@/lib/reasoning-parser";
 
@@ -573,8 +572,6 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
 
   return (
     <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <AgentStatusHeader agentId={agentId} />
-      <Separator />
       <ScrollArea className="min-h-0 flex-1">
         <div ref={scrollRef} className="flex flex-col p-3">
           {run.messages.map((msg, i) => {
@@ -605,6 +602,7 @@ export function AgentOutputPanel({ agentId }: AgentOutputPanelProps) {
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+      <AgentRunFooter agentId={agentId} />
     </Card>
   );
 }
