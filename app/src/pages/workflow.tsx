@@ -786,18 +786,21 @@ export default function WorkflowPage() {
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
   const performStepReset = async (stepId: number) => {
+    // Step 1 (Detailed Research) mutates step 0's clarifications.json,
+    // so resetting step 1 must also reset step 0.
+    const effectiveStep = stepId === 1 ? 0 : stepId;
     endActiveSession();
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, stepId);
+        await resetWorkflowStep(workspacePath, skillName, effectiveStep);
       } catch {
         // best-effort -- proceed even if disk cleanup fails
       }
     }
     clearRuns();
-    resetToStep(stepId);
-    autoStartAfterReset(stepId);
-    toast.success(`Reset step ${stepId + 1}`);
+    resetToStep(effectiveStep);
+    autoStartAfterReset(effectiveStep);
+    toast.success(`Reset to step ${effectiveStep + 1}`);
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
@@ -1099,7 +1102,9 @@ export default function WorkflowPage() {
               return;
             }
             if (id < currentStep) {
-              setResetTarget(id);
+              // Step 1 (Detailed Research) mutates step 0's clarifications.json,
+              // so resetting to step 1 must also reset step 0.
+              setResetTarget(id === 1 ? 0 : id);
               return;
             }
             setCurrentStep(id);
