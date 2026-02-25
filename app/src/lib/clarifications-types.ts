@@ -33,9 +33,17 @@ export interface Question {
   text: string;
   consolidated_from?: string[];
   choices: Choice[];
+  recommendation?: string | null; // recommended choice ID, e.g. "B" (may also be legacy "B — rationale")
   answer_choice: string | null; // "A"/"B"/... | "custom" | null
   answer_text: string | null; // freeform text
   refinements: Question[]; // recursive, same shape
+}
+
+/** Extract the recommended choice ID from a recommendation string.
+ *  Handles both the current format ("B") and legacy format ("B — rationale text"). */
+export function parseRecommendedChoiceId(recommendation: string | null | undefined): string | null {
+  if (!recommendation) return null;
+  return recommendation.split(/\s*[—–-]\s*/)[0].trim() || null;
 }
 
 export interface Choice {
@@ -94,4 +102,33 @@ export function getTotalCounts(file: ClarificationsFile) {
 
 export function isQuestionAnswered(q: Question): boolean {
   return q.answer_choice !== null || (q.answer_text !== null && q.answer_text.trim() !== "");
+}
+
+/** Normalize a Question tree: ensure every question has a `refinements` array
+ *  (agent output may omit it). */
+function normalizeQuestion(q: Question): Question {
+  return { ...q, refinements: (q.refinements ?? []).map(normalizeQuestion) };
+}
+
+/** Parse and normalize JSON clarifications from raw file content.
+ *  Ensures every question has a `refinements` array and metadata has `priority_questions`. */
+export function parseClarifications(content: string | null): ClarificationsFile | null {
+  if (!content) return null;
+  try {
+    const raw = JSON.parse(content) as ClarificationsFile;
+    return {
+      ...raw,
+      metadata: {
+        ...raw.metadata,
+        priority_questions: raw.metadata?.priority_questions ?? [],
+      },
+      sections: (raw.sections ?? []).map((s) => ({
+        ...s,
+        questions: (s.questions ?? []).map(normalizeQuestion),
+      })),
+      notes: raw.notes ?? [],
+    };
+  } catch {
+    return null;
+  }
 }

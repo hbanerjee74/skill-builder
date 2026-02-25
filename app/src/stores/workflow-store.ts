@@ -67,30 +67,18 @@ const defaultSteps: WorkflowStep[] = [
   },
   {
     id: 1,
-    name: "Review",
-    description: "Review and answer clarification questions about domain concepts",
-    status: "pending",
-  },
-  {
-    id: 2,
     name: "Detailed Research",
     description: "Research detailed patterns, implementation, and data modeling",
     status: "pending",
   },
   {
-    id: 3,
-    name: "Review",
-    description: "Review and answer detailed clarification questions",
-    status: "pending",
-  },
-  {
-    id: 4,
+    id: 2,
     name: "Confirm Decisions",
     description: "Analyze responses for implications, gaps, and contradictions",
     status: "pending",
   },
   {
-    id: 5,
+    id: 3,
     name: "Generate Skill",
     description: "Generate skill files from decisions",
     status: "pending",

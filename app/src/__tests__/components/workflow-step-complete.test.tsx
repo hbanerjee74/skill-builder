@@ -17,6 +17,37 @@ vi.mock("react-markdown", () => ({
 }));
 vi.mock("remark-gfm", () => ({ default: () => {} }));
 
+// Mock ClarificationsEditor to expose editable state in tests
+const mockOnChange = vi.fn();
+const mockOnContinue = vi.fn();
+vi.mock("@/components/clarifications-editor", () => ({
+  ClarificationsEditor: ({ data, onChange, onContinue, readOnly }: {
+    data: unknown;
+    onChange?: (updated: unknown) => void;
+    onContinue?: () => void;
+    readOnly?: boolean;
+  }) => (
+    <div data-testid="clarifications-editor" data-readonly={readOnly ?? false}>
+      <span data-testid="clarifications-data">{JSON.stringify(data)}</span>
+      {onChange && <button data-testid="clarifications-change" onClick={() => onChange(data)}>Edit</button>}
+      {onContinue && <button data-testid="clarifications-continue" onClick={onContinue}>Continue</button>}
+    </div>
+  ),
+}));
+
+// Mock ResearchSummaryCard to check editable prop
+vi.mock("@/components/research-summary-card", () => ({
+  ResearchSummaryCard: ({ editable, onClarificationsContinue }: {
+    editable?: boolean;
+    onClarificationsContinue?: () => void;
+    [key: string]: unknown;
+  }) => (
+    <div data-testid="research-summary-card" data-editable={!!editable}>
+      {onClarificationsContinue && <button data-testid="rsc-continue" onClick={onClarificationsContinue}>Continue</button>}
+    </div>
+  ),
+}));
+
 import { WorkflowStepComplete } from "@/components/workflow-step-complete";
 
 function makeRun(totalCost: number): AgentRunRecord {
@@ -143,5 +174,86 @@ describe("WorkflowStepComplete — cost display", () => {
 
     render(<WorkflowStepComplete {...baseProps} reviewMode={true} />);
     await waitFor(() => expect(mockGetStepAgentRuns).toHaveBeenCalledWith("my-skill", 0));
+  });
+});
+
+describe("WorkflowStepComplete — clarificationsEditable", () => {
+  const researchPlanMd = "# Research Plan\nTest research plan content";
+  const clarificationsJson = JSON.stringify({
+    version: "1",
+    metadata: { title: "Test", question_count: 1, section_count: 1, refinement_count: 0, must_answer_count: 0, priority_questions: [] },
+    sections: [{ id: "S1", title: "Section", questions: [{ id: "Q1", title: "Q1", must_answer: false, text: "Test?", choices: [], answer_choice: null, answer_text: null, refinements: [] }] }],
+    notes: [],
+  });
+
+  const researchProps = {
+    stepName: "Research",
+    stepId: 0,
+    outputFiles: ["context/research-plan.md", "context/clarifications.json"],
+    skillName: "my-skill",
+    skillsPath: "/skills",
+  };
+
+  const detailedResearchProps = {
+    stepName: "Detailed Research",
+    stepId: 1,
+    outputFiles: ["context/clarifications.json"],
+    skillName: "my-skill",
+    skillsPath: "/skills",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetStepAgentRuns.mockResolvedValue([]);
+  });
+
+  it("renders ResearchSummaryCard as editable when clarificationsEditable=true on research step", async () => {
+    mockReadFile.mockImplementation((path: string) => {
+      if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
+      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      return Promise.resolve(null);
+    });
+
+    render(<WorkflowStepComplete {...researchProps} clarificationsEditable onClarificationsChange={mockOnChange} onClarificationsContinue={mockOnContinue} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("research-summary-card")).toBeInTheDocument();
+    });
+
+    // Should be editable
+    expect(screen.getByTestId("research-summary-card")).toHaveAttribute("data-editable", "true");
+  });
+
+  it("renders ResearchSummaryCard as read-only when clarificationsEditable is false", async () => {
+    mockReadFile.mockImplementation((path: string) => {
+      if (path.includes("research-plan.md")) return Promise.resolve(researchPlanMd);
+      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      return Promise.resolve(null);
+    });
+
+    render(<WorkflowStepComplete {...researchProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("research-summary-card")).toBeInTheDocument();
+    });
+
+    // Should NOT be editable
+    expect(screen.getByTestId("research-summary-card")).toHaveAttribute("data-editable", "false");
+  });
+
+  it("renders ClarificationsEditor directly on detailed research step with clarificationsEditable=true", async () => {
+    mockReadFile.mockImplementation((path: string) => {
+      if (path.includes("clarifications.json")) return Promise.resolve(clarificationsJson);
+      return Promise.resolve(null);
+    });
+
+    render(<WorkflowStepComplete {...detailedResearchProps} clarificationsEditable onClarificationsChange={mockOnChange} onClarificationsContinue={mockOnContinue} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clarifications-editor")).toBeInTheDocument();
+    });
+
+    // Continue button should be rendered (since onClarificationsContinue is provided)
+    expect(screen.getByTestId("clarifications-continue")).toBeInTheDocument();
   });
 });

@@ -33,24 +33,24 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
-        2 => Ok(StepConfig {
-            step_id: 2,
+        1 => Ok(StepConfig {
+            step_id: 1,
             name: "Detailed Research".to_string(),
             prompt_template: "detailed-research.md".to_string(),
             output_file: "context/clarifications.json".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 50,
         }),
-        4 => Ok(StepConfig {
-            step_id: 4,
+        2 => Ok(StepConfig {
+            step_id: 2,
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
             output_file: "context/decisions.md".to_string(),
             allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
             max_turns: 100,
         }),
-        5 => Ok(StepConfig {
-            step_id: 5,
+        3 => Ok(StepConfig {
+            step_id: 3,
             name: "Generate Skill".to_string(),
             prompt_template: "generate-skill.md".to_string(),
             output_file: "skill/SKILL.md".to_string(),
@@ -58,7 +58,7 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             max_turns: 120,
         }),
         _ => Err(format!(
-            "Unknown step_id {}. Steps 1 and 3 are human review steps.",
+            "Unknown step_id {}. Valid steps are 0-3.",
             step_id
         )),
     }
@@ -515,7 +515,7 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
 /// - decision_count: 0  → no decisions were derivable
 /// - contradictory_inputs: true → unresolvable contradictions detected
 ///
-/// Returns true if steps 5-6 should be disabled.
+/// Returns true if step 3 (Generate Skill) should be disabled.
 fn parse_decisions_guard(decisions_path: &Path) -> bool {
     let content = match std::fs::read_to_string(decisions_path) {
         Ok(c) => c,
@@ -763,9 +763,9 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
 fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
         0 => Some(8_000),   // research
-        2 => Some(8_000),   // detailed-research
-        4 => Some(32_000),  // confirm-decisions — highest priority
-        5 => Some(16_000),  // generate-skill — complex synthesis
+        1 => Some(8_000),   // detailed-research
+        2 => Some(32_000),  // confirm-decisions — highest priority
+        3 => Some(16_000),  // generate-skill — complex synthesis
         _ => None,
     }
 }
@@ -806,7 +806,7 @@ fn validate_decisions_exist_inner(
 
     Err(
         "Cannot start Generate Skill step: decisions.md was not found on the filesystem. \
-         The Confirm Decisions step (step 4) must create a decisions file before the Generate Skill step can run. \
+         The Confirm Decisions step (step 2) must create a decisions file before the Generate Skill step can run. \
          Please re-run the Confirm Decisions step first."
             .to_string(),
     )
@@ -857,8 +857,8 @@ fn read_workflow_settings(
     let industry = settings.industry;
     let function_role = settings.function_role;
 
-    // Validate prerequisites (step 5 requires decisions.md)
-    if step_id == 5 {
+    // Validate prerequisites (step 3 requires decisions.md)
+    if step_id == 3 {
         validate_decisions_exist_inner(skill_name, workspace_path, &skills_path)?;
     }
 
@@ -1021,24 +1021,24 @@ pub async fn run_workflow_step(
         .join(&skill_name)
         .join("context");
 
-    if step_id >= 2 {
+    if step_id >= 1 {
         let clarifications_path = context_dir.join("clarifications.json");
         if parse_scope_recommendation(&clarifications_path) {
             return Err(format!(
                 "Step {} is disabled: the research phase determined the skill scope is too broad. \
-                 Review the scope recommendations in clarifications.json, then reset to step 1 \
+                 Review the scope recommendations in clarifications.json, then reset to step 0 \
                  and start with a narrower focus.",
                 step_id
             ));
         }
     }
 
-    if step_id >= 5 {
+    if step_id >= 3 {
         let decisions_path = context_dir.join("decisions.md");
         if parse_decisions_guard(&decisions_path) {
             return Err(format!(
                 "Step {} is disabled: the reasoning agent found unresolvable \
-                 contradictions in decisions.md. Reset to step 3 and revise \
+                 contradictions in decisions.md. Reset to step 2 and revise \
                  your answers before retrying.",
                 step_id
             ));
@@ -1306,19 +1306,17 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
             "context/research-plan.md",
             "context/clarifications.json",
         ],
-        1 => vec![],  // Human review
-        2 => vec![],  // Step 2 edits clarifications.json in-place (no unique artifact)
-        3 => vec![],  // Human review
-        4 => vec!["context/decisions.md"],
-        5 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
+        1 => vec![],  // Step 1 edits clarifications.json in-place (no unique artifact)
+        2 => vec!["context/decisions.md"],
+        3 => vec!["SKILL.md"], // Also has references/ dir; path is relative to skill output dir
         _ => vec![],
     }
 }
 
 /// Check if at least one expected output file exists for a completed step.
 /// Returns `true` if the step produced output, `false` if no files were written.
-/// Human review steps (1, 3) always return `true` since they
-/// produce no files by design.
+/// Step 1 (Detailed Research) always returns `true` because it edits
+/// clarifications.json in-place and has no unique output file to check.
 #[tauri::command]
 pub fn verify_step_output(
     _workspace_path: String,
@@ -1338,7 +1336,7 @@ pub fn verify_step_output(
 
     // skills_path is required — single code path, no workspace fallback
     let target_dir = Path::new(&skills_path).join(&skill_name);
-    let has_output = if step_id == 5 {
+    let has_output = if step_id == 3 {
         target_dir.join("SKILL.md").exists()
     } else {
         files.iter().any(|f| target_dir.join(f).exists())
@@ -1362,9 +1360,9 @@ pub fn get_disabled_steps(
     let decisions_path = context_dir.join("decisions.md");
 
     if parse_scope_recommendation(&clarifications_path) {
-        Ok(vec![2, 3, 4, 5])
+        Ok(vec![1, 2, 3])
     } else if parse_decisions_guard(&decisions_path) {
-        Ok(vec![5])
+        Ok(vec![3])
     } else {
         Ok(vec![])
     }
@@ -1817,15 +1815,13 @@ pub fn preview_step_reset(
 
     let step_names = [
         "Research",
-        "Review",
         "Detailed Research",
-        "Review",
         "Confirm Decisions",
         "Generate Skill",
     ];
 
     let mut result = Vec::new();
-    for step_id in from_step_id..=5 {
+    for step_id in from_step_id..=3 {
         // skills_path is required — single code path, no workspace fallback
         let mut existing_files: Vec<String> = Vec::new();
 
@@ -1835,8 +1831,8 @@ pub fn preview_step_reset(
             }
         }
 
-        // Step 5: also list individual files in references/ directory
-        if step_id == 5 {
+        // Step 3: also list individual files in references/ directory
+        if step_id == 3 {
             let refs_dir = skill_output_dir.join("references");
             if refs_dir.is_dir() {
                 if let Ok(entries) = std::fs::read_dir(&refs_dir) {
@@ -1873,7 +1869,7 @@ mod tests {
 
     #[test]
     fn test_get_step_config_valid_steps() {
-        let valid_steps = [0, 2, 4, 5];
+        let valid_steps = [0, 1, 2, 3];
         for step_id in valid_steps {
             let config = get_step_config(step_id);
             assert!(config.is_ok(), "Step {} should be valid", step_id);
@@ -1885,12 +1881,10 @@ mod tests {
 
     #[test]
     fn test_get_step_config_invalid_step() {
-        assert!(get_step_config(1).is_err());  // Human review
-        assert!(get_step_config(3).is_err());  // Human review
-        assert!(get_step_config(6).is_err());  // Removed (was Validate Skill)
+        assert!(get_step_config(4).is_err());  // Beyond last step
+        assert!(get_step_config(5).is_err());  // Beyond last step
+        assert!(get_step_config(6).is_err());  // Beyond last step
         assert!(get_step_config(7).is_err());  // Beyond last step
-        assert!(get_step_config(8).is_err());  // Beyond last step
-        assert!(get_step_config(9).is_err());
         assert!(get_step_config(99).is_err());
     }
 
@@ -2126,33 +2120,33 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 2, 4, 5 in skills_path/my-skill/
-        // Steps 0 and 2 both use clarifications.json (unified artifact)
+        // Create output files for steps 0, 1, 2, 3 in skills_path/my-skill/
+        // Steps 0 and 1 both use clarifications.json (unified artifact)
         std::fs::write(
             skill_dir.join("context/clarifications.json"),
-            "step0+step2",
+            "step0+step1",
         )
         .unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "step5").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
-        // Reset from step 4 onwards — steps 0, 2 should be preserved
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
+        // Reset from step 2 onwards — steps 0, 1 should be preserved
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
-        // Steps 0, 2 output (unified clarifications.json) should still exist
+        // Steps 0, 1 output (unified clarifications.json) should still exist
         assert!(skill_dir.join("context/clarifications.json").exists());
 
-        // Steps 4+ outputs should be deleted
+        // Steps 2+ outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());
         assert!(!skill_dir.join("references").exists());
     }
 
     #[test]
-    fn test_clean_step_output_step2_is_noop() {
-        // Step 2 edits clarifications.json in-place (no unique artifact),
-        // so cleaning step 2 has no files to delete.
+    fn test_clean_step_output_step1_is_noop() {
+        // Step 1 edits clarifications.json in-place (no unique artifact),
+        // so cleaning step 1 has no files to delete.
         let workspace_tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
@@ -2161,10 +2155,10 @@ mod tests {
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
         std::fs::write(skill_dir.join("context/clarifications.json"), "refined").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
+        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
 
-        // Clean only step 2 — both files should be untouched (step 2 has no unique output)
-        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 2, skills_path);
+        // Clean only step 1 — both files should be untouched (step 1 has no unique output)
+        crate::cleanup::clean_step_output_thorough(workspace, "my-skill", 1, skills_path);
 
         assert!(skill_dir.join("context/clarifications.json").exists());
         assert!(skill_dir.join("context/decisions.md").exists());
@@ -2187,25 +2181,25 @@ mod tests {
         let skill_dir = skills_tmp.path().join("my-skill");
         std::fs::create_dir_all(skill_dir.join("context")).unwrap();
 
-        // Create files for step 4 (decisions) in skills_path
-        std::fs::write(skill_dir.join("context/decisions.md"), "step4").unwrap();
+        // Create files for step 2 (decisions) in skills_path
+        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
 
-        // Reset from step 4 onwards should clean up step 4+5
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 4, skills_path);
+        // Reset from step 2 onwards should clean up step 2+3
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
-        // Step 4 outputs should be deleted
+        // Step 2 outputs should be deleted
         assert!(!skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
     fn test_delete_step_output_files_last_step() {
-        // Verify delete_step_output_files(from=5) doesn't panic
+        // Verify delete_step_output_files(from=3) doesn't panic
         let workspace_tmp = tempfile::tempdir().unwrap();
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
-        crate::cleanup::delete_step_output_files(workspace, "my-skill", 5, skills_path);
+        crate::cleanup::delete_step_output_files(workspace, "my-skill", 3, skills_path);
     }
 
     #[test]
@@ -2479,9 +2473,9 @@ mod tests {
         // which is what run_workflow_step now uses unconditionally.
         let expected: Vec<(u32, u32)> = vec![
             (0, 50),   // research
-            (2, 50),   // detailed research
-            (4, 100),  // confirm decisions
-            (5, 120),  // generate skill
+            (1, 50),   // detailed research
+            (2, 100),  // confirm decisions
+            (3, 120),  // generate skill
         ];
         for (step_id, expected_turns) in expected {
             let config = get_step_config(step_id).unwrap();
@@ -2497,9 +2491,9 @@ mod tests {
     fn test_step_max_turns() {
         let steps_with_expected_turns = [
             (0, 50),
-            (2, 50),
-            (4, 100),
-            (5, 120),
+            (1, 50),
+            (2, 100),
+            (3, 120),
         ];
         for (step_id, normal_turns) in steps_with_expected_turns {
             let config = get_step_config(step_id).unwrap();
@@ -2620,14 +2614,13 @@ mod tests {
     #[test]
     fn test_thinking_budget_for_step() {
         assert_eq!(thinking_budget_for_step(0), Some(8_000));
-        assert_eq!(thinking_budget_for_step(2), Some(8_000));
-        assert_eq!(thinking_budget_for_step(4), Some(32_000));
-        assert_eq!(thinking_budget_for_step(5), Some(16_000));
-        // Human review steps, removed steps, and beyond return None
-        assert_eq!(thinking_budget_for_step(1), None);
-        assert_eq!(thinking_budget_for_step(3), None);
-        assert_eq!(thinking_budget_for_step(6), None);  // Removed (was Validate Skill)
-        assert_eq!(thinking_budget_for_step(7), None);
+        assert_eq!(thinking_budget_for_step(1), Some(8_000));
+        assert_eq!(thinking_budget_for_step(2), Some(32_000));
+        assert_eq!(thinking_budget_for_step(3), Some(16_000));
+        // Beyond last step returns None
+        assert_eq!(thinking_budget_for_step(4), None);
+        assert_eq!(thinking_budget_for_step(5), None);
+        assert_eq!(thinking_budget_for_step(99), None);
     }
 
     #[test]

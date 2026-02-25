@@ -1,18 +1,11 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { formatModelName, formatTokenCount } from "@/stores/agent-store";
+import { formatElapsed } from "@/lib/utils";
 import type { AgentRunRecord } from "@/lib/types";
 
 interface AgentStatsBarProps {
   runs: AgentRunRecord[];
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
 }
 
 function formatCost(amount: number): string {
@@ -68,7 +61,7 @@ export function AgentStatsBar({ runs }: AgentStatsBarProps) {
         onClick={() => setIsExpanded(!isExpanded)}
         className="w-full flex items-center gap-3 px-3 py-2 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
       >
-        <span><span className="text-muted-foreground">Duration </span>{formatDuration(totals.duration)}</span>
+        <span><span className="text-muted-foreground">Duration </span>{formatElapsed(totals.duration)}</span>
         <span><span className="text-muted-foreground">Cost </span>{formatCost(totals.cost)}</span>
         <span><span className="text-muted-foreground">Input </span>{formatTokenCount(totals.input)} tokens</span>
         <span><span className="text-muted-foreground">Output </span>{formatTokenCount(totals.output)} tokens</span>

@@ -49,15 +49,15 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByText("No agent output yet")).toBeInTheDocument();
   });
 
-  it("renders Agent Output title when run exists", () => {
+  it("renders AgentRunFooter when run exists", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Agent Output")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-run-footer")).toBeInTheDocument();
   });
 
-  it("shows Running status badge for running agent", () => {
+  it("shows running status in footer for running agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
-    // A run with no messages shows "Initializing…" — add a message so it transitions to "Running"
+    // A run with no messages shows "initializing…" — add a message so it transitions to "running…"
     useAgentStore.getState().addMessage("test-agent", {
       type: "system",
       content: undefined,
@@ -65,7 +65,7 @@ describe("AgentOutputPanel", () => {
       timestamp: Date.now(),
     });
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(screen.getByText("running\u2026")).toBeInTheDocument();
   });
 
   it("shows model badge with friendly name", () => {
@@ -74,18 +74,18 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByText("Sonnet")).toBeInTheDocument();
   });
 
-  it("shows Completed status badge for completed agent", () => {
+  it("shows completed status in footer for completed agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().completeRun("test-agent", true);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("completed")).toBeInTheDocument();
   });
 
-  it("shows Error status badge for failed agent", () => {
+  it("shows error status in footer for failed agent", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().completeRun("test-agent", false);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("Error")).toBeInTheDocument();
+    expect(screen.getByText("error")).toBeInTheDocument();
   });
 
   it("renders error message for error-type messages", () => {
@@ -150,7 +150,7 @@ describe("AgentOutputPanel", () => {
     expect(screen.getByTestId("collapsible-tool-call")).toBeInTheDocument();
   });
 
-  it("shows token usage when available", () => {
+  it("shows token usage and cost in footer when run is completed", () => {
     useAgentStore.getState().startRun("test-agent", "sonnet");
     useAgentStore.getState().addMessage("test-agent", {
       type: "result",
@@ -161,8 +161,11 @@ describe("AgentOutputPanel", () => {
       },
       timestamp: Date.now(),
     });
+    // Complete the run so AgentRunFooter shows tokens and cost
+    useAgentStore.getState().completeRun("test-agent", true);
     render(<AgentOutputPanel agentId="test-agent" />);
-    expect(screen.getByText("1,500 tokens")).toBeInTheDocument();
+    // AgentRunFooter uses formatTokenCount: 1500 → "2K"
+    expect(screen.getByText(/2K/)).toBeInTheDocument();
     expect(screen.getByText("$0.0500")).toBeInTheDocument();
   });
 

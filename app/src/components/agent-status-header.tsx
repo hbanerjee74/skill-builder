@@ -17,16 +17,9 @@ import {
   getContextUtilization,
 } from "@/stores/agent-store";
 import { useWorkflowStore } from "@/stores/workflow-store";
+import { formatElapsed } from "@/lib/utils";
 
-export function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
-  }
-  return `${secs}s`;
-}
+export { formatElapsed };
 
 function ContextMeter({ agentId }: { agentId: string }) {
   const run = useAgentStore((s) => s.runs[agentId]);

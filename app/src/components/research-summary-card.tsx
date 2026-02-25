@@ -1,6 +1,9 @@
-import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle, ChevronRight } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
+import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
+import { formatElapsed } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,13 @@ interface ResearchSummaryCardProps {
   clarificationsData: ClarificationsFile;
   duration?: number;
   cost?: number;
+  /** When true, make the research plan collapsible (default collapsed) and clarifications editable */
+  editable?: boolean;
+  onClarificationsChange?: (data: ClarificationsFile) => void;
+  onClarificationsContinue?: () => void;
+  onReset?: () => void;
+  saveStatus?: SaveStatus;
+  evaluating?: boolean;
 }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
@@ -84,14 +94,6 @@ function parseResearchPlan(markdown: string): ResearchPlanData {
   return result;
 }
 
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
-}
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ResearchSummaryCard({
@@ -99,7 +101,14 @@ export function ResearchSummaryCard({
   clarificationsData,
   duration,
   cost,
+  editable,
+  onClarificationsChange,
+  onClarificationsContinue,
+  onReset,
+  saveStatus,
+  evaluating,
 }: ResearchSummaryCardProps) {
+  const [planExpanded, setPlanExpanded] = useState(true);
   const plan = parseResearchPlan(researchPlan);
   const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
@@ -110,34 +119,43 @@ export function ResearchSummaryCard({
     ? Math.round((plan.dimensionsSelected / plan.dimensionsEvaluated) * 100)
     : 0;
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Summary Card */}
-      <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-muted/30">
-          <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Research Complete
-          </span>
-          <div className="flex-1" />
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {duration !== undefined && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatDuration(duration)}
-              </span>
-            )}
-            {cost !== undefined && cost > 0 && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
-              </span>
-            )}
-          </div>
+  // Research plan summary card content
+  const summaryCard = (
+    <div className="rounded-lg border shadow-sm overflow-hidden">
+      {/* Header — clickable when collapsible */}
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left"
+        onClick={() => setPlanExpanded((prev) => !prev)}
+        style={{ cursor: "pointer" }}
+      >
+        <ChevronRight
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: planExpanded ? "rotate(90deg)" : undefined }}
+        />
+        <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+        <span className="text-sm font-semibold tracking-tight text-foreground">
+          Research Complete
+        </span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {duration !== undefined && (
+            <span className="flex items-center gap-1">
+              <Clock className="size-3" />
+              {formatElapsed(duration)}
+            </span>
+          )}
+          {cost !== undefined && cost > 0 && (
+            <span className="flex items-center gap-1">
+              <DollarSign className="size-3" />
+              ${cost.toFixed(4)}
+            </span>
+          )}
         </div>
+      </button>
 
-        {/* Stats Grid */}
+      {/* Stats Grid — collapsible when editable */}
+      {planExpanded && (
         <div className="grid grid-cols-3 divide-x">
           {/* Dimensions Column */}
           <div className="p-4">
@@ -272,11 +290,43 @@ export function ResearchSummaryCard({
             )}
           </div>
         </div>
-      </div>
+      )}
+    </div>
+  );
 
-      {/* Clarifications — always visible */}
+  if (editable) {
+    return (
+      <div className="flex h-full flex-col gap-3">
+        {/* Summary Card — fixed height, collapses when toggled */}
+        <div className="shrink-0">{summaryCard}</div>
+
+        {/* Clarifications editor — fills remaining space */}
+        <div className="flex-1 min-h-0 rounded-lg border shadow-sm overflow-hidden">
+          <ClarificationsEditor
+            data={clarificationsData}
+            onChange={onClarificationsChange ?? (() => {})}
+            onContinue={onClarificationsContinue}
+            onReset={onReset}
+            saveStatus={saveStatus}
+            evaluating={evaluating}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Summary Card */}
+      {summaryCard}
+
+      {/* Clarifications — read-only, fixed height */}
       <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
-        <ClarificationsEditor data={clarificationsData} onChange={() => {}} readOnly />
+        <ClarificationsEditor
+          data={clarificationsData}
+          onChange={() => {}}
+          readOnly
+        />
       </div>
     </div>
   );

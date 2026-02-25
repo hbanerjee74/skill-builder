@@ -30,6 +30,17 @@ export function buildIntakeJson(fields: Record<string, string>): string | null {
   return Object.keys(data).length > 0 ? JSON.stringify(data) : null;
 }
 
+/** Format milliseconds as a human-readable elapsed string (e.g. "5s", "1m 23s"). */
+export function formatElapsed(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+  return `${secs}s`;
+}
+
 /** Derive a human-readable label from a model ID string. */
 export function deriveModelLabel(modelId: string): string {
   if (modelId.includes("haiku")) return "Haiku";
