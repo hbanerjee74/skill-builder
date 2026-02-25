@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2, CheckCircle2, Circle, AlertCircle, XCircle, Info } from "lucide-react";
+import { CheckCircle2, Circle, AlertCircle, XCircle, Info } from "lucide-react";
 import type { AnswerEvaluation } from "@/lib/tauri";
 
 export type GateVerdict = "sufficient" | "mixed" | "insufficient";
@@ -16,19 +16,15 @@ interface TransitionGateDialogProps {
   open: boolean;
   verdict: GateVerdict | null;
   evaluation: AnswerEvaluation | null;
-  /** Gate context: "clarifications" (gate 1, before research) or "refinements" (gate 2, before decisions). */
   context?: "clarifications" | "refinements";
-  /** Sufficient: skip straight to decisions. */
+  /** Sufficient gate 1: skip research, jump to decisions. */
   onSkip: () => void;
-  /** Sufficient override: run research anyway (no autofill needed). */
+  /** Sufficient gate 1: run research anyway. Sufficient gate 2: advance to decisions. Mixed/insufficient: continue anyway. */
   onResearch: () => void;
-  /** Insufficient: auto-fill all answers then skip to decisions. */
-  onAutofillAndSkip: () => void;
-  /** Mixed: auto-fill empty answers then continue to detailed research. */
-  onAutofillAndResearch: () => void;
-  /** Override for mixed/insufficient: go back to review to answer manually. */
+  /** Go back to the review editor. */
   onLetMeAnswer: () => void;
-  isAutofilling?: boolean;
+  /** Continue anyway (advance without auto-fill). Same as onSkip for gate 2, onResearch for gate 1. */
+  onContinueAnyway: () => void;
 }
 
 /** Render per-question verdicts grouped by category. */
@@ -90,10 +86,8 @@ export function TransitionGateDialog({
   context = "clarifications",
   onSkip,
   onResearch,
-  onAutofillAndSkip,
-  onAutofillAndResearch,
   onLetMeAnswer,
-  isAutofilling = false,
+  onContinueAnyway,
 }: TransitionGateDialogProps) {
   if (!verdict) return null;
 
@@ -107,7 +101,8 @@ export function TransitionGateDialog({
   const onlyNeedsRefinement = !hasMissing && !hasVague && !hasContradictory
     && pq.some(q => q.verdict === "needs_refinement");
 
-  // Sufficient: all answers are detailed
+  // ── Sufficient ──────────────────────────────────────────────────────────────
+
   if (verdict === "sufficient") {
     if (isRefinements) {
       return (
@@ -130,7 +125,7 @@ export function TransitionGateDialog({
       );
     }
 
-    // Gate 1 (clarifications): offer to skip research
+    // Gate 1: offer to skip research
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
         <DialogContent showCloseButton={false}>
@@ -153,7 +148,8 @@ export function TransitionGateDialog({
     );
   }
 
-  // Mixed with only needs_refinement (gate 1): detailed research will handle these
+  // ── Mixed: only needs_refinement (gate 1) ─────────────────────────────────
+
   if (verdict === "mixed" && onlyNeedsRefinement && !isRefinements) {
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
@@ -182,55 +178,28 @@ export function TransitionGateDialog({
     );
   }
 
-  // Mixed: some answers missing or vague
-  if (verdict === "mixed") {
-    return (
-      <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>
-              {isRefinements ? "Some Refinements Unanswered" : "Review Answer Quality"}
-            </DialogTitle>
-            <DialogDescription asChild>
-              <div>
-                <p>
-                  {isRefinements
-                    ? "Some refinement answers are missing or need attention. Auto-fill with recommendations, or go back to answer them yourself."
-                    : "The evaluator found issues with some answers:"}
-                </p>
-                {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
-              </div>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={onLetMeAnswer}>
-              Let Me Answer
-            </Button>
-            <Button onClick={isRefinements ? onAutofillAndSkip : onAutofillAndResearch} disabled={isAutofilling}>
-              {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Research"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  // ── Mixed / Insufficient: show breakdown + Let Me Answer / Continue Anyway ─
 
-  // Insufficient: most answers empty/vague
+  const title = verdict === "mixed"
+    ? (isRefinements ? "Some Refinements Unanswered" : "Review Answer Quality")
+    : (isRefinements ? "Refinements Need Attention" : "Review Answer Quality");
+
+  const description = verdict === "mixed"
+    ? (isRefinements
+        ? "Some refinement answers are missing or need attention:"
+        : "The evaluator found issues with some answers:")
+    : (isRefinements
+        ? "Most refinement questions haven't been answered:"
+        : "The evaluator found issues with most answers:");
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>
-            {isRefinements ? "Refinements Need Attention" : "Review Answer Quality"}
-          </DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription asChild>
             <div>
-              <p>
-                {isRefinements
-                  ? "Most refinement questions haven't been answered. Auto-fill with recommendations, or go back to answer them."
-                  : "The evaluator found issues with most answers:"}
-              </p>
+              <p>{description}</p>
               {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
             </div>
           </DialogDescription>
@@ -239,10 +208,7 @@ export function TransitionGateDialog({
           <Button variant="outline" onClick={onLetMeAnswer}>
             Let Me Answer
           </Button>
-          <Button onClick={isRefinements ? onAutofillAndSkip : onAutofillAndResearch} disabled={isAutofilling}>
-            {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Research"}
-          </Button>
+          <Button onClick={onContinueAnyway}>Continue Anyway</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

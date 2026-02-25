@@ -44,8 +44,6 @@ import {
   endWorkflowSession,
   getDisabledSteps,
   runAnswerEvaluator,
-  autofillClarifications,
-  autofillRefinements,
   logGateDecision,
   type AnswerEvaluation,
 } from "@/lib/tauri";
@@ -276,7 +274,7 @@ export default function WorkflowPage() {
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
   const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
-  const [isAutofilling, setIsAutofilling] = useState(false);
+  // isAutofilling state removed — auto-fill buttons removed from gate dialog
   const gateAgentIdRef = useRef<string | null>(null);
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
@@ -834,41 +832,7 @@ export default function WorkflowPage() {
     }
   };
 
-  /** Shared autofill logic: call the appropriate autofill command, then run onSuccess with the count. */
-  const runAutofill = async (decision: string, onSuccess: (filled: number) => void) => {
-    logGateAction(decision);
-    setIsAutofilling(true);
-    try {
-      const filled = gateContext === "refinements"
-        ? await autofillRefinements(skillName)
-        : await autofillClarifications(skillName);
-      setIsAutofilling(false);
-      onSuccess(filled);
-    } catch (err) {
-      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
-      setIsAutofilling(false);
-    }
-  };
-
-  /** Insufficient: auto-fill all answers then skip to decisions (gate 1) or advance (gate 2). */
-  const handleGateAutofillAndSkip = () =>
-    runAutofill("autofill_and_skip", (filled) => {
-      const label = filled !== 1 ? "s" : "";
-      if (gateContext === "refinements") {
-        skipToDecisions(`Auto-filled ${filled} refinement answer${label} — continuing to decisions`);
-      } else {
-        skipToDecisions(`Auto-filled ${filled} answer${label} — skipped detailed research`);
-      }
-    });
-
-  /** Mixed: auto-fill empty answers then proceed to detailed research. */
-  const handleGateAutofillAndResearch = () =>
-    runAutofill("autofill_and_research", (filled) => {
-      closeGateDialog();
-      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
-      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-      advanceToNextStep();
-    });
+  // Auto-fill handlers removed — gate dialog now uses "Let Me Answer" / "Continue Anyway" only
 
   /** Sufficient override: run research anyway (gate 1) or continue to decisions (gate 2). */
   const handleGateResearch = () => {
@@ -876,6 +840,15 @@ export default function WorkflowPage() {
     closeGateDialog();
     updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
+  };
+
+  /** Continue anyway: advance without auto-fill despite incomplete answers. */
+  const handleGateContinueAnyway = () => {
+    logGateAction("continue_anyway");
+    closeGateDialog();
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+    advanceToNextStep();
+    toast.success("Continuing with current answers");
   };
 
   /** Override: go back to review so user can answer manually. */
@@ -1260,10 +1233,8 @@ export default function WorkflowPage() {
         context={gateContext}
         onSkip={handleGateSkip}
         onResearch={handleGateResearch}
-        onAutofillAndSkip={handleGateAutofillAndSkip}
-        onAutofillAndResearch={handleGateAutofillAndResearch}
         onLetMeAnswer={handleGateLetMeAnswer}
-        isAutofilling={isAutofilling}
+        onContinueAnyway={handleGateContinueAnyway}
       />
 
       <div className="flex h-[calc(100%+3rem)] -m-6">

@@ -26,14 +26,12 @@ function makeEvaluation(
   };
 }
 
-// Sufficient: all clear
 const sufficientEval = makeEvaluation("sufficient", [
   { question_id: "Q1", verdict: "clear" },
   { question_id: "Q2", verdict: "clear" },
   { question_id: "Q3", verdict: "clear" },
 ]);
 
-// Mixed — only needs_refinement (no missing/vague/contradictory)
 const onlyRefinementEval = makeEvaluation("mixed", [
   { question_id: "Q1", verdict: "clear" },
   { question_id: "Q2", verdict: "needs_refinement" },
@@ -41,7 +39,6 @@ const onlyRefinementEval = makeEvaluation("mixed", [
   { question_id: "Q4", verdict: "needs_refinement" },
 ]);
 
-// Mixed — has missing + vague
 const mixedEval = makeEvaluation("mixed", [
   { question_id: "Q1", verdict: "clear" },
   { question_id: "Q2", verdict: "not_answered" },
@@ -49,7 +46,6 @@ const mixedEval = makeEvaluation("mixed", [
   { question_id: "Q4", verdict: "clear" },
 ]);
 
-// Insufficient — mostly empty/vague
 const insufficientEval = makeEvaluation("insufficient", [
   { question_id: "Q1", verdict: "not_answered" },
   { question_id: "Q2", verdict: "not_answered" },
@@ -61,9 +57,8 @@ const insufficientEval = makeEvaluation("insufficient", [
 const defaultHandlers = {
   onSkip: vi.fn(),
   onResearch: vi.fn(),
-  onAutofillAndSkip: vi.fn(),
-  onAutofillAndResearch: vi.fn(),
   onLetMeAnswer: vi.fn(),
+  onContinueAnyway: vi.fn(),
 };
 
 function resetHandlers() {
@@ -72,14 +67,13 @@ function resetHandlers() {
 
 // ─── Gate 1: After Step 2 (clarifications review) ─────────────────────────────
 
-describe("TransitionGateDialog — Gate 1 (clarifications)", () => {
-  const gate1Props = { open: true, context: "clarifications" as const, ...defaultHandlers };
-
+describe("Gate 1 (clarifications)", () => {
+  const props = { open: true, context: "clarifications" as const, ...defaultHandlers };
   beforeEach(resetHandlers);
 
   describe("sufficient → Run Research Anyway | Skip to Decisions", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       expect(screen.getByText("Skip Detailed Research?")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Run Research Anyway/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Skip to Decisions/i })).toBeInTheDocument();
@@ -87,53 +81,47 @@ describe("TransitionGateDialog — Gate 1 (clarifications)", () => {
 
     it("Run Research Anyway calls onResearch", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       await user.click(screen.getByRole("button", { name: /Run Research Anyway/i }));
       expect(defaultHandlers.onResearch).toHaveBeenCalledOnce();
     });
 
     it("Skip to Decisions calls onSkip", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       await user.click(screen.getByRole("button", { name: /Skip to Decisions/i }));
       expect(defaultHandlers.onSkip).toHaveBeenCalledOnce();
     });
 
     it("does not show evaluation breakdown", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       expect(screen.queryByTestId("question-breakdown")).not.toBeInTheDocument();
     });
   });
 
-  describe("only needs_refinement → Continue to Research", () => {
+  describe("only needs_refinement → Let Me Revise | Continue to Research", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={onlyRefinementEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={onlyRefinementEval} />);
       expect(screen.getByText("Some Answers Need Deeper Research")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Continue to Research/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Revise/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Continue to Research/i })).toBeInTheDocument();
     });
 
-    it("does NOT show Auto-fill button", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={onlyRefinementEval} />);
+    it("does NOT show Continue Anyway or Auto-fill", () => {
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={onlyRefinementEval} />);
+      expect(screen.queryByRole("button", { name: /Continue Anyway/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Auto-fill/i })).not.toBeInTheDocument();
     });
 
     it("Continue to Research calls onResearch", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={onlyRefinementEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={onlyRefinementEval} />);
       await user.click(screen.getByRole("button", { name: /Continue to Research/i }));
       expect(defaultHandlers.onResearch).toHaveBeenCalledOnce();
     });
 
-    it("Let Me Revise calls onLetMeAnswer", async () => {
-      const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={onlyRefinementEval} />);
-      await user.click(screen.getByRole("button", { name: /Let Me Revise/i }));
-      expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
-    });
-
-    it("shows evaluation breakdown with needs refinement questions", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={onlyRefinementEval} />);
+    it("shows breakdown with needs refinement questions", () => {
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={onlyRefinementEval} />);
       const breakdown = screen.getByTestId("question-breakdown");
       expect(breakdown).toHaveTextContent(/Needs refinement:/);
       expect(breakdown).toHaveTextContent("Q2");
@@ -141,87 +129,81 @@ describe("TransitionGateDialog — Gate 1 (clarifications)", () => {
     });
   });
 
-  describe("mixed (has missing/vague) → Let Me Answer | Auto-fill & Research", () => {
+  describe("mixed → Let Me Answer | Continue Anyway", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={mixedEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
       expect(screen.getByText("Review Answer Quality")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Continue Anyway/i })).toBeInTheDocument();
     });
 
-    it("Auto-fill & Research calls onAutofillAndResearch", async () => {
+    it("does NOT show Auto-fill button", () => {
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
+      expect(screen.queryByRole("button", { name: /Auto-fill/i })).not.toBeInTheDocument();
+    });
+
+    it("Continue Anyway calls onContinueAnyway", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={mixedEval} />);
-      await user.click(screen.getByRole("button", { name: /Auto-fill & Research/i }));
-      expect(defaultHandlers.onAutofillAndResearch).toHaveBeenCalledOnce();
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
+      await user.click(screen.getByRole("button", { name: /Continue Anyway/i }));
+      expect(defaultHandlers.onContinueAnyway).toHaveBeenCalledOnce();
     });
 
     it("Let Me Answer calls onLetMeAnswer", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={mixedEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
     });
 
-    it("shows breakdown with missing and vague categories", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={mixedEval} />);
+    it("shows breakdown with missing and vague", () => {
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
       const breakdown = screen.getByTestId("question-breakdown");
       expect(breakdown).toHaveTextContent(/Missing:.*Q2/);
       expect(breakdown).toHaveTextContent(/Vague:.*Q3/);
     });
-
-    it("disables Auto-fill button when isAutofilling", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="mixed" evaluation={mixedEval} isAutofilling />);
-      expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeDisabled();
-    });
   });
 
-  describe("insufficient → Let Me Answer | Auto-fill & Research", () => {
+  describe("insufficient → Let Me Answer | Continue Anyway", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="insufficient" evaluation={insufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
       expect(screen.getByText("Review Answer Quality")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Continue Anyway/i })).toBeInTheDocument();
     });
 
-    it("Auto-fill & Research calls onAutofillAndResearch", async () => {
+    it("Continue Anyway calls onContinueAnyway", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="insufficient" evaluation={insufficientEval} />);
-      await user.click(screen.getByRole("button", { name: /Auto-fill & Research/i }));
-      expect(defaultHandlers.onAutofillAndResearch).toHaveBeenCalledOnce();
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
+      await user.click(screen.getByRole("button", { name: /Continue Anyway/i }));
+      expect(defaultHandlers.onContinueAnyway).toHaveBeenCalledOnce();
     });
 
     it("Let Me Answer calls onLetMeAnswer", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate1Props} verdict="insufficient" evaluation={insufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
     });
 
-    it("shows breakdown with missing and vague categories", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="insufficient" evaluation={insufficientEval} />);
+    it("shows breakdown", () => {
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
       const breakdown = screen.getByTestId("question-breakdown");
       expect(breakdown).toHaveTextContent(/Missing:.*Q1/);
       expect(breakdown).toHaveTextContent(/Vague:.*Q3/);
-    });
-
-    it("disables Auto-fill button when isAutofilling", () => {
-      render(<TransitionGateDialog {...gate1Props} verdict="insufficient" evaluation={insufficientEval} isAutofilling />);
-      expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeDisabled();
     });
   });
 });
 
 // ─── Gate 2: After Step 3 (refinements review) ───────────────────────────────
 
-describe("TransitionGateDialog — Gate 2 (refinements)", () => {
-  const gate2Props = { open: true, context: "refinements" as const, ...defaultHandlers };
-
+describe("Gate 2 (refinements)", () => {
+  const props = { open: true, context: "refinements" as const, ...defaultHandlers };
   beforeEach(resetHandlers);
 
   describe("sufficient → Continue to Decisions", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate2Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       expect(screen.getByText("Refinement Answers Complete")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Continue to Decisions/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Back to Review/i })).toBeInTheDocument();
@@ -229,79 +211,67 @@ describe("TransitionGateDialog — Gate 2 (refinements)", () => {
 
     it("Continue to Decisions calls onResearch", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="sufficient" evaluation={sufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="sufficient" evaluation={sufficientEval} />);
       await user.click(screen.getByRole("button", { name: /Continue to Decisions/i }));
       expect(defaultHandlers.onResearch).toHaveBeenCalledOnce();
     });
-
-    it("Back to Review calls onLetMeAnswer", async () => {
-      const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="sufficient" evaluation={sufficientEval} />);
-      await user.click(screen.getByRole("button", { name: /Back to Review/i }));
-      expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
-    });
   });
 
-  describe("mixed → Let Me Answer | Auto-fill & Continue", () => {
+  describe("mixed → Let Me Answer | Continue Anyway", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate2Props} verdict="mixed" evaluation={mixedEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
       expect(screen.getByText("Some Refinements Unanswered")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Auto-fill & Continue/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Continue Anyway/i })).toBeInTheDocument();
     });
 
-    it("Auto-fill & Continue calls onAutofillAndSkip", async () => {
+    it("does NOT show Auto-fill button", () => {
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
+      expect(screen.queryByRole("button", { name: /Auto-fill/i })).not.toBeInTheDocument();
+    });
+
+    it("Continue Anyway calls onContinueAnyway", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="mixed" evaluation={mixedEval} />);
-      await user.click(screen.getByRole("button", { name: /Auto-fill & Continue/i }));
-      expect(defaultHandlers.onAutofillAndSkip).toHaveBeenCalledOnce();
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
+      await user.click(screen.getByRole("button", { name: /Continue Anyway/i }));
+      expect(defaultHandlers.onContinueAnyway).toHaveBeenCalledOnce();
     });
 
     it("Let Me Answer calls onLetMeAnswer", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="mixed" evaluation={mixedEval} />);
+      render(<TransitionGateDialog {...props} verdict="mixed" evaluation={mixedEval} />);
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
-    });
-
-    it("disables Auto-fill button when isAutofilling", () => {
-      render(<TransitionGateDialog {...gate2Props} verdict="mixed" evaluation={mixedEval} isAutofilling />);
-      expect(screen.getByRole("button", { name: /Auto-fill & Continue/i })).toBeDisabled();
     });
   });
 
-  describe("insufficient → Let Me Answer | Auto-fill & Continue", () => {
+  describe("insufficient → Let Me Answer | Continue Anyway", () => {
     it("shows correct title and buttons", () => {
-      render(<TransitionGateDialog {...gate2Props} verdict="insufficient" evaluation={insufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
       expect(screen.getByText("Refinements Need Attention")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Auto-fill & Continue/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Continue Anyway/i })).toBeInTheDocument();
     });
 
-    it("Auto-fill & Continue calls onAutofillAndSkip", async () => {
+    it("Continue Anyway calls onContinueAnyway", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="insufficient" evaluation={insufficientEval} />);
-      await user.click(screen.getByRole("button", { name: /Auto-fill & Continue/i }));
-      expect(defaultHandlers.onAutofillAndSkip).toHaveBeenCalledOnce();
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
+      await user.click(screen.getByRole("button", { name: /Continue Anyway/i }));
+      expect(defaultHandlers.onContinueAnyway).toHaveBeenCalledOnce();
     });
 
     it("Let Me Answer calls onLetMeAnswer", async () => {
       const user = userEvent.setup();
-      render(<TransitionGateDialog {...gate2Props} verdict="insufficient" evaluation={insufficientEval} />);
+      render(<TransitionGateDialog {...props} verdict="insufficient" evaluation={insufficientEval} />);
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(defaultHandlers.onLetMeAnswer).toHaveBeenCalledOnce();
-    });
-
-    it("disables Auto-fill button when isAutofilling", () => {
-      render(<TransitionGateDialog {...gate2Props} verdict="insufficient" evaluation={insufficientEval} isAutofilling />);
-      expect(screen.getByRole("button", { name: /Auto-fill & Continue/i })).toBeDisabled();
     });
   });
 });
 
 // ─── Evaluation Breakdown ─────────────────────────────────────────────────────
 
-describe("TransitionGateDialog — EvaluationBreakdown", () => {
+describe("EvaluationBreakdown", () => {
   const props = { open: true, context: "clarifications" as const, ...defaultHandlers };
 
   it("shows contradictory category with conflict info", () => {
@@ -336,7 +306,7 @@ describe("TransitionGateDialog — EvaluationBreakdown", () => {
 
 // ─── Edge Cases ───────────────────────────────────────────────────────────────
 
-describe("TransitionGateDialog — Edge Cases", () => {
+describe("Edge Cases", () => {
   const props = { open: true, context: "clarifications" as const, ...defaultHandlers };
 
   it("renders nothing when verdict is null", () => {
