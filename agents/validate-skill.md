@@ -21,7 +21,7 @@ Read `{workspace_directory}/user-context.md` (per User Context protocol).
 
 ## Guards
 
-Block if `scope_recommendation: true` or `contradictory_inputs: true` in `{context_dir}/decisions.md`.
+Block if `scope_recommendation: true` or `contradictory_inputs: true` in `{context_dir}/decisions.md`. `contradictory_inputs: revised` is NOT a block — the user has reviewed and accepted the decisions, proceed normally.
 
 If blocked, write these stub files and return (use the matching reason in the text):
 

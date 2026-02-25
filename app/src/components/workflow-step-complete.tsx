@@ -5,7 +5,7 @@ import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
+import { readFile, writeFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -206,6 +206,26 @@ export function WorkflowStepComplete({
     : undefined;
   const displayCost = reviewMode ? dbCost : cost;
 
+  // Autosave state for decisions editing — hoisted above all early returns to satisfy Rules of Hooks
+  const [decisionsEditContent, setDecisionsEditContent] = useState<string | null>(null);
+  const [decisionsEditorDirty, setDecisionsEditorDirty] = useState(false);
+  const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  useEffect(() => {
+    if (!decisionsEditorDirty || !decisionsEditContent || !skillsPath || !skillName || reviewMode) return;
+    setDecisionsSaveStatus("saving");
+    const timer = setTimeout(async () => {
+      try {
+        await writeFile(`${skillsPath}/${skillName}/context/decisions.md`, decisionsEditContent);
+        setDecisionsEditorDirty(false);
+        setDecisionsSaveStatus("saved");
+      } catch (err) {
+        console.error("Failed to save decisions.md:", err);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [decisionsEditContent, decisionsEditorDirty, skillsPath, skillName, reviewMode]);
+
   // Loading spinner — shown while files are being fetched (initial or re-fetch)
   if (loadingFiles) {
     return (
@@ -386,9 +406,26 @@ export function WorkflowStepComplete({
               decisionsContent={decisionsContent}
               duration={reviewMode ? dbDuration : duration}
               cost={displayCost}
+              allowEdit={!reviewMode}
+              onDecisionsChange={(serialized) => {
+                setDecisionsEditContent(serialized);
+                setDecisionsEditorDirty(true);
+                setDecisionsSaveStatus("saving");
+              }}
             />
           </div>
         </ScrollArea>
+        {!reviewMode && decisionsSaveStatus !== "idle" && (
+          <div className="flex justify-start">
+            <span className="text-xs text-muted-foreground">
+              {decisionsSaveStatus === "saving" ? (
+                "Saving…"
+              ) : (
+                <span style={{ color: "var(--color-seafoam)" }}>Saved</span>
+              )}
+            </span>
+          </div>
+        )}
         <StepActionBar
           isLastStep={isLastStep}
           reviewMode={reviewMode}

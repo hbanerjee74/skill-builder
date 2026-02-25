@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -7,10 +7,10 @@ interface DecisionFrontmatter {
   decision_count: number;
   conflicts_resolved: number;
   round: number;
-  contradictory_inputs?: boolean;
+  contradictory_inputs?: true | "revised";
 }
 
-interface Decision {
+export interface Decision {
   id: string;
   title: string;
   originalQuestion: string;
@@ -23,9 +23,11 @@ interface DecisionsSummaryCardProps {
   decisionsContent: string;
   duration?: number;
   cost?: number;
+  allowEdit?: boolean;
+  onDecisionsChange?: (serialized: string) => void;
 }
 
-// ─── Parsers ──────────────────────────────────────────────────────────────────
+// ─── Parsers & Serializers ────────────────────────────────────────────────────
 
 function parseFrontmatter(content: string): DecisionFrontmatter {
   const defaults: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
@@ -39,17 +41,18 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
       case "decision_count": defaults.decision_count = parseInt(value) || 0; break;
       case "conflicts_resolved": defaults.conflicts_resolved = parseInt(value) || 0; break;
       case "round": defaults.round = parseInt(value) || 1; break;
-      case "contradictory_inputs": defaults.contradictory_inputs = value === "true"; break;
+      case "contradictory_inputs":
+        if (value === "true") defaults.contradictory_inputs = true;
+        else if (value === "revised") defaults.contradictory_inputs = "revised";
+        break;
     }
   }
   return defaults;
 }
 
-function parseDecisions(content: string): Decision[] {
+export function parseDecisions(content: string): Decision[] {
   const decisions: Decision[] = [];
-  // Strip frontmatter
   const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  // Split on ### D{n}: headings
   const sections = body.split(/(?=^### D\d+)/m).filter((s) => s.trim());
 
   for (const section of sections) {
@@ -85,6 +88,32 @@ function parseDecisions(content: string): Decision[] {
   return decisions;
 }
 
+/** Serialize Decision[] back to decisions.md format.
+ *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
+ *  to signal the user has reviewed and accepted the flagged decisions.
+ */
+export function serializeDecisions(decisions: Decision[], rawFrontmatter: string): string {
+  const updatedFm = rawFrontmatter.replace(
+    /contradictory_inputs:\s*true/,
+    "contradictory_inputs: revised"
+  );
+  const blocks = decisions.map((d) =>
+    [
+      `### ${d.id}: ${d.title}`,
+      `- **Original question:** ${d.originalQuestion}`,
+      `- **Decision:** ${d.decision}`,
+      `- **Implication:** ${d.implication}`,
+      `- **Status:** ${d.status}`,
+    ].join("\n")
+  );
+  return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
+}
+
+function extractRawFrontmatter(content: string): string {
+  const match = content.match(/^(---[\s\S]*?---)/);
+  return match ? match[1] : "";
+}
+
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -95,12 +124,40 @@ function formatDuration(ms: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function DecisionsSummaryCard({ decisionsContent, duration, cost }: DecisionsSummaryCardProps) {
+export function DecisionsSummaryCard({
+  decisionsContent,
+  duration,
+  cost,
+  allowEdit,
+  onDecisionsChange,
+}: DecisionsSummaryCardProps) {
   const fm = parseFrontmatter(decisionsContent);
-  const decisions = parseDecisions(decisionsContent);
+  const rawFrontmatter = extractRawFrontmatter(decisionsContent);
+
+  const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+  // Track whether the user has made any edit this session — used to show revised banner immediately
+  const [wasEdited, setWasEdited] = useState(false);
+
+  useEffect(() => {
+    setDecisions(parseDecisions(decisionsContent));
+    setWasEdited(false);
+  }, [decisionsContent]);
+
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
   const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+
+  // Effective contradictory state: upgrade true → "revised" once the user edits
+  const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
+    ? "revised"
+    : fm.contradictory_inputs;
+
+  function handleDecisionChange(updated: Decision) {
+    const next = decisions.map((d) => (d.id === updated.id ? updated : d));
+    setDecisions(next);
+    setWasEdited(true);
+    onDecisionsChange?.(serializeDecisions(next, rawFrontmatter));
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -130,10 +187,30 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
         </div>
 
         {/* Contradictory inputs banner */}
-        {fm.contradictory_inputs && (
+        {effectiveContradictory === true && (
           <div className="flex items-center gap-2 border-b bg-destructive/10 px-5 py-2 text-xs text-destructive font-medium">
             <AlertTriangle className="size-3.5" />
             Contradictory inputs detected — some answers are logically incompatible. Review decisions marked "needs-review" before generating the skill.
+          </div>
+        )}
+        {effectiveContradictory === "revised" && (
+          <div
+            className="flex items-center gap-2 border-b px-5 py-2 text-xs font-medium"
+            style={{
+              background: "color-mix(in oklch, var(--color-seafoam), transparent 90%)",
+              color: "var(--color-seafoam)",
+            }}
+          >
+            <CheckCircle2 className="size-3.5" />
+            Contradictions reviewed — skill will be generated with your edits.
+          </div>
+        )}
+
+        {/* needs-review editing hint — only shown before user has edited */}
+        {allowEdit && needsReviewCount > 0 && effectiveContradictory !== "revised" && (
+          <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
+            <AlertTriangle className="size-3.5" />
+            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save automatically.
           </div>
         )}
 
@@ -187,10 +264,15 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
               </span>
               <span className="text-xs text-muted-foreground">reconciled</span>
             </div>
-            {fm.contradictory_inputs ? (
+            {effectiveContradictory === true ? (
               <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
                 <AlertTriangle className="size-3" />
                 Contradictions — review required
+              </div>
+            ) : effectiveContradictory === "revised" ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
+                <CheckCircle2 className="size-3" />
+                Reviewed — proceeding with edits
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">No unresolvable contradictions</p>
@@ -202,7 +284,12 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
 
       {/* Decision Cards */}
       {decisions.map((d) => (
-        <DecisionCard key={d.id} decision={d} />
+        <DecisionCard
+          key={d.id}
+          decision={d}
+          allowEdit={allowEdit}
+          onChange={handleDecisionChange}
+        />
       ))}
     </div>
   );
@@ -228,8 +315,52 @@ const statusColors: Record<Decision["status"], { border: string; badge: string; 
   },
 };
 
-function DecisionCard({ decision }: { decision: Decision }) {
-  const [expanded, setExpanded] = useState(false);
+function AutoResizeTextarea({
+  value,
+  onChange,
+  className,
+  style,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={className}
+      style={{ resize: "none", overflow: "hidden", ...style }}
+      rows={1}
+    />
+  );
+}
+
+function DecisionCard({
+  decision,
+  allowEdit,
+  onChange,
+}: {
+  decision: Decision;
+  allowEdit?: boolean;
+  onChange?: (updated: Decision) => void;
+}) {
+  const isEditable = allowEdit && decision.status === "needs-review";
+  const [expanded, setExpanded] = useState(isEditable ?? false);
   const colors = statusColors[decision.status];
 
   return (
@@ -290,13 +421,22 @@ function DecisionCard({ decision }: { decision: Decision }) {
             <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--color-pacific)" }}>
               Decision
             </span>
-            <p className="mt-0.5 text-sm text-foreground leading-relaxed">
-              {decision.decision}
-            </p>
+            {isEditable ? (
+              <AutoResizeTextarea
+                value={decision.decision}
+                onChange={(v) => onChange?.({ ...decision, decision: v })}
+                placeholder="Enter decision…"
+                className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
+              />
+            ) : (
+              <p className="mt-0.5 text-sm text-foreground leading-relaxed">
+                {decision.decision}
+              </p>
+            )}
           </div>
 
           {/* Implication */}
-          {decision.implication && (
+          {(decision.implication || isEditable) && (
             <div
               className="rounded-md border px-3 py-2"
               style={{
@@ -307,9 +447,19 @@ function DecisionCard({ decision }: { decision: Decision }) {
               <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--color-ocean)" }}>
                 Implication
               </span>
-              <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
-                {decision.implication}
-              </p>
+              {isEditable ? (
+                <AutoResizeTextarea
+                  value={decision.implication}
+                  onChange={(v) => onChange?.({ ...decision, implication: v })}
+                  placeholder="Enter implication…"
+                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
+                  style={{ color: "var(--color-ocean)" }}
+                />
+              ) : (
+                <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
+                  {decision.implication}
+                </p>
+              )}
             </div>
           )}
         </div>
