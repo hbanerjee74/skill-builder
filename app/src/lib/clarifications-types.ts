@@ -33,9 +33,17 @@ export interface Question {
   text: string;
   consolidated_from?: string[];
   choices: Choice[];
+  recommendation?: string | null; // recommended choice ID, e.g. "B" (may also be legacy "B — rationale")
   answer_choice: string | null; // "A"/"B"/... | "custom" | null
   answer_text: string | null; // freeform text
   refinements: Question[]; // recursive, same shape
+}
+
+/** Extract the recommended choice ID from a recommendation string.
+ *  Handles both the current format ("B") and legacy format ("B — rationale text"). */
+export function parseRecommendedChoiceId(recommendation: string | null | undefined): string | null {
+  if (!recommendation) return null;
+  return recommendation.split(/\s*[—–-]\s*/)[0].trim() || null;
 }
 
 export interface Choice {

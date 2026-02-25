@@ -41,7 +41,7 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 
 **Always:**
 - Every question must have 2-4 choices plus a final "Other (please specify)" choice with `is_other: true`
-- Include a `recommendation` field with the recommended choice and rationale
+- Include a `recommendation` field with only the recommended choice ID (e.g., `"B"`) — no rationale text
 - `answer_choice` and `answer_text` are always `null` at step 0
 - `refinements` is always an empty array `[]` at step 0 (added by detailed-research in step 3)
 - `metadata.must_answer_count` must equal the count of questions with `must_answer: true`
@@ -83,7 +83,7 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
             {"id": "C", "text": "Choice C text", "is_other": false},
             {"id": "D", "text": "Other (please specify)", "is_other": true}
           ],
-          "recommendation": "A — Use recurring fee for MS; spread TCV for PS.",
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -135,7 +135,7 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 | `text` | string | yes | Full question text (title is just a short label) |
 | `consolidated_from` | string[] | optional | Source dimension names when question draws from multiple dimensions |
 | `choices` | array | yes | 2-4 choices + "Other (please specify)" |
-| `recommendation` | string | yes | Recommended choice letter + rationale |
+| `recommendation` | string | yes | Recommended choice letter only (e.g., `"B"`) |
 | `answer_choice` | string/null | yes | Always `null` at Step 0 |
 | `answer_text` | string/null | yes | Always `null` at Step 0 |
 | `refinements` | array | yes | Always `[]` at Step 0. Populated in Step 3 by detailed-research |
@@ -165,7 +165,7 @@ Number questions sequentially (Q1, Q2, ...). Number sections sequentially (S1, S
 | `title` | string | Short title |
 | `text` | string | Rationale for why this refinement matters |
 | `choices` | array | Same format as question choices |
-| `recommendation` | string | Recommended choice + rationale |
+| `recommendation` | string | Recommended choice letter only (e.g., `"B"`) |
 | `answer_choice` | string/null | Always `null` when created |
 | `answer_text` | string/null | Always `null` when created |
 
@@ -213,7 +213,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
             {"id": "C", "text": "Three or more levels — full corporate hierarchy tree", "is_other": false},
             {"id": "D", "text": "Other (please specify)", "is_other": true}
           ],
-          "recommendation": "B — Two levels covers most enterprise use cases without excessive complexity.",
+          "recommendation": "B",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -230,7 +230,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
             {"id": "C", "text": "By both industry and tier", "is_other": false},
             {"id": "D", "text": "Other (please specify)", "is_other": true}
           ],
-          "recommendation": "C — Dual classification enables richer segmentation.",
+          "recommendation": "C",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
@@ -254,7 +254,7 @@ Parent is embedded in the ID: `R1.1` refines **Q1**, `R12.2` refines **Q12**.
             {"id": "C", "text": "Closed-won / opportunities that reached a minimum qualification stage", "is_other": false},
             {"id": "D", "text": "Other (please specify)", "is_other": true}
           ],
-          "recommendation": "C — Qualification-stage denominator removes noise from unqualified leads.",
+          "recommendation": "C",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []

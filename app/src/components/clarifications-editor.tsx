@@ -12,6 +12,7 @@ import {
   getSectionCounts,
   getTotalCounts,
   isQuestionAnswered,
+  parseRecommendedChoiceId,
 } from "@/lib/clarifications-types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -389,6 +390,7 @@ function QuestionCard({
             <ChoiceList
               choices={question.choices}
               selectedId={question.answer_choice}
+              recommendedId={parseRecommendedChoiceId(question.recommendation)}
               onSelect={(choiceId, choiceText) => {
                 if (readOnly) return;
                 updateQuestion(question.id, (q) => ({
@@ -464,16 +466,18 @@ function RefinementBadge({ count, unanswered }: { count: number; unanswered: num
 // ─── Choice List ──────────────────────────────────────────────────────────────
 
 function ChoiceList({
-  choices, selectedId, onSelect,
+  choices, selectedId, recommendedId, onSelect,
 }: {
   choices: Choice[];
   selectedId: string | null;
+  recommendedId?: string | null;
   onSelect: (id: string, text: string) => void;
 }) {
   return (
     <div className="mb-3 flex flex-col gap-1">
       {choices.map((choice) => {
         const isSelected = selectedId === choice.id;
+        const isRecommended = recommendedId === choice.id;
         return (
           <button
             type="button"
@@ -485,7 +489,9 @@ function ChoiceList({
                 : "transparent",
               borderColor: isSelected
                 ? "color-mix(in oklch, var(--color-pacific), transparent 50%)"
-                : "transparent",
+                : isRecommended
+                  ? "color-mix(in oklch, var(--color-seafoam), transparent 60%)"
+                  : "transparent",
               color: isSelected ? "var(--color-pacific)" : "var(--muted-foreground)",
             }}
             onClick={() => onSelect(choice.id, choice.is_other ? "" : choice.text)}
@@ -497,6 +503,17 @@ function ChoiceList({
               {choice.id}.
             </span>
             <span className="flex-1">{choice.text}</span>
+            {isRecommended && (
+              <span
+                className="shrink-0 self-center rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+                style={{
+                  background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)",
+                  color: "var(--color-seafoam)",
+                }}
+              >
+                recommended
+              </span>
+            )}
           </button>
         );
       })}
@@ -625,6 +642,7 @@ function RefinementItem({
         <ChoiceList
           choices={refinement.choices}
           selectedId={refinement.answer_choice}
+          recommendedId={parseRecommendedChoiceId(refinement.recommendation)}
           onSelect={(choiceId, choiceText) => {
             if (readOnly) return;
             updateQuestion(refinement.id, (q) => ({

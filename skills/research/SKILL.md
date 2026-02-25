@@ -160,7 +160,7 @@ dimensions_selected: [count]
             {"id": "B", "text": "Choice B", "is_other": false},
             {"id": "D", "text": "Other (please specify)", "is_other": true}
           ],
-          "recommendation": "A — reasoning...",
+          "recommendation": "A",
           "answer_choice": null,
           "answer_text": null,
           "refinements": []
