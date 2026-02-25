@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
@@ -177,17 +177,42 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Check if this is a research step with both research-plan.md and clarifications.json
+  // Check if this is a research step (has both research-plan.md and clarifications.json in output list)
   const researchPlanContent = fileContents.get("context/research-plan.md");
   const clarificationsContent = fileContents.get("context/clarifications.json");
-  const hasResearchSummary = researchPlanContent && researchPlanContent !== "__NOT_FOUND__"
-    && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
+  const isResearchStep = outputFiles.includes("context/research-plan.md")
+    && outputFiles.includes("context/clarifications.json");
 
-  // Research step: show combined summary card instead of individual files
-  if (hasFileContents && hasResearchSummary) {
+  if (isResearchStep) {
+    // Missing files = error
+    const missingFiles: string[] = [];
+    if (!researchPlanContent || researchPlanContent === "__NOT_FOUND__") missingFiles.push("context/research-plan.md");
+    if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") missingFiles.push("context/clarifications.json");
+
+    if (missingFiles.length > 0) {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+            <AlertTriangle className="size-8 text-destructive/50" />
+            <div className="text-center">
+              <p className="font-medium text-destructive">Research step completed but output files are missing</p>
+              <div className="mt-2 text-sm">
+                {missingFiles.map((f) => (
+                  <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
+                ))}
+              </div>
+              <p className="mt-2 text-sm">The agent may not have written files to the correct path. Reset and re-run the step.</p>
+            </div>
+          </div>
+          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+        </div>
+      );
+    }
+
+    // Invalid JSON = error
     let clarData: ClarificationsFile | null = null;
     try {
-      const raw = JSON.parse(clarificationsContent) as ClarificationsFile;
+      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
       function normalizeQ(q: Question): Question {
         return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
       }
@@ -199,36 +224,47 @@ export function WorkflowStepComplete({
         })),
         notes: raw.notes ?? [],
       };
-    } catch { /* fall through to individual file display */ }
-
-    if (clarData) {
+    } catch {
       return (
         <div className="flex h-full flex-col gap-4 overflow-hidden">
-          {reviewMode && agentRuns.length > 0 && (
-            <div className="shrink-0">
-              <AgentStatsBar runs={agentRuns} />
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+            <AlertTriangle className="size-8 text-destructive/50" />
+            <div className="text-center">
+              <p className="font-medium text-destructive">Invalid clarifications.json</p>
+              <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
             </div>
-          )}
-          <ScrollArea className="min-h-0 flex-1">
-            <div className="pr-4">
-              <ResearchSummaryCard
-                researchPlan={researchPlanContent}
-                clarificationsData={clarData}
-                duration={!reviewMode ? duration : undefined}
-                cost={displayCost}
-              />
-            </div>
-          </ScrollArea>
-          <StepActionBar
-            isLastStep={isLastStep}
-            reviewMode={reviewMode}
-            onRefine={onRefine}
-            onClose={onClose}
-            onNextStep={onNextStep}
-          />
+          </div>
+          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
         </div>
       );
     }
+
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {reviewMode && agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pr-4">
+            <ResearchSummaryCard
+              researchPlan={researchPlanContent!}
+              clarificationsData={clarData}
+              duration={!reviewMode ? duration : undefined}
+              cost={displayCost}
+            />
+          </div>
+        </ScrollArea>
+        <StepActionBar
+          isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
+      </div>
+    );
   }
 
   // Default: show file contents individually (both review and non-review mode)
