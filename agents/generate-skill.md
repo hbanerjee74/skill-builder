@@ -32,7 +32,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Guards
 
-Check `decisions.md` and `clarifications.json` before doing any work. Block if either condition is true:
+Check `decisions.md` before doing any work. If `contradictory_inputs: revised`, skip reading `clarifications.json` entirely — treat `decisions.md` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.md` and `clarifications.json` and block if either condition is true:
 
 **Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in `decisions.md`, write this stub to `SKILL.md` and return:
 
@@ -59,6 +59,8 @@ contradictory_inputs: true
 
 The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
+
+**User-revised contradictions** — if `contradictory_inputs: revised` in decisions.md, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.md` as the authoritative resolved source and generate the skill normally. Do not write a stub.
 
 ## Structure Pattern
 

@@ -515,7 +515,10 @@ fn parse_scope_recommendation(clarifications_path: &Path) -> bool {
 /// - decision_count: 0  → no decisions were derivable
 /// - contradictory_inputs: true → unresolvable contradictions detected
 ///
-/// Returns true if step 3 (Generate Skill) should be disabled.
+/// `contradictory_inputs: revised` is NOT a block — the user has reviewed
+/// and edited the flagged decisions; treat decisions.md as authoritative.
+///
+/// Returns true if steps 5-6 should be disabled.
 fn parse_decisions_guard(decisions_path: &Path) -> bool {
     let content = match std::fs::read_to_string(decisions_path) {
         Ok(c) => c,
@@ -2876,6 +2879,15 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("decisions.md");
         std::fs::write(&path, "## Decisions\n### D1: something").unwrap();
+        assert!(!parse_decisions_guard(&path));
+    }
+
+    #[test]
+    fn test_parse_decisions_guard_revised_not_blocked() {
+        // contradictory_inputs: revised means user has reviewed — must NOT block
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("decisions.md");
+        std::fs::write(&path, "---\ndecision_count: 3\ncontradictory_inputs: revised\n---\n").unwrap();
         assert!(!parse_decisions_guard(&path));
     }
 
