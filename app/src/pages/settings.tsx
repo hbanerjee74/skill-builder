@@ -686,40 +686,15 @@ export default function SettingsPage() {
                   <div className="flex flex-col gap-3 rounded-md border p-4">
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="new-registry-url">GitHub URL</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="new-registry-url"
-                          placeholder="https://github.com/owner/skill-library"
-                          value={newRegistryUrl}
-                          onChange={(e) => {
-                            setNewRegistryUrl(e.target.value)
-                            setNewRegistryTestState("idle")
-                          }}
-                          className="flex-1"
-                        />
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={!newRegistryUrl.trim() || newRegistryTestState === "checking"}
-                          onClick={async () => {
-                            setNewRegistryTestState("checking")
-                            try {
-                              await checkMarketplaceUrl(newRegistryUrl.trim())
-                              setNewRegistryTestState("valid")
-                            } catch {
-                              setNewRegistryTestState("invalid")
-                            }
-                          }}
-                        >
-                          {newRegistryTestState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
-                          {newRegistryTestState === "valid" && <CheckCircle2 className="size-3.5 text-green-500" />}
-                          {newRegistryTestState === "invalid" && <XCircle className="size-3.5 text-destructive" />}
-                          {newRegistryTestState === "idle" && "Test"}
-                        </Button>
-                      </div>
-                      {newRegistryTestState === "invalid" && (
-                        <p className="text-xs text-destructive">Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.</p>
-                      )}
+                      <Input
+                        id="new-registry-url"
+                        placeholder="https://github.com/owner/skill-library"
+                        value={newRegistryUrl}
+                        onChange={(e) => {
+                          setNewRegistryUrl(e.target.value)
+                          setNewRegistryTestState("idle")
+                        }}
+                      />
                       {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
                         <p className="text-xs text-destructive">This registry is already added.</p>
                       )}
@@ -727,9 +702,22 @@ export default function SettingsPage() {
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        disabled={!newRegistryUrl.trim() || marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())}
-                        onClick={() => {
+                        disabled={
+                          !newRegistryUrl.trim() ||
+                          newRegistryTestState === "checking" ||
+                          marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim())
+                        }
+                        onClick={async () => {
                           const url = newRegistryUrl.trim()
+                          setNewRegistryTestState("checking")
+                          try {
+                            await checkMarketplaceUrl(url)
+                          } catch {
+                            setNewRegistryTestState("invalid")
+                            toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
+                            return
+                          }
+                          setNewRegistryTestState("valid")
                           const name = nameFromRegistryUrl(url)
                           console.log(`[settings] registry added: name=${name}, url=${url}`)
                           const entry: MarketplaceRegistry = {
@@ -743,7 +731,7 @@ export default function SettingsPage() {
                           setAddingRegistry(false)
                         }}
                       >
-                        Add
+                        {newRegistryTestState === "checking" ? <Loader2 className="size-3.5 animate-spin" /> : "Add"}
                       </Button>
                       <Button
                         size="sm"
