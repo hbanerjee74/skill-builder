@@ -454,9 +454,9 @@ pub(crate) fn discover_skills_from_catalog(
 fn extract_plugin_path(skill_path: &str) -> &str {
     if let Some(idx) = skill_path.find("/skills/") {
         &skill_path[..idx]
-    } else if skill_path.starts_with("skills/") {
-        "" // root plugin — skills/ is directly under the repo root (or subpath root)
     } else {
+        // root plugin — skills/ is directly under the repo root (or subpath root),
+        // or unrecognised path structure
         ""
     }
 }
