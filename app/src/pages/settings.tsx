@@ -591,14 +591,17 @@ export default function SettingsPage() {
                     <span className="w-16">Enabled</span>
                     <span className="w-16" />
                   </div>
-                  {marketplaceRegistries.map((registry, idx) => {
+                  {marketplaceRegistries.map((registry) => {
                     const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
                     const testState = registryTestState[registry.source_url]
                     const isFailed = testState === "invalid"
                     return (
                       <div
                         key={registry.source_url}
-                        className={`flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors ${isFailed ? "opacity-60" : ""}`}
+                        className={cn(
+                          "flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors",
+                          isFailed && "opacity-60"
+                        )}
                       >
                         <div className="flex-1 min-w-0 flex items-center gap-2">
                           <span className="truncate text-sm font-mono text-muted-foreground">{registry.source_url}</span>
@@ -613,8 +616,8 @@ export default function SettingsPage() {
                             onCheckedChange={(checked) => {
                               console.log(`[settings] registry toggled: url=${registry.source_url}, enabled=${checked}`)
                               const current = useSettingsStore.getState().marketplaceRegistries
-                              const updated = current.map((r, i) =>
-                                i === idx ? { ...r, enabled: checked } : r
+                              const updated = current.map(r =>
+                                r.source_url === registry.source_url ? { ...r, enabled: checked } : r
                               )
                               autoSave({ marketplaceRegistries: updated })
                             }}
@@ -633,15 +636,21 @@ export default function SettingsPage() {
                               try {
                                 await checkMarketplaceUrl(registry.source_url)
                                 setRegistryTestState((s) => ({ ...s, [registry.source_url]: "valid" }))
-                              } catch {
+                              } catch (err) {
+                                console.error(`[settings] registry test failed for ${registry.source_url}:`, err)
                                 setRegistryTestState((s) => ({ ...s, [registry.source_url]: "invalid" }))
                               }
                             }}
                           >
-                            {testState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
-                            {testState === "valid" && <CheckCircle2 className="size-3.5 text-green-500" />}
-                            {testState === "invalid" && <XCircle className="size-3.5 text-destructive" />}
-                            {!testState && <PlugZap className="size-3.5" />}
+                            {testState === "checking" ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : testState === "valid" ? (
+                              <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
+                            ) : testState === "invalid" ? (
+                              <XCircle className="size-3.5 text-destructive" />
+                            ) : (
+                              <PlugZap className="size-3.5" />
+                            )}
                           </button>
                           {!isDefault && (
                             <button
@@ -651,7 +660,7 @@ export default function SettingsPage() {
                               onClick={() => {
                                 console.log(`[settings] registry removed: name=${registry.name}`)
                                 const current = useSettingsStore.getState().marketplaceRegistries
-                                const updated = current.filter((_, i) => i !== idx)
+                                const updated = current.filter(r => r.source_url !== registry.source_url)
                                 autoSave({ marketplaceRegistries: updated })
                               }}
                             >
@@ -682,9 +691,7 @@ export default function SettingsPage() {
                         id="new-registry-url"
                         placeholder="https://github.com/owner/skill-library"
                         value={newRegistryUrl}
-                        onChange={(e) => {
-                          setNewRegistryUrl(e.target.value)
-                        }}
+                        onChange={(e) => setNewRegistryUrl(e.target.value)}
                       />
                       {newRegistryUrl.trim() && marketplaceRegistries.some(r => r.source_url === newRegistryUrl.trim()) && (
                         <p className="text-xs text-destructive">This registry is already added.</p>
@@ -704,7 +711,8 @@ export default function SettingsPage() {
                           let name: string
                           try {
                             name = await checkMarketplaceUrl(url)
-                          } catch {
+                          } catch (err) {
+                            console.error(`[settings] add registry check failed for ${url}:`, err)
                             setNewRegistryAdding(false)
                             toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
                             return

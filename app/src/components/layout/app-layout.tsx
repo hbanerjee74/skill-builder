@@ -219,18 +219,20 @@ export function AppLayout() {
       }
       // Check for marketplace updates in the background, and refresh stored registry names
       // from marketplace.json if they have changed since the registry was added.
-      const allRegistries = s.marketplace_registries ?? [];
-      const enabledRegistries = allRegistries.filter(r => r.enabled);
+      const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled);
       for (const registry of enabledRegistries) {
         checkForMarketplaceUpdates(registry.source_url, s, cancelledRef, router)
-          .then((resolvedName) => {
+          .then(async (resolvedName) => {
             if (!resolvedName || resolvedName === registry.name) return;
             const current = useSettingsStore.getState().marketplaceRegistries;
             const updated = current.map(r =>
               r.source_url === registry.source_url ? { ...r, name: resolvedName } : r
             );
             useSettingsStore.getState().setSettings({ marketplaceRegistries: updated });
-            saveSettings({ ...s, marketplace_registries: updated })
+            // Re-fetch fresh settings before saving to avoid overwriting concurrent changes.
+            const fresh = await getSettings().catch(() => null);
+            if (!fresh) return;
+            saveSettings({ ...fresh, marketplace_registries: updated })
               .catch(err => console.warn("[app-layout] Failed to persist registry name update:", err));
           });
       }

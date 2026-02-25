@@ -56,6 +56,12 @@ export interface SkillUpdateInfo {
   version: string
 }
 
+export interface MarketplaceUpdateResult {
+  library: SkillUpdateInfo[]
+  workspace: SkillUpdateInfo[]
+  registry_name: string | null
+}
+
 export interface DeviceFlowResponse {
   device_code: string
   user_code: string

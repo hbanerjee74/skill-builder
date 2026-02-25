@@ -292,7 +292,7 @@ export default function GitHubImportDialog({
       browseRegistry(first)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  }, [open, workspacePath])
 
   const handleTabChange = useCallback((tabKey: string) => {
     setActiveTab(tabKey)
@@ -439,7 +439,7 @@ export default function GitHubImportDialog({
       )
     }
 
-    if (!loading && error) {
+    if (error) {
       return (
         <div className="flex flex-col items-center gap-3 py-8">
           <AlertCircle className="size-8 text-destructive" />
@@ -452,7 +452,7 @@ export default function GitHubImportDialog({
       )
     }
 
-    if (!loading && skills.length > 0 && repoInfo) {
+    if (skills.length > 0 && repoInfo) {
       return (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <DialogHeader>
@@ -741,7 +741,7 @@ export default function GitHubImportDialog({
               {editingSkill && skillStates.get(editingSkill.path) === 'upgrade' ? 'Update Skill' : 'Import Skill'}
             </DialogTitle>
             <DialogDescription>
-              Review and configure the skill before importing. Purpose determines how this skill is used by agents.
+              Review and configure the skill before importing.
             </DialogDescription>
           </DialogHeader>
           <UpgradeBanner
@@ -784,13 +784,6 @@ export default function GitHubImportDialog({
                   {!editForm.description.trim() && (
                     <p className="text-xs text-destructive">Description is required</p>
                   )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>Purpose</Label>
-                  <div className="flex h-9 items-center rounded-md border border-input bg-muted px-3 text-sm text-muted-foreground">
-                    skill-builder
-                  </div>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
