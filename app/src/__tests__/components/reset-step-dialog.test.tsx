@@ -12,8 +12,8 @@ vi.mock("sonner", () => ({
 import ResetStepDialog from "@/components/reset-step-dialog";
 
 const mockPreview = [
-  { step_id: 2, step_name: "Detailed Research", files: ["context/clarifications.json"] },
-  { step_id: 4, step_name: "Confirm Decisions", files: ["context/decisions.md"] },
+  { step_id: 1, step_name: "Detailed Research", files: ["context/clarifications.json"] },
+  { step_id: 2, step_name: "Confirm Decisions", files: ["context/decisions.md"] },
 ];
 
 describe("ResetStepDialog", () => {

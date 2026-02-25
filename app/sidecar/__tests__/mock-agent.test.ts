@@ -26,12 +26,12 @@ describe("resolveStepTemplate", () => {
 
   it("maps workflow step agents correctly", () => {
     expect(resolveStepTemplate("detailed-research")).toBe(
-      "step2-detailed-research",
+      "step1-detailed-research",
     );
     expect(resolveStepTemplate("confirm-decisions")).toBe(
-      "step4-confirm-decisions",
+      "step2-confirm-decisions",
     );
-    expect(resolveStepTemplate("generate-skill")).toBe("step5-generate-skill");
+    expect(resolveStepTemplate("generate-skill")).toBe("step3-generate-skill");
   });
 
   it("returns null for unknown agents", () => {
@@ -108,9 +108,6 @@ describe("parsePromptPaths", () => {
  * resolveStepTemplate() — don't just add it here.
  */
 const AGENTS_WITHOUT_MOCK = new Set([
-  "companion-recommender",
-  "test-skill",
-  "validate-quality",
   "validate-skill",
 ]);
 
