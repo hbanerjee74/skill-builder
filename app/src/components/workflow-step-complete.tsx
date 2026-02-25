@@ -141,6 +141,7 @@ export function WorkflowStepComplete({
       if (dirPaths.length > 0 && skillsPath) {
         try {
           const allEntries = await listSkillFiles(skillsPath, skillName);
+          console.log(`[step-complete] listSkillFiles returned ${allEntries.length} entries for ${skillName}`);
           for (const dir of dirPaths) {
             // dir is like "skill/references/" — strip "skill/" prefix to match on-disk paths
             const diskPrefix = dir.startsWith("skill/") ? dir.slice("skill/".length) : dir;
@@ -150,9 +151,11 @@ export function WorkflowStepComplete({
               }
             }
           }
-        } catch {
-          // list failed — directory paths won't be expanded
+        } catch (err) {
+          console.error("[step-complete] Failed to expand directory paths:", err);
         }
+      } else if (dirPaths.length > 0) {
+        console.warn("[step-complete] Cannot expand directories: skillsPath is not set");
       }
 
       const results = new Map<string, string>();
@@ -177,6 +180,7 @@ export function WorkflowStepComplete({
       );
 
       if (!cancelled) {
+        console.log(`[step-complete] Resolved ${expandedFiles.length} files:`, expandedFiles);
         setFileContents(new Map(results));
         setResolvedFiles(expandedFiles);
         setSelectedFile(expandedFiles[0] ?? null);
