@@ -5,13 +5,15 @@ import { markdownComponents } from "@/components/markdown-link";
 import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile, getStepAgentRuns } from "@/lib/tauri";
+import { readFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
 import { ResearchSummaryCard } from "@/components/research-summary-card";
 import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
-import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
+import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
+import { formatElapsed } from "@/lib/utils";
 
 interface WorkflowStepCompleteProps {
   stepName: string;
@@ -27,14 +29,15 @@ interface WorkflowStepCompleteProps {
   skillName?: string;
   workspacePath?: string;
   skillsPath?: string | null;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) return `${minutes}m ${secs}s`;
-  return `${secs}s`;
+  /** When true, show editable ClarificationsEditor on the completion screen */
+  clarificationsEditable?: boolean;
+  /** Controlled clarifications data from parent — used when editable so edits feed back */
+  clarificationsData?: ClarificationsFile | null;
+  onClarificationsChange?: (data: ClarificationsFile) => void;
+  onClarificationsContinue?: () => void;
+  onReset?: () => void;
+  saveStatus?: "idle" | "dirty" | "saving" | "saved";
+  evaluating?: boolean;
 }
 
 /** Shared action bar: Refine/Done on last step, Next Step otherwise. Hidden in review mode. */
@@ -96,8 +99,17 @@ export function WorkflowStepComplete({
   skillName,
   workspacePath,
   skillsPath,
+  clarificationsEditable,
+  clarificationsData: controlledClarData,
+  onClarificationsChange,
+  onClarificationsContinue,
+  onReset,
+  saveStatus,
+  evaluating,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
+  const [resolvedFiles, setResolvedFiles] = useState<string[]>([]);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [agentRuns, setAgentRuns] = useState<AgentRunRecord[]>([]);
 
@@ -116,45 +128,70 @@ export function WorkflowStepComplete({
   useEffect(() => {
     if (!skillName || outputFiles.length === 0) {
       setFileContents(new Map());
+      setResolvedFiles([]);
+      setSelectedFile(null);
       return;
     }
 
     let cancelled = false;
     setLoadingFiles(true);
-    const results = new Map<string, string>();
 
-    const loadPromises = outputFiles
-      .filter((f) => !f.endsWith("/"))
-      .map(async (relativePath) => {
-        // Try skills path first (strip "skill/" prefix since skill output dir
-        // already nests under skillName), then workspace path (uses path as-is)
-        let content: string | null = null;
-        const skillsRelative = relativePath.startsWith("skill/")
-          ? relativePath.slice("skill/".length)
-          : relativePath;
+    (async () => {
+      // Expand directory paths (ending with "/") into individual files
+      const expandedFiles: string[] = [];
+      const dirPaths = outputFiles.filter((f) => f.endsWith("/"));
+      const filePaths = outputFiles.filter((f) => !f.endsWith("/"));
+      expandedFiles.push(...filePaths);
 
-        // skills_path is required — no workspace fallback
-        if (skillsPath) {
-          try {
-            content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
-          } catch {
-            // not found in skills path
+      if (dirPaths.length > 0 && skillsPath) {
+        try {
+          const allEntries = await listSkillFiles(skillsPath, skillName);
+          console.log(`[step-complete] listSkillFiles returned ${allEntries.length} entries for ${skillName}`);
+          for (const dir of dirPaths) {
+            // dir is like "skill/references/" — strip "skill/" prefix to match on-disk paths
+            const diskPrefix = dir.startsWith("skill/") ? dir.slice("skill/".length) : dir;
+            for (const entry of allEntries) {
+              if (!entry.is_directory && entry.relative_path.startsWith(diskPrefix)) {
+                expandedFiles.push(`skill/${entry.relative_path}`);
+              }
+            }
           }
+        } catch (err) {
+          console.error("[step-complete] Failed to expand directory paths:", err);
         }
+      } else if (dirPaths.length > 0) {
+        console.warn("[step-complete] Cannot expand directories: skillsPath is not set");
+      }
 
-        if (content) {
-          results.set(relativePath, content);
-        } else {
-          results.set(relativePath, "__NOT_FOUND__");
-        }
-      });
+      const results = new Map<string, string>();
 
-    Promise.all(loadPromises).then(() => {
+      await Promise.all(
+        expandedFiles.map(async (relativePath) => {
+          let content: string | null = null;
+          const skillsRelative = relativePath.startsWith("skill/")
+            ? relativePath.slice("skill/".length)
+            : relativePath;
+
+          if (skillsPath) {
+            try {
+              content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
+            } catch {
+              // not found in skills path
+            }
+          }
+
+          results.set(relativePath, content ?? "__NOT_FOUND__");
+        })
+      );
+
       if (!cancelled) {
+        console.log(`[step-complete] Resolved ${expandedFiles.length} files:`, expandedFiles);
         setFileContents(new Map(results));
+        setResolvedFiles(expandedFiles);
+        setSelectedFile(expandedFiles[0] ?? null);
         setLoadingFiles(false);
       }
-    });
+    })();
 
     return () => { cancelled = true; };
   }, [skillName, workspacePath, skillsPath, outputFiles]);
@@ -210,26 +247,8 @@ export function WorkflowStepComplete({
       );
     }
 
-    // Invalid JSON = error
-    let clarData: ClarificationsFile | null = null;
-    try {
-      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
-      function normalizeQ(q: Question): Question {
-        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-      }
-      clarData = {
-        ...raw,
-        metadata: {
-          ...raw.metadata,
-          priority_questions: raw.metadata?.priority_questions ?? [],
-        },
-        sections: (raw.sections ?? []).map((s) => ({
-          ...s,
-          questions: (s.questions ?? []).map(normalizeQ),
-        })),
-        notes: raw.notes ?? [],
-      };
-    } catch {
+    const clarData = parseClarifications(clarificationsContent!);
+    if (!clarData) {
       return (
         <div className="flex h-full flex-col gap-4 overflow-hidden">
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -251,25 +270,96 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="pr-4">
+        {clarificationsEditable ? (
+          /* Editable mode: ResearchSummaryCard with collapsible plan + editable clarifications.
+             The ClarificationsEditor's Continue button handles advancement — no StepActionBar. */
+          <div className="min-h-0 flex-1 overflow-hidden">
             <ResearchSummaryCard
-              researchPlan={researchPlanContent!}
-              clarificationsData={clarData}
-              duration={!reviewMode ? duration : undefined}
-              cost={displayCost}
-            />
+                researchPlan={researchPlanContent!}
+                clarificationsData={controlledClarData ?? clarData}
+                duration={!reviewMode ? duration : undefined}
+                cost={displayCost}
+                editable
+                onClarificationsChange={onClarificationsChange}
+                onClarificationsContinue={onClarificationsContinue}
+                onReset={onReset}
+                saveStatus={saveStatus}
+                evaluating={evaluating}
+              />
           </div>
-        </ScrollArea>
-        <StepActionBar
-          isLastStep={isLastStep}
-          reviewMode={reviewMode}
-          onRefine={onRefine}
-          onClose={onClose}
-          onNextStep={onNextStep}
-        />
+        ) : (
+          /* Read-only mode (review): show research plan expanded, clarifications read-only */
+          <>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="pr-4">
+                <ResearchSummaryCard
+                  researchPlan={researchPlanContent!}
+                  clarificationsData={clarData}
+                  duration={!reviewMode ? duration : undefined}
+                  cost={displayCost}
+                />
+              </div>
+            </ScrollArea>
+            <StepActionBar
+              isLastStep={isLastStep}
+              reviewMode={reviewMode}
+              onRefine={onRefine}
+              onClose={onClose}
+              onNextStep={onNextStep}
+            />
+          </>
+        )}
       </div>
     );
+  }
+
+  // Detailed research step: only clarifications.json (no research-plan.md)
+  const isClarificationsOnlyStep = !isResearchStep
+    && outputFiles.includes("context/clarifications.json")
+    && !outputFiles.includes("context/research-plan.md")
+    && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
+
+  if (isClarificationsOnlyStep) {
+    const clarOnlyData = parseClarifications(clarificationsContent!);
+
+    if (clarOnlyData) {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          {reviewMode && agentRuns.length > 0 && (
+            <div className="shrink-0">
+              <AgentStatsBar runs={agentRuns} />
+            </div>
+          )}
+          {clarificationsEditable ? (
+            /* Editable mode: ClarificationsEditor fills remaining space. */
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ClarificationsEditor
+                data={controlledClarData ?? clarOnlyData}
+                onChange={onClarificationsChange ?? (() => {})}
+                onContinue={onClarificationsContinue}
+                onReset={onReset}
+                saveStatus={saveStatus}
+                evaluating={evaluating}
+              />
+            </div>
+          ) : (
+            /* Read-only mode (review) */
+            <>
+              <div className="rounded-lg border shadow-sm min-h-0 flex-1" style={{ height: "min(600px, 60vh)" }}>
+                <ClarificationsEditor data={clarOnlyData} onChange={() => {}} readOnly />
+              </div>
+              <StepActionBar
+                isLastStep={isLastStep}
+                reviewMode={reviewMode}
+                onRefine={onRefine}
+                onClose={onClose}
+                onNextStep={onNextStep}
+              />
+            </>
+          )}
+        </div>
+      );
+    }
   }
 
   // Decisions step: show summary card when decisions.md is the output
@@ -278,6 +368,11 @@ export function WorkflowStepComplete({
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
 
   if (isDecisionsStep) {
+    // In review mode, derive duration from DB agent runs
+    const dbDuration = agentRuns.length > 0
+      ? agentRuns.reduce((sum, r) => sum + r.duration_ms, 0)
+      : undefined;
+
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
         {reviewMode && agentRuns.length > 0 && (
@@ -289,7 +384,7 @@ export function WorkflowStepComplete({
           <div className="pr-4">
             <DecisionsSummaryCard
               decisionsContent={decisionsContent}
-              duration={!reviewMode ? duration : undefined}
+              duration={reviewMode ? dbDuration : duration}
               cost={displayCost}
             />
           </div>
@@ -305,8 +400,17 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Default: show file contents individually (both review and non-review mode)
-  if (hasFileContents && outputFiles.length > 0) {
+  // Default: show file contents with a dropdown selector when multiple files exist
+  const visibleFiles = resolvedFiles.filter((f) => !f.endsWith("/"));
+  if (hasFileContents && visibleFiles.length > 0) {
+    const activeFile = selectedFile && visibleFiles.includes(selectedFile) ? selectedFile : visibleFiles[0];
+    const activeContent = fileContents.get(activeFile);
+    const activeNotFound = activeContent === "__NOT_FOUND__";
+
+    /** Display label for a file path: SKILL.md or references/foo.md */
+    const fileLabel = (f: string): string =>
+      f.startsWith("skill/") ? f.slice("skill/".length) : f;
+
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
         {reviewMode && agentRuns.length > 0 && (
@@ -314,15 +418,17 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
+        {/* Header row: step complete badge + stats */}
         {!reviewMode && (
-          <div className="flex items-center gap-2 pb-4">
-            <CheckCircle2 className="size-4" style={{ color: "var(--color-seafoam)" }} />
-            <h3 className="text-sm font-semibold">{stepName} Complete</h3>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
+          <div className="flex items-center gap-3 shrink-0">
+            <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+            <span className="text-sm font-semibold tracking-tight">{stepName} Complete</span>
+            <div className="flex-1" />
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
               {duration !== undefined && (
                 <span className="flex items-center gap-1">
                   <Clock className="size-3" />
-                  {formatDuration(duration)}
+                  {formatElapsed(duration)}
                 </span>
               )}
               {displayCost !== undefined && (
@@ -334,31 +440,39 @@ export function WorkflowStepComplete({
             </div>
           </div>
         )}
+        {/* File selector — below header, above content */}
+        <div className="shrink-0">
+          {visibleFiles.length > 1 && (
+            <Select value={activeFile} onValueChange={setSelectedFile}>
+              <SelectTrigger size="sm" className="font-mono text-xs">
+                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleFiles.map((f) => (
+                  <SelectItem key={f} value={f} className="font-mono text-xs">
+                    {fileLabel(f)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {visibleFiles.length === 1 && (
+            <span className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+              <FileText className="size-3.5 shrink-0" />
+              {fileLabel(activeFile)}
+            </span>
+          )}
+        </div>
+        {/* File content */}
         <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-6 pr-4">
-            {outputFiles
-              .filter((f) => !f.endsWith("/"))
-              .map((file) => {
-                const content = fileContents.get(file);
-                const notFound = content === "__NOT_FOUND__";
-
-                return (
-                  <div key={file} className="flex flex-col gap-2">
-                    <p className="text-xs font-mono text-muted-foreground flex items-center gap-2">
-                      <FileText className="size-3.5 shrink-0" />
-                      {file}
-                    </p>
-                    {notFound && (
-                      <p className="text-sm text-muted-foreground italic">
-                        File not found
-                      </p>
-                    )}
-                    {!notFound && content && (
-                      <FileContentRenderer file={file} content={content} />
-                    )}
-                  </div>
-                );
-              })}
+          <div className="pr-4">
+            {activeNotFound && (
+              <p className="text-sm text-muted-foreground italic">File not found</p>
+            )}
+            {!activeNotFound && activeContent && (
+              <FileContentRenderer file={activeFile} content={activeContent} />
+            )}
           </div>
         </ScrollArea>
         <StepActionBar
@@ -400,7 +514,7 @@ export function WorkflowStepComplete({
             {duration !== undefined && (
               <span className="flex items-center gap-1">
                 <Clock className="size-3" />
-                {formatDuration(duration)}
+                {formatElapsed(duration)}
               </span>
             )}
             {displayCost !== undefined && (
@@ -428,33 +542,13 @@ export function WorkflowStepComplete({
 function FileContentRenderer({ file, content }: { file: string; content: string }) {
   // Detect clarifications.json — render with the structured editor in read-only mode
   if (file.endsWith("clarifications.json")) {
-    try {
-      const raw = JSON.parse(content) as ClarificationsFile;
-      // Normalize: ensure every question has refinements[]
-      function normalizeQ(q: Question): Question {
-        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-      }
-      const data: ClarificationsFile = {
-        ...raw,
-        metadata: {
-          ...raw.metadata,
-          priority_questions: raw.metadata?.priority_questions ?? [],
-        },
-        sections: (raw.sections ?? []).map((s) => ({
-          ...s,
-          questions: (s.questions ?? []).map(normalizeQ),
-        })),
-        notes: raw.notes ?? [],
-      };
-      if (data.version && data.sections) {
-        return (
-          <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
-            <ClarificationsEditor data={data} onChange={() => {}} readOnly />
-          </div>
-        );
-      }
-    } catch {
-      // Fall through to markdown renderer if JSON parse fails
+    const data = parseClarifications(content);
+    if (data?.version && data.sections) {
+      return (
+        <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
+          <ClarificationsEditor data={data} onChange={() => {}} readOnly />
+        </div>
+      );
     }
   }
 

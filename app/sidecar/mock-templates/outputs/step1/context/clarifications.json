@@ -25,6 +25,7 @@
             { "id": "C", "text": "Cover both common and advanced patterns with equal depth", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "B",
           "answer_text": "Focus on common workflow patterns",
           "refinements": [
@@ -39,6 +40,7 @@
                 { "id": "C", "text": "CRUD as primary; all others as secondary", "is_other": false },
                 { "id": "D", "text": "Other (please specify)", "is_other": true }
               ],
+              "recommendation": "A",
               "answer_choice": null,
               "answer_text": null,
               "refinements": []
@@ -56,6 +58,7 @@
             { "id": "C", "text": "Advanced — already knows best practices, needs deep domain-specific insight", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "B",
           "answer_choice": "B",
           "answer_text": "Intermediate level",
           "refinements": [
@@ -70,6 +73,7 @@
                 { "id": "C", "text": "Include prerequisites as a collapsible/optional section", "is_other": false },
                 { "id": "D", "text": "Other (please specify)", "is_other": true }
               ],
+              "recommendation": "A",
               "answer_choice": null,
               "answer_text": null,
               "refinements": []
@@ -87,6 +91,7 @@
             { "id": "C", "text": "Both with equal depth", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "B",
           "answer_choice": "B",
           "answer_text": "Both, with emphasis on greenfield but include migration guidance for existing systems.",
           "refinements": []
@@ -108,6 +113,7 @@
             { "id": "C", "text": "Focus on opinionated best-practice patterns only", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Start with the most widely adopted patterns, then layer in alternatives for specific constraints.",
           "refinements": []
@@ -123,6 +129,7 @@
             { "id": "C", "text": "Technology-agnostic only — no tool-specific examples", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Technology-agnostic first",
           "refinements": [
@@ -137,6 +144,7 @@
                 { "id": "C", "text": "Include tool recommendations inline with each pattern", "is_other": false },
                 { "id": "D", "text": "Other (please specify)", "is_other": true }
               ],
+              "recommendation": "A",
               "answer_choice": null,
               "answer_text": null,
               "refinements": []
@@ -154,6 +162,7 @@
             { "id": "C", "text": "Inline performance guidance alongside each pattern", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Cover key performance principles in SKILL.md, detailed optimization in references.",
           "refinements": []
@@ -175,6 +184,7 @@
             { "id": "C", "text": "Full working examples with test harnesses", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Copy-paste-ready templates for the most common patterns.",
           "refinements": []
@@ -190,6 +200,7 @@
             { "id": "C", "text": "Comprehensive testing guide as a separate reference file", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Yes, include a testing strategy section with concrete patterns.",
           "refinements": []
@@ -205,6 +216,7 @@
             { "id": "C", "text": "Detailed error taxonomy with per-pattern recovery strategies", "is_other": false },
             { "id": "D", "text": "Other (please specify)", "is_other": true }
           ],
+          "recommendation": "A",
           "answer_choice": "A",
           "answer_text": "Cover common failure modes with specific recovery patterns.",
           "refinements": []

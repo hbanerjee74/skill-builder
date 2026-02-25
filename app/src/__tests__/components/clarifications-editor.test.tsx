@@ -201,6 +201,45 @@ describe("Scenario D: Previously answered refinement", () => {
   });
 });
 
+// ─── Scenario E: Recommendation badge ────────────────────────────────────────
+
+describe("Scenario E: Recommendation badge", () => {
+  it("shows 'recommended' badge on the recommended choice", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion({ recommendation: "B" })]);
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await expandCard(user, "Test Question");
+    expect(screen.getByText("recommended")).toBeInTheDocument();
+    // Badge is next to choice B, not A or D
+    const choiceBBtn = screen.getByRole("button", { name: /B\.\s*Choice B/i });
+    expect(choiceBBtn).toHaveTextContent("recommended");
+    expect(screen.getByRole("button", { name: /A\.\s*Choice A/i })).not.toHaveTextContent("recommended");
+  });
+
+  it("stores the original choice text when the recommended choice is selected", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const data = makeClarifications([makeQuestion({ recommendation: "B" })]);
+    render(<ClarificationsEditor data={data} onChange={onChange} />);
+    await expandCard(user, "Test Question");
+    await user.click(screen.getByRole("button", { name: /B\.\s*Choice B/i }));
+    expect(onChange).toHaveBeenCalled();
+    const updated = onChange.mock.calls[0][0] as ClarificationsFile;
+    const q = updated.sections[0].questions[0];
+    expect(q.answer_choice).toBe("B");
+    expect(q.answer_text).toBe("Choice B"); // not "Choice B recommended"
+  });
+
+  it("handles legacy recommendation format 'B — rationale text'", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion({ recommendation: "B — This is the best option." })]);
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await expandCard(user, "Test Question");
+    const choiceBBtn = screen.getByRole("button", { name: /B\.\s*Choice B/i });
+    expect(choiceBBtn).toHaveTextContent("recommended");
+  });
+});
+
 // ─── Main question answer field gating ────────────────────────────────────────
 
 describe("Main question answer field visibility", () => {

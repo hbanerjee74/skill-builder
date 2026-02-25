@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
-import { ClarificationsEditor, type SaveStatus } from "@/components/clarifications-editor";
-import { type ClarificationsFile, type Question } from "@/lib/clarifications-types";
+import { type SaveStatus } from "@/components/clarifications-editor";
+import { type ClarificationsFile, parseClarifications } from "@/lib/clarifications-types";
 import {
-  Loader2,
   Play,
   AlertCircle,
   RotateCcw,
@@ -53,53 +52,20 @@ import { resolveModelId } from "@/lib/models";
 // --- Step config ---
 
 interface StepConfig {
-  type: "agent" | "human" | "reasoning";
+  type: "agent" | "reasoning";
   outputFiles?: string[];
   /** Default model shorthand for display (actual model comes from backend settings) */
   model?: string;
+  /** When true, show editable ClarificationsEditor on the completion screen */
+  clarificationsEditable?: boolean;
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet" },
-  1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet" },
-  3: { type: "human" },
-  4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
-  5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  1: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet", clarificationsEditable: true },
+  2: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
+  3: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
 };
-
-// Human review steps: step id -> relative artifact path
-const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
-  1: { relativePath: "context/clarifications.json" },
-  3: { relativePath: "context/clarifications.json" },
-};
-
-/** Parse and normalize JSON clarifications from raw file content.
- *  Ensures every question has a `refinements` array (agents may omit it). */
-function parseClarifications(content: string | null): ClarificationsFile | null {
-  if (!content) return null;
-  try {
-    const raw = JSON.parse(content) as ClarificationsFile;
-    // Normalize: ensure every question has refinements[] (agent output may omit it)
-    function normalizeQ(q: Question): Question {
-      return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
-    }
-    return {
-      ...raw,
-      metadata: {
-        ...raw.metadata,
-        priority_questions: raw.metadata?.priority_questions ?? [],
-      },
-      sections: (raw.sections ?? []).map((s) => ({
-        ...s,
-        questions: (s.questions ?? []).map(normalizeQ),
-      })),
-      notes: raw.notes ?? [],
-    };
-  } catch {
-    return null;
-  }
-}
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -222,13 +188,10 @@ export default function WorkflowPage() {
   }, [skillName]);
 
   const stepConfig = STEP_CONFIGS[currentStep];
-  const isHumanReviewStep = stepConfig?.type === "human";
 
-  // Human review state
+  // Clarifications editing state (for steps with clarificationsEditable)
   const [reviewContent, setReviewContent] = useState<string | null>(null);
   const [clarificationsData, setClarificationsData] = useState<ClarificationsFile | null>(null);
-  const [reviewFilePath, setReviewFilePath] = useState("");
-  const [loadingReview, setLoadingReview] = useState(false);
   // Explicit dirty flag — set on user edits, cleared on save/reload/load
   const [editorDirty, setEditorDirty] = useState(false);
   const hasUnsavedChanges = editorDirty;
@@ -236,11 +199,11 @@ export default function WorkflowPage() {
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
-  // Scoped to human review steps so it doesn't block on non-review steps.
+  // Scoped to clarifications-editable steps so it doesn't block on other steps.
   const hasUnsavedChangesRef = useRef(false);
   useEffect(() => {
-    hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
-  }, [isHumanReviewStep, hasUnsavedChanges]);
+    hasUnsavedChangesRef.current = !!stepConfig?.clarificationsEditable && hasUnsavedChanges;
+  }, [stepConfig?.clarificationsEditable, hasUnsavedChanges]);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -274,7 +237,6 @@ export default function WorkflowPage() {
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
   const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
-  // isAutofilling state removed — auto-fill buttons removed from gate dialog
   const gateAgentIdRef = useRef<string | null>(null);
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
@@ -438,22 +400,16 @@ export default function WorkflowPage() {
     return () => clearTimeout(timer);
   }, [steps, currentStep, skillName, purpose, hydrated]);
 
-  // Load file content when entering a human review step.
+  // Load clarifications file when viewing a completed clarifications-editable step.
   // skills_path is required — no workspace fallback.
   useEffect(() => {
-    if (!isHumanReviewStep || !skillsPath) {
+    const currentStepStatus = steps[currentStep]?.status;
+    if (!stepConfig?.clarificationsEditable || currentStepStatus !== "completed" || !skillsPath) {
       setReviewContent(null);
       return;
     }
 
-    const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config) return;
-    const relativePath = config.relativePath;
-    const filename = relativePath.split("/").pop() ?? relativePath;
-    setReviewFilePath(relativePath);
-    setLoadingReview(true);
-
-    readFile(`${skillsPath}/${skillName}/context/${filename}`)
+    readFile(`${skillsPath}/${skillName}/context/clarifications.json`)
       .then((content) => {
         setReviewContent(content ?? null);
         setClarificationsData(parseClarifications(content ?? null));
@@ -463,10 +419,9 @@ export default function WorkflowPage() {
         setClarificationsData(null);
       })
       .finally(() => {
-        setLoadingReview(false);
         setEditorDirty(false);
       });
-  }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
+  }, [currentStep, steps, stepConfig?.clarificationsEditable, skillsPath, skillName]);
 
   // Advance to next step helper
   const [pendingAutoStart, setPendingAutoStart] = useState(false);
@@ -491,14 +446,9 @@ export default function WorkflowPage() {
 
     setCurrentStep(nextStep);
 
-    const nextConfig = STEP_CONFIGS[nextStep];
-    if (nextConfig?.type === "human") {
-      updateStepStatus(nextStep, "waiting_for_user");
-    } else {
-      // Agent and reasoning steps auto-start
-      setPendingAutoStart(true);
-    }
-  }, [currentStep, steps, setCurrentStep, updateStepStatus]);
+    // All steps are agent or reasoning — auto-start
+    setPendingAutoStart(true);
+  }, [currentStep, steps, setCurrentStep]);
 
   // Auto-start agent/reasoning steps:
   // 1. When advancing from a completed step (pendingAutoStart set by advanceToNextStep)
@@ -523,7 +473,6 @@ export default function WorkflowPage() {
 
     if (!wasToggle) return; // only auto-start on review→update toggle
     if (!workspacePath) return;
-    if (stepConfig?.type === "human") return;
     const status = steps[currentStep]?.status;
     if (status && status !== "pending") return;
     if (isRunning || pendingAutoStart) return;
@@ -533,8 +482,14 @@ export default function WorkflowPage() {
   }, [hydrated, reviewMode]);
 
   // Reposition to first incomplete step when switching to Update mode (AC 3).
+  // Exception: if the user is on a completed clarifications-editable step, stay put —
+  // they're switching to update mode specifically to edit answers.
   useEffect(() => {
     if (!hydrated || reviewMode) return;
+    const currentCfg = STEP_CONFIGS[currentStep];
+    if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
+      return; // stay on this step for editing
+    }
     const first = steps.find((s) => s.status !== "completed");
     const target = first ? first.id : steps.length - 1;
     if (target !== currentStep) {
@@ -635,8 +590,6 @@ export default function WorkflowPage() {
     }
   }, [activeRunStatus, updateStepStatus, setRunning, setActiveAgent, skillName, workspacePath, advanceToNextStep]);
 
-  // (Review agent logic removed — direct completion is faster and sufficient)
-
   // --- Step handlers ---
 
   const handleStartAgentStep = async () => {
@@ -675,19 +628,6 @@ export default function WorkflowPage() {
     }
   };
 
-  const handleStartStep = async () => {
-    if (!stepConfig) return;
-
-    switch (stepConfig.type) {
-      case "agent":
-      case "reasoning":
-        return handleStartAgentStep();
-      case "human":
-        // Human steps don't have a "start" — they just show the form
-        break;
-    }
-  };
-
   const runGateEvaluation = async () => {
     if (!workspacePath) return;
     console.log(`[workflow] Running answer evaluator gate for "${skillName}"`);
@@ -709,35 +649,32 @@ export default function WorkflowPage() {
   };
 
   const runGateOrAdvance = () => {
-    // Gate 1: after step 1, evaluate answers before advancing to research
-    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
+    // Gate 1: after step 0 (Research), evaluate answers before advancing to Detailed Research
+    if (currentStep === 0 && workspacePath && !disabledSteps.includes(1)) {
       setGateContext("clarifications");
       runGateEvaluation();
       return;
     }
 
-    // Gate 2: after step 3, evaluate answers (including refinements) before confirm-decisions
-    if (currentStep === 3 && workspacePath && !disabledSteps.includes(4)) {
+    // Gate 2: after step 1 (Detailed Research), evaluate answers before Confirm Decisions
+    if (currentStep === 1 && workspacePath && !disabledSteps.includes(2)) {
       setGateContext("refinements");
       runGateEvaluation();
       return;
     }
 
-    // All other review steps: advance normally
-    updateStepStatus(currentStep, "completed");
+    // All other steps: advance normally
     advanceToNextStep();
   };
 
   const handleReviewContinue = async () => {
     // Save the editor content to skills path (required — no workspace fallback)
-    const config = HUMAN_REVIEW_STEPS[currentStep];
-    const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
-    if (config && reviewContent !== null && skillsPath && filename) {
+    if (stepConfig?.clarificationsEditable && reviewContent !== null && skillsPath) {
       try {
         const content = clarificationsData
           ? JSON.stringify(clarificationsData, null, 2)
           : (reviewContent ?? "");
-        await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
+        await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
         setReviewContent(content);
         setEditorDirty(false);
       } catch (err) {
@@ -797,19 +734,17 @@ export default function WorkflowPage() {
     setGateEvaluation(null);
   };
 
-  /** Skip to decisions: gate 1 skips steps 1-3, gate 2 just advances from step 3. */
+  /** Skip to decisions: gate 1 skips step 1 → jump to step 2, gate 2 just advances from step 1. */
   const skipToDecisions = (message: string) => {
     closeGateDialog();
     if (gateContext === "refinements") {
-      // Gate 2: just advance from step 3 to step 4
+      // Gate 2: just advance from step 1 to step 2
       updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
       advanceToNextStep();
     } else {
-      // Gate 1: skip steps 1-3 and jump to step 4
+      // Gate 1: skip step 1 (Detailed Research) and jump to step 2 (Confirm Decisions)
       updateStepStatus(1, "completed");
-      updateStepStatus(2, "completed");
-      updateStepStatus(3, "completed");
-      setCurrentStep(4);
+      setCurrentStep(2);
     }
     toast.success(message);
   };
@@ -831,8 +766,6 @@ export default function WorkflowPage() {
       skipToDecisions("Skipped detailed research — answers were sufficient");
     }
   };
-
-  // Auto-fill handlers removed — gate dialog now uses "Let Me Answer" / "Continue Anyway" only
 
   /** Sufficient override: run research anyway (gate 1) or continue to decisions (gate 2). */
   const handleGateResearch = () => {
@@ -859,42 +792,21 @@ export default function WorkflowPage() {
 
   /** Full reset for the current step: end session, clear disk artifacts, revert store, auto-start. */
   const performStepReset = async (stepId: number) => {
+    // Step 1 (Detailed Research) mutates step 0's clarifications.json,
+    // so resetting step 1 must also reset step 0.
+    const effectiveStep = stepId === 1 ? 0 : stepId;
     endActiveSession();
     if (workspacePath) {
       try {
-        await resetWorkflowStep(workspacePath, skillName, stepId);
+        await resetWorkflowStep(workspacePath, skillName, effectiveStep);
       } catch {
         // best-effort -- proceed even if disk cleanup fails
       }
     }
     clearRuns();
-    resetToStep(stepId);
-    autoStartAfterReset(stepId);
-    toast.success(`Reset step ${stepId + 1}`);
-  };
-
-  // Reload the file content (after user edits externally).
-  // skills_path is required — no workspace fallback.
-  const handleReviewReload = () => {
-    if (!reviewFilePath || !skillsPath) return;
-    setLoadingReview(true);
-    const filename = reviewFilePath.split("/").pop() ?? reviewFilePath;
-
-    readFile(`${skillsPath}/${skillName}/context/${filename}`)
-      .then((content) => {
-        setReviewContent(content ?? null);
-        setClarificationsData(parseClarifications(content ?? null));
-        if (!content) toast.error("Failed to reload file", { duration: Infinity });
-      })
-      .catch(() => {
-        setReviewContent(null);
-        setClarificationsData(null);
-        toast.error("Failed to reload file", { duration: Infinity });
-      })
-      .finally(() => {
-        setLoadingReview(false);
-        setEditorDirty(false);
-      });
+    resetToStep(effectiveStep);
+    autoStartAfterReset(effectiveStep);
+    toast.success(stepId === 1 ? "Reset to Research step" : `Reset to step ${effectiveStep + 1}`);
   };
 
   const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
@@ -907,15 +819,13 @@ export default function WorkflowPage() {
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
   const handleSave = useCallback(async (silent = false): Promise<boolean> => {
-    const config = HUMAN_REVIEW_STEPS[currentStep];
-    if (!config || !skillsPath) return false;
-    const filename = config.relativePath.split("/").pop() ?? config.relativePath;
+    if (!stepConfig?.clarificationsEditable || !skillsPath) return false;
     setSaveStatus("saving");
     try {
       const content = clarificationsData
         ? JSON.stringify(clarificationsData, null, 2)
         : (reviewContent ?? "");
-      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
+      await writeFile(`${skillsPath}/${skillName}/context/clarifications.json`, content);
       setReviewContent(content);
       setEditorDirty(false);
       setSaveStatus("saved");
@@ -929,21 +839,21 @@ export default function WorkflowPage() {
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
-  }, [currentStep, skillsPath, reviewContent, clarificationsData, skillName]);
+  }, [stepConfig?.clarificationsEditable, skillsPath, reviewContent, clarificationsData, skillName]);
 
-  // Debounce autosave — fires 1500ms after the last edit on a human review step.
+  const currentStepDef = steps[currentStep];
+
+  // Debounce autosave — fires 1500ms after the last edit on a clarifications-editable step.
   // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
   useEffect(() => {
-    if (!isHumanReviewStep || !editorDirty) return;
+    if (!stepConfig?.clarificationsEditable || currentStepDef?.status !== "completed" || !editorDirty) return;
 
     const timer = setTimeout(() => {
       handleSave(true);
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [clarificationsData, editorDirty, isHumanReviewStep, handleSave]);
-
-  const currentStepDef = steps[currentStep];
+  }, [clarificationsData, editorDirty, stepConfig?.clarificationsEditable, currentStepDef?.status, handleSave]);
 
   // --- Render helpers ---
 
@@ -970,74 +880,21 @@ export default function WorkflowPage() {
         skillName={skillName}
         workspacePath={workspacePath ?? undefined}
         skillsPath={skillsPath}
+        clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
+        clarificationsData={clarificationsData}
+        onClarificationsChange={handleClarificationsChange}
+        onClarificationsContinue={() => handleReviewContinue()}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
+        saveStatus={saveStatus}
+        evaluating={!!gateLoading}
       />
-    );
-  };
-
-  /** Render human review step (all states: loading, active, completed). */
-  const renderHumanContent = () => {
-    if (loadingReview) {
-      return (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-muted-foreground" />
-        </div>
-      );
-    }
-
-    if (reviewContent === null) {
-      return (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-          <AlertCircle className="size-8 text-destructive/50" />
-          <div className="text-center">
-            <p className="font-medium text-destructive">Missing clarifications file</p>
-            <p className="mt-1 text-sm">
-              Expected <code className="text-xs">{HUMAN_REVIEW_STEPS[currentStep]?.relativePath}</code> but it was not found.
-              The previous step may not have completed successfully.
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // JSON clarifications data — render the structured editor
-    if (clarificationsData) {
-      return (
-        <ClarificationsEditor
-          data={clarificationsData}
-          onChange={handleClarificationsChange}
-          onReload={handleReviewReload}
-          onContinue={() => handleReviewContinue()}
-          filePath={reviewFilePath}
-          saveStatus={saveStatus}
-          evaluating={gateLoading}
-        />
-      );
-    }
-
-    // Fallback: file exists but is not valid JSON (legacy .md file)
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-        <AlertCircle className="size-8" style={{ color: "var(--color-pacific)", opacity: 0.5 }} />
-        <div className="text-center max-w-md">
-          <p className="font-medium">Incompatible clarifications format</p>
-          <p className="mt-1 text-sm">
-            The clarifications file is not in JSON format. Reset the previous step to regenerate it
-            in the new structured format.
-          </p>
-        </div>
-      </div>
     );
   };
 
   // --- Render content (dispatch by step type) ---
 
   const renderContent = () => {
-    // 1. Human review — always shows content regardless of status
-    if (isHumanReviewStep) {
-      return renderHumanContent();
-    }
-
-    // 2. Agent running — show streaming output or init spinner
+    // 1. Agent running — show streaming output or init spinner
     if (activeAgentId) {
       if (isInitializing && !runs[activeAgentId]?.messages.length) {
         return <AgentInitializingIndicator />;
@@ -1045,17 +902,17 @@ export default function WorkflowPage() {
       return <AgentOutputPanel agentId={activeAgentId} />;
     }
 
-    // 3. Agent initializing (no ID yet)
+    // 2. Agent initializing (no ID yet)
     if (isInitializing) {
       return <AgentInitializingIndicator />;
     }
 
-    // 4. Completed agent/reasoning step — show output files
+    // 3. Completed step — show output files (with editable clarifications where applicable)
     if (currentStepDef?.status === "completed") {
       return renderCompletedStep();
     }
 
-    // 5. Error state with retry
+    // 4. Error state with retry
     if (currentStepDef?.status === "error") {
       return (
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -1082,7 +939,7 @@ export default function WorkflowPage() {
                 <RotateCcw className="size-3.5" />
                 Reset Step
               </Button>
-              <Button size="sm" onClick={() => handleStartStep()}>
+              <Button size="sm" onClick={handleStartAgentStep}>
                 <Play className="size-3.5" />
                 Retry
               </Button>
@@ -1092,7 +949,7 @@ export default function WorkflowPage() {
       );
     }
 
-    // 6. Pending — awaiting user action
+    // 5. Pending — awaiting user action
     if (reviewMode) {
       return (
         <div className="flex flex-1 items-center justify-center text-muted-foreground">
@@ -1110,7 +967,7 @@ export default function WorkflowPage() {
           <p className="font-medium">Ready to run</p>
           <p className="mt-1 text-sm">Click Start to begin this step.</p>
         </div>
-        <Button size="sm" onClick={handleStartStep}>
+        <Button size="sm" onClick={handleStartAgentStep}>
           <Play className="size-3.5" />
           Start Step
         </Button>
@@ -1225,7 +1082,7 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Transition gate dialog — shown after step 1 review (gate 1) or step 3 review (gate 2) */}
+      {/* Transition gate dialog — shown after step 0 (gate 1) or step 1 (gate 2) */}
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
@@ -1253,7 +1110,9 @@ export default function WorkflowPage() {
               return;
             }
             if (id < currentStep) {
-              setResetTarget(id);
+              // Step 1 (Detailed Research) mutates step 0's clarifications.json,
+              // so resetting to step 1 must also reset step 0.
+              setResetTarget(id === 1 ? 0 : id);
               return;
             }
             setCurrentStep(id);
@@ -1274,13 +1133,11 @@ export default function WorkflowPage() {
                 {currentStepDef?.description}
               </p>
             </div>
-            <div className="flex items-center gap-3">
-            </div>
           </div>
 
-          {/* Content area — agent output panel and ClarificationsEditor manage their own padding */}
+          {/* Content area — agent output panel manages its own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            (activeAgentId && !isHumanReviewStep) || (isHumanReviewStep && clarificationsData) ? "" : "p-4"
+            activeAgentId ? "" : "p-4"
           }`}>
             {renderContent()}
           </div>

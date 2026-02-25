@@ -11,23 +11,23 @@ describe("useWorkflowStore", () => {
     useWorkflowStore.getState().reset();
   });
 
-  it("has correct initial state with 6 steps, all pending, currentStep=0", () => {
+  it("has correct initial state with 4 steps, all pending, currentStep=0", () => {
     const state = useWorkflowStore.getState();
     expect(state.skillName).toBeNull();
     expect(state.purpose).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(6);
+    expect(state.steps).toHaveLength(4);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
-    // Verify step IDs are 0-5
-    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3, 4, 5]);
+    // Verify step IDs are 0-3
+    expect(state.steps.map((s) => s.id)).toEqual([0, 1, 2, 3]);
   });
 
   it("initWorkflow sets skillName, purpose, and resets steps", () => {
     // First change some state
-    useWorkflowStore.getState().setCurrentStep(5);
+    useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().setRunning(true);
 
@@ -46,23 +46,23 @@ describe("useWorkflowStore", () => {
   });
 
   it("updateStepStatus changes a specific step's status", () => {
-    useWorkflowStore.getState().updateStepStatus(3, "in_progress");
+    useWorkflowStore.getState().updateStepStatus(2, "in_progress");
     const state = useWorkflowStore.getState();
-    expect(state.steps[3].status).toBe("in_progress");
+    expect(state.steps[2].status).toBe("in_progress");
     // Other steps remain pending
     expect(state.steps[0].status).toBe("pending");
-    expect(state.steps[2].status).toBe("pending");
-    expect(state.steps[4].status).toBe("pending");
+    expect(state.steps[1].status).toBe("pending");
+    expect(state.steps[3].status).toBe("pending");
   });
 
   it("updateStepStatus can set different statuses", () => {
     useWorkflowStore.getState().updateStepStatus(0, "completed");
-    useWorkflowStore.getState().updateStepStatus(1, "waiting_for_user");
+    useWorkflowStore.getState().updateStepStatus(1, "in_progress");
     useWorkflowStore.getState().updateStepStatus(2, "error");
 
     const state = useWorkflowStore.getState();
     expect(state.steps[0].status).toBe("completed");
-    expect(state.steps[1].status).toBe("waiting_for_user");
+    expect(state.steps[1].status).toBe("in_progress");
     expect(state.steps[2].status).toBe("error");
   });
 
@@ -116,7 +116,7 @@ describe("useWorkflowStore", () => {
 
   it("reset clears everything back to initial state", () => {
     useWorkflowStore.getState().initWorkflow("test-skill", "hr analytics");
-    useWorkflowStore.getState().setCurrentStep(4);
+    useWorkflowStore.getState().setCurrentStep(3);
     useWorkflowStore.getState().updateStepStatus(0, "completed");
     useWorkflowStore.getState().updateStepStatus(1, "completed");
     useWorkflowStore.getState().setRunning(true);
@@ -128,7 +128,7 @@ describe("useWorkflowStore", () => {
     expect(state.purpose).toBeNull();
     expect(state.currentStep).toBe(0);
     expect(state.isRunning).toBe(false);
-    expect(state.steps).toHaveLength(6);
+    expect(state.steps).toHaveLength(4);
     state.steps.forEach((step) => {
       expect(step.status).toBe("pending");
     });
@@ -136,37 +136,36 @@ describe("useWorkflowStore", () => {
 
   it("resetToStep resets target step and all subsequent steps to pending", () => {
     const store = useWorkflowStore.getState();
-    // Complete steps 0 through 4
-    for (let i = 0; i <= 4; i++) {
+    // Complete steps 0 through 2
+    for (let i = 0; i <= 2; i++) {
       store.updateStepStatus(i, "completed");
     }
-    store.setCurrentStep(5);
+    store.setCurrentStep(3);
     store.setRunning(true);
 
-    // Rerun from step 3
-    useWorkflowStore.getState().resetToStep(3);
+    // Rerun from step 2
+    useWorkflowStore.getState().resetToStep(2);
 
     const state = useWorkflowStore.getState();
-    // Steps 0-2 should remain completed
+    // Steps 0-1 should remain completed
     expect(state.steps[0].status).toBe("completed");
     expect(state.steps[1].status).toBe("completed");
-    expect(state.steps[2].status).toBe("completed");
-    // Steps 3-5 should be reset to pending
-    for (let i = 3; i <= 5; i++) {
+    // Steps 2-3 should be reset to pending
+    for (let i = 2; i <= 3; i++) {
       expect(state.steps[i].status).toBe("pending");
     }
-    // currentStep should be 3
-    expect(state.currentStep).toBe(3);
+    // currentStep should be 2
+    expect(state.currentStep).toBe(2);
     // isRunning should be false
     expect(state.isRunning).toBe(false);
   });
 
   it("resetToStep from step 0 resets all steps", () => {
     const store = useWorkflowStore.getState();
-    for (let i = 0; i <= 5; i++) {
+    for (let i = 0; i <= 3; i++) {
       store.updateStepStatus(i, "completed");
     }
-    store.setCurrentStep(5);
+    store.setCurrentStep(3);
 
     useWorkflowStore.getState().resetToStep(0);
 
@@ -180,10 +179,9 @@ describe("useWorkflowStore", () => {
   it("steps have expected names", () => {
     const state = useWorkflowStore.getState();
     expect(state.steps[0].name).toBe("Research");
-    expect(state.steps[2].name).toBe("Detailed Research");
-    expect(state.steps[3].name).toBe("Review");
-    expect(state.steps[4].name).toBe("Confirm Decisions");
-    expect(state.steps[5].name).toBe("Generate Skill");
+    expect(state.steps[1].name).toBe("Detailed Research");
+    expect(state.steps[2].name).toBe("Confirm Decisions");
+    expect(state.steps[3].name).toBe("Generate Skill");
   });
 
   it("does not have a Package step", () => {
@@ -312,46 +310,46 @@ describe("useWorkflowStore", () => {
   });
 
   describe("loadWorkflowState migration safety", () => {
-    it("completes all 6 steps (0-5)", () => {
+    it("completes all 4 steps (0-3)", () => {
       // Simulate SQLite returning all steps completed
-      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5]);
+      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3]);
 
       const state = useWorkflowStore.getState();
-      // All 6 real steps (0-5) should be completed
+      // All 4 steps (0-3) should be completed
       state.steps.forEach((step) => {
         expect(step.status).toBe("completed");
       });
-      expect(state.steps).toHaveLength(6);
+      expect(state.steps).toHaveLength(4);
       // currentStep should be the last valid step since all are completed
-      expect(state.currentStep).toBe(5);
+      expect(state.currentStep).toBe(3);
       expect(state.hydrated).toBe(true);
     });
 
-    it("ignores step_id 6, 7, and 8 from legacy SQLite data", () => {
+    it("ignores step_id 4, 5, 6, 7 and 8 from legacy SQLite data", () => {
       useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 4, 5, 6, 7, 8]);
 
       const state = useWorkflowStore.getState();
       state.steps.forEach((step) => {
         expect(step.status).toBe("completed");
       });
-      expect(state.steps.find((s) => s.id === 6)).toBeUndefined();
+      expect(state.steps.find((s) => s.id === 4)).toBeUndefined();
       expect(state.steps.find((s) => s.id === 8)).toBeUndefined();
-      expect(state.steps).toHaveLength(6);
+      expect(state.steps).toHaveLength(4);
     });
 
     it("correctly hydrates partial progress with legacy step_id 8 present", () => {
-      // Steps 0-3 completed in SQLite, plus leftover step 8 from old data
-      useWorkflowStore.getState().loadWorkflowState([0, 1, 2, 3, 8]);
+      // Steps 0-1 completed in SQLite, plus leftover step 8 from old data
+      useWorkflowStore.getState().loadWorkflowState([0, 1, 8]);
 
       const state = useWorkflowStore.getState();
-      for (let i = 0; i <= 3; i++) {
+      for (let i = 0; i <= 1; i++) {
         expect(state.steps[i].status).toBe("completed");
       }
-      for (let i = 4; i <= 5; i++) {
+      for (let i = 2; i <= 3; i++) {
         expect(state.steps[i].status).toBe("pending");
       }
-      // First incomplete step is 4
-      expect(state.currentStep).toBe(4);
+      // First incomplete step is 2
+      expect(state.currentStep).toBe(2);
     });
   });
 
@@ -361,35 +359,35 @@ describe("useWorkflowStore", () => {
     });
 
     it("setDisabledSteps updates the list", () => {
-      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
-      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3, 4, 5]);
+      useWorkflowStore.getState().setDisabledSteps([2, 3]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3]);
     });
 
     it("reset() clears disabledSteps", () => {
-      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
-      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3, 4, 5]);
+      useWorkflowStore.getState().setDisabledSteps([2, 3]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([2, 3]);
 
       useWorkflowStore.getState().reset();
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
 
     it("initWorkflow clears disabledSteps", () => {
-      useWorkflowStore.getState().setDisabledSteps([5]);
-      expect(useWorkflowStore.getState().disabledSteps).toEqual([5]);
+      useWorkflowStore.getState().setDisabledSteps([3]);
+      expect(useWorkflowStore.getState().disabledSteps).toEqual([3]);
 
       useWorkflowStore.getState().initWorkflow("new-skill", "domain");
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
 
     it("resetToStep(0) clears disabledSteps", () => {
-      useWorkflowStore.getState().setDisabledSteps([2, 3, 4, 5]);
+      useWorkflowStore.getState().setDisabledSteps([2, 3]);
       useWorkflowStore.getState().resetToStep(0);
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);
     });
 
     it("resetToStep(n > 0) also clears disabledSteps", () => {
-      useWorkflowStore.getState().setDisabledSteps([5]);
-      useWorkflowStore.getState().resetToStep(3);
+      useWorkflowStore.getState().setDisabledSteps([3]);
+      useWorkflowStore.getState().resetToStep(2);
       // Guards are re-evaluated from disk after each step completes — stale guards
       // (e.g. contradictory_inputs from old decisions.md) must not persist across resets
       expect(useWorkflowStore.getState().disabledSteps).toEqual([]);

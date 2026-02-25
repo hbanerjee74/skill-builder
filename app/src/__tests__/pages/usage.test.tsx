@@ -35,8 +35,8 @@ const mockSummary: UsageSummary = {
 
 const mockByStep: UsageByStep[] = [
   { step_id: 0, step_name: "Research", total_cost: 3.5, run_count: 10 },
-  { step_id: 4, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
-  { step_id: 5, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
+  { step_id: 2, step_name: "Confirm Decisions", total_cost: 6.0, run_count: 8 },
+  { step_id: 3, step_name: "Generate Skill", total_cost: 2.0, run_count: 5 },
 ];
 
 const mockByModel: UsageByModel[] = [
@@ -64,9 +64,9 @@ const mockRecentSessions: WorkflowSessionRecord[] = [
   {
     session_id: "ws-2",
     skill_name: "another-skill",
-    min_step: 5,
-    max_step: 5,
-    steps_csv: "5",
+    min_step: 3,
+    max_step: 3,
+    steps_csv: "3",
     agent_count: 1,
     total_cost: 1.2345,
     total_input_tokens: 50000,
@@ -197,7 +197,7 @@ describe("UsagePage", () => {
       {
         agent_id: "a2",
         skill_name: "my-skill",
-        step_id: 4,
+        step_id: 2,
         model: "opus",
         status: "completed",
         input_tokens: 5000,

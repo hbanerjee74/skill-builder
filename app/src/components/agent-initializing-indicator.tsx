@@ -1,17 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { useWorkflowStore } from "@/stores/workflow-store";
-
-/** Format milliseconds as a human-readable elapsed string (e.g. "5s", "1m 23s"). */
-function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
-  }
-  return `${secs}s`;
-}
+import { formatElapsed } from "@/lib/utils";
 
 export function AgentInitializingIndicator() {
   const initStartTime = useWorkflowStore((s) => s.initStartTime);

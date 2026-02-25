@@ -26,20 +26,16 @@ import { getSessionAgentRuns } from "@/lib/tauri"
 
 const STEP_NAMES: Record<number, string> = {
   0: "Research",
-  1: "Review",
-  2: "Detailed Research",
-  3: "Review",
-  4: "Confirm Decisions",
-  5: "Generate Skill",
+  1: "Detailed Research",
+  2: "Confirm Decisions",
+  3: "Generate Skill",
 }
 
 const STEP_COLORS: Record<number, string> = {
   0: "var(--color-pacific)",
-  1: "var(--color-pacific)",
-  2: "var(--color-ocean)",
-  3: "var(--color-ocean)",
-  4: "var(--color-arctic)",
-  5: "var(--color-seafoam)",
+  1: "var(--color-ocean)",
+  2: "var(--color-arctic)",
+  3: "var(--color-seafoam)",
 }
 
 const MODEL_COLORS: Record<string, string> = {
