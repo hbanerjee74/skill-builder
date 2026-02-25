@@ -1597,9 +1597,9 @@ fn autofill_refinement_answers(content: &str) -> (String, u32) {
                 for question in questions.iter_mut() {
                     if let Some(refinements) = question.get_mut("refinements").and_then(|r| r.as_array_mut()) {
                         for refinement in refinements.iter_mut() {
-                            let answer_choice_empty = refinement.get("answer_choice").map_or(true, |v| v.is_null());
-                            let answer_text_empty = refinement.get("answer_text").map_or(true, |v| {
-                                v.is_null() || v.as_str().map_or(false, |s| s.is_empty())
+                            let answer_choice_empty = refinement.get("answer_choice").is_none_or(|v| v.is_null());
+                            let answer_text_empty = refinement.get("answer_text").is_none_or(|v| {
+                                v.is_null() || v.as_str().is_some_and(|s| s.is_empty())
                             });
 
                             if answer_choice_empty && answer_text_empty {
@@ -1645,9 +1645,9 @@ fn autofill_answers(content: &str) -> (String, u32) {
         for section in sections.iter_mut() {
             if let Some(questions) = section.get_mut("questions").and_then(|q| q.as_array_mut()) {
                 for question in questions.iter_mut() {
-                    let answer_choice_empty = question.get("answer_choice").map_or(true, |v| v.is_null());
-                    let answer_text_empty = question.get("answer_text").map_or(true, |v| {
-                        v.is_null() || v.as_str().map_or(false, |s| s.is_empty())
+                    let answer_choice_empty = question.get("answer_choice").is_none_or(|v| v.is_null());
+                    let answer_text_empty = question.get("answer_text").is_none_or(|v| {
+                        v.is_null() || v.as_str().is_some_and(|s| s.is_empty())
                     });
 
                     if answer_choice_empty && answer_text_empty {
