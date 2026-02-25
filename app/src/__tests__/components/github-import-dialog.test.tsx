@@ -51,6 +51,8 @@ const sampleSkills: AvailableSkill[] = [
   },
 ];
 
+const DEFAULT_REGISTRIES = [{ name: "Test Registry", source_url: "https://github.com/acme/skills", enabled: true }];
+
 function renderDialog(props: Partial<React.ComponentProps<typeof GitHubImportDialog>> = {}) {
   const onOpenChange = vi.fn();
   const onImported = vi.fn(() => Promise.resolve());
@@ -62,7 +64,7 @@ function renderDialog(props: Partial<React.ComponentProps<typeof GitHubImportDia
         open={true}
         onOpenChange={onOpenChange}
         onImported={onImported}
-        url="https://github.com/acme/skills"
+        registries={DEFAULT_REGISTRIES}
         {...props}
       />
     ),
@@ -940,7 +942,7 @@ describe("GitHubImportDialog", () => {
             open={open}
             onOpenChange={setOpen}
             onImported={onImported}
-            url="https://github.com/acme/skills"
+            registries={DEFAULT_REGISTRIES}
             mode="skill-library"
           />
         );

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Loader2, AlertCircle, PencilLine, CheckCircle2, CheckCheck } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -27,9 +27,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
-import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill } from "@/lib/types"
+import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill, MarketplaceRegistry } from "@/lib/types"
 import { PURPOSES, PURPOSE_LABELS, PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
@@ -68,8 +69,8 @@ interface GitHubImportDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImported: () => Promise<void>
-  /** The marketplace repository URL (from settings). Required — dialog auto-browses on open. */
-  url: string
+  /** The marketplace registries to browse (from settings). */
+  registries: MarketplaceRegistry[]
   /**
    * When set, only skills whose purpose is in this list are shown (skill-library mode only).
    * In settings-skills mode this filter is ignored — all skills with a name are shown.
@@ -129,20 +130,27 @@ function UpgradeBanner({
   )
 }
 
+type TabState = {
+  loading: boolean
+  error: string | null
+  skills: AvailableSkill[]
+  skillStates: Map<string, SkillState>
+  repoInfo: GitHubRepoInfo | null
+}
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
   onImported,
-  url,
+  registries,
   typeFilter,
   mode = 'settings-skills',
   workspacePath,
 }: GitHubImportDialogProps) {
-  const [loading, setLoading] = useState(false)
-  const [repoInfo, setRepoInfo] = useState<GitHubRepoInfo | null>(null)
-  const [skills, setSkills] = useState<AvailableSkill[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map())
+  const [tabStates, setTabStates] = useState<Record<string, TabState>>({})
+  const [activeTab, setActiveTab] = useState<string>("")
+  // Ref kept in sync with activeTab so callbacks with stale closures can read the current value
+  const activeTabRef = useRef<string>("")
   const availableModels = useSettingsStore((s) => s.availableModels)
 
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
@@ -157,8 +165,25 @@ export default function GitHubImportDialog({
   const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
   const [showCustomizationWarning, setShowCustomizationWarning] = useState(false)
 
+  // Keep the ref in sync synchronously whenever setActiveTab is called
+  // (useEffect would delay by one render; direct assignment is safer for callbacks)
+  activeTabRef.current = activeTab
+
+  // Derived values from current tab
+  const currentTab: TabState = tabStates[activeTab] ?? { loading: false, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+  const loading = currentTab.loading
+  const skills = currentTab.skills
+  const error = currentTab.error
+  const skillStates = currentTab.skillStates
+  const repoInfo = currentTab.repoInfo
+
   function setSkillState(path: string, state: SkillState): void {
-    setSkillStates((prev) => new Map(prev).set(path, state))
+    const tabKey = activeTabRef.current
+    setTabStates((prev) => {
+      const tab = prev[tabKey] ?? { loading: false, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+      const newSkillStates = new Map(tab.skillStates).set(path, state)
+      return { ...prev, [tabKey]: { ...tab, skillStates: newSkillStates } }
+    })
   }
 
   function closeEditForm(): void {
@@ -171,11 +196,8 @@ export default function GitHubImportDialog({
   }
 
   const reset = useCallback(() => {
-    setLoading(false)
-    setRepoInfo(null)
-    setSkills([])
-    setError(null)
-    setSkillStates(new Map())
+    setTabStates({})
+    setActiveTab("")
     closeEditForm()
     setWorkspaceSkills([])
     setInstalledLibrarySkills(new Map())
@@ -191,43 +213,34 @@ export default function GitHubImportDialog({
     [onOpenChange, reset]
   )
 
-  const browse = useCallback(async () => {
-    setError(null)
-    setLoading(true)
+  const browseRegistry = useCallback(async (registry: MarketplaceRegistry) => {
+    const tabKey = registry.name
+    setTabStates(prev => ({
+      ...prev,
+      [tabKey]: { loading: true, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+    }))
     try {
-      const info = await parseGitHubUrl(url.trim())
-      setRepoInfo(info)
+      const info = await parseGitHubUrl(registry.source_url.trim())
       let available = await listGitHubSkills(
         info.owner,
         info.repo,
         info.branch,
         info.subpath ?? undefined,
       )
-      // Apply typeFilter only for skill-library mode
       if (mode === 'skill-library' && typeFilter && typeFilter.length > 0) {
         available = available.filter(
           (s) => s.purpose != null && typeFilter.includes(s.purpose)
         )
       }
-      // For settings-skills mode: show all skills that have a name
       if (mode === 'settings-skills') {
         available = available.filter((s) => !!s.name)
-      }
-
-      if (available.length === 0) {
-        setError("No skills found in this repository.")
-        return
       }
 
       const preStates = new Map<string, SkillState>()
 
       if (mode === 'skill-library') {
-        // skill-library: check the skills master table (covers both skill-builder and marketplace skills)
         const dashboardNames = await getDashboardSkillNames()
         const dashboardSet = new Set(dashboardNames)
-        // Fetch full metadata for version comparison. list_skills reads from DB (ignores
-        // workspace_path on the Rust side), so passing "" is safe when workspacePath is
-        // not yet loaded (e.g. dialog opened before settings async load completes).
         const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
         setInstalledLibrarySkills(newSummaryMap)
@@ -239,7 +252,6 @@ export default function GitHubImportDialog({
           }
         }
       } else {
-        // settings-skills: check workspace_skills table
         const installedSkills = await listWorkspaceSkills()
         setWorkspaceSkills(installedSkills)
         const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
@@ -251,20 +263,44 @@ export default function GitHubImportDialog({
         }
       }
 
-      setSkillStates(preStates)
-      setSkills(available)
+      const finalSkills = available.length === 0 ? [] : available
+      const finalError = available.length === 0 ? "No skills found in this repository." : null
+
+      setTabStates(prev => ({
+        ...prev,
+        [tabKey]: { loading: false, error: finalError, skills: finalSkills, skillStates: preStates, repoInfo: info }
+      }))
     } catch (err) {
-      console.error("[github-import] Failed to browse skills:", err)
-      setError(err instanceof Error ? err.message : String(err))
-    } finally {
-      setLoading(false)
+      console.error("[github-import] Failed to browse registry:", err)
+      setTabStates(prev => ({
+        ...prev,
+        [tabKey]: {
+          loading: false,
+          error: err instanceof Error ? err.message : String(err),
+          skills: [],
+          skillStates: new Map(),
+          repoInfo: null
+        }
+      }))
     }
-  }, [url, typeFilter, workspacePath])
+  }, [registries, typeFilter, workspacePath, mode])
 
   useEffect(() => {
-    if (open) browse()
+    if (open && registries.length > 0) {
+      const first = registries[0]
+      setActiveTab(first.name)
+      browseRegistry(first)
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  const handleTabChange = useCallback((tabKey: string) => {
+    setActiveTab(tabKey)
+    const registry = registries.find(r => r.name === tabKey)
+    if (registry && !tabStates[tabKey]) {
+      browseRegistry(registry)
+    }
+  }, [registries, tabStates, browseRegistry])
 
   const openEditForm = useCallback((skill: AvailableSkill) => {
     setEditingSkill(skill)
@@ -395,138 +431,174 @@ export default function GitHubImportDialog({
     ? getPurposeConflict(editForm.settings_purpose, editingSkill.name)
     : null
 
+  function renderSkillList() {
+    if (loading) {
+      return (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading skills...</p>
+        </div>
+      )
+    }
+
+    if (!loading && error) {
+      return (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <AlertCircle className="size-8 text-destructive" />
+          <p className="text-sm text-destructive text-center">{error}</p>
+          <Button variant="outline" onClick={() => {
+            const registry = registries.find(r => r.name === activeTab)
+            if (registry) browseRegistry(registry)
+          }}>Retry</Button>
+        </div>
+      )
+    }
+
+    if (!loading && skills.length > 0 && repoInfo) {
+      return (
+        <>
+          <DialogHeader>
+            <DialogTitle>Browse Marketplace</DialogTitle>
+            <DialogDescription>
+              {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border">
+            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+              <span className="flex-1">Name</span>
+              <span className="w-20 shrink-0">Version</span>
+              <span className="w-28 shrink-0">Status</span>
+              <span className="w-8 shrink-0" />
+            </div>
+            <ScrollArea className="max-h-[60vh]">
+              {skills.map((skill) => {
+                const state = skillStates.get(skill.path) ?? "idle"
+                const isImporting = state === "importing"
+                const isSameVersion = state === "same-version"
+                const isUpgrade = state === "upgrade"
+                const isExists = state === "exists"
+                const isDisabled = isExists || isSameVersion
+
+                return (
+                  <div
+                    key={skill.path}
+                    className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="truncate text-sm font-medium">{skill.name}</span>
+                        {mode === 'skill-library' && !skill.purpose && !isDisabled && (
+                          <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
+                            Missing purpose
+                          </Badge>
+                        )}
+                      </div>
+                      {skill.description ? (
+                        <div className="text-xs text-muted-foreground">{skill.description}</div>
+                      ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
+                        <div className="text-xs text-amber-600">No description</div>
+                      ) : null}
+                    </div>
+                    <div className="w-20 shrink-0">
+                      {skill.version ? (
+                        <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
+                    <div className="w-28 shrink-0">
+                      {state === "imported" && (
+                        <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                      )}
+                      {isSameVersion && (
+                        <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
+                      )}
+                      {isUpgrade && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
+                      )}
+                      {isExists && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
+                      )}
+                    </div>
+                    <div className="w-8 shrink-0 flex items-center justify-end">
+                      {state === "imported" ? (
+                        <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                      ) : isDisabled ? (
+                        <CheckCheck className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <button
+                          type="button"
+                          className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                          disabled={isImporting}
+                          aria-label={`Import ${skill.name}`}
+                          onClick={async () => {
+                            if (isUpgrade && mode === 'settings-skills') {
+                              // Check for customization before opening edit form
+                              try {
+                                const isCustomized = await checkSkillCustomized(skill.name)
+                                if (isCustomized) {
+                                  setPendingUpgradeSkill(skill)
+                                  setShowCustomizationWarning(true)
+                                  return
+                                }
+                              } catch (err) {
+                                console.warn("[github-import] checkSkillCustomized failed:", err)
+                              }
+                            }
+                            openEditForm(skill)
+                          }}
+                        >
+                          {isImporting ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <PencilLine className="size-3.5" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </ScrollArea>
+          </div>
+        </>
+      )
+    }
+
+    if (!loading && !error && skills.length === 0) {
+      return (
+        <div className="flex flex-col items-center gap-3 py-8">
+          <p className="text-sm text-muted-foreground">No skills found in this repository.</p>
+        </div>
+      )
+    }
+
+    return null
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-3xl">
-          {loading && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="size-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Loading skills...</p>
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <AlertCircle className="size-8 text-destructive" />
-              <p className="text-sm text-destructive text-center">{error}</p>
-              <Button variant="outline" onClick={browse}>Retry</Button>
-            </div>
-          )}
-
-          {!loading && skills.length > 0 && repoInfo && (
-            <>
-              <DialogHeader>
-                <DialogTitle>Browse Marketplace</DialogTitle>
-                <DialogDescription>
-                  {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="rounded-md border">
-                <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-                  <span className="flex-1">Name</span>
-                  <span className="w-20 shrink-0">Version</span>
-                  <span className="w-28 shrink-0">Status</span>
-                  <span className="w-8 shrink-0" />
-                </div>
-                <ScrollArea className="max-h-[60vh]">
-                  {skills.map((skill) => {
-                    const state = skillStates.get(skill.path) ?? "idle"
-                    const isImporting = state === "importing"
-                    const isSameVersion = state === "same-version"
-                    const isUpgrade = state === "upgrade"
-                    const isExists = state === "exists"
-                    const isDisabled = isExists || isSameVersion
-
-                    return (
-                      <div
-                        key={skill.path}
-                        className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="truncate text-sm font-medium">{skill.name}</span>
-                            {mode === 'skill-library' && !skill.purpose && !isDisabled && (
-                              <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
-                                Missing purpose
-                              </Badge>
-                            )}
-                          </div>
-                          {skill.description ? (
-                            <div className="text-xs text-muted-foreground">{skill.description}</div>
-                          ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
-                            <div className="text-xs text-amber-600">No description</div>
-                          ) : null}
-                        </div>
-                        <div className="w-20 shrink-0">
-                          {skill.version ? (
-                            <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </div>
-                        <div className="w-28 shrink-0">
-                          {state === "imported" && (
-                            <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
-                          )}
-                          {isSameVersion && (
-                            <Badge variant="secondary" className="text-xs text-muted-foreground">Up to date</Badge>
-                          )}
-                          {isUpgrade && (
-                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Update available</Badge>
-                          )}
-                          {isExists && (
-                            <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
-                          )}
-                        </div>
-                        <div className="w-8 shrink-0 flex items-center justify-end">
-                          {state === "imported" ? (
-                            <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                          ) : isDisabled ? (
-                            <CheckCheck className="size-3.5 text-muted-foreground" />
-                          ) : (
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                              disabled={isImporting}
-                              aria-label={`Import ${skill.name}`}
-                              onClick={async () => {
-                                if (isUpgrade && mode === 'settings-skills') {
-                                  // Check for customization before opening edit form
-                                  try {
-                                    const isCustomized = await checkSkillCustomized(skill.name)
-                                    if (isCustomized) {
-                                      setPendingUpgradeSkill(skill)
-                                      setShowCustomizationWarning(true)
-                                      return
-                                    }
-                                  } catch (err) {
-                                    console.warn("[github-import] checkSkillCustomized failed:", err)
-                                  }
-                                }
-                                openEditForm(skill)
-                              }}
-                            >
-                              {isImporting ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
-                                <PencilLine className="size-3.5" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </ScrollArea>
-              </div>
-            </>
-          )}
-
-          {!loading && !error && skills.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <p className="text-sm text-muted-foreground">No skills found in this repository.</p>
-            </div>
+          {registries.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              No enabled registries. Configure registries in Settings → Marketplace.
+            </p>
+          ) : (
+            <Tabs value={activeTab} onValueChange={handleTabChange}>
+              <TabsList className="w-full justify-start">
+                {registries.map((r) => (
+                  <TabsTrigger key={r.name} value={r.name}>
+                    {r.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {registries.map((r) => (
+                <TabsContent key={r.name} value={r.name}>
+                  {activeTab === r.name && renderSkillList()}
+                </TabsContent>
+              ))}
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>

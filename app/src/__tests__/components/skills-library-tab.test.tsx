@@ -53,6 +53,7 @@ const defaultSettings: AppSettings = {
   github_user_avatar: null,
   github_user_email: null,
   marketplace_url: null,
+  marketplace_registries: [],
   max_dimensions: 5,
   industry: null,
   function_role: null,
@@ -153,7 +154,7 @@ describe("SkillsLibraryTab", () => {
   });
 
   it("Marketplace button is enabled when marketplace URL is configured", async () => {
-    useSettingsStore.getState().setSettings({ marketplaceUrl: "https://github.com/owner/skills" });
+    useSettingsStore.getState().setSettings({ marketplaceRegistries: [{ name: "Test", source_url: "https://github.com/owner/skills", enabled: true }] });
     setupMocks();
     render(<SkillsLibraryTab />);
 

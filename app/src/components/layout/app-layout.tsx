@@ -50,12 +50,13 @@ function saveNotifiedVersions(notified: Record<string, string>): void {
 
 /** Check the marketplace for updates and either auto-update or show notification toasts. */
 async function checkForMarketplaceUpdates(
+  sourceUrl: string,
   settings: AppSettings,
   cancelledRef: { current: boolean },
   router: ReturnType<typeof useRouter>,
 ): Promise<void> {
   try {
-    const info = await parseGitHubUrl(settings.marketplace_url!);
+    const info = await parseGitHubUrl(sourceUrl);
     const { library, workspace } = await checkMarketplaceUpdates(
       info.owner, info.repo, info.branch, info.subpath ?? undefined
     );
@@ -207,7 +208,7 @@ export function AppLayout() {
         githubUserLogin: s.github_user_login,
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
-        marketplaceUrl: s.marketplace_url,
+        marketplaceRegistries: s.marketplace_registries ?? [],
         dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);
@@ -218,8 +219,9 @@ export function AppLayout() {
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }
       // Check for marketplace updates in the background
-      if (s.marketplace_url) {
-        checkForMarketplaceUpdates(s, cancelledRef, router);
+      const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled)
+      for (const registry of enabledRegistries) {
+        checkForMarketplaceUpdates(registry.source_url, s, cancelledRef, router)
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
