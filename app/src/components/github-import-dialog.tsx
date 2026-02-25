@@ -216,7 +216,7 @@ export default function GitHubImportDialog({
   )
 
   const browseRegistry = useCallback(async (registry: MarketplaceRegistry) => {
-    const tabKey = registry.name
+    const tabKey = registry.source_url
     setTabStates(prev => ({
       ...prev,
       [tabKey]: { loading: true, error: null, skills: [], skillStates: new Map(), repoInfo: null }
@@ -289,7 +289,7 @@ export default function GitHubImportDialog({
   useEffect(() => {
     if (open && registries.length > 0) {
       const first = registries[0]
-      setActiveTab(first.name)
+      setActiveTab(first.source_url)
       browseRegistry(first)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,7 +297,7 @@ export default function GitHubImportDialog({
 
   const handleTabChange = useCallback((tabKey: string) => {
     setActiveTab(tabKey)
-    const registry = registries.find(r => r.name === tabKey)
+    const registry = registries.find(r => r.source_url === tabKey)
     if (registry && !tabStates[tabKey]) {
       browseRegistry(registry)
     }
@@ -448,7 +448,7 @@ export default function GitHubImportDialog({
           <AlertCircle className="size-8 text-destructive" />
           <p className="text-sm text-destructive text-center">{error}</p>
           <Button variant="outline" onClick={() => {
-            const registry = registries.find(r => r.name === activeTab)
+            const registry = registries.find(r => r.source_url === activeTab)
             if (registry) browseRegistry(registry)
           }}>Retry</Button>
         </div>
@@ -581,14 +581,14 @@ export default function GitHubImportDialog({
             <Tabs value={activeTab} onValueChange={handleTabChange}>
               <TabsList className="w-full justify-start">
                 {registries.map((r) => (
-                  <TabsTrigger key={r.name} value={r.name}>
+                  <TabsTrigger key={r.source_url} value={r.source_url}>
                     {r.name}
                   </TabsTrigger>
                 ))}
               </TabsList>
               {registries.map((r) => (
-                <TabsContent key={r.name} value={r.name}>
-                  {activeTab === r.name && renderSkillList()}
+                <TabsContent key={r.source_url} value={r.source_url}>
+                  {activeTab === r.source_url && renderSkillList()}
                 </TabsContent>
               ))}
             </Tabs>

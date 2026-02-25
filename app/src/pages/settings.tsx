@@ -98,7 +98,7 @@ export default function SettingsPage() {
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
             setAutoUpdate(result.auto_update ?? false)
-            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [] })
+            setStoreSettings({ marketplaceRegistries: result.marketplace_registries ?? [], marketplaceInitialized: result.marketplace_initialized ?? false })
             setLoading(false)
             // Fetch available models once we have an API key
             if (result.anthropic_api_key) {
@@ -593,7 +593,7 @@ export default function SettingsPage() {
                     const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
                     return (
                       <div
-                        key={idx}
+                        key={registry.source_url}
                         className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex-1 min-w-0">
@@ -609,7 +609,8 @@ export default function SettingsPage() {
                           <Switch
                             checked={registry.enabled}
                             onCheckedChange={(checked) => {
-                              const updated = marketplaceRegistries.map((r, i) =>
+                              const current = useSettingsStore.getState().marketplaceRegistries
+                              const updated = current.map((r, i) =>
                                 i === idx ? { ...r, enabled: checked } : r
                               )
                               autoSave({ marketplaceRegistries: updated })
@@ -618,20 +619,20 @@ export default function SettingsPage() {
                           />
                         </div>
                         <div className="w-8 shrink-0 flex items-center justify-end">
-                          <button
-                            type="button"
-                            className={cn(
-                              "text-muted-foreground hover:text-destructive transition-colors",
-                              isDefault && "invisible"
-                            )}
-                            aria-label={`Remove ${registry.name}`}
-                            onClick={() => {
-                              const updated = marketplaceRegistries.filter((_, i) => i !== idx)
-                              autoSave({ marketplaceRegistries: updated })
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
+                          {!isDefault && (
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive transition-colors"
+                              aria-label={`Remove ${registry.name}`}
+                              onClick={() => {
+                                const current = useSettingsStore.getState().marketplaceRegistries
+                                const updated = current.filter((_, i) => i !== idx)
+                                autoSave({ marketplaceRegistries: updated })
+                              }}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     )
