@@ -934,14 +934,14 @@ describe("GitHubImportDialog", () => {
       });
     });
 
-    it("DialogContent has overflow-y-auto and max-h-[90vh] for scroll containment", async () => {
+    it("DialogContent has max-h-[90vh] and overflow-hidden to constrain dialog height", async () => {
       renderDialog();
       await waitFor(() => expect(screen.getByText("Sales Analytics")).toBeInTheDocument());
 
       const content = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
       expect(content).not.toBeNull();
-      expect(content.className).toContain("overflow-y-auto");
       expect(content.className).toContain("max-h-[90vh]");
+      expect(content.className).toContain("overflow-hidden");
     });
 
     it("applies truncate class to skill description text for single-line clipping", async () => {

@@ -457,21 +457,21 @@ export default function GitHubImportDialog({
 
     if (!loading && skills.length > 0 && repoInfo) {
       return (
-        <>
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
           <DialogHeader>
             <DialogTitle>Browse Marketplace</DialogTitle>
             <DialogDescription>
               {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border overflow-hidden">
-            <table className="w-full text-sm table-fixed">
-              <thead>
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-md border mt-2">
+            <table className="w-full text-sm table-auto border-separate border-spacing-0">
+              <thead className="sticky top-0 z-10 bg-background">
                 <tr>
-                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground">Name</th>
-                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground w-24">Version</th>
-                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 text-left text-xs font-medium text-muted-foreground w-28">Status</th>
-                  <th className="sticky top-0 z-10 bg-muted/50 border-b px-4 py-2 w-14" />
+                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Name</th>
+                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b w-24">Version</th>
+                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b w-28">Status</th>
+                  <th className="px-4 py-1.5 border-b w-14" />
                 </tr>
               </thead>
               <tbody>
@@ -486,9 +486,9 @@ export default function GitHubImportDialog({
                   return (
                     <tr
                       key={skill.path}
-                      className="border-b last:border-b-0 hover:bg-muted/30 transition-colors"
+                      className="hover:bg-muted/30 transition-colors"
                     >
-                      <td className="px-4 py-2 overflow-hidden">
+                      <td className="px-4 py-2.5 border-b overflow-hidden">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="truncate text-sm font-medium">
                             {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
@@ -508,14 +508,14 @@ export default function GitHubImportDialog({
                           <div className="text-xs text-amber-600">No description</div>
                         ) : null}
                       </td>
-                      <td className="w-24 px-4 py-2 align-middle">
+                      <td className="w-24 px-4 py-2.5 border-b align-middle">
                         {skill.version ? (
                           <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="w-28 px-4 py-2 align-middle">
+                      <td className="w-28 px-4 py-2.5 border-b align-middle">
                         {state === "imported" && (
                           <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
                         )}
@@ -529,7 +529,7 @@ export default function GitHubImportDialog({
                           <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
                         )}
                       </td>
-                      <td className="w-14 px-4 py-2 align-middle">
+                      <td className="w-14 px-4 py-2.5 border-b align-middle">
                         <div className="flex items-center justify-end">
                           {state === "imported" ? (
                             <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -573,7 +573,7 @@ export default function GitHubImportDialog({
               </tbody>
             </table>
           </div>
-        </>
+        </div>
       )
     }
 
@@ -583,13 +583,13 @@ export default function GitHubImportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
           {registries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No enabled registries. Configure registries in Settings → Marketplace.
             </p>
           ) : (
-            <Tabs value={activeTab} onValueChange={handleTabChange}>
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col flex-1 min-h-0">
               <TabsList className="w-full justify-start">
                 {registries.map((r) => (
                   <TabsTrigger key={r.source_url} value={r.source_url}>
@@ -598,7 +598,7 @@ export default function GitHubImportDialog({
                 ))}
               </TabsList>
               {registries.map((r) => (
-                <TabsContent key={r.source_url} value={r.source_url}>
+                <TabsContent key={r.source_url} value={r.source_url} className="flex-1 min-h-0 overflow-hidden flex flex-col mt-0">
                   {activeTab === r.source_url && renderSkillList()}
                 </TabsContent>
               ))}
