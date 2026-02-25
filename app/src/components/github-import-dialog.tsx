@@ -487,7 +487,9 @@ export default function GitHubImportDialog({
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="truncate text-sm font-medium">{skill.name}</span>
+                        <span className="truncate text-sm font-medium">
+                          {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
+                        </span>
                         {mode === 'skill-library' && !skill.purpose && !isDisabled && (
                           <Badge variant="outline" className="text-xs shrink-0 text-amber-600 border-amber-300">
                             Missing purpose

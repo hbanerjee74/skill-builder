@@ -529,6 +529,12 @@ pub struct GitHubRepoInfo {
 pub struct AvailableSkill {
     pub path: String,
     pub name: String,
+    /// Name of the plugin that contains this skill, from `{plugin_path}/.claude-plugin/plugin.json`.
+    /// Present when listing marketplace skills so the UI can display `{plugin_name}:{name}`.
+    /// `None` for root-level plugins whose `plugin.json` is absent or has no `name` field.
+    /// Not stored locally — the skill is always saved under its plain `name`.
+    #[serde(default)]
+    pub plugin_name: Option<String>,
     pub description: Option<String>,
     #[serde(default)]
     pub purpose: Option<String>,

@@ -411,6 +411,7 @@ pub(crate) fn discover_skills_from_catalog(
                 skills.push(AvailableSkill {
                     path: dir.clone(),
                     name: skill_name.to_string(),
+                    plugin_name: None, // populated later from plugin.json
                     description: plugin.description.clone(),
                     purpose: None,
                     version: None,
@@ -437,6 +438,27 @@ pub(crate) fn discover_skills_from_catalog(
     }
 
     skills
+}
+
+// ---------------------------------------------------------------------------
+// extract_plugin_path
+// ---------------------------------------------------------------------------
+
+/// Given a skill's repo-relative path (`{plugin_path}/skills/{skill_name}`), return the
+/// plugin directory prefix.
+///
+/// Examples:
+/// - `"engineering/skills/standup"` → `"engineering"`
+/// - `"plugins/eng/skills/standup"` → `"plugins/eng"`
+/// - `"skills/standup"` → `""` (root plugin: `skills/` is at the repo root)
+fn extract_plugin_path(skill_path: &str) -> &str {
+    if let Some(idx) = skill_path.find("/skills/") {
+        &skill_path[..idx]
+    } else if skill_path.starts_with("skills/") {
+        "" // root plugin — skills/ is directly under the repo root (or subpath root)
+    } else {
+        ""
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -562,10 +584,10 @@ pub(crate) async fn list_github_skills_inner(
         .collect();
 
     let plugin_root = marketplace.metadata.as_ref().and_then(|m| m.plugin_root.as_deref());
-    let mut skills = discover_skills_from_catalog(&marketplace.plugins, plugin_root, &skill_dirs, subpath);
+    let skills = discover_skills_from_catalog(&marketplace.plugins, plugin_root, &skill_dirs, subpath);
 
     log::info!(
-        "[list_github_skills_inner] found {} importable skills in {}/{} (registry={})",
+        "[list_github_skills_inner] found {} candidate skills from catalog in {}/{} (registry={})",
         skills.len(), owner, repo, marketplace.name.as_deref().unwrap_or("unknown")
     );
 
@@ -588,22 +610,99 @@ pub(crate) async fn list_github_skills_inner(
         .collect();
 
     let contents = futures::future::join_all(fetch_fns).await;
-    for (skill, content_opt) in skills.iter_mut().zip(contents) {
-        if let Some(content) = content_opt {
-            let fm = super::imported_skills::parse_frontmatter_full(&content);
-            // SKILL.md frontmatter is authoritative for all fields it defines.
-            if let Some(name) = fm.name { skill.name = name; }
-            if let Some(desc) = fm.description { skill.description = Some(desc); }
-            skill.version = fm.version;
-            skill.purpose = fm.purpose;
-            skill.model = fm.model;
-            skill.argument_hint = fm.argument_hint;
-            skill.user_invocable = fm.user_invocable;
-            skill.disable_model_invocation = fm.disable_model_invocation;
+
+    // Skill name MUST come from SKILL.md frontmatter `name:` field — no directory fallback.
+    // Skills whose SKILL.md is missing or has no `name:` are excluded from results.
+    let mut final_skills: Vec<AvailableSkill> = Vec::new();
+    for (mut skill, content_opt) in skills.into_iter().zip(contents) {
+        match content_opt {
+            Some(content) => {
+                let fm = super::imported_skills::parse_frontmatter_full(&content);
+                match fm.name {
+                    Some(name) => {
+                        skill.name = name;
+                        if let Some(desc) = fm.description { skill.description = Some(desc); }
+                        skill.version = fm.version;
+                        skill.purpose = fm.purpose;
+                        skill.model = fm.model;
+                        skill.argument_hint = fm.argument_hint;
+                        skill.user_invocable = fm.user_invocable;
+                        skill.disable_model_invocation = fm.disable_model_invocation;
+                        final_skills.push(skill);
+                    }
+                    None => {
+                        log::debug!(
+                            "[list_github_skills_inner] skipping skill at '{}': no 'name' field in SKILL.md frontmatter",
+                            skill.path
+                        );
+                    }
+                }
+            }
+            None => {
+                log::debug!(
+                    "[list_github_skills_inner] skipping skill at '{}': SKILL.md could not be fetched",
+                    skill.path
+                );
+            }
         }
     }
 
-    Ok(skills)
+    // Fetch plugin.json for each unique plugin path to get the display name.
+    // Skills are listed as `{plugin_name}:{skill_name}` in the browse dialog;
+    // locally they are stored under their plain `name`.
+    let unique_plugin_paths: std::collections::HashSet<String> = final_skills
+        .iter()
+        .map(|s| extract_plugin_path(&s.path).to_string())
+        .collect();
+
+    let plugin_json_fns: Vec<_> = unique_plugin_paths
+        .iter()
+        .map(|pp| {
+            let client = client.clone();
+            let plugin_json_path = if pp.is_empty() {
+                ".claude-plugin/plugin.json".to_string()
+            } else {
+                format!("{}/.claude-plugin/plugin.json", pp)
+            };
+            let url = format!(
+                "https://raw.githubusercontent.com/{}/{}/{}/{}",
+                owner, repo, resolved_branch, plugin_json_path
+            );
+            let pp = pp.clone();
+            async move {
+                let name = match client.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        resp.text().await.ok().and_then(|body| {
+                            serde_json::from_str::<serde_json::Value>(&body)
+                                .ok()
+                                .and_then(|v| v["name"].as_str().map(|s| s.to_string()))
+                                .filter(|n| !n.trim().is_empty())
+                        })
+                    }
+                    _ => None,
+                };
+                (pp, name)
+            }
+        })
+        .collect();
+
+    let plugin_name_results = futures::future::join_all(plugin_json_fns).await;
+    let plugin_name_map: std::collections::HashMap<String, String> = plugin_name_results
+        .into_iter()
+        .filter_map(|(pp, name)| name.map(|n| (pp, n)))
+        .collect();
+
+    for skill in &mut final_skills {
+        let pp = extract_plugin_path(&skill.path).to_string();
+        skill.plugin_name = plugin_name_map.get(&pp).cloned();
+    }
+
+    log::info!(
+        "[list_github_skills_inner] returning {} skills after frontmatter filtering",
+        final_skills.len()
+    );
+
+    Ok(final_skills)
 }
 
 // ---------------------------------------------------------------------------
@@ -1188,7 +1287,10 @@ pub(crate) async fn import_single_skill(
         );
     }
 
-    let skill_name = fm.name.clone().unwrap_or_else(|| dir_name.to_string());
+    // Skill name MUST come from SKILL.md frontmatter `name:` field — no directory fallback.
+    let skill_name = fm.name.clone().ok_or_else(|| {
+        format!("SKILL.md at '{}' is missing the 'name' frontmatter field", skill_path)
+    })?;
 
     if skill_name.is_empty() {
         return Err("Could not determine skill name".to_string());

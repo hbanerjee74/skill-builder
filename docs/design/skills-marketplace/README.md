@@ -26,6 +26,8 @@ A marketplace is a GitHub repository containing a `.claude-plugin/marketplace.js
 
 **Registry name** — when a user adds a registry URL, the app validates the URL and fetches the `marketplace.json`. The `name` field from the catalog is used as the registry display name. If absent, the name falls back to `"{owner}/{repo}"`. No manual name input is required.
 
+**Single nesting level** — the supported structure is: registry → plugins → skills (three levels). Nested registries within sub-folders are not supported. If a repo has sub-collections, each sub-collection is configured as its own separate registry URL with its own tab. This keeps the model flat and avoids namespace ambiguity.
+
 ---
 
 ## marketplace.json Schema
@@ -68,13 +70,13 @@ The catalog follows the [official Claude Code plugin marketplace schema](https:/
 
 ### `metadata.pluginRoot`
 
-Base path prepended to plugin sources that do **not** start with `./`. For example, if `pluginRoot` is `"plugins"` and a source is `"engineering"`, the resolved plugin path is `plugins/engineering`. Sources starting with `./` are used as-is (e.g. `"./engineering"` → `engineering`).
+Base path prepended to plugin sources that do **not** start with `./`. For example, if `pluginRoot` is `"plugins"` and a source is `"engineering"`, the resolved plugin path is `plugins/engineering`. Sources starting with `./` are used as-is (e.g. `"./engineering"` → `engineering`). This is a path convenience only — it has no effect on naming or namespacing.
 
 ### Plugin catalog entries
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | No | Display name for the plugin group. |
+| `name` | No | Display name for the plugin group in the catalog. |
 | `source` | Yes | Path to the plugin directory (relative to repo root). Can be a string starting with `./` (relative path) or an object (`github`, `url`, `npm`, `pip`). Currently only string paths are supported. |
 | `description` | No | Short description shown in the UI. |
 
@@ -86,6 +88,8 @@ Each catalog entry's `source` points to a **plugin directory**, not a skill dire
 
 ```
 {plugin_path}/
+  .claude-plugin/
+    plugin.json       ← authoritative plugin name
   skills/
     standup/
       SKILL.md
@@ -93,22 +97,52 @@ Each catalog entry's `source` points to a **plugin directory**, not a skill dire
       SKILL.md
 ```
 
-The app uses a two-format discovery strategy per catalog entry:
-
-**Format A — spec-compliant nested structure (preferred)**
+**Discovery algorithm (spec-compliant, no fallback paths):**
 
 1. Resolve `plugin_path` from the catalog entry's `source`:
    - Source starts with `./`: strip `./` and trailing `/` → `plugin_path`
    - Source is a bare name: prepend `metadata.pluginRoot` (if set) → `plugin_path`
-   - Special case: `source = "./"` → `plugin_path = ""` → skills prefix = `"skills/"`
+   - Corner condition: `source = "./"` → `plugin_path = ""` → skills prefix = `"skills/"`
 2. Enumerate all `{plugin_path}/skills/{skill_name}/SKILL.md` paths in the git tree (one level deep inside `skills/`)
-3. Fetch and parse each `SKILL.md` — skills missing required frontmatter are excluded
+3. Fetch each `SKILL.md` — skills missing the `name:` frontmatter field are **excluded** (no directory-name fallback)
+4. Fetch `{plugin_path}/.claude-plugin/plugin.json` to get the plugin's canonical name
 
-**Format B — legacy fallback**
+Plugin entries that yield no skills are silently skipped (logged at `debug` level). External source types (`github`, `npm`, `pip`, `url`) are skipped with a warning.
 
-If no skills are found via Format A, check whether `{plugin_path}/SKILL.md` exists directly. If it does, treat the catalog entry as a single skill at that path. This preserves compatibility with repos that point catalog entries directly at skill directories.
+### Root plugin case
 
-If neither format yields any skills for an entry, that entry is silently skipped (logged at `debug` level).
+When `source = "./"` the plugin directory is the repo root (or subpath root). In this case `plugin.json` lives at `.claude-plugin/plugin.json` — the same directory as `marketplace.json`. If this file exists and has a `name` field, it is used as the plugin name.
+
+---
+
+## Skill Naming
+
+### Authoritative sources (no fallbacks)
+
+| What | Source |
+|---|---|
+| **Plugin name** | `{plugin_path}/.claude-plugin/plugin.json` → `name` field |
+| **Skill name** | `SKILL.md` frontmatter `name:` field |
+
+Directory names are **never** used as a fallback for either. If `plugin.json` is absent or has no `name`, `plugin_name` is `null`. If `SKILL.md` has no `name:` field, the skill is excluded from listing and import.
+
+### Display name in the browse dialog
+
+Skills are displayed as `{plugin_name}:{skill_name}` when a plugin name is available. When `plugin_name` is `null` (no `plugin.json` or no `name` field), just `{skill_name}` is shown.
+
+This mirrors the Claude Code runtime namespace model (`{plugin-name}:{skill-name}`) so users see the same qualified names they would encounter when using the plugin in Claude Code.
+
+### Local storage name
+
+Skills are **stored locally under their plain `skill_name` only** — no plugin prefix on disk or in the database. The qualified display name is used for browsing only.
+
+This design avoids:
+- Name collisions between skills from different plugins (same `skill_name`, different `plugin_name`) becoming a problem on disk — the `skill_name` in frontmatter is the canonical local identifier
+- Filesystem issues with `:` separators on Windows
+
+### Name collision handling
+
+Because skills are stored by their frontmatter `name:` only, two skills from different plugins with the same `name:` would collide on local storage. The user sees both in the browse dialog with their qualified names but importing a second skill with the same local name will overwrite the first. This is a known limitation; users with conflicting skill names should rename one before importing.
 
 ---
 
@@ -150,6 +184,8 @@ If the startup check fails for any reason, a persistent error notification is sh
 
 The same import dialog is used for both destinations. It shows the full marketplace catalog across all enabled registries, with one tab per registry. Each tab pre-marks skills based on their install state: not installed, up to date, update available, or already installed. The user can edit a skill's metadata before confirming the import.
 
+Skills in the browse dialog are labeled with their qualified name (`{plugin_name}:{skill_name}` when plugin name is available, plain `{skill_name}` otherwise).
+
 When upgrading a Settings → Skills skill that has been locally modified, the user must confirm before proceeding — the upgrade will overwrite their local changes.
 
 ---
@@ -175,7 +211,7 @@ disable-model-invocation: false
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | Yes | Kebab-case identifier. Two skills with the same name conflict. |
+| `name` | Yes | Kebab-case identifier. **This is the authoritative skill name** — directory name is never used as a fallback. Skills without this field are excluded from listing and import. |
 | `description` | Yes | Shown in the browse dialog and wired into CLAUDE.md so agents know when to invoke the skill. |
 | `version` | Yes | Semver string. Required for update detection. Defaults to `"1.0.0"` if absent at import time. |
 | `model` | No | Preferred Claude model. Overrides the app default when the skill is invoked. |

@@ -30,6 +30,7 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/sales-analytics",
     name: "Sales Analytics",
+    plugin_name: null,
     description: "Analyze your sales pipeline",
     purpose: "skill-builder",
     version: null,
@@ -41,6 +42,7 @@ const sampleSkills: AvailableSkill[] = [
   {
     path: "skills/hr-metrics",
     name: "HR Metrics",
+    plugin_name: null,
     description: null,
     purpose: "skill-builder",
     version: null,
@@ -193,9 +195,9 @@ describe("GitHubImportDialog", () => {
 
     it("does not show skills filtered out by typeFilter in skill-library mode", async () => {
       const mixed: AvailableSkill[] = [
-        { path: "skills/a", name: "Skill A", description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/b", name: "Skill B", description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
-        { path: "skills/c", name: "Skill C", description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/a", name: "Skill A", plugin_name: null, description: null, purpose: "skill-builder", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/b", name: "Skill B", plugin_name: null, description: null, purpose: "domain", version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
+        { path: "skills/c", name: "Skill C", plugin_name: null, description: null, purpose: null, version: null, model: null, argument_hint: null, user_invocable: null, disable_model_invocation: null },
       ];
       mockInvokeCommands({
         parse_github_url: DEFAULT_REPO_INFO,
@@ -634,6 +636,7 @@ describe("GitHubImportDialog", () => {
     const availableSkillVersioned: AvailableSkill = {
       path: "skills/my-skill",
       name: "my-skill",
+      plugin_name: null,
       description: "A versioned skill",
       purpose: "domain",
       version: "2.0.0",
@@ -725,6 +728,7 @@ describe("GitHubImportDialog", () => {
     const makeLibrarySkill = (name: string, version: string | null): AvailableSkill => ({
       path: `skills/${name}`,
       name,
+      plugin_name: null,
       description: `${name} description`,
       purpose: "skill-builder",
       version,

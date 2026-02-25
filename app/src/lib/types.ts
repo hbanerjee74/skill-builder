@@ -262,6 +262,8 @@ export interface GitHubRepoInfo {
 export interface AvailableSkill {
   path: string
   name: string
+  /** Plugin name from `plugin.json`, used to display `{plugin_name}:{name}` in the browse dialog. */
+  plugin_name: string | null
   description: string | null
   purpose: string | null
   version: string | null
