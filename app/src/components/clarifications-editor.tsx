@@ -180,7 +180,7 @@ export function ClarificationsEditor({
           )}
           {onReload && (
             <Button variant="outline" size="sm" onClick={onReload}>
-              <RotateCcw className="mr-1.5 size-3" />
+              <RotateCcw className="size-3.5" />
               Reload
             </Button>
           )}
