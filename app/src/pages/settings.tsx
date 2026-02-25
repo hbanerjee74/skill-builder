@@ -29,6 +29,9 @@ import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
 import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
+/** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
+const DEFAULT_MARKETPLACE_URL = "https://github.com/hbanerjee74/skills"
+
 const sections = [
   { id: "general", label: "General" },
   { id: "marketplace", label: "Marketplace" },
@@ -39,6 +42,15 @@ const sections = [
 ] as const
 
 type SectionId = typeof sections[number]["id"]
+
+type RegistryTestState = "checking" | "valid" | "invalid" | undefined
+
+function RegistryTestIcon({ state }: { state: RegistryTestState }) {
+  if (state === "checking") return <Loader2 className="size-3.5 animate-spin" />
+  if (state === "valid") return <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
+  if (state === "invalid") return <XCircle className="size-3.5 text-destructive" />
+  return <PlugZap className="size-3.5" />
+}
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -592,7 +604,7 @@ export default function SettingsPage() {
                     <span className="w-16" />
                   </div>
                   {marketplaceRegistries.map((registry) => {
-                    const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
+                    const isDefault = registry.source_url === DEFAULT_MARKETPLACE_URL
                     const testState = registryTestState[registry.source_url]
                     const isFailed = testState === "invalid"
                     return (
@@ -642,15 +654,7 @@ export default function SettingsPage() {
                               }
                             }}
                           >
-                            {testState === "checking" ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : testState === "valid" ? (
-                              <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
-                            ) : testState === "invalid" ? (
-                              <XCircle className="size-3.5 text-destructive" />
-                            ) : (
-                              <PlugZap className="size-3.5" />
-                            )}
+                            <RegistryTestIcon state={testState} />
                           </button>
                           {!isDefault && (
                             <button

@@ -324,8 +324,8 @@ fn upload_skill_inner(
         argument_hint: fm.argument_hint,
         user_invocable: fm.user_invocable,
         disable_model_invocation: fm.disable_model_invocation,
-            marketplace_source_url: None,
-        };
+        marketplace_source_url: None,
+    };
 
     // Insert into workspace_skills DB
     crate::db::insert_workspace_skill(conn, &skill)?;

@@ -218,7 +218,7 @@ export default function GitHubImportDialog({
     const tabKey = registry.source_url
     setTabStates(prev => ({
       ...prev,
-      [tabKey]: { loading: true, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+      [tabKey]: { ...EMPTY_TAB, loading: true }
     }))
     try {
       const info = await parseGitHubUrl(registry.source_url.trim())
@@ -274,13 +274,7 @@ export default function GitHubImportDialog({
       console.error("[github-import] Failed to browse registry:", err)
       setTabStates(prev => ({
         ...prev,
-        [tabKey]: {
-          loading: false,
-          error: err instanceof Error ? err.message : String(err),
-          skills: [],
-          skillStates: new Map(),
-          repoInfo: null
-        }
+        [tabKey]: { ...EMPTY_TAB, error: err instanceof Error ? err.message : String(err) }
       }))
     }
   }, [typeFilter, workspacePath, mode])
@@ -400,7 +394,7 @@ export default function GitHubImportDialog({
         },
       }]
       console.log(`[github-import] calling import_github_skills with ${requests.length} request(s)`)
-      await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests, activeTab)
+      await importGitHubSkills(repoInfo.owner, repoInfo.repo, repoInfo.branch, requests, activeTabRef.current)
       console.log(`[github-import] "${skillName}" imported successfully`)
       setSkillState(skillPath, "imported")
       toast.success(`Imported "${skillName}"`)

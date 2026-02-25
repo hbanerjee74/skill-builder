@@ -5,6 +5,10 @@ use tauri::Manager;
 use crate::db::Db;
 use crate::types::AppSettings;
 
+/// Default built-in marketplace registry URL. Used for both the initial migration
+/// and the "cannot remove" guard in the Settings UI.
+pub(crate) const DEFAULT_MARKETPLACE_URL: &str = "https://github.com/hbanerjee74/skills";
+
 #[tauri::command]
 pub fn get_data_dir(app: tauri::AppHandle) -> Result<String, String> {
     log::info!("[get_data_dir]");
@@ -35,7 +39,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
 
     // Migrate legacy marketplace_url → marketplace_registries on first run
     if !settings.marketplace_initialized {
-        let default_url = "https://github.com/hbanerjee74/skills";
+        let default_url = DEFAULT_MARKETPLACE_URL;
         let mut registries = vec![crate::types::MarketplaceRegistry {
             name: "Vibedata Skills".to_string(),
             source_url: default_url.to_string(),
@@ -100,6 +104,14 @@ pub fn save_settings(
     let old_sp = old_settings.skills_path.as_deref();
     let new_sp = settings.skills_path.as_deref();
     handle_skills_path_change(old_sp, new_sp)?;
+
+    // Guard: once marketplace_initialized is true in the DB, never let a stale
+    // frontend save overwrite it back to false. This prevents the migration from
+    // re-running if a component calls save_settings with a pre-migration snapshot.
+    if old_settings.marketplace_initialized && !settings.marketplace_initialized {
+        log::warn!("[save_settings] stale save attempted to reset marketplace_initialized — preserving true");
+        settings.marketplace_initialized = true;
+    }
 
     // Log what changed
     let changes = diff_settings(&old_settings, &settings);

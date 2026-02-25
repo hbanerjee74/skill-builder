@@ -1463,7 +1463,7 @@ pub(crate) async fn import_single_skill(
     Ok(ImportedSkill {
         skill_id,
         skill_name,
-                is_active: true,
+        is_active: true,
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
