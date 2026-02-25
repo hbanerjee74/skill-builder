@@ -22,7 +22,9 @@ A marketplace is a GitHub repository with a catalog file (`.claude-plugin/market
 
 The catalog lists each skill with its name, description, category, version, and a path to its directory in the repo. The app also reads each skill's `SKILL.md` to pick up fields not in the catalog (`purpose` and extended frontmatter). Skills in the catalog without a `SKILL.md` are excluded.
 
-**Configuration** — a single marketplace URL in Settings → GitHub. A "Test" button validates the URL at configuration time so bad URLs are caught before any import attempt.
+**Configuration** — one or more named registries in Settings → Marketplace. Each registry has a name, a GitHub source URL, and an enabled/disabled toggle. The default registry (`https://github.com/hbanerjee74/skills`) is seeded on first launch and cannot be removed. Additional registries can be added and removed freely.
+
+**Enabled registries only** — only enabled registries are fetched. Disabling a registry removes it from the browse dialog without deleting it from the list.
 
 **Subpath support** — the URL can point to a subdirectory within the repo (e.g. `.../tree/main/skills`). The catalog and all skill paths are resolved relative to that subpath.
 
@@ -64,7 +66,7 @@ If the startup check fails for any reason, a persistent error notification is sh
 
 ## Browse Dialog
 
-The same import dialog is used for both destinations. It shows the full marketplace catalog and pre-marks each skill based on its install state: not installed, up to date, update available, or already installed. The user can edit a skill's metadata before confirming the import.
+The same import dialog is used for both destinations. It shows the full marketplace catalog across all enabled registries, with one tab per registry. Each tab pre-marks skills based on their install state: not installed, up to date, update available, or already installed. The user can edit a skill's metadata before confirming the import.
 
 When upgrading a Settings → Skills skill that has been locally modified, the user must confirm before proceeding — the upgrade will overwrite their local changes.
 
