@@ -70,9 +70,9 @@ describe("DecisionsSummaryCard — Summary Stats", () => {
     expect(screen.getByText("Conflict-resolved")).toBeInTheDocument();
   });
 
-  it("shows round number", () => {
+  it("shows quality column header", () => {
     render(<DecisionsSummaryCard decisionsContent={sampleDecisionsMd} />);
-    expect(screen.getByText("Round")).toBeInTheDocument();
+    expect(screen.getByText("Quality")).toBeInTheDocument();
   });
 
   it("shows duration and cost when provided", () => {
