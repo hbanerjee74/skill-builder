@@ -37,11 +37,13 @@ Glob `references/` in `skill_output_dir` to collect all reference file paths.
 
 ## Step 2 — Sub-agents
 
+Check `{context_dir}/decisions.md` frontmatter. If `contradictory_inputs: revised`, the user has reviewed and accepted the decisions — omit `clarifications.json` from all sub-agent inputs and treat `decisions.md` as authoritative.
+
 Read the three spec files in `references/`. Spawn one sub-agent per spec with the spec content as instructions plus these paths.
 
 **Quality checker** — `references/validate-quality-spec.md`:
 - `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.json`: `{context_dir}/clarifications.json`
+- `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - Workspace directory: `{workspace_dir}`
@@ -49,7 +51,7 @@ Read the three spec files in `references/`. Spawn one sub-agent per spec with th
 
 **Test evaluator** — `references/test-skill-spec.md`:
 - `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.json`: `{context_dir}/clarifications.json`
+- `clarifications.json`: `{context_dir}/clarifications.json` _(omit if `contradictory_inputs: revised`)_
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - Workspace directory: `{workspace_dir}`
