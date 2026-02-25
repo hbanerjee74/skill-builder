@@ -406,7 +406,7 @@ function QuestionCard({
             </p>
           )}
 
-          {question.answer_choice !== null && (
+          {(question.answer_choice !== null || question.choices.length === 0) && (
             <AnswerField
               value={question.answer_text ?? ""}
               onChange={(text) => {
@@ -621,15 +621,31 @@ function RefinementItem({
           </span>
         )}
       </div>
-      <AnswerField
-        value={refinement.answer_text ?? ""}
-        onChange={(text) => {
-          if (readOnly) return;
-          updateQuestion(refinement.id, makeAnswerUpdater(text));
-        }}
-        readOnly={readOnly}
-        compact
-      />
+      {refinement.choices.length > 0 && (
+        <ChoiceList
+          choices={refinement.choices}
+          selectedId={refinement.answer_choice}
+          onSelect={(choiceId, choiceText) => {
+            if (readOnly) return;
+            updateQuestion(refinement.id, (q) => ({
+              ...q,
+              answer_choice: choiceId,
+              answer_text: choiceText,
+            }));
+          }}
+        />
+      )}
+      {(refinement.answer_choice !== null || refinement.choices.length === 0) && (
+        <AnswerField
+          value={refinement.answer_text ?? ""}
+          onChange={(text) => {
+            if (readOnly) return;
+            updateQuestion(refinement.id, makeAnswerUpdater(text));
+          }}
+          readOnly={readOnly}
+          compact
+        />
+      )}
     </div>
   );
 }
