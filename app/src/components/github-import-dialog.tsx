@@ -464,14 +464,14 @@ export default function GitHubImportDialog({
               {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
             </DialogDescription>
           </DialogHeader>
-          <div className="rounded-md border">
-            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+          <div className="rounded-md border flex flex-col flex-1 min-h-0">
+            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground shrink-0">
               <span className="flex-1">Name</span>
               <span className="w-20 shrink-0">Version</span>
               <span className="w-28 shrink-0">Status</span>
               <span className="w-8 shrink-0" />
             </div>
-            <ScrollArea className="max-h-[60vh]">
+            <ScrollArea className="flex-1">
               {skills.map((skill) => {
                 const state = skillStates.get(skill.path) ?? "idle"
                 const isImporting = state === "importing"
@@ -497,9 +497,7 @@ export default function GitHubImportDialog({
                         )}
                       </div>
                       {skill.description ? (
-                        <div className="text-xs text-muted-foreground">
-                          {skill.description.length > 120 ? `${skill.description.slice(0, 120)}…` : skill.description}
-                        </div>
+                        <div className="text-xs text-muted-foreground line-clamp-2">{skill.description}</div>
                       ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
                         <div className="text-xs text-amber-600">No description</div>
                       ) : null}
@@ -576,14 +574,14 @@ export default function GitHubImportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-3xl flex flex-col max-h-[90vh]">
           {registries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No enabled registries. Configure registries in Settings → Marketplace.
             </p>
           ) : (
-            <Tabs value={activeTab} onValueChange={handleTabChange}>
-              <TabsList className="w-full justify-start">
+            <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-col flex-1 min-h-0">
+              <TabsList className="w-full justify-start shrink-0">
                 {registries.map((r) => (
                   <TabsTrigger key={r.source_url} value={r.source_url}>
                     {r.name}
@@ -591,7 +589,7 @@ export default function GitHubImportDialog({
                 ))}
               </TabsList>
               {registries.map((r) => (
-                <TabsContent key={r.source_url} value={r.source_url}>
+                <TabsContent key={r.source_url} value={r.source_url} className="flex flex-col flex-1 min-h-0">
                   {activeTab === r.source_url && renderSkillList()}
                 </TabsContent>
               ))}
