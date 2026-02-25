@@ -48,7 +48,6 @@ import {
   autofillRefinements,
   logGateDecision,
   type AnswerEvaluation,
-  type PerQuestionVerdict,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
 import { resolveModelId } from "@/lib/models";
@@ -272,9 +271,7 @@ export default function WorkflowPage() {
   // Transition gate dialog state
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
-  const [gateTotalCount, setGateTotalCount] = useState(0);
-  const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
-  const [gatePerQuestion, setGatePerQuestion] = useState<PerQuestionVerdict[]>([]);
+  const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
   const [isAutofilling, setIsAutofilling] = useState(false);
   const gateAgentIdRef = useRef<string | null>(null);
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
@@ -782,12 +779,9 @@ export default function WorkflowPage() {
       }
 
       // All verdicts show a dialog — sufficient offers skip, mixed/insufficient offer auto-fill
-      const unanswered = evaluation.empty_count + evaluation.vague_count;
       setGateLoading(false);
       setGateVerdict(evaluation.verdict);
-      setGateTotalCount(evaluation.total_count);
-      setGateUnansweredCount(unanswered);
-      setGatePerQuestion(evaluation.per_question ?? []);
+      setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
       console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
@@ -798,6 +792,7 @@ export default function WorkflowPage() {
   const closeGateDialog = () => {
     setShowGateDialog(false);
     setGateVerdict(null);
+    setGateEvaluation(null);
   };
 
   /** Skip to decisions: gate 1 skips steps 1-3, gate 2 just advances from step 3. */
@@ -1257,9 +1252,7 @@ export default function WorkflowPage() {
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
-        totalCount={gateTotalCount}
-        unansweredCount={gateUnansweredCount}
-        perQuestion={gatePerQuestion}
+        evaluation={gateEvaluation}
         context={gateContext}
         onSkip={handleGateSkip}
         onResearch={handleGateResearch}

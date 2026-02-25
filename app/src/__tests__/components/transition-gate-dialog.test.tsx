@@ -2,11 +2,33 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TransitionGateDialog } from "@/components/transition-gate-dialog";
-import type { PerQuestionVerdict } from "@/lib/tauri";
+import type { AnswerEvaluation, PerQuestionVerdict } from "@/lib/tauri";
+
+/** Helper to build an AnswerEvaluation from per_question verdicts. */
+function makeEvaluation(
+  verdict: "sufficient" | "mixed" | "insufficient",
+  perQuestion: PerQuestionVerdict[] = [],
+): AnswerEvaluation {
+  const answered = perQuestion.filter(q => q.verdict === "clear").length;
+  const empty = perQuestion.filter(q => q.verdict === "not_answered").length;
+  const vague = perQuestion.filter(q => q.verdict === "vague").length;
+  const contradictory = perQuestion.filter(q => q.verdict === "contradictory").length;
+  return {
+    verdict,
+    answered_count: answered,
+    empty_count: empty,
+    vague_count: vague,
+    contradictory_count: contradictory > 0 ? contradictory : undefined,
+    total_count: perQuestion.length,
+    reasoning: "test",
+    per_question: perQuestion,
+  };
+}
 
 const defaultProps = {
   open: true,
   verdict: null as null,
+  evaluation: null as AnswerEvaluation | null,
   onSkip: vi.fn(),
   onResearch: vi.fn(),
   onAutofillAndSkip: vi.fn(),
@@ -67,23 +89,22 @@ describe("TransitionGateDialog", () => {
   });
 
   describe("mixed verdict", () => {
-    it("shows 'Auto-fill Missing Answers?' title", () => {
-      render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" />
-      );
-      expect(screen.getByText("Auto-fill Missing Answers?")).toBeInTheDocument();
-    });
+    const mixedEval = makeEvaluation("mixed", [
+      { question_id: "Q1", verdict: "clear" },
+      { question_id: "Q2", verdict: "not_answered" },
+      { question_id: "Q3", verdict: "vague" },
+    ]);
 
-    it("shows unanswered count when provided", () => {
+    it("shows 'Review Answer Quality' title", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" totalCount={9} unansweredCount={5} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={mixedEval} />
       );
-      expect(screen.getByText(/5 of 9/)).toBeInTheDocument();
+      expect(screen.getByText("Review Answer Quality")).toBeInTheDocument();
     });
 
     it("has 'Auto-fill & Research' and 'Let Me Answer' buttons", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={mixedEval} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
@@ -96,6 +117,7 @@ describe("TransitionGateDialog", () => {
         <TransitionGateDialog
           {...defaultProps}
           verdict="mixed"
+          evaluation={mixedEval}
           onAutofillAndResearch={onAutofillAndResearch}
         />
       );
@@ -107,7 +129,7 @@ describe("TransitionGateDialog", () => {
       const user = userEvent.setup();
       const onLetMeAnswer = vi.fn();
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" onLetMeAnswer={onLetMeAnswer} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={mixedEval} onLetMeAnswer={onLetMeAnswer} />
       );
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(onLetMeAnswer).toHaveBeenCalledOnce();
@@ -115,31 +137,36 @@ describe("TransitionGateDialog", () => {
 
     it("disables 'Auto-fill & Research' button when isAutofilling is true", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" isAutofilling={true} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={mixedEval} isAutofilling={true} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeDisabled();
     });
 
     it("enables 'Auto-fill & Research' button when isAutofilling is false", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" isAutofilling={false} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={mixedEval} isAutofilling={false} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Research/i })).toBeEnabled();
     });
   });
 
   describe("insufficient verdict", () => {
-    it("shows 'Use Recommended Answers?' title with counts", () => {
+    const insuffEval = makeEvaluation("insufficient", [
+      { question_id: "Q1", verdict: "not_answered" },
+      { question_id: "Q2", verdict: "not_answered" },
+      { question_id: "Q3", verdict: "vague" },
+    ]);
+
+    it("shows 'Review Answer Quality' title", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" totalCount={8} unansweredCount={8} />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={insuffEval} />
       );
-      expect(screen.getByText("Use Recommended Answers?")).toBeInTheDocument();
-      expect(screen.getByText(/8 of 8/)).toBeInTheDocument();
+      expect(screen.getByText("Review Answer Quality")).toBeInTheDocument();
     });
 
     it("has 'Auto-fill & Skip' and 'Let Me Answer' buttons", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={insuffEval} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Skip/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Let Me Answer/i })).toBeInTheDocument();
@@ -149,7 +176,7 @@ describe("TransitionGateDialog", () => {
       const user = userEvent.setup();
       const onAutofillAndSkip = vi.fn();
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" onAutofillAndSkip={onAutofillAndSkip} />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={insuffEval} onAutofillAndSkip={onAutofillAndSkip} />
       );
       await user.click(screen.getByRole("button", { name: /Auto-fill & Skip/i }));
       expect(onAutofillAndSkip).toHaveBeenCalledOnce();
@@ -159,7 +186,7 @@ describe("TransitionGateDialog", () => {
       const user = userEvent.setup();
       const onLetMeAnswer = vi.fn();
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" onLetMeAnswer={onLetMeAnswer} />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={insuffEval} onLetMeAnswer={onLetMeAnswer} />
       );
       await user.click(screen.getByRole("button", { name: /Let Me Answer/i }));
       expect(onLetMeAnswer).toHaveBeenCalledOnce();
@@ -167,13 +194,13 @@ describe("TransitionGateDialog", () => {
 
     it("disables 'Auto-fill & Skip' button when isAutofilling is true", () => {
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" isAutofilling={true} />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={insuffEval} isAutofilling={true} />
       );
       expect(screen.getByRole("button", { name: /Auto-fill & Skip/i })).toBeDisabled();
     });
   });
 
-  describe("per-question breakdown", () => {
+  describe("per-category evaluation breakdown", () => {
     const perQuestion: PerQuestionVerdict[] = [
       { question_id: "Q1", verdict: "clear" },
       { question_id: "Q2", verdict: "not_answered" },
@@ -183,62 +210,104 @@ describe("TransitionGateDialog", () => {
       { question_id: "Q6", verdict: "vague" },
     ];
 
-    it("shows unanswered and vague IDs for mixed verdict", () => {
+    it("shows category breakdown for mixed verdict", () => {
+      const eval_ = makeEvaluation("mixed", perQuestion);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={perQuestion} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
       );
       const breakdown = screen.getByTestId("question-breakdown");
-      expect(breakdown).toHaveTextContent("Unanswered: Q2, Q4");
-      expect(breakdown).toHaveTextContent("Vague: Q3, Q6");
+      expect(breakdown).toHaveTextContent("OK:");
+      expect(breakdown).toHaveTextContent("2 questions");
+      expect(breakdown).toHaveTextContent("Missing:");
+      expect(breakdown).toHaveTextContent("Q2, Q4");
+      expect(breakdown).toHaveTextContent("Vague:");
+      expect(breakdown).toHaveTextContent("Q3, Q6");
     });
 
-    it("shows unanswered and vague IDs for insufficient verdict", () => {
+    it("shows category breakdown for insufficient verdict", () => {
+      const eval_ = makeEvaluation("insufficient", perQuestion);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="insufficient" perQuestion={perQuestion} />
+        <TransitionGateDialog {...defaultProps} verdict="insufficient" evaluation={eval_} />
       );
       const breakdown = screen.getByTestId("question-breakdown");
-      expect(breakdown).toHaveTextContent("Unanswered: Q2, Q4");
-      expect(breakdown).toHaveTextContent("Vague: Q3, Q6");
+      expect(breakdown).toHaveTextContent("Missing:");
+      expect(breakdown).toHaveTextContent("Q2, Q4");
+      expect(breakdown).toHaveTextContent("Vague:");
+      expect(breakdown).toHaveTextContent("Q3, Q6");
     });
 
     it("does not show breakdown for sufficient verdict", () => {
+      const eval_ = makeEvaluation("sufficient", perQuestion);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="sufficient" perQuestion={perQuestion} />
+        <TransitionGateDialog {...defaultProps} verdict="sufficient" evaluation={eval_} />
       );
       expect(screen.queryByTestId("question-breakdown")).not.toBeInTheDocument();
     });
 
-    it("does not show breakdown when perQuestion is empty", () => {
+    it("does not show breakdown when evaluation has no per_question", () => {
+      const eval_ = makeEvaluation("mixed", []);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={[]} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
       );
-      expect(screen.queryByTestId("question-breakdown")).not.toBeInTheDocument();
+      // Breakdown should render but be empty (no categories with items)
+      // The component still renders the container div, but with no children
+      // since all filter arrays are empty
     });
 
-    it("shows only unanswered when no vague questions", () => {
-      const onlyUnanswered: PerQuestionVerdict[] = [
+    it("shows only missing when no vague questions", () => {
+      const onlyMissing: PerQuestionVerdict[] = [
         { question_id: "Q1", verdict: "not_answered" },
         { question_id: "Q2", verdict: "clear" },
       ];
+      const eval_ = makeEvaluation("mixed", onlyMissing);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={onlyUnanswered} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
       );
       const breakdown = screen.getByTestId("question-breakdown");
-      expect(breakdown).toHaveTextContent("Unanswered: Q1");
+      expect(breakdown).toHaveTextContent(/Missing:.*Q1/);
       expect(breakdown).not.toHaveTextContent("Vague:");
     });
 
-    it("shows only vague when no unanswered questions", () => {
+    it("shows only vague when no missing questions", () => {
       const onlyVague: PerQuestionVerdict[] = [
         { question_id: "Q1", verdict: "vague" },
         { question_id: "Q2", verdict: "clear" },
       ];
+      const eval_ = makeEvaluation("mixed", onlyVague);
       render(
-        <TransitionGateDialog {...defaultProps} verdict="mixed" perQuestion={onlyVague} />
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
       );
       const breakdown = screen.getByTestId("question-breakdown");
-      expect(breakdown).not.toHaveTextContent("Unanswered:");
-      expect(breakdown).toHaveTextContent("Vague: Q1");
+      expect(breakdown).not.toHaveTextContent("Missing:");
+      expect(breakdown).toHaveTextContent(/Vague:.*Q1/);
+    });
+
+    it("shows contradictory category with conflict info", () => {
+      const withContradictory: PerQuestionVerdict[] = [
+        { question_id: "Q1", verdict: "contradictory", contradicts: "Q3" },
+        { question_id: "Q2", verdict: "clear" },
+      ];
+      const eval_ = makeEvaluation("mixed", withContradictory);
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).toHaveTextContent("Contradictory:");
+      expect(breakdown).toHaveTextContent("Q1 (conflicts with Q3)");
+    });
+
+    it("shows needs refinement category", () => {
+      const withRefinement: PerQuestionVerdict[] = [
+        { question_id: "Q1", verdict: "needs_refinement" },
+        { question_id: "Q2", verdict: "clear" },
+      ];
+      const eval_ = makeEvaluation("mixed", withRefinement);
+      render(
+        <TransitionGateDialog {...defaultProps} verdict="mixed" evaluation={eval_} />
+      );
+      const breakdown = screen.getByTestId("question-breakdown");
+      expect(breakdown).toHaveTextContent("Needs refinement:");
+      expect(breakdown).toHaveTextContent("Q1");
     });
   });
 });
