@@ -54,6 +54,7 @@ const defaultSettings: AppSettings = {
   github_user_email: null,
   marketplace_url: null,
   marketplace_registries: [],
+  marketplace_initialized: false,
   max_dimensions: 5,
   industry: null,
   function_role: null,

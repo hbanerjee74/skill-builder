@@ -34,7 +34,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
     let mut settings = crate::db::read_settings_hydrated(&conn)?;
 
     // Migrate legacy marketplace_url → marketplace_registries on first run
-    if settings.marketplace_registries.is_empty() {
+    if !settings.marketplace_initialized {
         let default_url = "https://github.com/hbanerjee74/skills";
         let mut registries = vec![crate::types::MarketplaceRegistry {
             name: "Vibedata Skills".to_string(),
@@ -53,7 +53,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         }
         settings.marketplace_registries = registries;
         settings.marketplace_url = None; // clear legacy field
-        // Persist the migration
+        settings.marketplace_initialized = true;
         if let Err(e) = crate::db::write_settings(&conn, &settings) {
             log::warn!("[get_settings] failed to persist marketplace migration: {}", e);
         } else {

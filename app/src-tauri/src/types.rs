@@ -76,6 +76,9 @@ pub struct AppSettings {
     pub marketplace_url: Option<String>,
     #[serde(default)]
     pub marketplace_registries: Vec<MarketplaceRegistry>,
+    /// Set to true after the one-time marketplace registry migration has run.
+    #[serde(default)]
+    pub marketplace_initialized: bool,
     #[serde(default = "default_max_dimensions")]
     pub max_dimensions: u32,
     #[serde(default)]
@@ -108,6 +111,7 @@ impl Default for AppSettings {
             github_user_email: None,
             marketplace_url: None,
             marketplace_registries: vec![],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -627,6 +631,7 @@ mod tests {
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
         assert!(settings.marketplace_registries.is_empty());
+        assert!(!settings.marketplace_initialized);
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
         assert!(settings.dashboard_view_mode.is_none());
@@ -654,6 +659,7 @@ mod tests {
                 source_url: "https://github.com/owner/repo".to_string(),
                 enabled: true,
             }],
+            marketplace_initialized: false,
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
@@ -689,6 +695,7 @@ mod tests {
             "https://github.com/owner/repo"
         );
         assert!(deserialized.marketplace_registries[0].enabled);
+        assert!(!deserialized.marketplace_initialized);
         assert_eq!(
             deserialized.industry.as_deref(),
             Some("Financial Services")
@@ -713,6 +720,7 @@ mod tests {
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
         assert!(settings.marketplace_registries.is_empty());
+        assert!(!settings.marketplace_initialized);
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;

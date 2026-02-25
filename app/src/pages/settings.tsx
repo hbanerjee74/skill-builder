@@ -175,6 +175,7 @@ export default function SettingsPage() {
       github_user_email: useSettingsStore.getState().githubUserEmail ?? null,
       marketplace_url: null,
       marketplace_registries: overrides.marketplaceRegistries !== undefined ? overrides.marketplaceRegistries : (useSettingsStore.getState().marketplaceRegistries ?? []),
+      marketplace_initialized: useSettingsStore.getState().marketplaceInitialized ?? false,
       industry: overrides.industry !== undefined ? overrides.industry : (industry || null),
       function_role: overrides.functionRole !== undefined ? overrides.functionRole : (functionRole || null),
       dashboard_view_mode: useSettingsStore.getState().dashboardViewMode ?? null,

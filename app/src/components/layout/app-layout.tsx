@@ -203,6 +203,7 @@ export function AppLayout() {
         githubUserAvatar: s.github_user_avatar,
         githubUserEmail: s.github_user_email,
         marketplaceRegistries: s.marketplace_registries ?? [],
+        marketplaceInitialized: s.marketplace_initialized ?? false,
         dashboardViewMode: s.dashboard_view_mode,
       });
       setSettingsLoaded(true);
