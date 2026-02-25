@@ -922,6 +922,86 @@ describe("GitHubImportDialog", () => {
     });
   });
 
+  describe("Dialog layout and scrollability", () => {
+    beforeEach(() => {
+      resetTauriMocks();
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: sampleSkills,
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+    });
+
+    it("DialogContent has overflow-y-auto and max-h-[90vh] for scroll containment", async () => {
+      renderDialog();
+      await waitFor(() => expect(screen.getByText("Sales Analytics")).toBeInTheDocument());
+
+      const content = document.querySelector('[data-slot="dialog-content"]') as HTMLElement;
+      expect(content).not.toBeNull();
+      expect(content.className).toContain("overflow-y-auto");
+      expect(content.className).toContain("max-h-[90vh]");
+    });
+
+    it("applies line-clamp-2 class to skill description text", async () => {
+      renderDialog();
+      await waitFor(() => expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument());
+
+      const descEl = screen.getByText("Analyze your sales pipeline");
+      expect(descEl.className).toContain("line-clamp-2");
+    });
+
+    it("all skills in a long list are present in the DOM (no scroll clipping)", async () => {
+      const manySkills: AvailableSkill[] = Array.from({ length: 20 }, (_, i) => ({
+        path: `skills/skill-${i}`,
+        name: `Skill ${i}`,
+        plugin_name: null,
+        description: `Description for skill ${i}`,
+        purpose: "skill-builder",
+        version: null,
+        model: null,
+        argument_hint: null,
+        user_invocable: null,
+        disable_model_invocation: null,
+      }));
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: manySkills,
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+
+      renderDialog();
+
+      await waitFor(() => expect(screen.getByText("Skill 0")).toBeInTheDocument());
+      for (let i = 0; i < 20; i++) {
+        expect(screen.getByText(`Skill ${i}`)).toBeInTheDocument();
+      }
+    });
+  });
+
+  describe("Multiple registries", () => {
+    it("renders a tab for each enabled registry", () => {
+      mockInvoke.mockImplementation(() => new Promise(() => {})); // stay loading
+      const multiRegistries = [
+        { name: "Registry A", source_url: "https://github.com/a/skills", enabled: true },
+        { name: "Registry B", source_url: "https://github.com/b/skills", enabled: true },
+      ];
+
+      renderDialog({ registries: multiRegistries });
+
+      expect(screen.getByRole("tab", { name: "Registry A" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Registry B" })).toBeInTheDocument();
+    });
+
+    it("shows empty-registry message when registries prop is empty", () => {
+      renderDialog({ registries: [] });
+      expect(screen.getByText(/No enabled registries/i)).toBeInTheDocument();
+    });
+  });
+
   describe("Dialog close", () => {
     it("resets state when closed and reopened (new browse on reopen)", async () => {
       const user = userEvent.setup();
