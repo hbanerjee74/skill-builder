@@ -1017,7 +1017,7 @@ export default function WorkflowPage() {
     // Fallback: file exists but is not valid JSON (legacy .md file)
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-        <AlertCircle className="size-8 text-yellow-500/50" />
+        <AlertCircle className="size-8" style={{ color: "var(--color-pacific)", opacity: 0.5 }} />
         <div className="text-center max-w-md">
           <p className="font-medium">Incompatible clarifications format</p>
           <p className="mt-1 text-sm">

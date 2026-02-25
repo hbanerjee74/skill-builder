@@ -803,15 +803,15 @@ export default function TestPage() {
   // Status bar config
   // ---------------------------------------------------------------------------
 
-  const statusConfig: Record<Phase, { dotClass: string; label: string }> = {
+  const statusConfig: Record<Phase, { dotClass: string; dotStyle?: React.CSSProperties; label: string }> = {
     idle: { dotClass: "bg-zinc-500", label: "ready" },
-    running: { dotClass: "bg-blue-500 animate-pulse", label: "running..." },
-    evaluating: { dotClass: "bg-yellow-500", label: "evaluating..." },
-    done: { dotClass: "bg-green-500", label: "completed" },
-    error: { dotClass: "bg-red-500", label: state.errorMessage ?? "error" },
+    running: { dotClass: "animate-pulse", dotStyle: { background: "var(--color-pacific)" }, label: "running..." },
+    evaluating: { dotClass: "", dotStyle: { background: "var(--color-pacific)" }, label: "evaluating..." },
+    done: { dotClass: "", dotStyle: { background: "var(--color-seafoam)" }, label: "completed" },
+    error: { dotClass: "bg-destructive", label: state.errorMessage ?? "error" },
   };
 
-  const { dotClass, label: statusLabel } = statusConfig[state.phase];
+  const { dotClass, dotStyle, label: statusLabel } = statusConfig[state.phase];
 
   // ---------------------------------------------------------------------------
   // Render
@@ -831,7 +831,7 @@ export default function TestPage() {
           />
         </div>
         {scopeBlocked && state.selectedSkill && (
-          <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
             <AlertTriangle className="size-4 shrink-0" />
             <span>Scope recommendation active — the skill scope is too broad.</span>
             <button
@@ -899,7 +899,7 @@ export default function TestPage() {
 
           {/* Vertical divider */}
           <div
-            className="w-1 shrink-0 cursor-col-resize border-x border-border bg-background transition-colors hover:bg-blue-600"
+            className="w-1 shrink-0 cursor-col-resize border-x border-border bg-background transition-colors hover:bg-primary"
             onMouseDown={(e) => {
               e.preventDefault();
               vDragging.current = true;
@@ -924,7 +924,7 @@ export default function TestPage() {
 
         {/* Horizontal divider */}
         <div
-          className="h-1 shrink-0 cursor-row-resize border-y border-border bg-background transition-colors hover:bg-blue-600"
+          className="h-1 shrink-0 cursor-row-resize border-y border-border bg-background transition-colors hover:bg-primary"
           onMouseDown={(e) => {
             e.preventDefault();
             hDragging.current = true;
@@ -1024,7 +1024,7 @@ export default function TestPage() {
       {/* Status bar */}
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
-          <div className={cn("size-[5px] rounded-full", dotClass)} />
+          <div className={cn("size-[5px] rounded-full", dotClass)} style={dotStyle} />
           <span className="text-xs text-muted-foreground/60">
             {statusLabel}
           </span>

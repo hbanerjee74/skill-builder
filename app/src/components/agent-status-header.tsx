@@ -34,19 +34,19 @@ function ContextMeter({ agentId }: { agentId: string }) {
 
   const tokens = getLatestContextTokens(run);
   const utilization = getContextUtilization(run);
-  const color =
+  const bgColor =
     utilization >= 80
-      ? "bg-red-500"
+      ? "var(--color-destructive, #ef4444)"
       : utilization >= 50
-        ? "bg-yellow-500"
-        : "bg-green-500";
+        ? "var(--color-pacific)"
+        : "var(--color-seafoam)";
 
   return (
     <div className="flex items-center gap-1.5" title={`Context: ${tokens.toLocaleString()} / ${run.contextWindow.toLocaleString()} tokens`}>
       <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full transition-all ${color}`}
-          style={{ width: `${Math.max(1, utilization)}%` }}
+          className="h-full transition-all"
+          style={{ width: `${Math.max(1, utilization)}%`, background: bgColor }}
         />
       </div>
       <span className="text-xs tabular-nums text-muted-foreground">

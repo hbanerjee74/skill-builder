@@ -221,7 +221,7 @@ export const categoryStyles: Record<MessageCategory, string> = {
   error:
     "border-l-2 border-l-[var(--chat-error-border)] bg-[var(--chat-error-bg)] rounded-md px-3 py-1",
   config:
-    "border-l-2 border-l-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-md px-3 py-1",
+    "border-l-2 border-l-[var(--color-pacific)] bg-[color-mix(in_oklch,var(--color-pacific),transparent_92%)] rounded-md px-3 py-1",
   status: "",
 };
 
