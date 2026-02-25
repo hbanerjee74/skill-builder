@@ -216,7 +216,7 @@ export function TransitionGateDialog({
     );
   }
 
-  // Insufficient: no answers at all
+  // Insufficient: most answers empty/vague
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
       <DialogContent showCloseButton={false}>
@@ -239,9 +239,9 @@ export function TransitionGateDialog({
           <Button variant="outline" onClick={onLetMeAnswer}>
             Let Me Answer
           </Button>
-          <Button onClick={onAutofillAndSkip} disabled={isAutofilling}>
+          <Button onClick={isRefinements ? onAutofillAndSkip : onAutofillAndResearch} disabled={isAutofilling}>
             {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Skip"}
+            {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Research"}
           </Button>
         </DialogFooter>
       </DialogContent>
