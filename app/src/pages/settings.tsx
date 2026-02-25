@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -583,42 +584,55 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="rounded-md border">
-                  <div className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-3 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-                    <span>Name</span>
-                    <span>URL</span>
-                    <span>Enabled</span>
-                    <span />
+                  <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+                    <span className="flex-1">Name</span>
+                    <span className="w-20">Enabled</span>
+                    <span className="w-8" />
                   </div>
                   {marketplaceRegistries.map((registry, idx) => {
                     const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
                     return (
                       <div
                         key={idx}
-                        className="grid grid-cols-[1fr_2fr_auto_auto] items-center gap-3 border-b last:border-b-0 px-4 py-2"
+                        className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
                       >
-                        <span className="text-sm font-medium truncate">{registry.name}</span>
-                        <span className="text-sm text-muted-foreground truncate font-mono">{registry.source_url}</span>
-                        <Switch
-                          checked={registry.enabled}
-                          onCheckedChange={(checked) => {
-                            const updated = marketplaceRegistries.map((r, i) =>
-                              i === idx ? { ...r, enabled: checked } : r
-                            )
-                            autoSave({ marketplaceRegistries: updated })
-                          }}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-muted-foreground hover:text-destructive"
-                          disabled={isDefault}
-                          onClick={() => {
-                            const updated = marketplaceRegistries.filter((_, i) => i !== idx)
-                            autoSave({ marketplaceRegistries: updated })
-                          }}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium">{registry.name}</span>
+                            {isDefault && (
+                              <Badge variant="secondary" className="text-xs shrink-0">Built-in</Badge>
+                            )}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate font-mono">{registry.source_url}</div>
+                        </div>
+                        <div className="w-20 shrink-0 flex items-center gap-2">
+                          <Switch
+                            checked={registry.enabled}
+                            onCheckedChange={(checked) => {
+                              const updated = marketplaceRegistries.map((r, i) =>
+                                i === idx ? { ...r, enabled: checked } : r
+                              )
+                              autoSave({ marketplaceRegistries: updated })
+                            }}
+                            aria-label={`Toggle ${registry.name}`}
+                          />
+                        </div>
+                        <div className="w-8 shrink-0 flex items-center justify-end">
+                          <button
+                            type="button"
+                            className={cn(
+                              "text-muted-foreground hover:text-destructive transition-colors",
+                              isDefault && "invisible"
+                            )}
+                            aria-label={`Remove ${registry.name}`}
+                            onClick={() => {
+                              const updated = marketplaceRegistries.filter((_, i) => i !== idx)
+                              autoSave({ marketplaceRegistries: updated })
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
