@@ -482,8 +482,14 @@ export default function WorkflowPage() {
   }, [hydrated, reviewMode]);
 
   // Reposition to first incomplete step when switching to Update mode (AC 3).
+  // Exception: if the user is on a completed clarifications-editable step, stay put —
+  // they're switching to update mode specifically to edit answers.
   useEffect(() => {
     if (!hydrated || reviewMode) return;
+    const currentCfg = STEP_CONFIGS[currentStep];
+    if (currentCfg?.clarificationsEditable && steps[currentStep]?.status === "completed") {
+      return; // stay on this step for editing
+    }
     const first = steps.find((s) => s.status !== "completed");
     const target = first ? first.id : steps.length - 1;
     if (target !== currentStep) {
