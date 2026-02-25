@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -31,10 +31,10 @@ import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
 const sections = [
   { id: "general", label: "General" },
+  { id: "marketplace", label: "Marketplace" },
   { id: "skill-building", label: "Skill Building" },
   { id: "skills", label: "Skills" },
   { id: "github", label: "GitHub" },
-  { id: "marketplace", label: "Marketplace" },
   { id: "advanced", label: "Advanced" },
 ] as const
 
@@ -68,6 +68,7 @@ export default function SettingsPage() {
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
   const [addingRegistry, setAddingRegistry] = useState(false)
   const [newRegistryUrl, setNewRegistryUrl] = useState("")
+  const [newRegistryTestState, setNewRegistryTestState] = useState<"idle" | "checking" | "valid" | "invalid">("idle")
   const [registryTestState, setRegistryTestState] = useState<Record<string, "checking" | "valid" | "invalid">>({})
 
   function nameFromRegistryUrl(url: string): string {
@@ -594,47 +595,47 @@ export default function SettingsPage() {
               <CardContent className="flex flex-col gap-4">
                 <div className="rounded-md border">
                   <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
-                    <span className="flex-1">Name</span>
+                    <span className="flex-1">Registry</span>
                     <span className="w-16">Enabled</span>
                     <span className="w-16" />
                   </div>
                   {marketplaceRegistries.map((registry, idx) => {
                     const isDefault = registry.source_url === "https://github.com/hbanerjee74/skills"
                     const testState = registryTestState[registry.source_url]
+                    const isFailed = testState === "invalid"
                     return (
                       <div
                         key={registry.source_url}
-                        className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
+                        className={`flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors ${isFailed ? "opacity-60" : ""}`}
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium">{registry.name}</span>
-                            {isDefault && (
-                              <Badge variant="secondary" className="text-xs shrink-0">Built-in</Badge>
-                            )}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate font-mono">{registry.source_url}</div>
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
+                          <span className="truncate text-sm font-mono text-muted-foreground">{registry.source_url}</span>
+                          {isDefault && (
+                            <Badge variant="secondary" className="text-xs shrink-0">Built-in</Badge>
+                          )}
                         </div>
                         <div className="w-16 shrink-0 flex items-center gap-2">
                           <Switch
-                            checked={registry.enabled}
+                            checked={registry.enabled && !isFailed}
+                            disabled={isFailed}
                             onCheckedChange={(checked) => {
-                              console.log(`[settings] registry toggled: name=${registry.name}, enabled=${checked}`)
+                              console.log(`[settings] registry toggled: url=${registry.source_url}, enabled=${checked}`)
                               const current = useSettingsStore.getState().marketplaceRegistries
                               const updated = current.map((r, i) =>
                                 i === idx ? { ...r, enabled: checked } : r
                               )
                               autoSave({ marketplaceRegistries: updated })
                             }}
-                            aria-label={`Toggle ${registry.name}`}
+                            aria-label={`Toggle ${registry.source_url}`}
                           />
                         </div>
                         <div className="w-16 shrink-0 flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                            aria-label={`Test ${registry.name}`}
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                            aria-label={`Test ${registry.source_url}`}
                             title="Check marketplace.json is reachable"
+                            disabled={testState === "checking"}
                             onClick={async () => {
                               setRegistryTestState((s) => ({ ...s, [registry.source_url]: "checking" }))
                               try {
@@ -648,7 +649,7 @@ export default function SettingsPage() {
                             {testState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
                             {testState === "valid" && <CheckCircle2 className="size-3.5 text-green-500" />}
                             {testState === "invalid" && <XCircle className="size-3.5 text-destructive" />}
-                            {!testState && <span className="text-xs">Test</span>}
+                            {!testState && <PlugZap className="size-3.5" />}
                           </button>
                           {!isDefault && (
                             <button
@@ -685,12 +686,40 @@ export default function SettingsPage() {
                   <div className="flex flex-col gap-3 rounded-md border p-4">
                     <div className="flex flex-col gap-1.5">
                       <Label htmlFor="new-registry-url">GitHub URL</Label>
-                      <Input
-                        id="new-registry-url"
-                        placeholder="https://github.com/owner/skill-library"
-                        value={newRegistryUrl}
-                        onChange={(e) => setNewRegistryUrl(e.target.value)}
-                      />
+                      <div className="flex gap-2">
+                        <Input
+                          id="new-registry-url"
+                          placeholder="https://github.com/owner/skill-library"
+                          value={newRegistryUrl}
+                          onChange={(e) => {
+                            setNewRegistryUrl(e.target.value)
+                            setNewRegistryTestState("idle")
+                          }}
+                          className="flex-1"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!newRegistryUrl.trim() || newRegistryTestState === "checking"}
+                          onClick={async () => {
+                            setNewRegistryTestState("checking")
+                            try {
+                              await checkMarketplaceUrl(newRegistryUrl.trim())
+                              setNewRegistryTestState("valid")
+                            } catch {
+                              setNewRegistryTestState("invalid")
+                            }
+                          }}
+                        >
+                          {newRegistryTestState === "checking" && <Loader2 className="size-3.5 animate-spin" />}
+                          {newRegistryTestState === "valid" && <CheckCircle2 className="size-3.5 text-green-500" />}
+                          {newRegistryTestState === "invalid" && <XCircle className="size-3.5 text-destructive" />}
+                          {newRegistryTestState === "idle" && "Test"}
+                        </Button>
+                      </div>
+                      {newRegistryTestState === "invalid" && (
+                        <p className="text-xs text-destructive">Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.</p>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -707,6 +736,7 @@ export default function SettingsPage() {
                           }
                           autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })
                           setNewRegistryUrl("")
+                          setNewRegistryTestState("idle")
                           setAddingRegistry(false)
                         }}
                       >
@@ -717,6 +747,7 @@ export default function SettingsPage() {
                         variant="outline"
                         onClick={() => {
                           setNewRegistryUrl("")
+                          setNewRegistryTestState("idle")
                           setAddingRegistry(false)
                         }}
                       >
