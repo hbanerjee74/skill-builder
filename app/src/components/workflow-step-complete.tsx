@@ -364,6 +364,11 @@ export function WorkflowStepComplete({
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
 
   if (isDecisionsStep) {
+    // In review mode, derive duration from DB agent runs
+    const dbDuration = agentRuns.length > 0
+      ? agentRuns.reduce((sum, r) => sum + r.duration_ms, 0)
+      : undefined;
+
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
         {reviewMode && agentRuns.length > 0 && (
@@ -375,7 +380,7 @@ export function WorkflowStepComplete({
           <div className="pr-4">
             <DecisionsSummaryCard
               decisionsContent={decisionsContent}
-              duration={!reviewMode ? duration : undefined}
+              duration={reviewMode ? dbDuration : duration}
               cost={displayCost}
             />
           </div>
