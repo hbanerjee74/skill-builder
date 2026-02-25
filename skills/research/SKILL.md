@@ -88,6 +88,17 @@ Wait for all Tasks to return before proceeding to Step 4.
 
 Read `references/consolidation-handoff.md`. Follow its instructions to deduplicate and synthesize all dimension Task outputs into canonical `clarifications.json` content (valid JSON).
 
+**CRITICAL — the output JSON MUST use this exact top-level structure:**
+```json
+{
+  "version": "1",
+  "metadata": { "title": "...", "question_count": N, "section_count": N, "refinement_count": 0, "must_answer_count": N, "priority_questions": [...], "duplicates_removed": N, "scope_recommendation": false },
+  "sections": [ { "id": "S1", "title": "...", "description": "...", "questions": [ { "id": "Q1", "title": "...", "must_answer": true, "text": "...", "choices": [...], "recommendation": "...", "answer_choice": null, "answer_text": null, "refinements": [] } ] } ],
+  "notes": []
+}
+```
+Do NOT invent alternative structures like `{"clarifications": [...]}` or flat question arrays. The downstream UI parser requires exactly `sections[].questions[]`.
+
 ---
 
 ## Return Format
