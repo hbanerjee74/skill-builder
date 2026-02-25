@@ -944,12 +944,42 @@ describe("GitHubImportDialog", () => {
       expect(content.className).toContain("overflow-hidden");
     });
 
-    it("applies truncate class to skill description text for single-line clipping", async () => {
-      renderDialog();
-      await waitFor(() => expect(screen.getByText("Analyze your sales pipeline")).toBeInTheDocument());
+    it("truncates descriptions longer than 60 characters with ellipsis", async () => {
+      const longDesc = "A".repeat(80);
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: [{
+          ...sampleSkills[0],
+          description: longDesc,
+        }],
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
 
-      const descEl = screen.getByText("Analyze your sales pipeline");
-      expect(descEl.className).toContain("truncate");
+      renderDialog();
+      await waitFor(() => expect(screen.getByText("Sales Analytics")).toBeInTheDocument());
+
+      expect(screen.getByText(`${"A".repeat(60)}...`)).toBeInTheDocument();
+      expect(screen.queryByText(longDesc)).not.toBeInTheDocument();
+    });
+
+    it("does not truncate descriptions of 60 characters or fewer", async () => {
+      const shortDesc = "A".repeat(60);
+      mockInvokeCommands({
+        parse_github_url: DEFAULT_REPO_INFO,
+        list_github_skills: [{
+          ...sampleSkills[0],
+          description: shortDesc,
+        }],
+        get_dashboard_skill_names: [],
+        list_workspace_skills: [],
+        list_skills: [],
+      });
+
+      renderDialog();
+      await waitFor(() => expect(screen.getByText(shortDesc)).toBeInTheDocument());
+      expect(screen.queryByText(`${shortDesc}...`)).not.toBeInTheDocument();
     });
 
     it("all skills in a long list are present in the DOM (no scroll clipping)", async () => {

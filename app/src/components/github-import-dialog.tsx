@@ -503,7 +503,9 @@ export default function GitHubImportDialog({
                           )}
                         </div>
                         {skill.description ? (
-                          <div className="text-xs text-muted-foreground truncate">{skill.description}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {skill.description.length > 60 ? `${skill.description.slice(0, 60)}...` : skill.description}
+                          </div>
                         ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
                           <div className="text-xs text-amber-600">No description</div>
                         ) : null}
