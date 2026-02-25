@@ -37,7 +37,7 @@ pub fn cleanup_step_files(
     }
 
     // Context files for steps 0, 1, 2 live in skills_path/skill_name/
-    let context_dir = if matches!(step_id, 0 | 1 | 2) {
+    let context_dir = if matches!(step_id, 0..=2) {
         Path::new(skills_path).join(skill_name)
     } else {
         skill_dir.clone()
@@ -120,7 +120,7 @@ pub fn clean_step_output_thorough(workspace_path: &str, skill_name: &str, step_i
     }
 
     // Context files (steps 0, 1, 2) live in skills_path/skill_name/
-    let context_dir = if matches!(step_id, 0 | 1 | 2) {
+    let context_dir = if matches!(step_id, 0..=2) {
         Path::new(skills_path).join(skill_name)
     } else {
         skill_dir.clone()
