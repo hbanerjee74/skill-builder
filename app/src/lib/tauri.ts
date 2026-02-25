@@ -396,8 +396,8 @@ export const checkMarketplaceUpdates = (
   repo: string,
   branch: string,
   subpath?: string,
-): Promise<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }> =>
-  invoke<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[] }>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
+): Promise<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[]; registry_name: string | null }> =>
+  invoke<{ library: SkillUpdateInfo[]; workspace: SkillUpdateInfo[]; registry_name: string | null }>("check_marketplace_updates", { owner, repo, branch, subpath: subpath ?? null })
 
 export const checkSkillCustomized = (skillName: string): Promise<boolean> =>
   invoke<boolean>("check_skill_customized", { skillName })

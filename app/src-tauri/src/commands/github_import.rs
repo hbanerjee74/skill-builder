@@ -485,8 +485,9 @@ pub async fn list_github_skills(
         settings.github_oauth_token.clone()
     };
 
-    list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
-        .await
+    let (_, skills) = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref())
+        .await?;
+    Ok(skills)
 }
 
 pub(crate) async fn list_github_skills_inner(
@@ -495,7 +496,7 @@ pub(crate) async fn list_github_skills_inner(
     branch: &str,
     subpath: Option<&str>,
     token: Option<&str>,
-) -> Result<Vec<AvailableSkill>, String> {
+) -> Result<(Option<String>, Vec<AvailableSkill>), String> {
     let client = build_github_client(token);
 
     // Resolve the actual default branch when the caller passed a placeholder.
@@ -702,7 +703,7 @@ pub(crate) async fn list_github_skills_inner(
         final_skills.len()
     );
 
-    Ok(final_skills)
+    Ok((marketplace.name.clone(), final_skills))
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,6 +1489,8 @@ pub struct MarketplaceUpdateResult {
     pub library: Vec<SkillUpdateInfo>,
     /// Skills with updates in workspace_skills (Settings → Skills).
     pub workspace: Vec<SkillUpdateInfo>,
+    /// Registry name read from marketplace.json (used to refresh the stored registry name).
+    pub registry_name: Option<String>,
 }
 
 /// Check the marketplace for skills that have a newer version than those installed.
@@ -1514,7 +1517,7 @@ pub async fn check_marketplace_updates(
         settings.github_oauth_token.clone()
     };
 
-    let available = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref()).await?;
+    let (registry_name, available) = list_github_skills_inner(&owner, &repo, &branch, subpath.as_deref(), token.as_deref()).await?;
 
     let result = {
         let conn = db.0.lock().map_err(|e| {
@@ -1550,7 +1553,7 @@ pub async fn check_marketplace_updates(
             }
         }
 
-        MarketplaceUpdateResult { library, workspace }
+        MarketplaceUpdateResult { library, workspace, registry_name }
     };
 
     log::info!(

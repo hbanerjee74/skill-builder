@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
@@ -42,31 +42,34 @@ function saveNotifiedVersions(notified: Record<string, string>): void {
   } catch { /* ignore */ }
 }
 
-/** Check the marketplace for updates and either auto-update or show notification toasts. */
+/** Check the marketplace for updates and either auto-update or show notification toasts.
+ *  Returns the registry name read from marketplace.json, or null on failure. */
 async function checkForMarketplaceUpdates(
   sourceUrl: string,
   settings: AppSettings,
   cancelledRef: { current: boolean },
   router: ReturnType<typeof useRouter>,
-): Promise<void> {
+): Promise<string | null> {
   try {
     const info = await parseGitHubUrl(sourceUrl);
-    const { library, workspace } = await checkMarketplaceUpdates(
+    const { library, workspace, registry_name } = await checkMarketplaceUpdates(
       info.owner, info.repo, info.branch, info.subpath ?? undefined
     );
-    if (cancelledRef.current) return;
+    if (cancelledRef.current) return null;
 
     if (settings.auto_update) {
       await handleAutoUpdate(library, workspace, info, cancelledRef);
     } else {
       showManualUpdateToasts(library, workspace, router);
     }
+    return registry_name ?? null;
   } catch (err) {
     console.error("[app-layout] Marketplace update check failed:", err);
     toast.error(
       `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
       { duration: 8000 }
     );
+    return null;
   }
 }
 
@@ -213,10 +216,22 @@ export function AppLayout() {
           .then((models) => { if (!cancelledRef.current) setSettings({ availableModels: models }); })
           .catch((err) => console.warn("[app-layout] Could not fetch model list:", err));
       }
-      // Check for marketplace updates in the background
-      const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled)
+      // Check for marketplace updates in the background, and refresh stored registry names
+      // from marketplace.json if they have changed since the registry was added.
+      const allRegistries = s.marketplace_registries ?? [];
+      const enabledRegistries = allRegistries.filter(r => r.enabled);
       for (const registry of enabledRegistries) {
         checkForMarketplaceUpdates(registry.source_url, s, cancelledRef, router)
+          .then((resolvedName) => {
+            if (!resolvedName || resolvedName === registry.name) return;
+            const current = useSettingsStore.getState().marketplaceRegistries;
+            const updated = current.map(r =>
+              r.source_url === registry.source_url ? { ...r, name: resolvedName } : r
+            );
+            useSettingsStore.getState().setSettings({ marketplaceRegistries: updated });
+            saveSettings({ ...s, marketplace_registries: updated })
+              .catch(err => console.warn("[app-layout] Failed to persist registry name update:", err));
+          });
       }
     }).catch(() => {
       // Settings may not exist yet — show splash
