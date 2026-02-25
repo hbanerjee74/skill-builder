@@ -1,147 +1,85 @@
 # Startup Reconciliation
 
-How the app validates the `skills` master catalog against disk artifacts on every launch.
-
-For storage paths and file ownership, see [agent-specs/storage.md](agent-specs/storage.md).
+Validates the `skills` master catalog against disk artifacts on every launch, before the dashboard loads. Driver is the DB — disk is the oracle for step state.
 
 ---
 
-## Skills Master Table
+## Two Paths, Three Passes
 
-The `skills` table is the single catalog backing the skills library, test tab, and reconciliation.
+**Pass 1 — DB-driven:** Loop over every row in `skills`, branch on `skill_source`:
+- `skill-builder` → full step reconciliation (scenarios 1–8, 10)
+- `marketplace` → SKILL.md presence check (scenarios 11–12)
+- `imported` → skip (no reconciliation)
 
-```sql
-CREATE TABLE skills (
-  id           INTEGER PRIMARY KEY AUTOINCREMENT,
-  name         TEXT NOT NULL UNIQUE,
-  skill_source TEXT NOT NULL CHECK(skill_source IN ('skill-builder', 'marketplace', 'imported')),
-  purpose      TEXT,
-  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
-);
-```
+**Pass 2 — Discovery:** Scan `{skills_path}` for directories not in the master (scenarios 9a–9c). User action required before dashboard loads.
 
-`workflow_runs` has a FK to the master:
+**Pass 3 — Defensive catch-all:** Any folder still not in the master after passes 1 and 2 is moved to `{skills_path}/.trash/` and removed from the git index. `.trash/` is added to `.gitignore`.
 
-```sql
-ALTER TABLE workflow_runs ADD COLUMN skill_id INTEGER REFERENCES skills(id);
-```
-
-`workspace_skills` holds Settings → Skills (bundled + GitHub/zip imports for workspace CLAUDE.md). `imported_skills` is purely plugin infrastructure (References embedded in plugin CLAUDE.md files), NOT in the master.
-
-### skill_source values
-
-| Value | Origin | Has `workflow_runs` row? |
-|-------|--------|--------------------------|
-| `skill-builder` | Created via builder workflow, OR discovered on disk with full context artifacts | Yes — step state, run history |
-| `marketplace` | Imported from marketplace | No |
-| `imported` | Discovered on disk with SKILL.md only (no context artifacts). Assigned via reconciliation pass 2 — no direct creation path in the UI. | No |
-
-### Write paths
-
-| Operation | What happens |
-|-----------|-------------|
-| Create skill via builder | INSERT `skills` (skill-builder) → INSERT `workflow_runs` with `skill_id` FK |
-| Import from marketplace | INSERT `workspace_skills` + INSERT `skills` (marketplace). No `workflow_runs`. |
-| Disk discovery — all artifacts (scenario 9a) | User approves → INSERT `skills` (skill-builder) + INSERT `workflow_runs` at step 5 |
-| Disk discovery — incomplete (scenario 9b) | Delete folder from disk. Notify user. |
+Reconciliation operates only on `skills_path`. `{workspace_path}/.claude/skills` is intentionally excluded.
 
 ---
 
-## Reconciliation State Machine
+## Detectable Steps
 
-### Driver
+The reconciler infers step completion from files in `{skills_path}/{name}/`. Only steps that write unique output files are detectable:
 
-DB (skills master). Two passes:
+| Step | Evidence |
+|------|----------|
+| 0 | `context/clarifications.json` + `context/research-plan.md` |
+| 2 | `context/decisions.md` |
+| 3 | `SKILL.md` |
 
-1. **DB-driven pass**: Loop over every row in `skills` master, branch on `skill_source`, validate each against disk.
-2. **Discovery pass**: Scan `{skills_path}` for dirs containing `SKILL.md` that are not in the master.
-
-### Detectable steps
-
-The reconciler infers step completion from files in `{skills_path}/{name}/`:
-
-| Step | Evidence files |
-|------|---------------|
-| 0 | `context/clarifications.md` + `context/research-plan.md` |
-| 4 | `context/decisions.md` |
-| 5 | `SKILL.md` |
-
-`detect_furthest_step` checks steps [0, 4, 5] **in order** and stops at the first incomplete step. Partial output (some but not all files for a step) is cleaned up.
-
-### Scenarios
-
-#### Pass 1: skill-builder — DB ↔ disk reconciliation
-
-| # | Scenario | Tables to check | Artifacts to check | Decision |
-|---|----------|-----------------|--------------------|----------|
-| 1 | DB and disk agree | `skills` + `workflow_runs` (join on `skill_id`): read `current_step`, `status` | Step evidence in `{skills_path}/{name}/` | Mark confirmed steps completed in `workflow_run_steps`. No notification. |
-| 2 | DB step ahead of disk | `skills` + `workflow_runs`: `current_step` = N | `detect_furthest_step` returns M where M < N | Reset `workflow_runs.current_step` to M. Clean files beyond M. Notify: "'{name}' reset from step N to M". |
-| 3 | Disk ahead of DB | `skills` + `workflow_runs`: `current_step` = M | Step evidence confirms step N where N > M | Advance `workflow_runs.current_step` to N. Notify: "'{name}' advanced from step M to N". |
-| 4 | No output files, DB > step 0 | `skills` + `workflow_runs`: `current_step` > 0 | No step 0/4/5 evidence in `{skills_path}/{name}/` | Reset to step 0. Clean all step files. Notify: "'{name}' reset to step 0 — no artifacts found". |
-| 5 | Workspace marker missing | `skills` + `workflow_runs` | `{workspace}/{name}/` dir absent | Recreate `{workspace}/{name}/`. Notify: "'{name}' workspace directory recreated". |
-| 6 | Completed but SKILL.md gone | `skills` + `workflow_runs`: `status` = completed | `{skills_path}/{name}/SKILL.md` missing. Check backwards: `context/decisions.md` (step 4), `context/clarifications.md` + `context/research-plan.md` (step 0). | Reset to last step with confirmed artifacts. Handled by `detect_furthest_step` — same path as scenario 2. Notify: "'{name}' reset from step 5 to step M — SKILL.md missing". |
-| 7 | Active session | `workflow_sessions`: PID alive? | None | Skip entirely. Notify: "'{name}' skipped — active session". |
-| 8 | Fresh skill (step 0, no output) | `skills` + `workflow_runs`: `current_step` = 0 | No output files | No action. No notification. |
-
-#### Pass 1: skill-builder — FK integrity
-
-| # | Scenario | Tables to check | Artifacts to check | Decision |
-|---|----------|-----------------|--------------------|----------|
-| 10 | Master row, no `workflow_runs` | `skills`: `skill_source` = 'skill-builder'. `workflow_runs` join on `skill_id` returns NULL. | Step artifacts in `{skills_path}/{name}/` | Auto-create `workflow_runs` row with `skill_id` FK. Set `current_step` to detected step, `status` = pending (or completed if step >= 5). Notify: "'{name}' workflow record recreated at step M". |
-
-#### Pass 1: marketplace
-
-| # | Scenario | Tables to check | Artifacts to check | Decision |
-|---|----------|-----------------|--------------------|----------|
-| 11 | SKILL.md exists | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` present | No action. No notification. |
-| 12 | SKILL.md missing | `skills`: `skill_source` = 'marketplace' | `{skills_path}/{name}/SKILL.md` absent | Delete row from `skills` master. Notify: "'{name}' marketplace skill removed — SKILL.md not found on disk". |
-
-#### Reconciliation scope
-
-Reconciliation operates only on `skills_path` (the user-configured output directory, e.g. `~/Skills`). `{workspace_path}/.claude/skills` (plugin skills bundled with the workspace for the Claude Code plugin) is intentionally excluded — those are managed separately and never reconciled.
-
-#### Pass 2: discovery
-
-| # | Scenario | Tables to check | Artifacts to check | Decision |
-|---|----------|-----------------|--------------------|----------|
-| 9a | Folder found, no SKILL.md | `skills` master: no row for this name | `{skills_path}/{name}/` exists but no `SKILL.md` inside | Delete `{skills_path}/{name}/`. Notify: "'{name}' removed — no SKILL.md found". No user choice. |
-| 9b | SKILL.md + ALL context artifacts | `skills` master: no row for this name | `detect_furthest_step` returns step 5 (all confirmed: `context/clarifications.md`, `context/research-plan.md`, `context/decisions.md`, `SKILL.md`) | **User choice required.** (a) "Add to library" → add as `skill-builder` (completed), auto-create `workflow_runs` at step 5. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
-| 9c | SKILL.md + SOME context artifacts | `skills` master: no row for this name | `SKILL.md` exists but `detect_furthest_step` returns < 5 (some context files present, some missing) | **User choice required.** (a) "Add to library" → add as `imported`, delete `{skills_path}/{name}/context/` folder, no `workflow_runs`. (b) "Remove from disk" → delete `{skills_path}/{name}/`. |
+Step 1 edits `clarifications.json` in-place — no unique artifact, not independently detectable. `detect_furthest_step` checks steps `[0, 2, 3]` in order and stops at the first incomplete step. Partial output at a step is cleaned up defensively.
 
 ---
 
-## Logging and Notification Rules
+## Pass 1: skill-builder scenarios
 
-1. **Every skill gets a debug log** — in pass 1, `log::debug!("[reconcile] '{name}': skill_source={source}, action={what_happened}")` for every skill, even if no action is taken.
-2. **Every cleanup produces a user notification** — whenever files are deleted, steps are reset, or master rows are removed, push to `notifications`. No silent cleanups.
-3. **Every discovery gets a debug log** — in pass 2, `log::debug!("[reconcile] '{name}': discovered on disk, detected_step={step}")` for every dir found.
+Before checking step state, any `in_progress` step with no live session PID is reset to `pending` (crash/unclean shutdown recovery).
+
+| # | Condition | Action |
+|---|-----------|--------|
+| 7 | Active session with live PID | Skip entirely. Notify. |
+| 10 | No `workflow_runs` row | Auto-create at detected step; status `completed` if step ≥ 3. Notify. |
+| 1 | DB step == disk step | Mark detectable steps completed. No notification. |
+| 2 | DB step > disk step (disk doesn't confirm expected detectable) | Reset to disk step, `pending`. Clean files beyond disk step. Notify. |
+| 3 | Disk step > DB step | Advance to disk step. Notify. |
+| 4 | No output files, DB step > 0 | Reset to step 0, `pending`. Clean all step files. Notify. |
+| 5 | Workspace dir missing | Recreate `{workspace}/{name}/context/`. No notification. |
+| 6 | Completed but SKILL.md gone | Handled by `detect_furthest_step` — same path as scenario 2. |
+| 8 | Step 0, no output | Clear any spurious step completions. No notification. |
+
+After reconciling step state: if disk shows step ≥ 3 and `workflow_runs.status ≠ completed`, mark as completed.
+
+---
+
+## Pass 1: marketplace scenarios
+
+| # | Condition | Action |
+|---|-----------|--------|
+| 11 | `SKILL.md` exists | No action. |
+| 12 | `SKILL.md` missing | Delete from `skills` master. Notify. |
+
+---
+
+## Pass 2: Discovery scenarios
+
+| # | Condition | Action |
+|---|-----------|--------|
+| 9a | Dir found, no `SKILL.md` | Auto-delete dir. Notify. No user choice. |
+| 9b | `SKILL.md` + all context artifacts (detected step = 3) | User choice: **Add to library** (inserts as `skill-builder`, creates `workflow_runs` at step 3, status `completed`) or **Remove** (deletes dir). |
+| 9c | `SKILL.md` + partial/no context artifacts | User choice: **Add to library** (inserts as `imported`, no `workflow_runs`) or **Remove** (deletes dir). |
 
 ---
 
 ## ACK Dialog
 
-After both passes complete, if `notifications.len() > 0` OR `discovered_skills.len() > 0`:
-
-- Show `ReconciliationAckDialog` (modal, non-dismissible)
-- Lists all notifications grouped by severity (errors first, then resets/info)
-- For scenarios 9b and 9c (user choice): inline action buttons per discovered skill — "Add to library" / "Remove"
-- Dashboard does NOT mount until user acknowledges all notifications and resolves all discoveries
-
-Today, notifications are returned to the frontend and shown as 5-second toasts that disappear. After this change, they block the dashboard via a modal ACK dialog.
+After all three passes, if there are any notifications or discovered skills, `ReconciliationAckDialog` is shown as a blocking modal — the dashboard does not mount until the user acknowledges all notifications and resolves all discovered skills (9b/9c). Each discovery has inline **Add to Library** / **Remove** buttons; the Acknowledge button stays disabled until all are resolved.
 
 ---
 
-## Library UI: Skill Source Indicator
+## Logging
 
-Every skill in the library shows an icon indicating its `skill_source`. Displayed on skill cards and skill list rows alongside the existing purpose badge.
-
-| `skill_source` | Icon | Label | Color |
-|----------------|------|-------|-------|
-| `skill-builder` | `Hammer` | Built | muted (default — most common, shouldn't be visually loud) |
-| `marketplace` | `Store` | Marketplace | blue |
-| `imported` | `Upload` | Imported | amber |
-
-Icons from `lucide-react`. Rendered as a small badge or icon+label chip — same size as the existing purpose badge pattern in `skill-picker.tsx`.
-
-Placement: next to the skill name or in the metadata row on cards and list rows. Visible in the skills library tab, dashboard skill cards, and the test tab skill picker.
+- Every skill in Pass 1 gets a `debug` log, even if no action is taken.
+- Every cleanup, reset, or master deletion produces a user notification.
+- Every dir found in Pass 2 gets a `debug` log.
