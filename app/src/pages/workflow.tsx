@@ -875,6 +875,7 @@ export default function WorkflowPage() {
         workspacePath={workspacePath ?? undefined}
         skillsPath={skillsPath}
         clarificationsEditable={!!stepConfig?.clarificationsEditable && !reviewMode}
+        clarificationsData={clarificationsData}
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
         saveStatus={saveStatus}

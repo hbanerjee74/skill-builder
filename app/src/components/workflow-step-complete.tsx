@@ -31,6 +31,8 @@ interface WorkflowStepCompleteProps {
   skillsPath?: string | null;
   /** When true, show editable ClarificationsEditor on the completion screen */
   clarificationsEditable?: boolean;
+  /** Controlled clarifications data from parent — used when editable so edits feed back */
+  clarificationsData?: ClarificationsFile | null;
   onClarificationsChange?: (data: ClarificationsFile) => void;
   onClarificationsContinue?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
@@ -97,6 +99,7 @@ export function WorkflowStepComplete({
   workspacePath,
   skillsPath,
   clarificationsEditable,
+  clarificationsData: controlledClarData,
   onClarificationsChange,
   onClarificationsContinue,
   saveStatus,
@@ -272,7 +275,7 @@ export function WorkflowStepComplete({
             <div className="pr-4">
               <ResearchSummaryCard
                 researchPlan={researchPlanContent!}
-                clarificationsData={clarData}
+                clarificationsData={controlledClarData ?? clarData}
                 duration={!reviewMode ? duration : undefined}
                 cost={displayCost}
                 editable
@@ -329,7 +332,7 @@ export function WorkflowStepComplete({
           {clarificationsEditable ? (
             /* Editable mode: ClarificationsEditor with edit props. Continue button handles advancement. */
             <ClarificationsEditor
-              data={clarOnlyData}
+              data={controlledClarData ?? clarOnlyData}
               onChange={onClarificationsChange ?? (() => {})}
               onContinue={onClarificationsContinue}
               saveStatus={saveStatus}
