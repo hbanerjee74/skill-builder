@@ -465,13 +465,19 @@ export default function GitHubImportDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex-1 min-h-0 overflow-y-auto rounded-md border mt-2">
-            <table className="w-full text-sm table-auto border-separate border-spacing-0">
+            <table className="w-full text-sm table-fixed border-separate border-spacing-0">
+              <colgroup>
+                <col style={{ width: "42%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "32%" }} />
+                <col style={{ width: "12%" }} />
+              </colgroup>
               <thead className="sticky top-0 z-10 bg-background">
                 <tr>
                   <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Name</th>
-                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b w-24">Version</th>
-                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b w-28">Status</th>
-                  <th className="px-4 py-1.5 border-b w-14" />
+                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Version</th>
+                  <th className="px-4 py-1.5 text-left text-xs font-semibold text-muted-foreground border-b">Status</th>
+                  <th className="px-4 py-1.5 border-b" />
                 </tr>
               </thead>
               <tbody>
@@ -503,21 +509,21 @@ export default function GitHubImportDialog({
                           )}
                         </div>
                         {skill.description ? (
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-muted-foreground truncate">
                             {skill.description.length > 60 ? `${skill.description.slice(0, 60)}...` : skill.description}
                           </div>
                         ) : mode === 'skill-library' && !skill.description && !isDisabled ? (
                           <div className="text-xs text-amber-600">No description</div>
                         ) : null}
                       </td>
-                      <td className="w-24 px-4 py-2.5 border-b align-middle">
+                      <td className="px-4 py-2.5 border-b align-middle">
                         {skill.version ? (
                           <Badge variant="outline" className="text-xs font-mono">{skill.version}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </td>
-                      <td className="w-28 px-4 py-2.5 border-b align-middle">
+                      <td className="px-4 py-2.5 border-b align-middle">
                         {state === "imported" && (
                           <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
                         )}
@@ -531,7 +537,7 @@ export default function GitHubImportDialog({
                           <Badge variant="outline" className="text-xs text-muted-foreground">Already installed</Badge>
                         )}
                       </td>
-                      <td className="w-14 px-4 py-2.5 border-b align-middle">
+                      <td className="px-4 py-2.5 border-b align-middle">
                         <div className="flex items-center justify-end">
                           {state === "imported" ? (
                             <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
