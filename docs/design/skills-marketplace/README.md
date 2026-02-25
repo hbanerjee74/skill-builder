@@ -18,15 +18,97 @@ The `purpose` frontmatter field drives routing: `skill-builder` purpose skills b
 
 ## Registry Model
 
-A marketplace is a GitHub repository with a catalog file (`.claude-plugin/marketplace.json`) that lists the skills it publishes. There is no folder-scan fallback — a missing or malformed catalog is an error, not a silent empty result.
+A marketplace is a GitHub repository containing a `.claude-plugin/marketplace.json` catalog file that lists the plugins (and their skills) it publishes. There is no folder-scan fallback — a missing or malformed catalog is an error, not a silent empty result.
 
-The catalog lists each skill with its name, description, category, version, and a path to its directory in the repo. The app also reads each skill's `SKILL.md` to pick up fields not in the catalog (`purpose` and extended frontmatter). Skills in the catalog without a `SKILL.md` are excluded.
-
-**Configuration** — one or more named registries in Settings → Marketplace. Each registry has a name, a GitHub source URL, and an enabled/disabled toggle. The default registry (`https://github.com/hbanerjee74/skills`) is seeded on first launch and cannot be removed. Additional registries can be added and removed freely.
+**Multiple named registries** — one or more named registries can be configured in Settings → Marketplace. Each registry has a name (auto-fetched from `marketplace.json`), a GitHub source URL, and an enabled/disabled toggle. The default registry is seeded on first launch and cannot be removed. Additional registries can be added and removed freely.
 
 **Enabled registries only** — only enabled registries are fetched. Disabling a registry removes it from the browse dialog without deleting it from the list.
 
-**Subpath support** — the URL can point to a subdirectory within the repo (e.g. `.../tree/main/skills`). The catalog and all skill paths are resolved relative to that subpath.
+**Registry name** — when a user adds a registry URL, the app validates the URL and fetches the `marketplace.json`. The `name` field from the catalog is used as the registry display name. If absent, the name falls back to `"{owner}/{repo}"`. No manual name input is required.
+
+---
+
+## marketplace.json Schema
+
+The catalog follows the [official Claude Code plugin marketplace schema](https://code.claude.com/docs/en/plugin-marketplaces#marketplace-schema).
+
+```json
+{
+  "name": "Anthropic Knowledge Work Plugins",
+  "owner": {
+    "name": "Anthropic",
+    "url": "https://anthropic.com"
+  },
+  "metadata": {
+    "pluginRoot": "plugins"
+  },
+  "plugins": [
+    {
+      "name": "engineering",
+      "source": "./engineering",
+      "description": "Engineering productivity skills"
+    },
+    {
+      "name": "research",
+      "source": "./research",
+      "description": "Research and analysis skills"
+    }
+  ]
+}
+```
+
+### Top-level fields
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | No | Human-readable registry display name. Used as the tab label in the browse dialog. Falls back to `"{owner}/{repo}"` if absent. |
+| `owner` | No | Object with `name` and `url`. Informational only. |
+| `metadata` | No | Object with `pluginRoot`. See below. |
+| `plugins` | Yes | Array of plugin catalog entries. |
+
+### `metadata.pluginRoot`
+
+Base path prepended to plugin sources that do **not** start with `./`. For example, if `pluginRoot` is `"plugins"` and a source is `"engineering"`, the resolved plugin path is `plugins/engineering`. Sources starting with `./` are used as-is (e.g. `"./engineering"` → `engineering`).
+
+### Plugin catalog entries
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | No | Display name for the plugin group. |
+| `source` | Yes | Path to the plugin directory (relative to repo root). Can be a string starting with `./` (relative path) or an object (`github`, `url`, `npm`, `pip`). Currently only string paths are supported. |
+| `description` | No | Short description shown in the UI. |
+
+---
+
+## Skill Discovery (Nested Plugin Structure)
+
+Each catalog entry's `source` points to a **plugin directory**, not a skill directly. Skills live inside that directory under a `skills/` subdirectory:
+
+```
+{plugin_path}/
+  skills/
+    standup/
+      SKILL.md
+    code-review/
+      SKILL.md
+```
+
+The app uses a two-format discovery strategy per catalog entry:
+
+**Format A — spec-compliant nested structure (preferred)**
+
+1. Resolve `plugin_path` from the catalog entry's `source`:
+   - Source starts with `./`: strip `./` and trailing `/` → `plugin_path`
+   - Source is a bare name: prepend `metadata.pluginRoot` (if set) → `plugin_path`
+   - Special case: `source = "./"` → `plugin_path = ""` → skills prefix = `"skills/"`
+2. Enumerate all `{plugin_path}/skills/{skill_name}/SKILL.md` paths in the git tree (one level deep inside `skills/`)
+3. Fetch and parse each `SKILL.md` — skills missing required frontmatter are excluded
+
+**Format B — legacy fallback**
+
+If no skills are found via Format A, check whether `{plugin_path}/SKILL.md` exists directly. If it does, treat the catalog entry as a single skill at that path. This preserves compatibility with repos that point catalog entries directly at skill directories.
+
+If neither format yields any skills for an entry, that entry is silently skipped (logged at `debug` level).
 
 ---
 

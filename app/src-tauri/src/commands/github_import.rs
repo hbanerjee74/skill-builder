@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill, MarketplaceJson, MarketplacePluginSource};
+use crate::types::{AvailableSkill, GitHubRepoInfo, ImportedSkill, MarketplaceJson};
 use sha2::Digest;
 use std::fs;
 use std::path::Path;
@@ -315,6 +315,131 @@ pub async fn check_marketplace_url(
 }
 
 // ---------------------------------------------------------------------------
+// discover_skills_from_catalog
+// ---------------------------------------------------------------------------
+
+/// Pure skill-discovery kernel: given a marketplace catalog and a pre-built set of
+/// repository-relative directory paths that contain a `SKILL.md` blob, return all
+/// importable [`AvailableSkill`] entries.
+///
+/// Each catalog entry's `source` points to a **plugin directory**. Skills live exactly
+/// one level below that directory's `skills/` subdirectory:
+///
+/// ```text
+/// {plugin_path}/skills/{skill_name}/SKILL.md
+/// ```
+///
+/// Source path resolution rules (in order):
+/// 1. Paths starting with `./` are stripped of `./` and anchored to the marketplace
+///    directory (i.e. relative to `subpath`, or repo root if `subpath` is `None`).
+/// 2. Bare names (no `./`) have `plugin_root` prepended when set, then are anchored
+///    the same way.
+/// 3. `subpath` is always prepended to anchor sources to the repo root.
+///
+/// External source types (`github`, `npm`, `pip`, `url`) are skipped with a warning.
+/// Plugin entries that yield no skills are silently skipped (logged at `debug`).
+/// No fallback paths are attempted.
+pub(crate) fn discover_skills_from_catalog(
+    plugins: &[crate::types::MarketplacePlugin],
+    plugin_root: Option<&str>,
+    skill_dirs: &std::collections::HashSet<String>,
+    subpath: Option<&str>,
+) -> Vec<crate::types::AvailableSkill> {
+    use crate::types::{AvailableSkill, MarketplacePluginSource};
+
+    let mut skills = Vec::new();
+
+    for plugin in plugins {
+        let source_str = match &plugin.source {
+            MarketplacePluginSource::Path(s) => s,
+            MarketplacePluginSource::External { source, .. } => {
+                let name = plugin.name.as_deref().unwrap_or("<unnamed>");
+                log::warn!(
+                    "[discover_skills] skipping plugin '{}' — unsupported source type '{}'",
+                    name, source
+                );
+                continue;
+            }
+        };
+
+        // Resolve the plugin directory path relative to the repo root.
+        //
+        // • Relative paths (start with `./`): strip `./` prefix; the remainder is
+        //   relative to the marketplace directory.
+        // • Bare names (no `./`): prepend `plugin_root` if set.
+        // • Then prepend `subpath` to anchor to the repo root.
+        let relative_part: String = if source_str.starts_with("./") {
+            source_str
+                .strip_prefix("./")
+                .unwrap_or(source_str)
+                .trim_end_matches('/')
+                .to_string()
+        } else {
+            let trimmed = source_str.trim_end_matches('/');
+            match plugin_root.filter(|r| !r.is_empty()) {
+                Some(root) => format!("{}/{}", root.trim_end_matches('/'), trimmed),
+                None => trimmed.to_string(),
+            }
+        };
+
+        let plugin_path: String = match subpath.filter(|s| !s.is_empty()) {
+            Some(sp) if !relative_part.is_empty() => {
+                format!("{}/{}", sp.trim_end_matches('/'), relative_part)
+            }
+            Some(sp) => sp.trim_end_matches('/').to_string(),
+            None => relative_part,
+        };
+
+        // Skills prefix: all valid skill dirs for this plugin start with this.
+        // When plugin_path is empty (source was `"./"`), prefix is simply `"skills/"`.
+        let skills_prefix = if plugin_path.is_empty() {
+            "skills/".to_string()
+        } else {
+            format!("{}/skills/", plugin_path)
+        };
+
+        let plugin_name = plugin.name.as_deref().unwrap_or("<unnamed>");
+        let before = skills.len();
+
+        // Collect skill entries: dirs that start with skills_prefix and whose
+        // remainder (the skill name) is a single path segment — no further `/`.
+        for dir in skill_dirs {
+            if let Some(skill_name) = dir.strip_prefix(&skills_prefix) {
+                if skill_name.is_empty() || skill_name.contains('/') {
+                    continue;
+                }
+                skills.push(AvailableSkill {
+                    path: dir.clone(),
+                    name: skill_name.to_string(),
+                    description: plugin.description.clone(),
+                    purpose: None,
+                    version: None,
+                    model: None,
+                    argument_hint: None,
+                    user_invocable: None,
+                    disable_model_invocation: None,
+                });
+            }
+        }
+
+        let found = skills.len() - before;
+        if found == 0 {
+            log::debug!(
+                "[discover_skills] plugin '{}' (source='{}') — no skills found under '{}'",
+                plugin_name, source_str, skills_prefix
+            );
+        } else {
+            log::debug!(
+                "[discover_skills] plugin '{}' — found {} skill(s) under '{}'",
+                plugin_name, found, skills_prefix
+            );
+        }
+    }
+
+    skills
+}
+
+// ---------------------------------------------------------------------------
 // list_github_skills
 // ---------------------------------------------------------------------------
 
@@ -421,46 +546,10 @@ pub(crate) async fn list_github_skills_inner(
         format!("Failed to parse marketplace.json: {}", e)
     })?;
 
-    let mut skills = Vec::new();
-    for plugin in &marketplace.plugins {
-        match &plugin.source {
-            MarketplacePluginSource::External { source, .. } => {
-                log::warn!(
-                    "[list_github_skills_inner] skipping plugin '{}' — unsupported source type '{}'",
-                    plugin.name, source
-                );
-                continue;
-            }
-            MarketplacePluginSource::Path(s) => {
-                let path = s.trim_start_matches("./").to_string();
-                if path.is_empty() {
-                    log::warn!(
-                        "[list_github_skills_inner] skipping plugin '{}' — empty path after stripping './'",
-                        plugin.name
-                    );
-                    continue;
-                }
-                skills.push(AvailableSkill {
-                    path,
-                    name: plugin.name.clone(),
-                    description: plugin.description.clone(),
-                                        purpose: None,
-                    version: plugin.version.clone(),
-                    model: None,
-                    argument_hint: None,
-                    user_invocable: None,
-                    disable_model_invocation: None,
-                });
-            }
-        }
-    }
-
-    // Fetch the repo tree once to verify which manifest entries actually contain
-    // a SKILL.md. Plugin packages (e.g. ./plugins/*) live alongside skills but
-    // don't have a SKILL.md and cannot be imported as skills.
+    // Fetch the repo tree to discover which skill directories exist.
     let (_, tree) = fetch_repo_tree(&client, owner, repo, &resolved_branch).await?;
 
-    // Build a set of directory paths that own a SKILL.md blob in the tree.
+    // Build the set of directories that own a SKILL.md blob in the tree.
     let skill_dirs: std::collections::HashSet<String> = tree
         .iter()
         .filter_map(|entry| {
@@ -472,26 +561,15 @@ pub(crate) async fn list_github_skills_inner(
         })
         .collect();
 
-    let before = skills.len();
-    skills.retain(|s| {
-        if skill_dirs.contains(&s.path) {
-            true
-        } else {
-            log::debug!(
-                "[list_github_skills_inner] skipping '{}' — no SKILL.md at {}/SKILL.md",
-                s.name, s.path
-            );
-            false
-        }
-    });
+    let plugin_root = marketplace.metadata.as_ref().and_then(|m| m.plugin_root.as_deref());
+    let mut skills = discover_skills_from_catalog(&marketplace.plugins, plugin_root, &skill_dirs, subpath);
 
     log::info!(
-        "[list_github_skills_inner] found {} importable skills ({} filtered — no SKILL.md) in marketplace.json for {}/{}",
-        skills.len(), before - skills.len(), owner, repo
+        "[list_github_skills_inner] found {} importable skills in {}/{} (registry={})",
+        skills.len(), owner, repo, marketplace.name.as_deref().unwrap_or("unknown")
     );
 
-    // Fetch each skill's SKILL.md concurrently to populate version and skill_type.
-    // These fields live in the manifest (SKILL.md), not in marketplace.json.
+    // Fetch each skill's SKILL.md concurrently to populate version, purpose, and other frontmatter.
     let fetch_fns: Vec<_> = skills
         .iter()
         .map(|skill| {
@@ -1734,7 +1812,7 @@ mod tests {
         let parsed: MarketplaceJson = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.plugins.len(), 1);
         let p = &parsed.plugins[0];
-        assert_eq!(p.name, "minimal-skill");
+        assert_eq!(p.name.as_deref(), Some("minimal-skill"));
         assert!(p.description.is_none());
         assert!(p.version.is_none());
         assert!(p.author.is_none());
@@ -2223,5 +2301,186 @@ mod tests {
 
         // Body must be preserved
         assert!(result.contains("# Body content"), "body was lost: {}", result);
+    }
+
+    // -----------------------------------------------------------------------
+    // discover_skills_from_catalog tests
+    // -----------------------------------------------------------------------
+
+    use crate::types::{MarketplacePlugin, MarketplacePluginSource};
+    use std::collections::HashSet;
+
+    fn make_plugin(name: Option<&str>, source: &str, desc: Option<&str>) -> MarketplacePlugin {
+        MarketplacePlugin {
+            name: name.map(|s| s.to_string()),
+            source: MarketplacePluginSource::Path(source.to_string()),
+            description: desc.map(|s| s.to_string()),
+            version: None,
+            author: None,
+            category: None,
+            tags: None,
+        }
+    }
+
+    fn dirs(paths: &[&str]) -> HashSet<String> {
+        paths.iter().map(|p| p.to_string()).collect()
+    }
+
+    fn sorted_names(skills: &[crate::types::AvailableSkill]) -> Vec<String> {
+        let mut v: Vec<_> = skills.iter().map(|s| s.name.clone()).collect();
+        v.sort();
+        v
+    }
+
+    fn sorted_paths(skills: &[crate::types::AvailableSkill]) -> Vec<String> {
+        let mut v: Vec<_> = skills.iter().map(|s| s.path.clone()).collect();
+        v.sort();
+        v
+    }
+
+    /// Standard case: source `"./engineering"` → skills at `engineering/skills/{name}/SKILL.md`
+    #[test]
+    fn test_discover_nested_skills_normal() {
+        let plugins = vec![make_plugin(Some("engineering"), "./engineering", None)];
+        let skill_dirs = dirs(&["engineering/skills/standup", "engineering/skills/code-review"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["code-review", "standup"]);
+        assert_eq!(
+            sorted_paths(&skills),
+            vec!["engineering/skills/code-review", "engineering/skills/standup"]
+        );
+    }
+
+    /// Corner condition: source `"./"` → plugin_path empty → skills at `skills/{name}/SKILL.md`
+    #[test]
+    fn test_discover_root_plugin_source() {
+        let plugins = vec![make_plugin(Some("root"), "./", None)];
+        let skill_dirs = dirs(&["skills/standup", "skills/code-review"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["code-review", "standup"]);
+        assert_eq!(sorted_paths(&skills), vec!["skills/code-review", "skills/standup"]);
+    }
+
+    /// Bare source with `pluginRoot`: `"engineering"` + `plugin_root="plugins"` →
+    /// plugin_path = `"plugins/engineering"` → skills at `plugins/engineering/skills/{name}/SKILL.md`
+    #[test]
+    fn test_discover_bare_source_with_plugin_root() {
+        let plugins = vec![make_plugin(Some("eng"), "engineering", None)];
+        let skill_dirs = dirs(&["plugins/engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, Some("plugins"), &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+        assert_eq!(sorted_paths(&skills), vec!["plugins/engineering/skills/standup"]);
+    }
+
+    /// Bare source without `pluginRoot` → treated as a path from repo root.
+    #[test]
+    fn test_discover_bare_source_without_plugin_root() {
+        let plugins = vec![make_plugin(Some("eng"), "engineering", None)];
+        let skill_dirs = dirs(&["engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+    }
+
+    /// Multiple plugins each contribute their own skills.
+    #[test]
+    fn test_discover_multiple_plugins() {
+        let plugins = vec![
+            make_plugin(Some("engineering"), "./engineering", None),
+            make_plugin(Some("research"), "./research", None),
+        ];
+        let skill_dirs = dirs(&[
+            "engineering/skills/standup",
+            "engineering/skills/code-review",
+            "research/skills/literature-search",
+        ]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(skills.len(), 3);
+        assert_eq!(sorted_names(&skills), vec!["code-review", "literature-search", "standup"]);
+    }
+
+    /// Plugin whose `skills/` directory is empty → contributes 0 skills.
+    #[test]
+    fn test_discover_plugin_with_no_skills() {
+        let plugins = vec![make_plugin(Some("empty"), "./empty-plugin", None)];
+        let skill_dirs = dirs(&["other/skills/something"]); // unrelated dirs
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert!(skills.is_empty());
+    }
+
+    /// External source type (`github`, `npm`, etc.) → entry is skipped entirely.
+    #[test]
+    fn test_discover_external_source_skipped() {
+        let plugins = vec![MarketplacePlugin {
+            name: Some("ext".to_string()),
+            source: MarketplacePluginSource::External {
+                source: "github".to_string(),
+                extra: serde_json::json!({"repo": "owner/repo"}),
+            },
+            description: None,
+            version: None,
+            author: None,
+            category: None,
+            tags: None,
+        }];
+        let skill_dirs = dirs(&["anything/skills/foo"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert!(skills.is_empty());
+    }
+
+    /// `subpath` is prepended to anchor source paths to the repo root.
+    /// source `"./engineering"` + subpath `"sub"` → plugin_path = `"sub/engineering"`
+    #[test]
+    fn test_discover_with_subpath() {
+        let plugins = vec![make_plugin(Some("eng"), "./engineering", None)];
+        let skill_dirs = dirs(&["sub/engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, Some("sub"));
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+        assert_eq!(sorted_paths(&skills), vec!["sub/engineering/skills/standup"]);
+    }
+
+    /// Dirs more than one level below `skills/` are excluded (remainder contains `/`).
+    #[test]
+    fn test_discover_deeply_nested_dirs_excluded() {
+        let plugins = vec![make_plugin(Some("eng"), "./engineering", None)];
+        let skill_dirs = dirs(&[
+            "engineering/skills/standup",          // ✓ exactly one level deep
+            "engineering/skills/nested/sub-skill", // ✗ two levels — excluded
+        ]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+    }
+
+    /// Trailing slash in source is normalized and treated identically to no trailing slash.
+    #[test]
+    fn test_discover_trailing_slash_in_source() {
+        let plugins = vec![make_plugin(Some("eng"), "./engineering/", None)];
+        let skill_dirs = dirs(&["engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
+    }
+
+    /// Empty catalog returns no skills.
+    #[test]
+    fn test_discover_empty_catalog() {
+        let skills = discover_skills_from_catalog(&[], None, &HashSet::new(), None);
+        assert!(skills.is_empty());
+    }
+
+    /// Plugin `description` propagates to each skill discovered from that plugin.
+    #[test]
+    fn test_discover_description_propagated() {
+        let plugins = vec![make_plugin(Some("eng"), "./engineering", Some("Engineering skills"))];
+        let skill_dirs = dirs(&["engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(skills[0].description.as_deref(), Some("Engineering skills"));
+    }
+
+    /// Plugin entries without a `name` field are valid per spec and still discovered.
+    #[test]
+    fn test_discover_unnamed_plugin() {
+        let plugins = vec![make_plugin(None, "./engineering", None)];
+        let skill_dirs = dirs(&["engineering/skills/standup"]);
+        let skills = discover_skills_from_catalog(&plugins, None, &skill_dirs, None);
+        assert_eq!(sorted_names(&skills), vec!["standup"]);
     }
 }

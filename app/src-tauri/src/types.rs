@@ -5,12 +5,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 pub struct MarketplaceJson {
     pub name: Option<String>,
+    pub metadata: Option<MarketplaceMetadata>,
     pub plugins: Vec<MarketplacePlugin>,
+}
+
+/// Optional top-level metadata block in `marketplace.json`.
+#[derive(Debug, Deserialize)]
+pub struct MarketplaceMetadata {
+    /// Base path prepended to bare (non-`./`) source values.
+    pub plugin_root: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MarketplacePlugin {
-    pub name: String,
+    pub name: Option<String>,
     pub source: MarketplacePluginSource,
     pub description: Option<String>,
     pub version: Option<String>,
