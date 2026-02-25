@@ -41,14 +41,16 @@ Classifications:
 - **`vague`**: `answer_text` contains only phrases like "not sure", "default is fine", "standard", "TBD", "N/A", or fewer than 5 words
 - **`needs_refinement`**: `answer_choice` is set or `answer_text` has substance, but introduces unstated parameters, assumptions, or undefined terms (e.g., custom formulas with unexplained constants, business rules with unstated conditions)
 - **`clear`**: `answer_choice` is set or `answer_text` has substance with no unstated parameters
+- **`contradictory`**: the answer explicitly conflicts with or contradicts another answer in the file. Record which question ID it contradicts.
 
 Record a per-question verdict using the question `id` field (e.g., `Q1`, `R1.1`).
 
 Aggregates:
 - `total_count`: all questions (Q-level + R-level)
-- `answered_count`: `clear` + `needs_refinement`
+- `answered_count`: `clear` + `needs_refinement` (does NOT include `contradictory`)
 - `empty_count`: `not_answered`
 - `vague_count`: `vague`
+- `contradictory_count`: `contradictory`
 
 ### Step 3: Determine verdict
 
@@ -66,6 +68,7 @@ Write `{workspace_directory}/answer-evaluation.json`. Output ONLY valid JSON:
   "answered_count": 6,
   "empty_count": 2,
   "vague_count": 1,
+  "contradictory_count": 0,
   "total_count": 9,
   "reasoning": "6 of 9 questions have detailed answers (including 1 refinement); 2 are blank and 1 is vague.",
   "per_question": [
@@ -73,7 +76,7 @@ Write `{workspace_directory}/answer-evaluation.json`. Output ONLY valid JSON:
     { "question_id": "Q2", "verdict": "clear" },
     { "question_id": "Q3", "verdict": "not_answered" },
     { "question_id": "Q4", "verdict": "vague" },
-    { "question_id": "Q5", "verdict": "clear" },
+    { "question_id": "Q5", "verdict": "contradictory", "contradicts": "Q4" },
     { "question_id": "Q6", "verdict": "clear" },
     { "question_id": "Q7", "verdict": "clear" },
     { "question_id": "Q8", "verdict": "clear" },
@@ -85,4 +88,4 @@ Write `{workspace_directory}/answer-evaluation.json`. Output ONLY valid JSON:
 Field rules:
 - `verdict`: one of `"sufficient"`, `"mixed"`, `"insufficient"`
 - `reasoning`: single sentence explaining the verdict
-- `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague`)
+- `per_question`: one entry per question in document order, with `question_id` and `verdict` (`clear` / `needs_refinement` / `not_answered` / `vague` / `contradictory`). Entries with verdict `contradictory` must include a `contradicts` field (string, question ID of the conflicting answer).
