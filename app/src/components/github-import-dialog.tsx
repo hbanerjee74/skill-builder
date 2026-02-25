@@ -94,13 +94,12 @@ const APP_DEFAULT_MODEL = "__app_default__"
 interface EditFormState {
   name: string
   description: string
-  purpose: string
   version: string
   model: string
   argument_hint: string
   user_invocable: boolean
   disable_model_invocation: boolean
-  /** settings-skills only — purpose to assign on import */
+  /** settings-skills only — purpose slot to assign on import */
   settings_purpose: string | null
 }
 
@@ -316,11 +315,9 @@ export default function GitHubImportDialog({
     const lib = mode === 'skill-library' && isUpgradeOrExists
       ? installedLibrarySkills.get(skill.name)
       : undefined
-    const isSettingsMode = mode === 'settings-skills'
     setEditForm({
       name: skill.name ?? ws?.skill_name ?? '',
       description: skill.description ?? lib?.description ?? ws?.description ?? '',
-      purpose: isSettingsMode ? 'skill-builder' : (skill.purpose ?? ws?.purpose ?? ''),
       version: skill.version ?? ws?.version ?? '1.0.0',
       model: skill.model ?? ws?.model ?? '',
       argument_hint: skill.argument_hint ?? ws?.argument_hint ?? '',
@@ -357,7 +354,7 @@ export default function GitHubImportDialog({
       const metadataOverride: SkillMetadataOverride = {
         name: form.name,
         description: form.description,
-        purpose: form.purpose,
+        purpose: null,
         version: form.version || null,
         model: form.model === APP_DEFAULT_MODEL ? "" : form.model,  // "" signals "App default" -> clear model from frontmatter
         argument_hint: form.argument_hint || null,
@@ -394,7 +391,7 @@ export default function GitHubImportDialog({
         metadata_override: {
           name: editForm.name,
           description: editForm.description,
-          purpose: editForm.purpose,
+          purpose: 'skill-builder',
           version: editForm.version || null,
           model: editForm.model || null,
           argument_hint: editForm.argument_hint || null,
