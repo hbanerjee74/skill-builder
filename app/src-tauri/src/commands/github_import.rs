@@ -801,6 +801,7 @@ pub async fn import_github_skills(
 
         match import_single_skill(
             &client,
+            "https://raw.githubusercontent.com",
             &owner,
             &repo,
             &branch,
@@ -998,7 +999,7 @@ pub async fn import_marketplace_to_library(
     for skill_path in &skill_paths {
         let override_ref = metadata_overrides.as_ref()
             .and_then(|m| m.get(skill_path.as_str()));
-        match import_single_skill(&client, owner, repo, &branch, skill_path, &tree, skills_dir, true, override_ref).await {
+        match import_single_skill(&client, "https://raw.githubusercontent.com", owner, repo, &branch, skill_path, &tree, skills_dir, true, override_ref).await {
             Ok(mut skill) => {
                 let conn = db.0.lock().map_err(|e| {
                     log::error!("[import_marketplace_to_library] failed to acquire DB lock for '{}': {}", skill_path, e);
@@ -1180,6 +1181,7 @@ fn rewrite_skill_md(dest_dir: &Path, fm: &super::imported_skills::Frontmatter) -
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn import_single_skill(
     client: &reqwest::Client,
+    raw_base_url: &str,
     owner: &str,
     repo: &str,
     branch: &str,
@@ -1244,7 +1246,8 @@ pub(crate) async fn import_single_skill(
 
     // Download SKILL.md first to get frontmatter
     let skill_md_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}/{}",
+        "{}/{}/{}/{}/{}",
+        raw_base_url,
         owner,
         repo,
         branch,
@@ -1382,8 +1385,8 @@ pub(crate) async fn import_single_skill(
         }
 
         let raw_url = format!(
-            "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            owner, repo, branch, file_path
+            "{}/{}/{}/{}/{}",
+            raw_base_url, owner, repo, branch, file_path
         );
 
         let response = client
@@ -2672,55 +2675,94 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // import_single_skill — strict frontmatter name validation (logic tests)
+    // import_single_skill — end-to-end tests with mockito HTTP server
     //
-    // import_single_skill makes HTTP calls so we can't easily run it end-to-end
-    // in unit tests. These tests exercise the exact validation expression used
-    // in production by calling parse_frontmatter_full and applying the same
-    // ok_or_else guard.
+    // These tests call import_single_skill directly with a mock HTTP server
+    // standing in for raw.githubusercontent.com. This validates the full
+    // request-parse-validate pipeline, including the strict `name:` check.
     // -----------------------------------------------------------------------
 
-    /// Verify that a SKILL.md without a `name:` field parses to `name: None` and that
-    /// the ok_or_else guard (the exact expression in import_single_skill) rejects it.
-    /// This is the regression test for the "no directory fallback" rule.
-    #[test]
-    fn test_import_name_validation_rejects_missing_name() {
-        let content = "---\ndescription: Some description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n";
-        let fm = super::super::imported_skills::parse_frontmatter_full(content);
+    fn make_tree(entries: &[(&str, &str)]) -> Vec<serde_json::Value> {
+        entries
+            .iter()
+            .map(|(path, typ)| serde_json::json!({"path": path, "type": typ}))
+            .collect()
+    }
 
-        // Precondition: the parser returns None for the name
-        assert!(fm.name.is_none(), "SKILL.md without name: must parse to None");
+    /// SKILL.md without a `name:` field — import must be rejected with a clear error.
+    /// Regression test for the "no directory fallback" rule.
+    #[tokio::test]
+    async fn test_import_single_skill_rejects_missing_name() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/owner/repo/main/my-skill/SKILL.md")
+            .with_status(200)
+            .with_body("---\ndescription: Some description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n")
+            .create_async()
+            .await;
 
-        // The guard used in import_single_skill — mirrors the production expression exactly
-        let result = fm.name.ok_or_else(|| {
-            format!("SKILL.md at '{}' is missing the 'name' frontmatter field", "test-skill")
-        });
+        let client = reqwest::Client::new();
+        let tmp = tempfile::tempdir().unwrap();
+        let tree = make_tree(&[("my-skill/SKILL.md", "blob")]);
 
-        assert!(result.is_err(), "import_single_skill must reject SKILL.md with no name field");
+        let result = import_single_skill(
+            &client,
+            &server.url(),
+            "owner",
+            "repo",
+            "main",
+            "my-skill",
+            &tree,
+            tmp.path(),
+            false,
+            None,
+        )
+        .await;
+
+        assert!(result.is_err(), "import must fail when name: is absent from frontmatter");
+        let err = result.unwrap_err();
         assert!(
-            result.unwrap_err().contains("missing"),
-            "error message should mention the missing field"
+            err.contains("missing the 'name' frontmatter field"),
+            "error should identify the missing field, got: {err}"
         );
     }
 
-    /// Verify that a metadata_override supplying `name` rescues a SKILL.md that has no `name:`
-    /// field — after the override is applied the ok_or_else guard passes.
-    #[test]
-    fn test_import_name_validation_override_rescues_missing_name() {
-        let content = "---\ndescription: Some description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n";
-        let mut fm = super::super::imported_skills::parse_frontmatter_full(content);
-        assert!(fm.name.is_none());
+    /// SKILL.md without a `name:` field but with a metadata_override that supplies one —
+    /// import succeeds and the skill is written to disk under the override name.
+    #[tokio::test]
+    async fn test_import_single_skill_override_rescues_missing_name() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/owner/repo/main/my-skill/SKILL.md")
+            .with_status(200)
+            .with_body("---\ndescription: A description\npurpose: domain\nversion: 1.0.0\n---\n# Body\n")
+            .create_async()
+            .await;
 
-        // Apply override — mirrors the override logic in import_single_skill
+        let client = reqwest::Client::new();
+        let tmp = tempfile::tempdir().unwrap();
+        let tree = make_tree(&[("my-skill/SKILL.md", "blob")]);
         let override_ = crate::types::SkillMetadataOverride {
             name: Some("override-name".to_string()),
             ..Default::default()
         };
-        fm.name = override_.name.clone().or(fm.name);
 
-        // After override, name is present — validation succeeds
-        let result = fm.name.ok_or_else(|| "missing name".to_string());
-        assert!(result.is_ok(), "override should supply missing name");
-        assert_eq!(result.unwrap(), "override-name");
+        let result = import_single_skill(
+            &client,
+            &server.url(),
+            "owner",
+            "repo",
+            "main",
+            "my-skill",
+            &tree,
+            tmp.path(),
+            false,
+            Some(&override_),
+        )
+        .await;
+
+        assert!(result.is_ok(), "import should succeed when override supplies a name; got: {:?}", result);
+        assert_eq!(result.unwrap().skill_name, "override-name");
+        assert!(tmp.path().join("override-name").exists(), "skill dir must be written to disk");
     }
 }
