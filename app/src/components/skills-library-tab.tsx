@@ -187,6 +187,7 @@ export function SkillsLibraryTab() {
         <div className="rounded-md border">
           <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
             <span className="flex-1">Name</span>
+            <span className="w-28">Purpose</span>
             <span className="w-24">Version</span>
             <span className="w-20">Active</span>
             <span className="w-8" />
@@ -197,73 +198,75 @@ export function SkillsLibraryTab() {
               className="flex items-center gap-4 border-b last:border-b-0 px-4 py-2 hover:bg-muted/30 transition-colors"
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{skill.skill_name}</span>
                   {skill.is_bundled && (
                     <Badge variant="secondary" className="text-xs">Built-in</Badge>
                   )}
-                  {skill.purpose && (
-                    <Badge variant="outline" className="text-xs capitalize">
-                      {skill.purpose}
-                    </Badge>
-                  )}
-                  <Popover
-                    open={purposePopoverSkillId === skill.skill_id}
-                    onOpenChange={(isOpen) => {
-                      setPurposePopoverSkillId(isOpen ? skill.skill_id : null)
-                    }}
-                  >
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label={`Set purpose for ${skill.skill_name}`}
-                        title={skill.purpose ? "Change purpose" : "Set purpose"}
-                      >
-                        <Tag className="size-3" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-48 p-1" align="start">
-                      <div className="flex flex-col gap-0.5">
-                        <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Set purpose</p>
-                        {PURPOSE_OPTIONS.map((opt) => {
-                          const conflict = skills.find(
-                            (s) => s.skill_id !== skill.skill_id && s.is_active && s.purpose === opt.value
-                          )
-                          return (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              disabled={!!conflict}
-                              className="flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-left"
-                              onClick={() => handleSetPurpose(skill, opt.value)}
-                            >
-                              <span>{opt.label}</span>
-                              {conflict && (
-                                <span className="text-muted-foreground text-xs ml-1 truncate">({conflict.skill_name})</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                        {skill.purpose && (
-                          <>
-                            <div className="my-0.5 border-t" />
-                            <button
-                              type="button"
-                              className="rounded px-2 py-1.5 text-xs hover:bg-muted text-muted-foreground text-left"
-                              onClick={() => handleSetPurpose(skill, null)}
-                            >
-                              Clear purpose
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
                 </div>
                 {skill.description && (
                   <div className="text-xs text-muted-foreground">{skill.description}</div>
                 )}
+              </div>
+              <div className="w-28 shrink-0">
+                <Popover
+                  open={purposePopoverSkillId === skill.skill_id}
+                  onOpenChange={(isOpen) => {
+                    setPurposePopoverSkillId(isOpen ? skill.skill_id : null)
+                  }}
+                >
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label={`Set purpose for ${skill.skill_name}`}
+                      title={skill.purpose ? "Change purpose" : "Set purpose"}
+                    >
+                      {PURPOSE_OPTIONS.find(o => o.value === skill.purpose) && (
+                        <span className="truncate text-foreground">
+                          {PURPOSE_OPTIONS.find(o => o.value === skill.purpose)!.label}
+                        </span>
+                      )}
+                      <Tag className="size-3 shrink-0" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-1" align="start">
+                    <div className="flex flex-col gap-0.5">
+                      <p className="px-2 py-1 text-xs font-medium text-muted-foreground">Set purpose</p>
+                      {PURPOSE_OPTIONS.map((opt) => {
+                        const conflict = skills.find(
+                          (s) => s.skill_id !== skill.skill_id && s.is_active && s.purpose === opt.value
+                        )
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={!!conflict}
+                            className="flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                            onClick={() => handleSetPurpose(skill, opt.value)}
+                          >
+                            <span>{opt.label}</span>
+                            {conflict && (
+                              <span className="text-muted-foreground text-xs ml-1 truncate">({conflict.skill_name})</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                      {skill.purpose && (
+                        <>
+                          <div className="my-0.5 border-t" />
+                          <button
+                            type="button"
+                            className="rounded px-2 py-1.5 text-xs hover:bg-muted text-muted-foreground text-left"
+                            onClick={() => handleSetPurpose(skill, null)}
+                          >
+                            Clear purpose
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="w-24 shrink-0">
                 {skill.version ? (

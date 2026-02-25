@@ -70,9 +70,9 @@ test.describe("Skills Library", { tag: "@skills" }, () => {
     await expect(page.getByText("data-analytics")).toBeVisible();
     await expect(page.getByText("api-design")).toBeVisible();
 
-    // Purpose subtext
-    await expect(page.getByText("domain", { exact: true })).toBeVisible();
-    await expect(page.getByText("platform", { exact: true })).toBeVisible();
+    // Purpose column — labels from PURPOSE_OPTIONS
+    await expect(page.getByText("research", { exact: true })).toBeVisible();
+    await expect(page.getByText("validate", { exact: true })).toBeVisible();
 
     // data-analytics has version "1.0.0", api-design has no version (shows "—")
     await expect(page.getByText("1.0.0")).toBeVisible();
