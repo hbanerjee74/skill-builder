@@ -1051,7 +1051,7 @@ export default function WorkflowPage() {
             endActiveSession();
             clearRuns();
             resetToStep(resetTarget);
-            autoStartAfterReset(resetTarget);
+            // Do not auto-start: user navigated back to review/edit, not to re-run the agent.
             setResetTarget(null);
           }
         }}
