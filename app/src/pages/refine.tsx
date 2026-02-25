@@ -391,7 +391,12 @@ export default function RefinePage() {
     availableModels.find((m) => m.id === activeModel)?.displayName ??
     deriveModelLabel(activeModel);
 
-  const dotClass = isRunning ? "bg-blue-500 animate-pulse" : selectedSkill ? "bg-green-500" : "bg-zinc-500";
+  const dotStyle = isRunning
+    ? { background: "var(--color-pacific)" }
+    : selectedSkill
+      ? { background: "var(--color-seafoam)" }
+      : undefined;
+  const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
 
   return (
@@ -409,7 +414,7 @@ export default function RefinePage() {
       </div>
 
       {scopeBlocked && selectedSkill && (
-        <div className="flex items-center gap-2 rounded-md bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+        <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
           <AlertTriangle className="size-4 shrink-0" />
           <span>Scope recommendation active — refine is blocked until resolved.</span>
           <button
@@ -440,7 +445,7 @@ export default function RefinePage() {
       {/* Status bar */}
       <div className="flex h-6 shrink-0 items-center gap-2.5 border-t border-border bg-background/80 px-4">
         <div className="flex items-center gap-1.5">
-          <div className={`size-[5px] rounded-full ${dotClass}`} />
+          <div className={`size-[5px] rounded-full ${dotClass}`} style={dotStyle} />
           <span className="text-xs text-muted-foreground/60">{statusLabel}</span>
         </div>
         {selectedSkill && (

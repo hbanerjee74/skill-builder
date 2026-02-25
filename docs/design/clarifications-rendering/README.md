@@ -2,7 +2,7 @@
 
 The Step 4 Review screen becomes a wall of undifferentiated text when a skill has many clarification questions. These mockups explore three approaches to fixing that.
 
-All mockups use the real `clarifications.md` from the sales-pipeline sample skill (26 questions, 6 sections, 16 refinements).
+All mockups use the real sales-pipeline sample data (26 questions, 6 sections, 16 refinements). The original mockups used `clarifications.md` (markdown); VD-817 implemented the JSON-native approach (`clarifications.json`).
 
 ---
 
@@ -11,7 +11,7 @@ All mockups use the real `clarifications.md` from the sales-pipeline sample skil
 | Item | Issue | Status |
 |---|---|---|
 | Format canonicalization | VD-819 | **Done** (PR #140). Canonical spec at `docs/design/agent-specs/canonical-format.md` |
-| Accordion navigator (UI) | VD-817 | Todo — implements Option 2a below |
+| Structured form editor (UI) | VD-817 | **Done** — implemented as Option 2b (JSON-native, single-pane `ClarificationsEditor`) |
 | Agent redesign (detailed research) | VD-807 | Todo — design at `vd-807-agent-outputs.md` |
 
 ### Open design questions — VD-817 (Accordion Navigator)

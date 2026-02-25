@@ -1440,9 +1440,9 @@ describe("MessageItem — result error subtypes", () => {
       />,
     );
     expect(screen.getByText("Agent finished successfully")).toBeInTheDocument();
-    // Should use green text for success
+    // Should use seafoam color for success (inline style)
     const wrapper = container.firstChild as HTMLElement;
-    expect(wrapper.className).toContain("text-green");
+    expect(wrapper.style.color).toBe("var(--color-seafoam)");
   });
 
   it("treats is_error=true without error_ subtype as error", () => {
@@ -1540,7 +1540,7 @@ describe("End-to-end: SDK result → store → UI", () => {
 
     const { container } = render(<MessageItem message={run.messages[0]} />);
     expect(screen.getByText("Skill built successfully")).toBeInTheDocument();
-    expect((container.firstChild as HTMLElement).className).toContain("text-green");
+    expect((container.firstChild as HTMLElement).style.color).toBe("var(--color-seafoam)");
   });
 
   it("refusal stop_reason flows through store and renders refusal message", () => {

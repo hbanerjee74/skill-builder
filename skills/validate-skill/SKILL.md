@@ -41,7 +41,7 @@ Read the three spec files in `references/`. Spawn one sub-agent per spec with th
 
 **Quality checker** — `references/validate-quality-spec.md`:
 - `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.md`: `{context_dir}/clarifications.md`
+- `clarifications.json`: `{context_dir}/clarifications.json`
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - Workspace directory: `{workspace_dir}`
@@ -49,7 +49,7 @@ Read the three spec files in `references/`. Spawn one sub-agent per spec with th
 
 **Test evaluator** — `references/test-skill-spec.md`:
 - `decisions.md`: `{context_dir}/decisions.md`
-- `clarifications.md`: `{context_dir}/clarifications.md`
+- `clarifications.json`: `{context_dir}/clarifications.json`
 - `SKILL.md`: `{skill_output_dir}/SKILL.md`
 - Reference files: all paths from Step 1 glob
 - Workspace directory: `{workspace_dir}`

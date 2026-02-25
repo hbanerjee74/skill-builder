@@ -430,7 +430,8 @@ export const sendRefineMessage = (
 
 export interface PerQuestionVerdict {
   question_id: string;
-  verdict: "clear" | "needs_refinement" | "not_answered" | "vague";
+  verdict: "clear" | "needs_refinement" | "not_answered" | "vague" | "contradictory";
+  contradicts?: string;
 }
 
 export interface AnswerEvaluation {
@@ -438,6 +439,7 @@ export interface AnswerEvaluation {
   answered_count: number;
   empty_count: number;
   vague_count: number;
+  contradictory_count?: number;
   total_count: number;
   reasoning: string;
   per_question?: PerQuestionVerdict[];

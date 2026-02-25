@@ -34,18 +34,18 @@ const STEP_NAMES: Record<number, string> = {
 }
 
 const STEP_COLORS: Record<number, string> = {
-  0: "bg-blue-400",
-  1: "bg-blue-300",
-  2: "bg-indigo-400",
-  3: "bg-indigo-300",
-  4: "bg-purple-500",
-  5: "bg-green-500",
+  0: "var(--color-pacific)",
+  1: "var(--color-pacific)",
+  2: "var(--color-ocean)",
+  3: "var(--color-ocean)",
+  4: "var(--color-arctic)",
+  5: "var(--color-seafoam)",
 }
 
 const MODEL_COLORS: Record<string, string> = {
-  sonnet: "bg-blue-500",
-  haiku: "bg-green-500",
-  opus: "bg-purple-500",
+  sonnet: "var(--color-ocean)",
+  haiku: "var(--color-pacific)",
+  opus: "var(--color-navy)",
 }
 
 function getStepName(stepId: number): string {
@@ -53,7 +53,7 @@ function getStepName(stepId: number): string {
 }
 
 function getStepColor(stepId: number): string {
-  return STEP_COLORS[stepId] ?? "bg-gray-400"
+  return STEP_COLORS[stepId] ?? "var(--color-muted-foreground)"
 }
 
 function getModelColor(model: string): string {
@@ -61,7 +61,7 @@ function getModelColor(model: string): string {
   if (key.includes("haiku")) return MODEL_COLORS.haiku
   if (key.includes("opus")) return MODEL_COLORS.opus
   if (key.includes("sonnet")) return MODEL_COLORS.sonnet
-  return "bg-gray-400"
+  return "var(--color-muted-foreground)"
 }
 
 function formatCost(amount: number): string {
@@ -294,8 +294,8 @@ export default function UsagePage() {
                   </div>
                   <div className="h-2 rounded-full bg-muted overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${getStepColor(step.step_id)}`}
-                      style={{ width: `${Math.max((step.total_cost / maxStepCost) * 100, 1)}%` }}
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.max((step.total_cost / maxStepCost) * 100, 1)}%`, backgroundColor: getStepColor(step.step_id) }}
                     />
                   </div>
                 </div>
@@ -323,8 +323,8 @@ export default function UsagePage() {
                   </div>
                   <div className="h-2 rounded-full bg-muted overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${getModelColor(m.model)}`}
-                      style={{ width: `${Math.max((m.total_cost / maxModelCost) * 100, 1)}%` }}
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.max((m.total_cost / maxModelCost) * 100, 1)}%`, backgroundColor: getModelColor(m.model) }}
                     />
                   </div>
                 </div>

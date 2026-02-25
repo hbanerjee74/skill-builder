@@ -7,59 +7,73 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import type { PerQuestionVerdict } from "@/lib/tauri";
+import { CheckCircle2, Circle, AlertCircle, XCircle, Info } from "lucide-react";
+import type { AnswerEvaluation } from "@/lib/tauri";
 
 export type GateVerdict = "sufficient" | "mixed" | "insufficient";
 
 interface TransitionGateDialogProps {
   open: boolean;
   verdict: GateVerdict | null;
-  totalCount?: number;
-  unansweredCount?: number;
-  /** Per-question verdicts from answer-evaluation.json. */
-  perQuestion?: PerQuestionVerdict[];
-  /** Gate context: "clarifications" (gate 1, before research) or "refinements" (gate 2, before decisions). */
+  evaluation: AnswerEvaluation | null;
   context?: "clarifications" | "refinements";
-  /** Sufficient: skip straight to decisions. */
+  /** Sufficient gate 1: skip research, jump to decisions. */
   onSkip: () => void;
-  /** Sufficient override: run research anyway (no autofill needed). */
+  /** Sufficient gate 1: run research anyway. Sufficient gate 2: advance to decisions. Mixed/insufficient: continue anyway. */
   onResearch: () => void;
-  /** Insufficient: auto-fill all answers then skip to decisions. */
-  onAutofillAndSkip: () => void;
-  /** Mixed: auto-fill empty answers then continue to detailed research. */
-  onAutofillAndResearch: () => void;
-  /** Override for mixed/insufficient: go back to review to answer manually. */
+  /** Go back to the review editor. */
   onLetMeAnswer: () => void;
-  isAutofilling?: boolean;
+  /** Continue anyway (advance without auto-fill). Same as onSkip for gate 2, onResearch for gate 1. */
+  onContinueAnyway: () => void;
 }
 
-/** Render grouped per-question IDs for non-clear verdicts. */
-function QuestionBreakdown({ perQuestion }: { perQuestion?: PerQuestionVerdict[] }) {
-  if (!perQuestion?.length) return null;
-
-  const unanswered = perQuestion
-    .filter((q) => q.verdict === "not_answered")
-    .map((q) => q.question_id);
-  const vague = perQuestion
-    .filter((q) => q.verdict === "vague")
-    .map((q) => q.question_id);
-
-  if (unanswered.length === 0 && vague.length === 0) return null;
+/** Render per-question verdicts grouped by category. */
+function EvaluationBreakdown({ evaluation }: { evaluation: AnswerEvaluation }) {
+  const pq = evaluation.per_question ?? [];
+  const ok = pq.filter(q => q.verdict === "clear");
+  const missing = pq.filter(q => q.verdict === "not_answered");
+  const vague = pq.filter(q => q.verdict === "vague");
+  const contradictory = pq.filter(q => q.verdict === "contradictory");
+  const needsRefinement = pq.filter(q => q.verdict === "needs_refinement");
 
   return (
-    <div className="mt-3 max-h-28 overflow-y-auto rounded-md bg-muted/50 px-3 py-2 text-sm" data-testid="question-breakdown">
-      {unanswered.length > 0 && (
-        <p>
-          <span className="font-medium">Unanswered:</span>{" "}
-          {unanswered.join(", ")}
-        </p>
+    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1.5" data-testid="question-breakdown">
+      {ok.length > 0 && (
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="size-3" style={{ color: "var(--color-seafoam)" }} />
+          <span style={{ color: "var(--color-seafoam)" }} className="font-medium">OK:</span>
+          <span className="text-muted-foreground">{ok.length} questions</span>
+        </div>
+      )}
+      {missing.length > 0 && (
+        <div className="flex items-start gap-2">
+          <Circle className="size-3 mt-0.5 text-destructive" />
+          <span className="text-destructive font-medium">Missing:</span>
+          <span className="text-muted-foreground">{missing.map(q => q.question_id).join(", ")}</span>
+        </div>
       )}
       {vague.length > 0 && (
-        <p className={unanswered.length > 0 ? "mt-1" : ""}>
-          <span className="font-medium">Vague:</span>{" "}
-          {vague.join(", ")}
-        </p>
+        <div className="flex items-start gap-2">
+          <AlertCircle className="size-3 mt-0.5 text-amber-600 dark:text-amber-400" />
+          <span className="text-amber-600 dark:text-amber-400 font-medium">Vague:</span>
+          <span className="text-muted-foreground">{vague.map(q => q.question_id).join(", ")}</span>
+        </div>
+      )}
+      {contradictory.length > 0 && (
+        <div className="flex items-start gap-2">
+          <XCircle className="size-3 mt-0.5 text-destructive" />
+          <span className="text-destructive font-medium">Contradictory:</span>
+          <span className="text-muted-foreground">
+            {contradictory.map(q => `${q.question_id}${q.contradicts ? ` (conflicts with ${q.contradicts})` : ""}`).join(", ")}
+          </span>
+        </div>
+      )}
+      {needsRefinement.length > 0 && (
+        <div className="flex items-start gap-2">
+          <Info className="size-3 mt-0.5" style={{ color: "var(--color-pacific)" }} />
+          <span style={{ color: "var(--color-pacific)" }} className="font-medium">Needs refinement:</span>
+          <span className="text-muted-foreground">{needsRefinement.map(q => q.question_id).join(", ")}</span>
+        </div>
       )}
     </div>
   );
@@ -68,22 +82,27 @@ function QuestionBreakdown({ perQuestion }: { perQuestion?: PerQuestionVerdict[]
 export function TransitionGateDialog({
   open,
   verdict,
-  totalCount,
-  unansweredCount,
-  perQuestion,
+  evaluation,
   context = "clarifications",
   onSkip,
   onResearch,
-  onAutofillAndSkip,
-  onAutofillAndResearch,
   onLetMeAnswer,
-  isAutofilling = false,
+  onContinueAnyway,
 }: TransitionGateDialogProps) {
   if (!verdict) return null;
 
   const isRefinements = context === "refinements";
 
-  // Sufficient: all answers are detailed
+  // Check if the only issues are needs_refinement (no missing/vague/contradictory)
+  const pq = evaluation?.per_question ?? [];
+  const hasMissing = pq.some(q => q.verdict === "not_answered");
+  const hasVague = pq.some(q => q.verdict === "vague");
+  const hasContradictory = pq.some(q => q.verdict === "contradictory");
+  const onlyNeedsRefinement = !hasMissing && !hasVague && !hasContradictory
+    && pq.some(q => q.verdict === "needs_refinement");
+
+  // ── Sufficient ──────────────────────────────────────────────────────────────
+
   if (verdict === "sufficient") {
     if (isRefinements) {
       return (
@@ -106,7 +125,7 @@ export function TransitionGateDialog({
       );
     }
 
-    // Gate 1 (clarifications): offer to skip research
+    // Gate 1: offer to skip research
     return (
       <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
         <DialogContent showCloseButton={false}>
@@ -129,61 +148,85 @@ export function TransitionGateDialog({
     );
   }
 
-  const countText =
-    unansweredCount != null && totalCount != null
-      ? `${unansweredCount} of ${totalCount}`
-      : "Some";
+  // ── Mixed: only needs_refinement (gate 1) ─────────────────────────────────
 
-  // Mixed: some answers present, some missing
-  if (verdict === "mixed") {
+  if (verdict === "mixed" && onlyNeedsRefinement && !isRefinements) {
     return (
-      <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onResearch(); }}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>
-              {isRefinements ? "Some Refinements Unanswered" : "Auto-fill Missing Answers?"}
-            </DialogTitle>
+            <DialogTitle>Some Answers Need Deeper Research</DialogTitle>
             <DialogDescription asChild>
               <div>
                 <p>
-                  {isRefinements
-                    ? `${countText} refinement answers are missing or vague. Auto-fill with recommendations, or go back to answer them yourself.`
-                    : `${countText} clarification questions don't have answers yet. The research agent provided recommendations for each — you can apply them and continue to detailed research, or go back to fill in your own answers.`}
+                  Your answers are substantive but some introduce parameters that need
+                  pinning down. The detailed research step will generate follow-up
+                  questions for these:
                 </p>
-                <QuestionBreakdown perQuestion={perQuestion} />
+                {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
               </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={onLetMeAnswer}>
-              Let Me Answer
+              Let Me Revise
             </Button>
-            <Button onClick={isRefinements ? onAutofillAndSkip : onAutofillAndResearch} disabled={isAutofilling}>
-              {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Research"}
-            </Button>
+            <Button onClick={onResearch}>Continue to Research</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     );
   }
 
-  // Insufficient: no answers at all
+  // ── Contradictory answers: block forward progress ─────────────────────────
+
+  if (hasContradictory) {
+    return (
+      <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Contradictory Answers</DialogTitle>
+            <DialogDescription asChild>
+              <div>
+                <p>
+                  Some answers contradict each other. Please resolve these before
+                  continuing — the decisions phase cannot reconcile conflicting answers.
+                </p>
+                {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={onLetMeAnswer}>Let Me Answer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── Mixed / Insufficient (no contradictions): Let Me Answer / Continue Anyway
+
+  const title = verdict === "mixed"
+    ? (isRefinements ? "Some Refinements Unanswered" : "Review Answer Quality")
+    : (isRefinements ? "Refinements Need Attention" : "Review Answer Quality");
+
+  const description = verdict === "mixed"
+    ? (isRefinements
+        ? "Some refinement answers are missing or need attention:"
+        : "The evaluator found issues with some answers:")
+    : (isRefinements
+        ? "Most refinement questions haven't been answered:"
+        : "The evaluator found issues with most answers:");
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onLetMeAnswer(); }}>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
-          <DialogTitle>
-            {isRefinements ? "Refinements Need Attention" : "Use Recommended Answers?"}
-          </DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription asChild>
             <div>
-              <p>
-                {isRefinements
-                  ? `Most refinement questions haven't been answered. Auto-fill with recommendations, or go back to answer them.`
-                  : `You didn't answer ${countText} clarification questions. The research agent provided recommendations for each — you can apply them and skip to confirming decisions, or go back to fill in your own answers.`}
-              </p>
-              <QuestionBreakdown perQuestion={perQuestion} />
+              <p>{description}</p>
+              {evaluation && <EvaluationBreakdown evaluation={evaluation} />}
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -191,10 +234,7 @@ export function TransitionGateDialog({
           <Button variant="outline" onClick={onLetMeAnswer}>
             Let Me Answer
           </Button>
-          <Button onClick={onAutofillAndSkip} disabled={isAutofilling}>
-            {isAutofilling && <Loader2 className="mr-2 size-4 animate-spin" />}
-            {isRefinements ? "Auto-fill & Continue" : "Auto-fill & Skip"}
-          </Button>
+          <Button onClick={onContinueAnyway}>Continue Anyway</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

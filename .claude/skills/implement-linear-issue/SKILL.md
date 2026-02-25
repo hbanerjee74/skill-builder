@@ -81,6 +81,7 @@ After all ACs are implemented, achieve every gate below. Plan your execution —
 tests written ──→ tests passing ──→ code simplified ──→ code reviewed ──┐
                                                                         ├──→ final validation
 logging compliant (independent) ────────────────────────────────────────┘
+brand compliant (independent) ──────────────────────────────────────────┘
 docs updated (after implementation) ────────────────────────────────────┘
 ```
 
@@ -91,6 +92,7 @@ Quality Gates:
 - [ ] Tests written
 - [ ] Tests passing
 - [ ] Logging compliant
+- [ ] Brand compliant
 - [ ] Code simplified
 - [ ] Code reviewed
 - [ ] Docs updated
@@ -113,6 +115,22 @@ Verify all changed code follows the project logging guidelines (CLAUDE-APP.md §
 - **Format**: Log messages include context — e.g. `info!("import_skills: importing {} from {}", count, repo)` not just `info!("importing")`.
 
 If any gaps, fix them and re-run affected tests. No dependency on other gates — can run in parallel with test writing.
+
+### Brand compliant
+
+Verify no off-brand Tailwind color classes exist in changed frontend files. Run from the `app/` directory:
+
+```bash
+grep -rn "text-green-\|text-blue-\|text-yellow-\|text-purple-\|text-indigo-\|bg-green-\|bg-blue-\|bg-yellow-\|bg-purple-\|bg-indigo-" \
+  src/components/ src/pages/ \
+  --include="*.tsx" --include="*.ts" \
+  | grep -v "__tests__" \
+  | grep -v "text-amber"
+```
+
+If any matches found, replace with AD brand CSS variables per CLAUDE.md § Frontend Design System. The only allowed Tailwind color classes are `text-amber-*` (AD warning color) and `text-destructive` / `bg-destructive` (themed via CSS variable). All other colors must use `var(--color-pacific)`, `var(--color-seafoam)`, `var(--color-ocean)`, etc.
+
+No dependency on other gates — can run in parallel.
 
 ### Code simplified
 

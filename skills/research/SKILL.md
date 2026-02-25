@@ -3,7 +3,7 @@ name: research
 description: >
   Runs the research phase for a skill. Use when researching dimensions and producing
   clarifications for a purpose and domain. Returns a scored dimension table and
-  complete clarifications.md content as inline text with === RESEARCH PLAN === and
+  complete clarifications.json content as inline text with === RESEARCH PLAN === and
   === CLARIFICATIONS === delimiters.
 ---
 
@@ -12,7 +12,7 @@ description: >
 Given a `purpose` and `domain`, produce two inline-text outputs:
 
 1. A scored dimension table (becomes `research-plan.md`)
-2. Complete `clarifications.md` content in canonical format
+2. Complete `clarifications.json` content in canonical JSON format
 
 Pure computation — takes inputs, returns inline text, writes nothing to disk.
 
@@ -86,7 +86,18 @@ Wait for all Tasks to return before proceeding to Step 4.
 
 ## Step 4 — Consolidate
 
-Read `references/consolidation-handoff.md`. Follow its instructions to deduplicate and synthesize all dimension Task outputs into canonical `clarifications.md` content.
+Read `references/consolidation-handoff.md`. Follow its instructions to deduplicate and synthesize all dimension Task outputs into canonical `clarifications.json` content (valid JSON).
+
+**CRITICAL — the output JSON MUST use this exact top-level structure:**
+```json
+{
+  "version": "1",
+  "metadata": { "title": "...", "question_count": N, "section_count": N, "refinement_count": 0, "must_answer_count": N, "priority_questions": [...], "duplicates_removed": N, "scope_recommendation": false },
+  "sections": [ { "id": "S1", "title": "...", "description": "...", "questions": [ { "id": "Q1", "title": "...", "must_answer": true, "text": "...", "choices": [...], "recommendation": "...", "answer_choice": null, "answer_text": null, "refinements": [] } ] } ],
+  "notes": []
+}
+```
+Do NOT invent alternative structures like `{"clarifications": [...]}` or flat question arrays. The downstream UI parser requires exactly `sections[].questions[]`.
 
 ---
 
@@ -120,25 +131,54 @@ dimensions_selected: [count]
 | [slug] | [tailored focus line] |
 
 === CLARIFICATIONS ===
----
-question_count: [n]
-sections: [n]
-duplicates_removed: [n]
-refinement_count: 0
-priority_questions: [Q1, Q3, ...]
----
-# Research Clarifications
-
-[full clarifications content]
+{
+  "version": "1",
+  "metadata": {
+    "title": "Clarifications: [Domain Name]",
+    "question_count": [n],
+    "section_count": [n],
+    "refinement_count": 0,
+    "must_answer_count": [n],
+    "priority_questions": ["Q1", "Q3"],
+    "duplicates_removed": [n],
+    "scope_recommendation": false
+  },
+  "sections": [
+    {
+      "id": "S1",
+      "title": "Section Name",
+      "description": "...",
+      "questions": [
+        {
+          "id": "Q1",
+          "title": "Short Title",
+          "must_answer": true,
+          "text": "Full question text...",
+          "consolidated_from": ["Metrics Research"],
+          "choices": [
+            {"id": "A", "text": "Choice A", "is_other": false},
+            {"id": "B", "text": "Choice B", "is_other": false},
+            {"id": "D", "text": "Other (please specify)", "is_other": true}
+          ],
+          "recommendation": "A — reasoning...",
+          "answer_choice": null,
+          "answer_text": null,
+          "refinements": []
+        }
+      ]
+    }
+  ],
+  "notes": []
+}
 ```
 
-Both sections must be present and well-formed per their canonical formats.
+Both sections must be present. The `=== CLARIFICATIONS ===` section must be valid JSON matching the full schema in `references/consolidation-handoff.md`.
 
 ---
 
 ## Error Handling
 
-**Topic not relevant**: Return `=== RESEARCH PLAN ===` with `topic_relevance: not_relevant` and empty selected list. Return `=== CLARIFICATIONS ===` with minimal frontmatter (`question_count: 0`, `sections: 0`, `duplicates_removed: 0`, `refinement_count: 0`, `scope_recommendation: true`) and a single section explaining inapplicability.
+**Topic not relevant**: Return `=== RESEARCH PLAN ===` with `topic_relevance: not_relevant` and empty selected list. Return `=== CLARIFICATIONS ===` with a minimal JSON object: `version: "1"`, metadata with `question_count: 0`, `section_count: 0`, `duplicates_removed: 0`, `refinement_count: 0`, `must_answer_count: 0`, `priority_questions: []`, `scope_recommendation: true`, empty `sections` array, and a single note explaining inapplicability.
 
 **Dimension Task failure**: Proceed with available outputs. Mark failed dimensions in the scored table with `score: 0` and reason `"Research task failed"`. Exclude from selected dimensions.
 
@@ -149,9 +189,11 @@ Both sections must be present and well-formed per their canonical formats.
 ## Output Checklist
 
 - Both `=== RESEARCH PLAN ===` and `=== CLARIFICATIONS ===` sections present
-- Frontmatter counts accurate in both sections
-- Every question has 2–4 choices + "Other (please specify)", a `**Recommendation:**`, and an `**Answer:**` field
-- `priority_questions` lists all Required question IDs
-- `refinement_count: 0`
-- No inline tags (`[MUST ANSWER]`) in question headings
-- Format passes the Rust parser patterns in `references/consolidation-handoff.md`
+- `=== CLARIFICATIONS ===` content is valid JSON matching the schema in `references/consolidation-handoff.md`
+- `metadata` counts accurate (`question_count`, `section_count`, `must_answer_count`)
+- Every question has 2-4 choices + "Other (please specify)" with `is_other: true`
+- Every question has a `recommendation` field
+- `metadata.priority_questions` lists all question IDs where `must_answer: true`
+- `metadata.refinement_count` is `0`
+- All `answer_choice` and `answer_text` values are `null`
+- All `refinements` arrays are empty `[]`

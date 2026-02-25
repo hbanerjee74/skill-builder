@@ -34,19 +34,19 @@ function ContextMeter({ agentId }: { agentId: string }) {
 
   const tokens = getLatestContextTokens(run);
   const utilization = getContextUtilization(run);
-  const color =
+  const bgColor =
     utilization >= 80
-      ? "bg-red-500"
+      ? "var(--color-destructive, #ef4444)"
       : utilization >= 50
-        ? "bg-yellow-500"
-        : "bg-green-500";
+        ? "var(--color-pacific)"
+        : "var(--color-seafoam)";
 
   return (
     <div className="flex items-center gap-1.5" title={`Context: ${tokens.toLocaleString()} / ${run.contextWindow.toLocaleString()} tokens`}>
       <div className="h-2 w-16 overflow-hidden rounded-full bg-muted">
         <div
-          className={`h-full transition-all ${color}`}
-          style={{ width: `${Math.max(1, utilization)}%` }}
+          className="h-full transition-all"
+          style={{ width: `${Math.max(1, utilization)}%`, background: bgColor }}
         />
       </div>
       <span className="text-xs tabular-nums text-muted-foreground">
@@ -119,9 +119,9 @@ export function AgentStatusHeader({
     : Date.now() - elapsedOrigin;
 
   const statusIcon: Record<DisplayStatus, React.ReactNode> = {
-    initializing: <Loader2 className="size-3.5 animate-spin text-yellow-500" />,
+    initializing: <Loader2 className="size-3.5 animate-spin" style={{ color: "var(--color-pacific)" }} />,
     running: <Loader2 className="size-3.5 animate-spin" />,
-    completed: <CheckCircle2 className="size-3.5 text-green-500" />,
+    completed: <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />,
     error: <XCircle className="size-3.5 text-destructive" />,
   };
 

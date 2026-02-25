@@ -146,7 +146,8 @@ export function SetupScreen({ onComplete }: SetupScreenProps = {}) {
                 size="sm"
                 onClick={handleTestApiKey}
                 disabled={testing || !apiKey}
-                className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                className={apiKeyValid ? "text-white" : ""}
+                style={apiKeyValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
               >
                 {testing ? (
                   <Loader2 className="size-3.5 animate-spin" />

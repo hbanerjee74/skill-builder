@@ -467,6 +467,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 cacheReadInputTokens?: number;
                 cacheCreationInputTokens?: number;
                 cost?: number;
+                costUSD?: number;
                 contextWindow?: number;
               }>
             | undefined;
@@ -482,7 +483,7 @@ export const useAgentStore = create<AgentState>((set) => ({
                 outputTokens: mu.outputTokens ?? 0,
                 cacheReadTokens: mu.cacheReadInputTokens ?? 0,
                 cacheWriteTokens: mu.cacheCreationInputTokens ?? 0,
-                cost: mu.cost ?? 0,
+                cost: mu.costUSD ?? mu.cost ?? 0,
               });
             }
             if (breakdown.length > 0) {

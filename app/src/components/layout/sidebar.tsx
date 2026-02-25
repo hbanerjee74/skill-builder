@@ -65,9 +65,15 @@ export function Sidebar() {
     >
       <div className={cn("flex h-14 items-center border-b", collapsed ? "justify-center px-2" : "gap-2 px-4")}>
         {collapsed ? (
-          <Home className="size-5" />
+          <>
+            <img src="/icon-dark-256.png" alt="Skill Builder" className="size-7 rounded block dark:hidden" />
+            <img src="/icon-256.png" alt="Skill Builder" className="size-7 rounded hidden dark:block" />
+          </>
         ) : (
-          <span className="text-lg font-semibold">Skill Builder</span>
+          <>
+            <img src="/logo-dark.svg" alt="Accelerate Data" className="h-5 block dark:hidden" />
+            <img src="/logo-light.svg" alt="Accelerate Data" className="h-5 hidden dark:block" />
+          </>
         )}
       </div>
 

@@ -200,9 +200,9 @@ mod tests {
         // Clean up everything after step 2
         cleanup_future_steps(workspace, "my-skill", 2, skills_path);
 
-        // Step 0 and 2 files should remain (clarifications.md from step 0)
+        // Step 0 and 2 files should remain (clarifications.json from step 0)
         let skill_dir = skills_tmp.path().join("my-skill");
-        assert!(skill_dir.join("context/clarifications.md").exists());
+        assert!(skill_dir.join("context/clarifications.json").exists());
 
         // Step 4 files should be gone
         assert!(!skill_dir.join("context/decisions.md").exists());

@@ -18,21 +18,23 @@ describe("DiffView", () => {
     expect(rows[0].textContent).toContain("  hello");
   });
 
-  it("renders added lines with green styling and + prefix", () => {
+  it("renders added lines with seafoam styling and + prefix", () => {
     const { container } = render(<DiffView before="" after="new line" />);
     const rows = getDiffRows(container);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].className).toMatch(/bg-green/);
+    expect(rows[0].className).toContain("bg-[color-mix(in_oklch,var(--color-seafoam),transparent_90%)]");
+    expect(rows[0].style.color).toBe("var(--color-seafoam)");
     expect(rows[0].textContent).toContain("+ new line");
   });
 
-  it("renders removed lines with red styling and - prefix", () => {
+  it("renders removed lines with destructive styling and - prefix", () => {
     const { container } = render(<DiffView before="old line" after="" />);
     const rows = getDiffRows(container);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].className).toMatch(/bg-red/);
+    expect(rows[0].className).toContain("bg-destructive/10");
+    expect(rows[0].className).toContain("text-destructive");
     expect(rows[0].textContent).toContain("- old line");
   });
 
@@ -47,8 +49,8 @@ describe("DiffView", () => {
     expect(rows.length).toBeGreaterThanOrEqual(4);
 
     const classNames = rows.map((r) => r.className);
-    expect(classNames.some((c) => c.includes("bg-red"))).toBe(true);
-    expect(classNames.some((c) => c.includes("bg-green"))).toBe(true);
+    expect(classNames.some((c) => c.includes("bg-destructive"))).toBe(true);
+    expect(classNames.some((c) => c.includes("bg-[color-mix"))).toBe(true);
     expect(classNames.some((c) => c.includes("text-muted-foreground"))).toBe(true);
   });
 

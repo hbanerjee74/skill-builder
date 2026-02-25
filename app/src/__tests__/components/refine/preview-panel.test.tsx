@@ -160,8 +160,8 @@ describe("PreviewPanel", () => {
     expect(pre).toBeTruthy();
     // Should contain removed "Old content." from baseline
     const rows = Array.from(pre!.querySelectorAll<HTMLDivElement>(":scope > div"));
-    const hasRemoved = rows.some((r) => r.className.includes("bg-red"));
-    const hasAdded = rows.some((r) => r.className.includes("bg-green"));
+    const hasRemoved = rows.some((r) => r.className.includes("bg-destructive"));
+    const hasAdded = rows.some((r) => r.className.includes("bg-[color-mix"));
     expect(hasRemoved).toBe(true);
     expect(hasAdded).toBe(true);
   });

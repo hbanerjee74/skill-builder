@@ -222,7 +222,7 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
                   title="Copy code"
                 >
                   {state.copied ? (
-                    <Check className="size-4 text-green-600" />
+                    <Check className="size-4" style={{ color: "var(--color-seafoam)" }} />
                   ) : (
                     <Copy className="size-4" />
                   )}
@@ -258,8 +258,8 @@ export function GitHubLoginDialog({ open, onOpenChange }: GitHubLoginDialogProps
 
         {state.step === "success" && (
           <div className="flex flex-col items-center justify-center gap-3 py-8">
-            <div className="flex size-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-              <Check className="size-5 text-green-600 dark:text-green-400" />
+            <div className="flex size-10 items-center justify-center rounded-full" style={{ background: "color-mix(in oklch, var(--color-seafoam), transparent 85%)" }}>
+              <Check className="size-5" style={{ color: "var(--color-seafoam)" }} />
             </div>
             <div className="space-y-1 text-center">
               <p className="text-sm font-medium">Signed in successfully</p>

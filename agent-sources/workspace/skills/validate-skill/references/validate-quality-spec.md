@@ -5,7 +5,7 @@ Four-pass quality assessment of a completed skill: coverage & structure, content
 
 ## Inputs
 
-- Paths to `decisions.md`, `clarifications.md`, `SKILL.md`, and all `references/` files
+- Paths to `decisions.md`, `clarifications.json`, `SKILL.md`, and all `references/` files
 - The **purpose** (`domain`, `data-engineering`, `platform`, or `source`)
 - The **workspace directory** path (contains `user-context.md`)
 
@@ -25,7 +25,7 @@ Report CORRECT or MISMATCH with details.
 
 ### Bundled Skill Compliance Checks
 
-1. **Process artifacts**: Skill output directory must contain ONLY `SKILL.md` and `references/`. Flag any process artifact (clarifications.md, decisions.md, research-plan.md, agent-validation-log.md, test-skill.md, companion-skills.md) as CONTAMINATION.
+1. **Process artifacts**: Skill output directory must contain ONLY `SKILL.md` and `references/`. Flag any process artifact (clarifications.json, decisions.md, research-plan.md, agent-validation-log.md, test-skill.md, companion-skills.md) as CONTAMINATION.
 
 2. **Stakeholder questions**: Scan for "Questions for your stakeholder", "Open questions", "Pending clarifications", or similar. Each is a FAIL.
 

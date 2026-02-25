@@ -93,7 +93,7 @@ Skill output directory contains ONLY:
 - `SKILL.md`
 - `references/*.md`
 
-Context-only files (`clarifications.md`, `decisions.md`, `evaluations.md`, `research-plan.md`, validation logs) go in context/.
+Context-only files (`clarifications.json`, `decisions.md`, `evaluations.md`, `research-plan.md`, validation logs) go in context/.
 
 ## Quality Dimensions (scored 1-5)
 

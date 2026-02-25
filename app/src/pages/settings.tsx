@@ -299,7 +299,7 @@ export default function SettingsPage() {
           <h1 className="text-lg font-semibold">Settings</h1>
           <span className="text-sm text-muted-foreground">v{appVersion}</span>
           {saved && (
-            <span className="flex items-center gap-1 text-sm text-green-600 animate-in fade-in duration-200">
+            <span className="flex items-center gap-1 text-sm animate-in fade-in duration-200" style={{ color: "var(--color-seafoam)" }}>
               <CheckCircle2 className="size-3.5" />
               Saved
             </span>
@@ -375,7 +375,8 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleTestApiKey}
                       disabled={testing || !apiKey}
-                      className={apiKeyValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                      className={apiKeyValid ? "text-white" : ""}
+                      style={apiKeyValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
                     >
                       {testing ? (
                         <Loader2 className="size-3.5 animate-spin" />
@@ -617,7 +618,8 @@ export default function SettingsPage() {
                         size="sm"
                         onClick={handleTestMarketplace}
                         disabled={marketplaceTesting}
-                        className={marketplaceValid ? "bg-green-600 hover:bg-green-700 text-white" : ""}
+                        className={marketplaceValid ? "text-white" : ""}
+                        style={marketplaceValid ? { background: "var(--color-seafoam)", color: "white" } : undefined}
                       >
                         {marketplaceTesting ? (
                           <Loader2 className="size-3.5 animate-spin" />
@@ -628,7 +630,7 @@ export default function SettingsPage() {
                       </Button>
                     )}
                     {urlCheckState === "checking" && <Loader2 className="size-4 animate-spin text-muted-foreground self-center" />}
-                    {urlCheckState === "valid" && <CheckCircle2 className="size-4 text-green-500 self-center" />}
+                    {urlCheckState === "valid" && <CheckCircle2 className="size-4 self-center" style={{ color: "var(--color-seafoam)" }} />}
                     {urlCheckState === "invalid" && <XCircle className="size-4 text-destructive self-center" />}
                   </div>
                   {marketplaceValid === false && (

@@ -1,22 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useBlocker, useNavigate } from "@tanstack/react-router";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "@/components/markdown-link";
-import MDEditor from "@uiw/react-md-editor";
+import { ClarificationsEditor, type SaveStatus } from "@/components/clarifications-editor";
+import { type ClarificationsFile, type Question } from "@/lib/clarifications-types";
 import {
   Loader2,
   Play,
-  FileText,
   AlertCircle,
   RotateCcw,
-  CheckCircle2,
-  Save,
-  Home,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
 import {
   Dialog,
   DialogContent,
@@ -25,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { WorkflowSidebar } from "@/components/workflow-sidebar";
 import { AgentOutputPanel } from "@/components/agent-output-panel";
 import { AgentInitializingIndicator } from "@/components/agent-initializing-indicator";
@@ -50,11 +44,8 @@ import {
   endWorkflowSession,
   getDisabledSteps,
   runAnswerEvaluator,
-  autofillClarifications,
-  autofillRefinements,
   logGateDecision,
   type AnswerEvaluation,
-  type PerQuestionVerdict,
 } from "@/lib/tauri";
 import { TransitionGateDialog, type GateVerdict } from "@/components/transition-gate-dialog";
 import { resolveModelId } from "@/lib/models";
@@ -69,9 +60,9 @@ interface StepConfig {
 }
 
 const STEP_CONFIGS: Record<number, StepConfig> = {
-  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.md"], model: "sonnet" },
+  0: { type: "agent", outputFiles: ["context/research-plan.md", "context/clarifications.json"], model: "sonnet" },
   1: { type: "human" },
-  2: { type: "agent", outputFiles: ["context/clarifications.md"], model: "sonnet" },
+  2: { type: "agent", outputFiles: ["context/clarifications.json"], model: "sonnet" },
   3: { type: "human" },
   4: { type: "reasoning", outputFiles: ["context/decisions.md"], model: "opus" },
   5: { type: "agent", outputFiles: ["skill/SKILL.md", "skill/references/"], model: "sonnet" },
@@ -79,10 +70,36 @@ const STEP_CONFIGS: Record<number, StepConfig> = {
 
 // Human review steps: step id -> relative artifact path
 const HUMAN_REVIEW_STEPS: Record<number, { relativePath: string }> = {
-  1: { relativePath: "context/clarifications.md" },
-  3: { relativePath: "context/clarifications.md" },
+  1: { relativePath: "context/clarifications.json" },
+  3: { relativePath: "context/clarifications.json" },
 };
 
+/** Parse and normalize JSON clarifications from raw file content.
+ *  Ensures every question has a `refinements` array (agents may omit it). */
+function parseClarifications(content: string | null): ClarificationsFile | null {
+  if (!content) return null;
+  try {
+    const raw = JSON.parse(content) as ClarificationsFile;
+    // Normalize: ensure every question has refinements[] (agent output may omit it)
+    function normalizeQ(q: Question): Question {
+      return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+    }
+    return {
+      ...raw,
+      metadata: {
+        ...raw.metadata,
+        priority_questions: raw.metadata?.priority_questions ?? [],
+      },
+      sections: (raw.sections ?? []).map((s) => ({
+        ...s,
+        questions: (s.questions ?? []).map(normalizeQ),
+      })),
+      notes: raw.notes ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default function WorkflowPage() {
   const { skillName } = useParams({ from: "/skill/$skillName" });
@@ -209,15 +226,14 @@ export default function WorkflowPage() {
 
   // Human review state
   const [reviewContent, setReviewContent] = useState<string | null>(null);
+  const [clarificationsData, setClarificationsData] = useState<ClarificationsFile | null>(null);
   const [reviewFilePath, setReviewFilePath] = useState("");
   const [loadingReview, setLoadingReview] = useState(false);
-  // Markdown editor state
-  const [editorContent, setEditorContent] = useState<string>("");
-  const [isSaving, setIsSaving] = useState(false);
   // Explicit dirty flag — set on user edits, cleared on save/reload/load
   const [editorDirty, setEditorDirty] = useState(false);
   const hasUnsavedChanges = editorDirty;
-  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ref for navigation guard (shouldBlockFn runs outside React render cycle).
   // Scoped to human review steps so it doesn't block on non-review steps.
@@ -225,14 +241,6 @@ export default function WorkflowPage() {
   useEffect(() => {
     hasUnsavedChangesRef.current = isHumanReviewStep && hasUnsavedChanges;
   }, [isHumanReviewStep, hasUnsavedChanges]);
-
-  // Sync editorContent when reviewContent loads or reloads (clears dirty flag)
-  useEffect(() => {
-    if (reviewContent !== null) {
-      setEditorContent(reviewContent);
-      setEditorDirty(false);
-    }
-  }, [reviewContent]);
 
   // Pending step switch — set when user clicks a sidebar step while agent is running
   const [pendingStepSwitch, setPendingStepSwitch] = useState<number | null>(null);
@@ -265,10 +273,8 @@ export default function WorkflowPage() {
   // Transition gate dialog state
   const [showGateDialog, setShowGateDialog] = useState(false);
   const [gateVerdict, setGateVerdict] = useState<GateVerdict | null>(null);
-  const [gateTotalCount, setGateTotalCount] = useState(0);
-  const [gateUnansweredCount, setGateUnansweredCount] = useState(0);
-  const [gatePerQuestion, setGatePerQuestion] = useState<PerQuestionVerdict[]>([]);
-  const [isAutofilling, setIsAutofilling] = useState(false);
+  const [gateEvaluation, setGateEvaluation] = useState<AnswerEvaluation | null>(null);
+  // isAutofilling state removed — auto-fill buttons removed from gate dialog
   const gateAgentIdRef = useRef<string | null>(null);
   const lastCompletedCostRef = useRef<number | undefined>(undefined);
   const [gateContext, setGateContext] = useState<"clarifications" | "refinements">("clarifications");
@@ -448,9 +454,18 @@ export default function WorkflowPage() {
     setLoadingReview(true);
 
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
-      .then((content) => setReviewContent(content ?? null))
-      .catch(() => setReviewContent(null))
-      .finally(() => setLoadingReview(false));
+      .then((content) => {
+        setReviewContent(content ?? null);
+        setClarificationsData(parseClarifications(content ?? null));
+      })
+      .catch(() => {
+        setReviewContent(null);
+        setClarificationsData(null);
+      })
+      .finally(() => {
+        setLoadingReview(false);
+        setEditorDirty(false);
+      });
   }, [currentStep, isHumanReviewStep, skillsPath, skillName]);
 
   // Advance to next step helper
@@ -719,9 +734,12 @@ export default function WorkflowPage() {
     const filename = config?.relativePath.split("/").pop() ?? config?.relativePath;
     if (config && reviewContent !== null && skillsPath && filename) {
       try {
-        const content = editorDirty ? editorContent : (reviewContent ?? "");
+        const content = clarificationsData
+          ? JSON.stringify(clarificationsData, null, 2)
+          : (reviewContent ?? "");
         await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
         setReviewContent(content);
+        setEditorDirty(false);
       } catch (err) {
         toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
         return;
@@ -763,12 +781,9 @@ export default function WorkflowPage() {
       }
 
       // All verdicts show a dialog — sufficient offers skip, mixed/insufficient offer auto-fill
-      const unanswered = evaluation.empty_count + evaluation.vague_count;
       setGateLoading(false);
       setGateVerdict(evaluation.verdict);
-      setGateTotalCount(evaluation.total_count);
-      setGateUnansweredCount(unanswered);
-      setGatePerQuestion(evaluation.per_question ?? []);
+      setGateEvaluation(evaluation);
       setShowGateDialog(true);
     } catch (err) {
       console.warn("[workflow] Could not read evaluation result — proceeding normally:", err);
@@ -779,6 +794,7 @@ export default function WorkflowPage() {
   const closeGateDialog = () => {
     setShowGateDialog(false);
     setGateVerdict(null);
+    setGateEvaluation(null);
   };
 
   /** Skip to decisions: gate 1 skips steps 1-3, gate 2 just advances from step 3. */
@@ -816,41 +832,7 @@ export default function WorkflowPage() {
     }
   };
 
-  /** Shared autofill logic: call the appropriate autofill command, then run onSuccess with the count. */
-  const runAutofill = async (decision: string, onSuccess: (filled: number) => void) => {
-    logGateAction(decision);
-    setIsAutofilling(true);
-    try {
-      const filled = gateContext === "refinements"
-        ? await autofillRefinements(skillName)
-        : await autofillClarifications(skillName);
-      setIsAutofilling(false);
-      onSuccess(filled);
-    } catch (err) {
-      toast.error(`Auto-fill failed: ${err instanceof Error ? err.message : String(err)}`);
-      setIsAutofilling(false);
-    }
-  };
-
-  /** Insufficient: auto-fill all answers then skip to decisions (gate 1) or advance (gate 2). */
-  const handleGateAutofillAndSkip = () =>
-    runAutofill("autofill_and_skip", (filled) => {
-      const label = filled !== 1 ? "s" : "";
-      if (gateContext === "refinements") {
-        skipToDecisions(`Auto-filled ${filled} refinement answer${label} — continuing to decisions`);
-      } else {
-        skipToDecisions(`Auto-filled ${filled} answer${label} — skipped detailed research`);
-      }
-    });
-
-  /** Mixed: auto-fill empty answers then proceed to detailed research. */
-  const handleGateAutofillAndResearch = () =>
-    runAutofill("autofill_and_research", (filled) => {
-      closeGateDialog();
-      toast.success(`Auto-filled ${filled} answer${filled !== 1 ? "s" : ""} — continuing to research`);
-      updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
-      advanceToNextStep();
-    });
+  // Auto-fill handlers removed — gate dialog now uses "Let Me Answer" / "Continue Anyway" only
 
   /** Sufficient override: run research anyway (gate 1) or continue to decisions (gate 2). */
   const handleGateResearch = () => {
@@ -858,6 +840,15 @@ export default function WorkflowPage() {
     closeGateDialog();
     updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
     advanceToNextStep();
+  };
+
+  /** Continue anyway: advance without auto-fill despite incomplete answers. */
+  const handleGateContinueAnyway = () => {
+    logGateAction("continue_anyway");
+    closeGateDialog();
+    updateStepStatus(useWorkflowStore.getState().currentStep, "completed");
+    advanceToNextStep();
+    toast.success("Continuing with current answers");
   };
 
   /** Override: go back to review so user can answer manually. */
@@ -892,14 +883,26 @@ export default function WorkflowPage() {
     readFile(`${skillsPath}/${skillName}/context/${filename}`)
       .then((content) => {
         setReviewContent(content ?? null);
+        setClarificationsData(parseClarifications(content ?? null));
         if (!content) toast.error("Failed to reload file", { duration: Infinity });
       })
       .catch(() => {
         setReviewContent(null);
+        setClarificationsData(null);
         toast.error("Failed to reload file", { duration: Infinity });
       })
-      .finally(() => setLoadingReview(false));
+      .finally(() => {
+        setLoadingReview(false);
+        setEditorDirty(false);
+      });
   };
+
+  const handleClarificationsChange = useCallback((updated: ClarificationsFile) => {
+    setClarificationsData(updated);
+    setEditorDirty(true);
+    setSaveStatus("dirty");
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+  }, []);
 
   // Save editor content to skills path (required — no workspace fallback).
   // Returns true on success, false if the write failed.
@@ -907,20 +910,26 @@ export default function WorkflowPage() {
     const config = HUMAN_REVIEW_STEPS[currentStep];
     if (!config || !skillsPath) return false;
     const filename = config.relativePath.split("/").pop() ?? config.relativePath;
-    setIsSaving(true);
+    setSaveStatus("saving");
     try {
-      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, editorContent);
-      setReviewContent(editorContent);
+      const content = clarificationsData
+        ? JSON.stringify(clarificationsData, null, 2)
+        : (reviewContent ?? "");
+      await writeFile(`${skillsPath}/${skillName}/context/${filename}`, content);
+      setReviewContent(content);
       setEditorDirty(false);
+      setSaveStatus("saved");
+      // Show "Saved" for 2s, then return to idle
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaveStatus("idle"), 2000);
       if (!silent) toast.success("Saved");
       return true;
     } catch (err) {
+      setSaveStatus("dirty"); // Revert to dirty on failure
       toast.error(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
       return false;
-    } finally {
-      setIsSaving(false);
     }
-  }, [currentStep, skillsPath, editorContent, skillName]);
+  }, [currentStep, skillsPath, reviewContent, clarificationsData, skillName]);
 
   // Debounce autosave — fires 1500ms after the last edit on a human review step.
   // The cleanup cancels the previous timer whenever deps change, so no ref is needed.
@@ -932,11 +941,9 @@ export default function WorkflowPage() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [editorContent, editorDirty, isHumanReviewStep, handleSave]);
+  }, [clarificationsData, editorDirty, isHumanReviewStep, handleSave]);
 
   const currentStepDef = steps[currentStep];
-
-  // --- Render content ---
 
   // --- Render helpers ---
 
@@ -982,7 +989,7 @@ export default function WorkflowPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
           <AlertCircle className="size-8 text-destructive/50" />
           <div className="text-center">
-            <p className="font-medium text-destructive">Missing clarification file</p>
+            <p className="font-medium text-destructive">Missing clarifications file</p>
             <p className="mt-1 text-sm">
               Expected <code className="text-xs">{HUMAN_REVIEW_STEPS[currentStep]?.relativePath}</code> but it was not found.
               The previous step may not have completed successfully.
@@ -992,114 +999,32 @@ export default function WorkflowPage() {
       );
     }
 
-    // Review mode (or completed in any mode): read-only markdown preview
-    if (reviewMode) {
+    // JSON clarifications data — render the structured editor
+    if (clarificationsData) {
       return (
-        <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between pb-3">
-            <p className="text-xs text-muted-foreground font-mono">
-              {reviewFilePath}
-            </p>
-          </div>
-          <ScrollArea className="min-h-0 flex-1 rounded-md border">
-            <div className="markdown-body compact max-w-none p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {reviewContent}
-              </ReactMarkdown>
-            </div>
-          </ScrollArea>
-        </div>
+        <ClarificationsEditor
+          data={clarificationsData}
+          onChange={handleClarificationsChange}
+          onReload={handleReviewReload}
+          onContinue={() => handleReviewContinue()}
+          filePath={reviewFilePath}
+          saveStatus={saveStatus}
+          evaluating={gateLoading}
+        />
       );
     }
 
-    // Update mode: MDEditor
-    const isCompleted = currentStepDef?.status === "completed";
-    const nextStepAfterReview = currentStep + 1;
-    const isReviewHalted = disabledSteps.includes(nextStepAfterReview);
-
+    // Fallback: file exists but is not valid JSON (legacy .md file)
     return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between pb-3">
-          <p className="text-xs text-muted-foreground font-mono">
-            {reviewFilePath}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+        <AlertCircle className="size-8" style={{ color: "var(--color-pacific)", opacity: 0.5 }} />
+        <div className="text-center max-w-md">
+          <p className="font-medium">Incompatible clarifications format</p>
+          <p className="mt-1 text-sm">
+            The clarifications file is not in JSON format. Reset the previous step to regenerate it
+            in the new structured format.
           </p>
         </div>
-        <div className="min-h-0 flex-1" data-color-mode="dark">
-          <MDEditor
-            value={editorContent}
-            onChange={(val) => { setEditorContent(val ?? ""); setEditorDirty(true); }}
-            height="100%"
-            visibleDragbar={false}
-          />
-        </div>
-        {isReviewHalted ? (
-          <div className="border-t pt-4">
-            <div className="flex flex-col items-center gap-3 py-4">
-              <CheckCircle2 className="size-8 text-green-500" />
-              <div className="text-center max-w-md">
-                <p className="text-base font-medium">Scope Too Broad</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  The research phase determined this skill topic is too broad for a single skill.
-                  Review the scope recommendations above, then start a new workflow with a narrower focus.
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => navigate({ to: "/" })}
-              >
-                <Home className="size-3.5" />
-                Return to Dashboard
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between border-t px-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              {isCompleted ? "Step completed. You can still edit and save." : "Edit the markdown above, then save and continue."}
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleSave()}
-                disabled={!hasUnsavedChanges || isSaving}
-              >
-                {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                Save
-                {hasUnsavedChanges && (
-                  <span className="ml-1 size-2 rounded-full bg-orange-500" />
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleReviewReload}
-              >
-                <RotateCcw className="size-3.5" />
-                Reload
-              </Button>
-              {!isCompleted && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (hasUnsavedChanges) {
-                      setShowUnsavedDialog(true);
-                    } else {
-                      handleReviewContinue();
-                    }
-                  }}
-                  disabled={gateLoading}
-                >
-                  {gateLoading
-                    ? <Loader2 className="size-3.5 animate-spin" />
-                    : <CheckCircle2 className="size-3.5" />}
-                  {gateLoading ? "Evaluating..." : "Complete Step"}
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -1300,53 +1225,16 @@ export default function WorkflowPage() {
         </Dialog>
       )}
 
-      {/* Unsaved changes confirmation dialog — shown when completing step with unsaved edits */}
-      {showUnsavedDialog && (
-        <Dialog open onOpenChange={(open) => { if (!open) setShowUnsavedDialog(false); }}>
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Unsaved Changes</DialogTitle>
-              <DialogDescription>
-                You have unsaved edits. Would you like to save before continuing?
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowUnsavedDialog(false)}>
-                Cancel
-              </Button>
-              <Button variant="outline" onClick={() => {
-                setShowUnsavedDialog(false);
-                setEditorDirty(false);
-                runGateOrAdvance();
-              }}>
-                Discard & Continue
-              </Button>
-              <Button onClick={async () => {
-                setShowUnsavedDialog(false);
-                const saved = await handleSave();
-                if (saved) runGateOrAdvance();
-              }}>
-                Save & Continue
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
       {/* Transition gate dialog — shown after step 1 review (gate 1) or step 3 review (gate 2) */}
       <TransitionGateDialog
         open={showGateDialog}
         verdict={gateVerdict}
-        totalCount={gateTotalCount}
-        unansweredCount={gateUnansweredCount}
-        perQuestion={gatePerQuestion}
+        evaluation={gateEvaluation}
         context={gateContext}
         onSkip={handleGateSkip}
         onResearch={handleGateResearch}
-        onAutofillAndSkip={handleGateAutofillAndSkip}
-        onAutofillAndResearch={handleGateAutofillAndResearch}
         onLetMeAnswer={handleGateLetMeAnswer}
-        isAutofilling={isAutofilling}
+        onContinueAnyway={handleGateContinueAnyway}
       />
 
       <div className="flex h-[calc(100%+3rem)] -m-6">
@@ -1387,18 +1275,12 @@ export default function WorkflowPage() {
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {isHumanReviewStep && (
-                <Badge variant="outline" className="gap-1">
-                  <FileText className="size-3" />
-                  Q&A Review
-                </Badge>
-              )}
             </div>
           </div>
 
-          {/* Content area — agent output panel manages its own padding */}
+          {/* Content area — agent output panel and ClarificationsEditor manage their own padding */}
           <div className={`flex flex-1 flex-col overflow-hidden ${
-            activeAgentId && !isHumanReviewStep ? "" : "p-4"
+            (activeAgentId && !isHumanReviewStep) || (isHumanReviewStep && clarificationsData) ? "" : "p-4"
           }`}>
             {renderContent()}
           </div>

@@ -28,7 +28,7 @@ export function ChatPanel({ onSend, isRunning, hasSkill, availableFiles, scopeBl
   return (
     <div className="flex h-full flex-col">
       {scopeBlocked && (
-        <div className="flex items-center gap-2 border-b bg-yellow-500/10 px-3 py-2 text-sm text-yellow-600 dark:text-yellow-400">
+        <div className="flex items-center gap-2 border-b bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
           <AlertTriangle className="size-4 shrink-0" />
           Scope recommendation active — the skill scope is too broad. Refine and test are blocked until the scope is resolved.
         </div>

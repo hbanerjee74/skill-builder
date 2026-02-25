@@ -2,11 +2,15 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
+import { ClarificationsEditor } from "@/components/clarifications-editor";
+import { ResearchSummaryCard } from "@/components/research-summary-card";
+import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
+import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 
 interface WorkflowStepCompleteProps {
@@ -174,7 +178,134 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Show file contents when available (both review and non-review mode)
+  // Check if this is a research step (has both research-plan.md and clarifications.json in output list)
+  const researchPlanContent = fileContents.get("context/research-plan.md");
+  const clarificationsContent = fileContents.get("context/clarifications.json");
+  const isResearchStep = outputFiles.includes("context/research-plan.md")
+    && outputFiles.includes("context/clarifications.json");
+
+  if (isResearchStep) {
+    // Missing files = error
+    const missingFiles: string[] = [];
+    if (!researchPlanContent || researchPlanContent === "__NOT_FOUND__") missingFiles.push("context/research-plan.md");
+    if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") missingFiles.push("context/clarifications.json");
+
+    if (missingFiles.length > 0) {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+            <AlertTriangle className="size-8 text-destructive/50" />
+            <div className="text-center">
+              <p className="font-medium text-destructive">Research step completed but output files are missing</p>
+              <div className="mt-2 text-sm">
+                {missingFiles.map((f) => (
+                  <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
+                ))}
+              </div>
+              <p className="mt-2 text-sm">The agent may not have written files to the correct path. Reset and re-run the step.</p>
+            </div>
+          </div>
+          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+        </div>
+      );
+    }
+
+    // Invalid JSON = error
+    let clarData: ClarificationsFile | null = null;
+    try {
+      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
+      function normalizeQ(q: Question): Question {
+        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+      }
+      clarData = {
+        ...raw,
+        metadata: {
+          ...raw.metadata,
+          priority_questions: raw.metadata?.priority_questions ?? [],
+        },
+        sections: (raw.sections ?? []).map((s) => ({
+          ...s,
+          questions: (s.questions ?? []).map(normalizeQ),
+        })),
+        notes: raw.notes ?? [],
+      };
+    } catch {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+            <AlertTriangle className="size-8 text-destructive/50" />
+            <div className="text-center">
+              <p className="font-medium text-destructive">Invalid clarifications.json</p>
+              <p className="mt-1 text-sm">The agent wrote a file that is not valid JSON. Reset and re-run the step.</p>
+            </div>
+          </div>
+          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {reviewMode && agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pr-4">
+            <ResearchSummaryCard
+              researchPlan={researchPlanContent!}
+              clarificationsData={clarData}
+              duration={!reviewMode ? duration : undefined}
+              cost={displayCost}
+            />
+          </div>
+        </ScrollArea>
+        <StepActionBar
+          isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
+      </div>
+    );
+  }
+
+  // Decisions step: show summary card when decisions.md is the output
+  const decisionsContent = fileContents.get("context/decisions.md");
+  const isDecisionsStep = outputFiles.includes("context/decisions.md")
+    && decisionsContent && decisionsContent !== "__NOT_FOUND__";
+
+  if (isDecisionsStep) {
+    return (
+      <div className="flex h-full flex-col gap-4 overflow-hidden">
+        {reviewMode && agentRuns.length > 0 && (
+          <div className="shrink-0">
+            <AgentStatsBar runs={agentRuns} />
+          </div>
+        )}
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="pr-4">
+            <DecisionsSummaryCard
+              decisionsContent={decisionsContent}
+              duration={!reviewMode ? duration : undefined}
+              cost={displayCost}
+            />
+          </div>
+        </ScrollArea>
+        <StepActionBar
+          isLastStep={isLastStep}
+          reviewMode={reviewMode}
+          onRefine={onRefine}
+          onClose={onClose}
+          onNextStep={onNextStep}
+        />
+      </div>
+    );
+  }
+
+  // Default: show file contents individually (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
@@ -185,7 +316,7 @@ export function WorkflowStepComplete({
         )}
         {!reviewMode && (
           <div className="flex items-center gap-2 pb-4">
-            <CheckCircle2 className="size-4 text-green-500" />
+            <CheckCircle2 className="size-4" style={{ color: "var(--color-seafoam)" }} />
             <h3 className="text-sm font-semibold">{stepName} Complete</h3>
             <div className="flex items-center gap-3 text-xs text-muted-foreground ml-2">
               {duration !== undefined && (
@@ -223,13 +354,7 @@ export function WorkflowStepComplete({
                       </p>
                     )}
                     {!notFound && content && (
-                      <div className="rounded-md border">
-                        <div className="markdown-body compact max-w-none p-4">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                            {content}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
+                      <FileContentRenderer file={file} content={content} />
                     )}
                   </div>
                 );
@@ -251,7 +376,7 @@ export function WorkflowStepComplete({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
-          <CheckCircle2 className="size-12 text-green-500" />
+          <CheckCircle2 className="size-12" style={{ color: "var(--color-seafoam)" }} />
           <h3 className="text-lg font-semibold">{stepName} Complete</h3>
 
           {outputFiles.length > 0 && (
@@ -294,6 +419,53 @@ export function WorkflowStepComplete({
         onClose={onClose}
         onNextStep={onNextStep}
       />
+    </div>
+  );
+}
+
+// ─── File Content Renderer ────────────────────────────────────────────────────
+
+function FileContentRenderer({ file, content }: { file: string; content: string }) {
+  // Detect clarifications.json — render with the structured editor in read-only mode
+  if (file.endsWith("clarifications.json")) {
+    try {
+      const raw = JSON.parse(content) as ClarificationsFile;
+      // Normalize: ensure every question has refinements[]
+      function normalizeQ(q: Question): Question {
+        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+      }
+      const data: ClarificationsFile = {
+        ...raw,
+        metadata: {
+          ...raw.metadata,
+          priority_questions: raw.metadata?.priority_questions ?? [],
+        },
+        sections: (raw.sections ?? []).map((s) => ({
+          ...s,
+          questions: (s.questions ?? []).map(normalizeQ),
+        })),
+        notes: raw.notes ?? [],
+      };
+      if (data.version && data.sections) {
+        return (
+          <div className="rounded-md border" style={{ height: "min(600px, 60vh)" }}>
+            <ClarificationsEditor data={data} onChange={() => {}} readOnly />
+          </div>
+        );
+      }
+    } catch {
+      // Fall through to markdown renderer if JSON parse fails
+    }
+  }
+
+  // Default: render as markdown
+  return (
+    <div className="rounded-md border">
+      <div className="markdown-body compact max-w-none p-4">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }

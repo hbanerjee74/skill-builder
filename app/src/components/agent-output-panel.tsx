@@ -221,7 +221,7 @@ export const categoryStyles: Record<MessageCategory, string> = {
   error:
     "border-l-2 border-l-[var(--chat-error-border)] bg-[var(--chat-error-bg)] rounded-md px-3 py-1",
   config:
-    "border-l-2 border-l-blue-400 bg-blue-50 dark:bg-blue-950/30 rounded-md px-3 py-1",
+    "border-l-2 border-l-[var(--color-pacific)] bg-[color-mix(in_oklch,var(--color-pacific),transparent_92%)] rounded-md px-3 py-1",
   status: "",
 };
 
@@ -475,7 +475,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: Age
     }
 
     return (
-      <div className={`${wrapperClass} flex items-start gap-2 text-sm text-green-700 dark:text-green-400`}>
+      <div className={`${wrapperClass} flex items-start gap-2 text-sm`} style={{ color: "var(--color-seafoam)" }}>
         <CheckCircle2 className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
         <span><span className="font-medium">Result: </span>{message.content ?? "Agent completed"}</span>
       </div>

@@ -90,14 +90,14 @@ describe("Canonical format: anti-pattern checks (all markdown files)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// clarifications.md structural checks (step0 + step2 + review-content.md)
+// clarifications.json structural checks (step0 + step2 + review-content.json)
 // ---------------------------------------------------------------------------
 
-describe("Canonical format: clarifications.md structure", () => {
+describe("Canonical format: clarifications.json structure", () => {
   const clarificationFiles = [
-    path.join(MOCK_ROOT, "step0/context/clarifications.md"),
-    path.join(MOCK_ROOT, "step2/context/clarifications.md"),
-    path.join(FIXTURE_ROOT, "review-content.md"),
+    path.join(MOCK_ROOT, "step0/context/clarifications.json"),
+    path.join(MOCK_ROOT, "step2/context/clarifications.json"),
+    path.join(FIXTURE_ROOT, "review-content.json"),
   ].filter((f) => fs.existsSync(f));
 
   it("finds clarification files to check", () => {
@@ -108,58 +108,108 @@ describe("Canonical format: clarifications.md structure", () => {
     const rel = relPath(file);
 
     describe(rel, () => {
-      const content = readFile(file);
+      const raw = readFile(file);
 
-      it("has YAML frontmatter with question_count", () => {
-        expect(content).toMatch(/^---\n[\s\S]*?question_count:/m);
+      it("is valid JSON", () => {
+        expect(() => JSON.parse(raw)).not.toThrow();
       });
 
-      it("has YAML frontmatter with sections", () => {
-        expect(content).toMatch(/^---\n[\s\S]*?sections:/m);
+      const data = JSON.parse(raw);
+
+      it("has version field set to '1'", () => {
+        expect(data.version).toBe("1");
       });
 
-      it("has YAML frontmatter with refinement_count", () => {
-        expect(content).toMatch(/^---\n[\s\S]*?refinement_count:/m);
+      it("has metadata with question_count", () => {
+        expect(typeof data.metadata.question_count).toBe("number");
       });
 
-      it("has ## section headings", () => {
-        expect(content).toMatch(/^## [A-Z]/m);
+      it("has metadata with section_count", () => {
+        expect(typeof data.metadata.section_count).toBe("number");
       });
 
-      it("has ### Q question headings", () => {
-        expect(content).toMatch(/^### Q\d+:/m);
+      it("has metadata with refinement_count", () => {
+        expect(typeof data.metadata.refinement_count).toBe("number");
       });
 
-      it("has **Answer:** fields", () => {
-        expect(content).toMatch(/^\*\*Answer:\*\*/m);
+      it("has metadata with must_answer_count", () => {
+        expect(typeof data.metadata.must_answer_count).toBe("number");
       });
 
-      it("has **Recommendation:** fields", () => {
-        expect(content).toMatch(/^\*\*Recommendation:\*\*/m);
+      it("has metadata with priority_questions array", () => {
+        expect(Array.isArray(data.metadata.priority_questions)).toBe(true);
       });
 
-      it("has A. lettered choices", () => {
-        expect(content).toMatch(/^[A-D]\. /m);
+      it("has sections array matching section_count", () => {
+        expect(Array.isArray(data.sections)).toBe(true);
+        expect(data.sections.length).toBe(data.metadata.section_count);
       });
 
-      it("has ### Required or ### Optional sub-headings", () => {
-        expect(content).toMatch(/^### (Required|Optional)$/m);
+      it("sections have id, title, and questions", () => {
+        for (const section of data.sections) {
+          expect(section.id).toMatch(/^S\d+$/);
+          expect(typeof section.title).toBe("string");
+          expect(Array.isArray(section.questions)).toBe(true);
+        }
+      });
+
+      it("questions have required fields", () => {
+        for (const section of data.sections) {
+          for (const q of section.questions) {
+            expect(q.id).toMatch(/^Q\d+$/);
+            expect(typeof q.title).toBe("string");
+            expect(typeof q.must_answer).toBe("boolean");
+            expect(typeof q.text).toBe("string");
+            expect(Array.isArray(q.choices)).toBe(true);
+            expect(Array.isArray(q.refinements)).toBe(true);
+          }
+        }
+      });
+
+      it("choices have id, text, and is_other", () => {
+        for (const section of data.sections) {
+          for (const q of section.questions) {
+            for (const c of q.choices) {
+              expect(c.id).toMatch(/^[A-E]$/);
+              expect(typeof c.text).toBe("string");
+              expect(typeof c.is_other).toBe("boolean");
+            }
+          }
+        }
+      });
+
+      it("has notes array", () => {
+        expect(Array.isArray(data.notes)).toBe(true);
       });
     });
   }
 
   // Step2-specific refinement checks
-  const step2 = path.join(MOCK_ROOT, "step2/context/clarifications.md");
+  const step2 = path.join(MOCK_ROOT, "step2/context/clarifications.json");
   if (fs.existsSync(step2)) {
     describe("step2 refinements", () => {
-      const content = readFile(step2);
+      const data = JSON.parse(readFile(step2));
 
-      it("has #### Refinements heading", () => {
-        expect(content).toMatch(/^#### Refinements/m);
+      it("has refinement_count > 0", () => {
+        expect(data.metadata.refinement_count).toBeGreaterThan(0);
       });
 
-      it("has ##### R{n}.{m} refinement headings", () => {
-        expect(content).toMatch(/^##### R\d+\.\d+/m);
+      it("has questions with non-empty refinements arrays", () => {
+        const hasRefinements = data.sections.some(
+          (s: { questions: Array<{ refinements: unknown[] }> }) =>
+            s.questions.some((q) => q.refinements.length > 0),
+        );
+        expect(hasRefinements).toBe(true);
+      });
+
+      it("refinements have R{n}.{m} style IDs", () => {
+        for (const section of data.sections) {
+          for (const q of section.questions) {
+            for (const r of q.refinements) {
+              expect(r.id).toMatch(/^R\d+\.\d+/);
+            }
+          }
+        }
       });
     });
   }

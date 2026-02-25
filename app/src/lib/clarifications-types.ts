@@ -1,0 +1,97 @@
+// Schema for clarifications.json — the structured Q&A artifact
+// written by the research-orchestrator agent and edited by users in the review step.
+
+export interface ClarificationsFile {
+  version: "1";
+  metadata: ClarificationsMetadata;
+  sections: Section[];
+  notes: Note[];
+}
+
+export interface ClarificationsMetadata {
+  title: string;
+  question_count: number;
+  section_count: number;
+  refinement_count: number;
+  must_answer_count: number;
+  priority_questions: string[];
+  duplicates_removed?: number;
+  scope_recommendation?: boolean;
+}
+
+export interface Section {
+  id: string; // "S1", "S2", ...
+  title: string;
+  description?: string;
+  questions: Question[];
+}
+
+export interface Question {
+  id: string; // "Q1", "R1.1", "R12.1a"
+  title: string;
+  must_answer: boolean;
+  text: string;
+  consolidated_from?: string[];
+  choices: Choice[];
+  answer_choice: string | null; // "A"/"B"/... | "custom" | null
+  answer_text: string | null; // freeform text
+  refinements: Question[]; // recursive, same shape
+}
+
+export interface Choice {
+  id: string; // "A", "B", "C", "D", "E"
+  text: string;
+  is_other: boolean; // true for "Other (please specify)"
+}
+
+export interface Note {
+  type: string; // "inconsistency" | "blocked" | "deferred" | "critical_gap" | "flag" — agents may produce any type
+  title: string;
+  body: string;
+}
+
+// Derived helpers
+
+export type SectionStatus = "complete" | "partial" | "blocked";
+
+export function getSectionStatus(section: Section): SectionStatus {
+  const { answered, total, mustUnanswered } = getSectionCounts(section);
+  if (mustUnanswered > 0) return "blocked";
+  if (answered === total) return "complete";
+  return "partial";
+}
+
+export function getSectionCounts(section: Section) {
+  let answered = 0;
+  let total = 0;
+  let mustUnanswered = 0;
+
+  function countQuestion(q: Question) {
+    total++;
+    if (isQuestionAnswered(q)) answered++;
+    else if (q.must_answer) mustUnanswered++;
+    for (const r of q.refinements) countQuestion(r);
+  }
+
+  for (const q of section.questions) countQuestion(q);
+  return { answered, total, mustUnanswered };
+}
+
+export function getTotalCounts(file: ClarificationsFile) {
+  let answered = 0;
+  let total = 0;
+  let mustUnanswered = 0;
+
+  for (const section of file.sections) {
+    const counts = getSectionCounts(section);
+    answered += counts.answered;
+    total += counts.total;
+    mustUnanswered += counts.mustUnanswered;
+  }
+
+  return { answered, total, mustUnanswered };
+}
+
+export function isQuestionAnswered(q: Question): boolean {
+  return q.answer_choice !== null || (q.answer_text !== null && q.answer_text.trim() !== "");
+}
