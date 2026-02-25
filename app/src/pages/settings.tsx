@@ -610,6 +610,7 @@ export default function SettingsPage() {
                           <Switch
                             checked={registry.enabled}
                             onCheckedChange={(checked) => {
+                              console.log(`[settings] registry toggled: name=${registry.name}, enabled=${checked}`)
                               const current = useSettingsStore.getState().marketplaceRegistries
                               const updated = current.map((r, i) =>
                                 i === idx ? { ...r, enabled: checked } : r
@@ -626,6 +627,7 @@ export default function SettingsPage() {
                               className="text-muted-foreground hover:text-destructive transition-colors"
                               aria-label={`Remove ${registry.name}`}
                               onClick={() => {
+                                console.log(`[settings] registry removed: name=${registry.name}`)
                                 const current = useSettingsStore.getState().marketplaceRegistries
                                 const updated = current.filter((_, i) => i !== idx)
                                 autoSave({ marketplaceRegistries: updated })
@@ -675,6 +677,7 @@ export default function SettingsPage() {
                         size="sm"
                         disabled={!newRegistryName.trim() || !newRegistryUrl.trim()}
                         onClick={() => {
+                          console.log(`[settings] registry added: name=${newRegistryName.trim()}, url=${newRegistryUrl.trim()}`)
                           const entry: MarketplaceRegistry = {
                             name: newRegistryName.trim(),
                             source_url: newRegistryUrl.trim(),

@@ -55,7 +55,7 @@ pub fn get_settings(db: tauri::State<'_, Db>) -> Result<AppSettings, String> {
         settings.marketplace_url = None; // clear legacy field
         settings.marketplace_initialized = true;
         if let Err(e) = crate::db::write_settings(&conn, &settings) {
-            log::warn!("[get_settings] failed to persist marketplace migration: {}", e);
+            log::error!("[get_settings] failed to persist marketplace migration: {}", e);
         } else {
             log::info!("[get_settings] migrated marketplace_url to marketplace_registries ({} entries)", settings.marketplace_registries.len());
         }
