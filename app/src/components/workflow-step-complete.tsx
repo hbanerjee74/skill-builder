@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { readFile, getStepAgentRuns } from "@/lib/tauri";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
+import { ResearchSummaryCard } from "@/components/research-summary-card";
 import type { ClarificationsFile, Question } from "@/lib/clarifications-types";
 import type { AgentRunRecord } from "@/lib/types";
 
@@ -176,7 +177,61 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Show file contents when available (both review and non-review mode)
+  // Check if this is a research step with both research-plan.md and clarifications.json
+  const researchPlanContent = fileContents.get("context/research-plan.md");
+  const clarificationsContent = fileContents.get("context/clarifications.json");
+  const hasResearchSummary = researchPlanContent && researchPlanContent !== "__NOT_FOUND__"
+    && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
+
+  // Research step: show combined summary card instead of individual files
+  if (hasFileContents && hasResearchSummary) {
+    let clarData: ClarificationsFile | null = null;
+    try {
+      const raw = JSON.parse(clarificationsContent) as ClarificationsFile;
+      function normalizeQ(q: Question): Question {
+        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+      }
+      clarData = {
+        ...raw,
+        sections: (raw.sections ?? []).map((s) => ({
+          ...s,
+          questions: (s.questions ?? []).map(normalizeQ),
+        })),
+        notes: raw.notes ?? [],
+      };
+    } catch { /* fall through to individual file display */ }
+
+    if (clarData) {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          {reviewMode && agentRuns.length > 0 && (
+            <div className="shrink-0">
+              <AgentStatsBar runs={agentRuns} />
+            </div>
+          )}
+          <ScrollArea className="min-h-0 flex-1">
+            <div className="pr-4">
+              <ResearchSummaryCard
+                researchPlan={researchPlanContent}
+                clarificationsData={clarData}
+                duration={!reviewMode ? duration : undefined}
+                cost={displayCost}
+              />
+            </div>
+          </ScrollArea>
+          <StepActionBar
+            isLastStep={isLastStep}
+            reviewMode={reviewMode}
+            onRefine={onRefine}
+            onClose={onClose}
+            onNextStep={onNextStep}
+          />
+        </div>
+      );
+    }
+  }
+
+  // Default: show file contents individually (both review and non-review mode)
   if (hasFileContents && outputFiles.length > 0) {
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
