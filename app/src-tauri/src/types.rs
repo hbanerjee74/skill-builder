@@ -40,6 +40,13 @@ pub enum MarketplacePluginSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceRegistry {
+    pub name: String,
+    pub source_url: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub anthropic_api_key: Option<String>,
     pub workspace_path: Option<String>,
@@ -67,6 +74,8 @@ pub struct AppSettings {
     pub github_user_email: Option<String>,
     #[serde(default)]
     pub marketplace_url: Option<String>,
+    #[serde(default)]
+    pub marketplace_registries: Vec<MarketplaceRegistry>,
     #[serde(default = "default_max_dimensions")]
     pub max_dimensions: u32,
     #[serde(default)]
@@ -98,6 +107,7 @@ impl Default for AppSettings {
             github_user_avatar: None,
             github_user_email: None,
             marketplace_url: None,
+            marketplace_registries: vec![],
             max_dimensions: 5,
             industry: None,
             function_role: None,
@@ -616,6 +626,7 @@ mod tests {
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
+        assert!(settings.marketplace_registries.is_empty());
         assert!(settings.industry.is_none());
         assert!(settings.function_role.is_none());
         assert!(settings.dashboard_view_mode.is_none());
@@ -638,6 +649,11 @@ mod tests {
             github_user_avatar: Some("https://avatars.githubusercontent.com/u/12345".to_string()),
             github_user_email: Some("test@example.com".to_string()),
             marketplace_url: Some("https://github.com/my-org/skills".to_string()),
+            marketplace_registries: vec![MarketplaceRegistry {
+                name: "Test".to_string(),
+                source_url: "https://github.com/owner/repo".to_string(),
+                enabled: true,
+            }],
             max_dimensions: 5,
             industry: Some("Financial Services".to_string()),
             function_role: Some("Analytics Engineer".to_string()),
@@ -666,6 +682,13 @@ mod tests {
             deserialized.marketplace_url.as_deref(),
             Some("https://github.com/my-org/skills")
         );
+        assert_eq!(deserialized.marketplace_registries.len(), 1);
+        assert_eq!(deserialized.marketplace_registries[0].name, "Test");
+        assert_eq!(
+            deserialized.marketplace_registries[0].source_url,
+            "https://github.com/owner/repo"
+        );
+        assert!(deserialized.marketplace_registries[0].enabled);
         assert_eq!(
             deserialized.industry.as_deref(),
             Some("Financial Services")
@@ -689,6 +712,7 @@ mod tests {
         assert!(settings.github_user_avatar.is_none());
         assert!(settings.github_user_email.is_none());
         assert!(settings.marketplace_url.is_none());
+        assert!(settings.marketplace_registries.is_empty());
 
         // Simulates loading settings that still have the old verbose_logging boolean field
         let json_old = r#"{"anthropic_api_key":"sk-test","workspace_path":"/w","preferred_model":"sonnet","verbose_logging":true,"extended_context":false,"splash_shown":false}"#;
