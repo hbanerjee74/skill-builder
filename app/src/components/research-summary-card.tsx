@@ -32,6 +32,7 @@ interface ResearchSummaryCardProps {
   editable?: boolean;
   onClarificationsChange?: (data: ClarificationsFile) => void;
   onClarificationsContinue?: () => void;
+  onReset?: () => void;
   saveStatus?: SaveStatus;
   evaluating?: boolean;
 }
@@ -103,6 +104,7 @@ export function ResearchSummaryCard({
   editable,
   onClarificationsChange,
   onClarificationsContinue,
+  onReset,
   saveStatus,
   evaluating,
 }: ResearchSummaryCardProps) {
@@ -303,6 +305,7 @@ export function ResearchSummaryCard({
           data={clarificationsData}
           onChange={editable && onClarificationsChange ? onClarificationsChange : () => {}}
           onContinue={editable ? onClarificationsContinue : undefined}
+          onReset={editable ? onReset : undefined}
           readOnly={!editable}
           saveStatus={editable ? saveStatus : undefined}
           evaluating={editable ? evaluating : undefined}

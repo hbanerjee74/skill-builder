@@ -43,6 +43,7 @@ interface ClarificationsEditorProps {
   onChange: (updated: ClarificationsFile) => void;
   onReload?: () => void;
   onContinue?: () => void;
+  onReset?: () => void;
   readOnly?: boolean;
   filePath?: string;
   saveStatus?: SaveStatus;
@@ -56,6 +57,7 @@ export function ClarificationsEditor({
   onChange,
   onReload,
   onContinue,
+  onReset,
   readOnly = false,
   filePath,
   saveStatus = "idle",
@@ -170,6 +172,12 @@ export function ClarificationsEditor({
       <div className="flex shrink-0 items-center justify-between border-t px-6 py-3">
         <SaveIndicator status={saveStatus} />
         <div className="flex items-center gap-2">
+          {onReset && (
+            <Button variant="outline" size="sm" onClick={onReset}>
+              <RotateCcw className="size-3.5" />
+              Re-run Research
+            </Button>
+          )}
           {onReload && (
             <Button variant="outline" size="sm" onClick={onReload}>
               <RotateCcw className="mr-1.5 size-3" />

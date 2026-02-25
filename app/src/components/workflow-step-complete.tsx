@@ -35,6 +35,7 @@ interface WorkflowStepCompleteProps {
   clarificationsData?: ClarificationsFile | null;
   onClarificationsChange?: (data: ClarificationsFile) => void;
   onClarificationsContinue?: () => void;
+  onReset?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
 }
@@ -102,6 +103,7 @@ export function WorkflowStepComplete({
   clarificationsData: controlledClarData,
   onClarificationsChange,
   onClarificationsContinue,
+  onReset,
   saveStatus,
   evaluating,
 }: WorkflowStepCompleteProps) {
@@ -281,6 +283,7 @@ export function WorkflowStepComplete({
                 editable
                 onClarificationsChange={onClarificationsChange}
                 onClarificationsContinue={onClarificationsContinue}
+                onReset={onReset}
                 saveStatus={saveStatus}
                 evaluating={evaluating}
               />
@@ -335,6 +338,7 @@ export function WorkflowStepComplete({
               data={controlledClarData ?? clarOnlyData}
               onChange={onClarificationsChange ?? (() => {})}
               onContinue={onClarificationsContinue}
+              onReset={onReset}
               saveStatus={saveStatus}
               evaluating={evaluating}
             />

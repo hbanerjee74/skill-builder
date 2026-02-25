@@ -884,6 +884,7 @@ export default function WorkflowPage() {
         clarificationsData={clarificationsData}
         onClarificationsChange={handleClarificationsChange}
         onClarificationsContinue={() => handleReviewContinue()}
+        onReset={!reviewMode && stepConfig?.clarificationsEditable ? () => setResetTarget(0) : undefined}
         saveStatus={saveStatus}
         evaluating={!!gateLoading}
       />
