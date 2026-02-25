@@ -424,7 +424,7 @@ export default function GitHubImportDialog({
   }
 
   const isMandatoryMissing = editForm
-    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.version.trim() || (mode !== 'settings-skills' && !editForm.purpose.trim())
+    ? !editForm.name.trim() || !editForm.description.trim() || !editForm.version.trim()
     : false
 
   // settings-skills: purpose conflict blocks import
@@ -645,33 +645,6 @@ export default function GitHubImportDialog({
                   />
                   {!editForm.description.trim() && (
                     <p className="text-xs text-destructive">Description is required</p>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="edit-purpose">
-                    Purpose <span className="text-destructive">*</span>
-                  </Label>
-                  <Select
-                    value={editForm.purpose}
-                    onValueChange={(v) => updateField("purpose", v)}
-                  >
-                    <SelectTrigger
-                      id="edit-purpose"
-                      className={!editForm.purpose.trim() ? "border-destructive focus-visible:ring-destructive" : ""}
-                    >
-                      <SelectValue placeholder="Select purpose" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PURPOSES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {PURPOSE_LABELS[t]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!editForm.purpose.trim() && (
-                    <p className="text-xs text-destructive">Purpose is required</p>
                   )}
                 </div>
 
