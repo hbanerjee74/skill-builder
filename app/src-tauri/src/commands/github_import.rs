@@ -953,46 +953,59 @@ pub struct MarketplaceImportResult {
     pub error: Option<String>,
 }
 
-/// Import one or more skills from the configured marketplace URL into the Skill Library.
+/// Import one or more skills from a marketplace registry into the Skill Library.
+/// `source_url` is the registry URL the caller is operating on (caller already knows which registry).
 /// Each successfully imported skill gets a `workflow_runs` row with `source='marketplace'`.
 #[tauri::command]
 pub async fn import_marketplace_to_library(
     db: tauri::State<'_, Db>,
+    source_url: String,
     skill_paths: Vec<String>,
     metadata_overrides: Option<std::collections::HashMap<String, crate::types::SkillMetadataOverride>>,
 ) -> Result<Vec<MarketplaceImportResult>, String> {
     log::info!(
-        "[import_marketplace_to_library] importing {} skills from marketplace (with_overrides={})",
+        "[import_marketplace_to_library] importing {} skills from {} (with_overrides={})",
         skill_paths.len(),
+        source_url,
         metadata_overrides.is_some()
     );
 
     // Read settings
-    let (marketplace_url, workspace_path, skills_path, token) = {
+    let (workspace_path, skills_path, token) = {
         let conn = db.0.lock().map_err(|e| {
             log::error!("[import_marketplace_to_library] failed to acquire DB lock: {}", e);
             e.to_string()
         })?;
-        let settings = crate::db::read_settings_hydrated(&conn)?;
-        let url = settings
-            .marketplace_url
-            .ok_or_else(|| "Marketplace URL not configured. Set it in Settings.".to_string())?;
-        let wp = settings
-            .workspace_path
-            .ok_or_else(|| "Workspace path not initialized".to_string())?;
-        let sp = settings
-            .skills_path
-            .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
-        (url, wp, sp, settings.github_oauth_token.clone())
+        let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
+            log::error!("[import_marketplace_to_library] failed to read settings: {}", e);
+            e
+        })?;
+        let wp = settings.workspace_path.ok_or_else(|| {
+            let msg = "Workspace path not initialized".to_string();
+            log::error!("[import_marketplace_to_library] {}", msg);
+            msg
+        })?;
+        let sp = settings.skills_path.ok_or_else(|| {
+            let msg = "Skills path not configured. Set it in Settings.".to_string();
+            log::error!("[import_marketplace_to_library] {}", msg);
+            msg
+        })?;
+        (wp, sp, settings.github_oauth_token.clone())
     };
 
-    // Parse the marketplace URL into owner/repo/branch
-    let repo_info = parse_github_url_inner(&marketplace_url)?;
+    // Parse the registry URL into owner/repo/branch
+    let repo_info = parse_github_url_inner(&source_url).map_err(|e| {
+        log::error!("[import_marketplace_to_library] failed to parse source_url '{}': {}", source_url, e);
+        e
+    })?;
     let owner = &repo_info.owner;
     let repo = &repo_info.repo;
 
     let client = build_github_client(token.as_deref());
-    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await?;
+    let (branch, tree) = fetch_repo_tree(&client, owner, repo, &repo_info.branch).await.map_err(|e| {
+        log::error!("[import_marketplace_to_library] failed to fetch repo tree for {}/{}: {}", owner, repo, e);
+        e
+    })?;
 
     let skills_dir = Path::new(&skills_path);
     let mut results: Vec<MarketplaceImportResult> = Vec::new();

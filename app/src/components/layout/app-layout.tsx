@@ -58,7 +58,7 @@ async function checkForMarketplaceUpdates(
     if (cancelledRef.current) return null;
 
     if (settings.auto_update) {
-      await handleAutoUpdate(library, workspace, info, cancelledRef);
+      await handleAutoUpdate(library, workspace, sourceUrl, info, cancelledRef);
     } else {
       showManualUpdateToasts(library, workspace, router);
     }
@@ -77,6 +77,7 @@ async function checkForMarketplaceUpdates(
 async function handleAutoUpdate(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
+  sourceUrl: string,
   info: { owner: string; repo: string; branch: string },
   cancelledRef: { current: boolean },
 ): Promise<void> {
@@ -88,7 +89,7 @@ async function handleAutoUpdate(
 
   await Promise.all([
     libFiltered.length > 0
-      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path)).catch((err) =>
+      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path), sourceUrl).catch((err) =>
           console.warn("[app-layout] Auto-update library failed:", err)
         )
       : Promise.resolve(),

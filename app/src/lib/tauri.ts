@@ -388,8 +388,8 @@ export const setWorkspaceSkillPurpose = (skillId: string, purpose: string | null
 
 // --- Marketplace Import ---
 
-export const importMarketplaceToLibrary = (skillPaths: string[], metadataOverrides?: Record<string, SkillMetadataOverride>) =>
-  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { skillPaths, metadataOverrides: metadataOverrides ?? null })
+export const importMarketplaceToLibrary = (skillPaths: string[], sourceUrl: string, metadataOverrides?: Record<string, SkillMetadataOverride>) =>
+  invoke<MarketplaceImportResult[]>("import_marketplace_to_library", { sourceUrl, skillPaths, metadataOverrides: metadataOverrides ?? null })
 
 export const checkMarketplaceUpdates = (
   owner: string,

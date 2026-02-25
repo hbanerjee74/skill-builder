@@ -31,7 +31,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { parseGitHubUrl, listGitHubSkills, importGitHubSkills, importMarketplaceToLibrary, listWorkspaceSkills, getDashboardSkillNames, listSkills, checkSkillCustomized } from "@/lib/tauri"
 import type { WorkspaceSkillImportRequest } from "@/lib/tauri"
 import type { AvailableSkill, GitHubRepoInfo, SkillMetadataOverride, SkillSummary, WorkspaceSkill, MarketplaceRegistry } from "@/lib/types"
-import { PURPOSES, PURPOSE_LABELS, PURPOSE_OPTIONS } from "@/lib/types"
+import { PURPOSE_OPTIONS } from "@/lib/types"
 import { useSettingsStore } from "@/stores/settings-store"
 
 /**
@@ -362,7 +362,7 @@ export default function GitHubImportDialog({
         disable_model_invocation: form.disable_model_invocation,
       }
       console.log(`[github-import] calling import_marketplace_to_library for "${skillName}"`)
-      const results = await importMarketplaceToLibrary([skill.path], { [skill.path]: metadataOverride })
+      const results = await importMarketplaceToLibrary([skill.path], activeTabRef.current, { [skill.path]: metadataOverride })
       console.log(`[github-import] import_marketplace_to_library result:`, results)
       if (!handleMarketplaceResult(skill.path, results)) return
       setSkillState(skill.path, "imported")

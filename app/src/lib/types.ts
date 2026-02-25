@@ -41,7 +41,6 @@ export interface AppSettings {
   github_user_login: string | null
   github_user_avatar: string | null
   github_user_email: string | null
-  marketplace_url: string | null
   marketplace_registries: MarketplaceRegistry[]
   marketplace_initialized: boolean
   max_dimensions: number
@@ -276,7 +275,7 @@ export interface AvailableSkill {
 export interface SkillMetadataOverride {
   name: string
   description: string
-  purpose: string
+  purpose?: string | null
   version?: string | null
   model?: string | null
   argument_hint?: string | null
