@@ -35,6 +35,7 @@ export function SkillsLibraryTab() {
   } = useImportedSkillsStore()
 
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
+  const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const [showGitHubImport, setShowGitHubImport] = useState(false)
   // Track which skill's purpose popover is open
@@ -148,8 +149,8 @@ export function SkillsLibraryTab() {
           variant="outline"
           className="w-36"
           onClick={() => setShowGitHubImport(true)}
-          disabled={!marketplaceRegistries.some(r => r.enabled)}
-          title={!marketplaceRegistries.some(r => r.enabled) ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
+          disabled={!hasEnabledRegistry}
+          title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
         >
           <Github className="size-4" />
           Marketplace

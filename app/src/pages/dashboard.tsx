@@ -78,12 +78,13 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const skillsPath = useSettingsStore((s) => s.skillsPath)
   const marketplaceRegistries = useSettingsStore((s) => s.marketplaceRegistries)
+  const hasEnabledRegistry = marketplaceRegistries.some(r => r.enabled)
   const savedViewMode = useSettingsStore((s) => s.dashboardViewMode) as ViewMode | null
   const [viewMode, setViewMode] = useState<ViewMode>(savedViewMode ?? "grid")
   const viewModeInitialized = useRef(false)
   const lockedSkills = useSkillStore((s) => s.lockedSkills)
   const setLockedSkills = useSkillStore((s) => s.setLockedSkills)
-  const existingSkillNames = skills.map((s) => s.name)
+  const existingSkillNames = useMemo(() => skills.map((s) => s.name), [skills])
 
   const refreshLocks = useCallback(async () => {
     try {
@@ -468,8 +469,8 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             onClick={() => setSkillLibraryMarketplaceOpen(true)}
-            disabled={!marketplaceRegistries.some(r => r.enabled)}
-            title={!marketplaceRegistries.some(r => r.enabled) ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
+            disabled={!hasEnabledRegistry}
+            title={!hasEnabledRegistry ? "Enable a marketplace registry in Settings → Marketplace" : undefined}
           >
             <Github className="size-4" />
             Marketplace

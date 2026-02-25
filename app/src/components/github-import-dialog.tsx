@@ -138,6 +138,8 @@ type TabState = {
   repoInfo: GitHubRepoInfo | null
 }
 
+const EMPTY_TAB: TabState = { loading: false, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+
 export default function GitHubImportDialog({
   open,
   onOpenChange,
@@ -170,7 +172,7 @@ export default function GitHubImportDialog({
   activeTabRef.current = activeTab
 
   // Derived values from current tab
-  const currentTab: TabState = tabStates[activeTab] ?? { loading: false, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+  const currentTab: TabState = tabStates[activeTab] ?? EMPTY_TAB
   const loading = currentTab.loading
   const skills = currentTab.skills
   const error = currentTab.error
@@ -180,7 +182,7 @@ export default function GitHubImportDialog({
   function setSkillState(path: string, state: SkillState): void {
     const tabKey = activeTabRef.current
     setTabStates((prev) => {
-      const tab = prev[tabKey] ?? { loading: false, error: null, skills: [], skillStates: new Map(), repoInfo: null }
+      const tab = prev[tabKey] ?? EMPTY_TAB
       const newSkillStates = new Map(tab.skillStates).set(path, state)
       return { ...prev, [tabKey]: { ...tab, skillStates: newSkillStates } }
     })
@@ -263,12 +265,11 @@ export default function GitHubImportDialog({
         }
       }
 
-      const finalSkills = available.length === 0 ? [] : available
       const finalError = available.length === 0 ? "No skills found in this repository." : null
 
       setTabStates(prev => ({
         ...prev,
-        [tabKey]: { loading: false, error: finalError, skills: finalSkills, skillStates: preStates, repoInfo: info }
+        [tabKey]: { loading: false, error: finalError, skills: available, skillStates: preStates, repoInfo: info }
       }))
     } catch (err) {
       console.error("[github-import] Failed to browse registry:", err)
@@ -283,7 +284,7 @@ export default function GitHubImportDialog({
         }
       }))
     }
-  }, [registries, typeFilter, workspacePath, mode])
+  }, [typeFilter, workspacePath, mode])
 
   useEffect(() => {
     if (open && registries.length > 0) {
@@ -562,14 +563,6 @@ export default function GitHubImportDialog({
             </ScrollArea>
           </div>
         </>
-      )
-    }
-
-    if (!loading && !error && skills.length === 0) {
-      return (
-        <div className="flex flex-col items-center gap-3 py-8">
-          <p className="text-sm text-muted-foreground">No skills found in this repository.</p>
-        </div>
       )
     }
 

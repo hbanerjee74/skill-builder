@@ -13,13 +13,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { getSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
-import type { AppSettings, DiscoveredSkill, OrphanSkill } from "@/lib/types";
-
-interface SkillUpdateInfo {
-  name: string;
-  path: string;
-  version: string;
-}
+import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
 
 /** Filter out customized skills, returning only those safe to auto-update. */
 async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpdateInfo[]> {
