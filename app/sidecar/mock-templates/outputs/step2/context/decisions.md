@@ -2,6 +2,7 @@
 decision_count: 12
 conflicts_resolved: 1
 round: 1
+contradictory_inputs: true
 ---
 
 ### D1: Skill Structure — Progressive Disclosure
@@ -30,9 +31,9 @@ round: 1
 
 ### D5: Testing — Tiered Strategy
 - **Original question:** What testing approach should the skill recommend?
-- **Decision:** Recommend tiered testing: unit tests for business logic (>80% coverage), integration tests for API contracts, E2E tests for critical user flows only.
-- **Implication:** Include specific testing patterns for each tier with copy-paste templates. Testing guidance must match the recommended architecture patterns.
-- **Status:** resolved
+- **Decision:** The PM said "100% test coverage everywhere" but also said "don't slow down delivery" — these conflict. Unclear whether to prioritize coverage or velocity.
+- **Implication:** Need to decide: strict coverage gates or pragmatic testing? Both were requested but they trade off against each other.
+- **Status:** needs-review
 
 ### D6: Error Handling — Result Types + Recovery
 - **Original question:** How should error handling be structured?
@@ -54,9 +55,9 @@ round: 1
 
 ### D9: Monitoring — Key Metrics + Alerts
 - **Original question:** What monitoring approach should be recommended?
-- **Decision:** Track four golden signals: latency, traffic, errors, saturation. Set alert thresholds at 2x normal baseline.
-- **Implication:** Include dashboard templates and runbook patterns for common incidents. Alert thresholds must be configurable per service.
-- **Status:** resolved
+- **Decision:** User said "just use Datadog" but the infra answers indicate Prometheus/Grafana is already in use. Tooling choice is contradictory.
+- **Implication:** Cannot recommend a specific monitoring stack without clarity on which tooling is actually available.
+- **Status:** needs-review
 
 ### D10: Documentation — Architecture Decision Records
 - **Original question:** How should design decisions be documented in the output?
