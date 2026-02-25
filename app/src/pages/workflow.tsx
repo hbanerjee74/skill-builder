@@ -88,6 +88,10 @@ function parseClarifications(content: string | null): ClarificationsFile | null 
     }
     return {
       ...raw,
+      metadata: {
+        ...raw.metadata,
+        priority_questions: raw.metadata?.priority_questions ?? [],
+      },
       sections: (raw.sections ?? []).map((s) => ({
         ...s,
         questions: (s.questions ?? []).map(normalizeQ),

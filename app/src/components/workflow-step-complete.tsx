@@ -218,6 +218,10 @@ export function WorkflowStepComplete({
       }
       clarData = {
         ...raw,
+        metadata: {
+          ...raw.metadata,
+          priority_questions: raw.metadata?.priority_questions ?? [],
+        },
         sections: (raw.sections ?? []).map((s) => ({
           ...s,
           questions: (s.questions ?? []).map(normalizeQ),
@@ -398,6 +402,10 @@ function FileContentRenderer({ file, content }: { file: string; content: string 
       }
       const data: ClarificationsFile = {
         ...raw,
+        metadata: {
+          ...raw.metadata,
+          priority_questions: raw.metadata?.priority_questions ?? [],
+        },
         sections: (raw.sections ?? []).map((s) => ({
           ...s,
           questions: (s.questions ?? []).map(normalizeQ),
