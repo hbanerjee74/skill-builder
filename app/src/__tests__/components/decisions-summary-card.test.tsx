@@ -182,11 +182,21 @@ describe("serializeDecisions — round-trip", () => {
     expect(serialized).toContain("round: 1");
   });
 
-  it("preserves contradictory_inputs flag", () => {
+  it("upgrades contradictory_inputs: true → revised on serialize (user acknowledgement)", () => {
     const decisions = parseDecisions(contradictoryDecisionsMd);
     const rawFm = contradictoryDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
     const serialized = serializeDecisions(decisions, rawFm);
-    expect(serialized).toContain("contradictory_inputs: true");
+    expect(serialized).toContain("contradictory_inputs: revised");
+    expect(serialized).not.toContain("contradictory_inputs: true");
+  });
+
+  it("leaves contradictory_inputs: revised unchanged on re-serialize", () => {
+    const revisedContent = contradictoryDecisionsMd.replace("contradictory_inputs: true", "contradictory_inputs: revised");
+    const decisions = parseDecisions(revisedContent);
+    const rawFm = revisedContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+    const serialized = serializeDecisions(decisions, rawFm);
+    expect(serialized).toContain("contradictory_inputs: revised");
+    expect(serialized).not.toContain("contradictory_inputs: true");
   });
 });
 
@@ -247,6 +257,31 @@ describe("DecisionsSummaryCard — inline editing", () => {
     const textareas = screen.queryAllByRole("textbox") as HTMLTextAreaElement[];
     const resolvedText = "Two levels — parent company and subsidiary";
     expect(textareas.every((ta) => ta.value !== resolvedText)).toBe(true);
+  });
+
+  it("shows revised banner and hides contradictions banner after editing", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisionsMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    // Before edit: contradictions banner visible, revised banner not
+    expect(screen.getByText(/Contradictory inputs detected/)).toBeInTheDocument();
+    expect(screen.queryByText(/Contradictions reviewed/)).not.toBeInTheDocument();
+
+    // Edit a needs-review textarea
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR instead.");
+
+    // After edit: revised banner visible, contradictions banner gone
+    expect(screen.queryByText(/Contradictory inputs detected/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Contradictions reviewed/)).toBeInTheDocument();
   });
 
   it("calls onDecisionsChange when editing decision text", async () => {

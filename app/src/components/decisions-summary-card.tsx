@@ -7,7 +7,7 @@ interface DecisionFrontmatter {
   decision_count: number;
   conflicts_resolved: number;
   round: number;
-  contradictory_inputs?: boolean;
+  contradictory_inputs?: true | "revised";
 }
 
 export interface Decision {
@@ -41,7 +41,10 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
       case "decision_count": defaults.decision_count = parseInt(value) || 0; break;
       case "conflicts_resolved": defaults.conflicts_resolved = parseInt(value) || 0; break;
       case "round": defaults.round = parseInt(value) || 1; break;
-      case "contradictory_inputs": defaults.contradictory_inputs = value === "true"; break;
+      case "contradictory_inputs":
+        if (value === "true") defaults.contradictory_inputs = true;
+        else if (value === "revised") defaults.contradictory_inputs = "revised";
+        break;
     }
   }
   return defaults;
@@ -85,8 +88,15 @@ export function parseDecisions(content: string): Decision[] {
   return decisions;
 }
 
-/** Serialize Decision[] back to decisions.md format, preserving the original frontmatter verbatim. */
+/** Serialize Decision[] back to decisions.md format.
+ *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
+ *  to signal the user has reviewed and accepted the flagged decisions.
+ */
 export function serializeDecisions(decisions: Decision[], rawFrontmatter: string): string {
+  const updatedFm = rawFrontmatter.replace(
+    /contradictory_inputs:\s*true/,
+    "contradictory_inputs: revised"
+  );
   const blocks = decisions.map((d) =>
     [
       `### ${d.id}: ${d.title}`,
@@ -96,7 +106,7 @@ export function serializeDecisions(decisions: Decision[], rawFrontmatter: string
       `- **Status:** ${d.status}`,
     ].join("\n")
   );
-  return `${rawFrontmatter}\n\n${blocks.join("\n\n")}\n`;
+  return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
 }
 
 function extractRawFrontmatter(content: string): string {
@@ -125,18 +135,27 @@ export function DecisionsSummaryCard({
   const rawFrontmatter = extractRawFrontmatter(decisionsContent);
 
   const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+  // Track whether the user has made any edit this session — used to show revised banner immediately
+  const [wasEdited, setWasEdited] = useState(false);
 
   useEffect(() => {
     setDecisions(parseDecisions(decisionsContent));
+    setWasEdited(false);
   }, [decisionsContent]);
 
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
   const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
 
+  // Effective contradictory state: upgrade true → "revised" once the user edits
+  const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
+    ? "revised"
+    : fm.contradictory_inputs;
+
   function handleDecisionChange(updated: Decision) {
     const next = decisions.map((d) => (d.id === updated.id ? updated : d));
     setDecisions(next);
+    setWasEdited(true);
     onDecisionsChange?.(serializeDecisions(next, rawFrontmatter));
   }
 
@@ -168,15 +187,27 @@ export function DecisionsSummaryCard({
         </div>
 
         {/* Contradictory inputs banner */}
-        {fm.contradictory_inputs && (
+        {effectiveContradictory === true && (
           <div className="flex items-center gap-2 border-b bg-destructive/10 px-5 py-2 text-xs text-destructive font-medium">
             <AlertTriangle className="size-3.5" />
             Contradictory inputs detected — some answers are logically incompatible. Review decisions marked "needs-review" before generating the skill.
           </div>
         )}
+        {effectiveContradictory === "revised" && (
+          <div
+            className="flex items-center gap-2 border-b px-5 py-2 text-xs font-medium"
+            style={{
+              background: "color-mix(in oklch, var(--color-seafoam), transparent 90%)",
+              color: "var(--color-seafoam)",
+            }}
+          >
+            <CheckCircle2 className="size-3.5" />
+            Contradictions reviewed — skill will be generated with your edits.
+          </div>
+        )}
 
-        {/* needs-review editing hint */}
-        {allowEdit && needsReviewCount > 0 && (
+        {/* needs-review editing hint — only shown before user has edited */}
+        {allowEdit && needsReviewCount > 0 && effectiveContradictory !== "revised" && (
           <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
             <AlertTriangle className="size-3.5" />
             {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save automatically.
@@ -233,10 +264,15 @@ export function DecisionsSummaryCard({
               </span>
               <span className="text-xs text-muted-foreground">reconciled</span>
             </div>
-            {fm.contradictory_inputs ? (
+            {effectiveContradictory === true ? (
               <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
                 <AlertTriangle className="size-3" />
                 Contradictions — review required
+              </div>
+            ) : effectiveContradictory === "revised" ? (
+              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-seafoam)" }}>
+                <CheckCircle2 className="size-3" />
+                Reviewed — proceeding with edits
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">No unresolvable contradictions</p>

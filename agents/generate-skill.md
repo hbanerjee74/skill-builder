@@ -60,6 +60,8 @@ contradictory_inputs: true
 The user's answers contain unresolvable contradictions. See `decisions.md` for details. Resolve the contradictions before generating the skill.
 ```
 
+**User-revised contradictions** — if `contradictory_inputs: revised` in decisions.md, the user has reviewed the flagged decisions and edited them directly. Treat `decisions.md` as the authoritative resolved source and generate the skill normally. Do not write a stub.
+
 ## Structure Pattern
 
 Determine the pattern from the purpose in user-context.md (per Skill Builder Practices):
