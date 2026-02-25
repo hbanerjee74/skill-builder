@@ -34,7 +34,7 @@
     "disk_path": "/tmp/skills/skill-builder-practices",
     "imported_at": "2000-01-01T00:00:00Z",
     "is_bundled": true,
-    "purpose": null,
+    "purpose": "skill-building",
     "version": null,
     "model": null,
     "argument_hint": null,

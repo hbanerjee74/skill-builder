@@ -793,10 +793,10 @@ export default function GitHubImportDialog({
                     onValueChange={(v) => updateField("settings_purpose", v === "__none__" ? null : v)}
                   >
                     <SelectTrigger id="si-purpose">
-                      <SelectValue placeholder="No purpose" />
+                      <SelectValue placeholder="General Purpose" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">No purpose</SelectItem>
+                      <SelectItem value="__none__">General Purpose</SelectItem>
                       {PURPOSE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
