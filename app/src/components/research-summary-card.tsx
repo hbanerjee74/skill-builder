@@ -1,5 +1,7 @@
-import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Clock, DollarSign, Layers, MessageCircleQuestion, StickyNote, AlertTriangle, ChevronRight } from "lucide-react";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
+import type { SaveStatus } from "@/components/clarifications-editor";
 import { type ClarificationsFile, getTotalCounts } from "@/lib/clarifications-types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -25,6 +27,12 @@ interface ResearchSummaryCardProps {
   clarificationsData: ClarificationsFile;
   duration?: number;
   cost?: number;
+  /** When true, make the research plan collapsible (default collapsed) and clarifications editable */
+  editable?: boolean;
+  onClarificationsChange?: (data: ClarificationsFile) => void;
+  onClarificationsContinue?: () => void;
+  saveStatus?: SaveStatus;
+  evaluating?: boolean;
 }
 
 // ─── Parser ───────────────────────────────────────────────────────────────────
@@ -99,7 +107,13 @@ export function ResearchSummaryCard({
   clarificationsData,
   duration,
   cost,
+  editable,
+  onClarificationsChange,
+  onClarificationsContinue,
+  saveStatus,
+  evaluating,
 }: ResearchSummaryCardProps) {
+  const [planExpanded, setPlanExpanded] = useState(!editable);
   const plan = parseResearchPlan(researchPlan);
   const { answered, total } = getTotalCounts(clarificationsData);
   const meta = clarificationsData.metadata;
@@ -110,34 +124,45 @@ export function ResearchSummaryCard({
     ? Math.round((plan.dimensionsSelected / plan.dimensionsEvaluated) * 100)
     : 0;
 
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Summary Card */}
-      <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-muted/30">
-          <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
-          <span className="text-sm font-semibold tracking-tight text-foreground">
-            Research Complete
-          </span>
-          <div className="flex-1" />
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {duration !== undefined && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3" />
-                {formatDuration(duration)}
-              </span>
-            )}
-            {cost !== undefined && cost > 0 && (
-              <span className="flex items-center gap-1">
-                <DollarSign className="size-3" />
-                ${cost.toFixed(4)}
-              </span>
-            )}
-          </div>
+  // Research plan summary card content
+  const summaryCard = (
+    <div className="rounded-lg border shadow-sm overflow-hidden">
+      {/* Header — clickable when collapsible */}
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left"
+        onClick={() => editable && setPlanExpanded((prev) => !prev)}
+        style={{ cursor: editable ? "pointer" : "default" }}
+      >
+        {editable && (
+          <ChevronRight
+            className="size-4 shrink-0 text-muted-foreground transition-transform duration-150"
+            style={{ transform: planExpanded ? "rotate(90deg)" : undefined }}
+          />
+        )}
+        <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
+        <span className="text-sm font-semibold tracking-tight text-foreground">
+          Research Complete
+        </span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {duration !== undefined && (
+            <span className="flex items-center gap-1">
+              <Clock className="size-3" />
+              {formatDuration(duration)}
+            </span>
+          )}
+          {cost !== undefined && cost > 0 && (
+            <span className="flex items-center gap-1">
+              <DollarSign className="size-3" />
+              ${cost.toFixed(4)}
+            </span>
+          )}
         </div>
+      </button>
 
-        {/* Stats Grid */}
+      {/* Stats Grid — collapsible when editable */}
+      {planExpanded && (
         <div className="grid grid-cols-3 divide-x">
           {/* Dimensions Column */}
           <div className="p-4">
@@ -272,11 +297,25 @@ export function ResearchSummaryCard({
             )}
           </div>
         </div>
-      </div>
+      )}
+    </div>
+  );
 
-      {/* Clarifications — always visible */}
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Summary Card */}
+      {summaryCard}
+
+      {/* Clarifications — editable or read-only */}
       <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
-        <ClarificationsEditor data={clarificationsData} onChange={() => {}} readOnly />
+        <ClarificationsEditor
+          data={clarificationsData}
+          onChange={editable && onClarificationsChange ? onClarificationsChange : () => {}}
+          onContinue={editable ? onClarificationsContinue : undefined}
+          readOnly={!editable}
+          saveStatus={editable ? saveStatus : undefined}
+          evaluating={editable ? evaluating : undefined}
+        />
       </div>
     </div>
   );

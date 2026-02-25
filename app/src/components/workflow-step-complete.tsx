@@ -102,11 +102,11 @@ export function WorkflowStepComplete({
   skillName,
   workspacePath,
   skillsPath,
-  clarificationsEditable: _clarificationsEditable,
-  onClarificationsChange: _onClarificationsChange,
-  onClarificationsContinue: _onClarificationsContinue,
-  saveStatus: _saveStatus,
-  evaluating: _evaluating,
+  clarificationsEditable,
+  onClarificationsChange,
+  onClarificationsContinue,
+  saveStatus,
+  evaluating,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -262,25 +262,114 @@ export function WorkflowStepComplete({
             <AgentStatsBar runs={agentRuns} />
           </div>
         )}
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="pr-4">
-            <ResearchSummaryCard
-              researchPlan={researchPlanContent!}
-              clarificationsData={clarData}
-              duration={!reviewMode ? duration : undefined}
-              cost={displayCost}
-            />
+        {clarificationsEditable ? (
+          /* Editable mode: ResearchSummaryCard with collapsible plan + editable clarifications.
+             The ClarificationsEditor's Continue button handles advancement — no StepActionBar. */
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div className="pr-4">
+              <ResearchSummaryCard
+                researchPlan={researchPlanContent!}
+                clarificationsData={clarData}
+                duration={!reviewMode ? duration : undefined}
+                cost={displayCost}
+                editable
+                onClarificationsChange={onClarificationsChange}
+                onClarificationsContinue={onClarificationsContinue}
+                saveStatus={saveStatus}
+                evaluating={evaluating}
+              />
+            </div>
           </div>
-        </ScrollArea>
-        <StepActionBar
-          isLastStep={isLastStep}
-          reviewMode={reviewMode}
-          onRefine={onRefine}
-          onClose={onClose}
-          onNextStep={onNextStep}
-        />
+        ) : (
+          /* Read-only mode (review): show research plan expanded, clarifications read-only */
+          <>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="pr-4">
+                <ResearchSummaryCard
+                  researchPlan={researchPlanContent!}
+                  clarificationsData={clarData}
+                  duration={!reviewMode ? duration : undefined}
+                  cost={displayCost}
+                />
+              </div>
+            </ScrollArea>
+            <StepActionBar
+              isLastStep={isLastStep}
+              reviewMode={reviewMode}
+              onRefine={onRefine}
+              onClose={onClose}
+              onNextStep={onNextStep}
+            />
+          </>
+        )}
       </div>
     );
+  }
+
+  // Detailed research step: only clarifications.json (no research-plan.md)
+  const isClarificationsOnlyStep = !isResearchStep
+    && outputFiles.includes("context/clarifications.json")
+    && !outputFiles.includes("context/research-plan.md")
+    && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
+
+  if (isClarificationsOnlyStep) {
+    let clarOnlyData: ClarificationsFile | null = null;
+    try {
+      const raw = JSON.parse(clarificationsContent!) as ClarificationsFile;
+      function normalizeQ(q: Question): Question {
+        return { ...q, refinements: (q.refinements ?? []).map(normalizeQ) };
+      }
+      clarOnlyData = {
+        ...raw,
+        metadata: {
+          ...raw.metadata,
+          priority_questions: raw.metadata?.priority_questions ?? [],
+        },
+        sections: (raw.sections ?? []).map((s) => ({
+          ...s,
+          questions: (s.questions ?? []).map(normalizeQ),
+        })),
+        notes: raw.notes ?? [],
+      };
+    } catch {
+      // Invalid JSON — fall through to default renderer
+    }
+
+    if (clarOnlyData) {
+      return (
+        <div className="flex h-full flex-col gap-4 overflow-hidden">
+          {reviewMode && agentRuns.length > 0 && (
+            <div className="shrink-0">
+              <AgentStatsBar runs={agentRuns} />
+            </div>
+          )}
+          {clarificationsEditable ? (
+            /* Editable mode: ClarificationsEditor with edit props. Continue button handles advancement. */
+            <ClarificationsEditor
+              data={clarOnlyData}
+              onChange={onClarificationsChange ?? (() => {})}
+              onContinue={onClarificationsContinue}
+              saveStatus={saveStatus}
+              evaluating={evaluating}
+            />
+          ) : (
+            /* Read-only mode (review) */
+            <>
+              <div className="rounded-lg border shadow-sm min-h-0 flex-1" style={{ height: "min(600px, 60vh)" }}>
+                <ClarificationsEditor data={clarOnlyData} onChange={() => {}} readOnly />
+              </div>
+              <StepActionBar
+                isLastStep={isLastStep}
+                reviewMode={reviewMode}
+                onRefine={onRefine}
+                onClose={onClose}
+                onNextStep={onNextStep}
+              />
+            </>
+          )}
+        </div>
+      );
+    }
   }
 
   // Decisions step: show summary card when decisions.md is the output
