@@ -27,6 +27,12 @@ interface WorkflowStepCompleteProps {
   skillName?: string;
   workspacePath?: string;
   skillsPath?: string | null;
+  /** When true, show editable ClarificationsEditor on the completion screen */
+  clarificationsEditable?: boolean;
+  onClarificationsChange?: (data: ClarificationsFile) => void;
+  onClarificationsContinue?: () => void;
+  saveStatus?: "idle" | "dirty" | "saving" | "saved";
+  evaluating?: boolean;
 }
 
 function formatDuration(ms: number): string {
@@ -96,6 +102,11 @@ export function WorkflowStepComplete({
   skillName,
   workspacePath,
   skillsPath,
+  clarificationsEditable: _clarificationsEditable,
+  onClarificationsChange: _onClarificationsChange,
+  onClarificationsContinue: _onClarificationsContinue,
+  saveStatus: _saveStatus,
+  evaluating: _evaluating,
 }: WorkflowStepCompleteProps) {
   const [fileContents, setFileContents] = useState<Map<string, string>>(new Map());
   const [loadingFiles, setLoadingFiles] = useState(false);
