@@ -61,6 +61,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
   const elapsed = run.endTime ? run.endTime - elapsedOrigin : Date.now() - elapsedOrigin;
 
   const dot = statusDot[displayStatus];
+  const isFinished = displayStatus === "completed" || displayStatus === "error";
   const turnCount = run.numTurns ?? run.contextHistory.length;
 
   return (
@@ -114,7 +115,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
       )}
 
       {/* Token count -- only after completion */}
-      {run.tokenUsage && (displayStatus === "completed" || displayStatus === "error") && (
+      {run.tokenUsage && isFinished && (
         <>
           <Dot />
           <span className="text-xs font-mono tabular-nums text-muted-foreground/60">
@@ -124,7 +125,7 @@ export function AgentRunFooter({ agentId }: AgentRunFooterProps) {
       )}
 
       {/* Cost -- only after completion */}
-      {run.totalCost !== undefined && (displayStatus === "completed" || displayStatus === "error") && (
+      {run.totalCost !== undefined && isFinished && (
         <>
           <Dot />
           <span className="text-xs font-mono tabular-nums text-muted-foreground/60">

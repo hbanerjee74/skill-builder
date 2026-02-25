@@ -404,10 +404,8 @@ export function WorkflowStepComplete({
     const activeNotFound = activeContent === "__NOT_FOUND__";
 
     /** Display label for a file path: SKILL.md or references/foo.md */
-    const fileLabel = (f: string) => {
-      const stripped = f.startsWith("skill/") ? f.slice("skill/".length) : f;
-      return stripped;
-    };
+    const fileLabel = (f: string): string =>
+      f.startsWith("skill/") ? f.slice("skill/".length) : f;
 
     return (
       <div className="flex h-full flex-col gap-4 overflow-hidden">
