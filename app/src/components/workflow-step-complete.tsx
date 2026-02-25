@@ -206,6 +206,26 @@ export function WorkflowStepComplete({
     : undefined;
   const displayCost = reviewMode ? dbCost : cost;
 
+  // Autosave state for decisions editing — hoisted above all early returns to satisfy Rules of Hooks
+  const [decisionsEditContent, setDecisionsEditContent] = useState<string | null>(null);
+  const [decisionsEditorDirty, setDecisionsEditorDirty] = useState(false);
+  const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  useEffect(() => {
+    if (!decisionsEditorDirty || !decisionsEditContent || !skillsPath || !skillName || reviewMode) return;
+    setDecisionsSaveStatus("saving");
+    const timer = setTimeout(async () => {
+      try {
+        await writeFile(`${skillsPath}/${skillName}/context/decisions.md`, decisionsEditContent);
+        setDecisionsEditorDirty(false);
+        setDecisionsSaveStatus("saved");
+      } catch (err) {
+        console.error("Failed to save decisions.md:", err);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [decisionsEditContent, decisionsEditorDirty, skillsPath, skillName, reviewMode]);
+
   // Loading spinner — shown while files are being fetched (initial or re-fetch)
   if (loadingFiles) {
     return (
@@ -366,26 +386,6 @@ export function WorkflowStepComplete({
   const decisionsContent = fileContents.get("context/decisions.md");
   const isDecisionsStep = outputFiles.includes("context/decisions.md")
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
-
-  // Autosave state for decisions editing (only active when not in review mode)
-  const [decisionsEditContent, setDecisionsEditContent] = useState<string | null>(null);
-  const [decisionsEditorDirty, setDecisionsEditorDirty] = useState(false);
-  const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
-
-  useEffect(() => {
-    if (!decisionsEditorDirty || !decisionsEditContent || !skillsPath || !skillName || reviewMode) return;
-    setDecisionsSaveStatus("saving");
-    const timer = setTimeout(async () => {
-      try {
-        await writeFile(`${skillsPath}/${skillName}/context/decisions.md`, decisionsEditContent);
-        setDecisionsEditorDirty(false);
-        setDecisionsSaveStatus("saved");
-      } catch (err) {
-        console.error("Failed to save decisions.md:", err);
-      }
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [decisionsEditContent, decisionsEditorDirty, skillsPath, skillName, reviewMode]);
 
   if (isDecisionsStep) {
     // In review mode, derive duration from DB agent runs
