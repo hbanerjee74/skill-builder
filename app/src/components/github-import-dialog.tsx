@@ -465,7 +465,7 @@ export default function GitHubImportDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md border">
-            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground">
+            <div className="flex items-center gap-4 border-b bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground sticky top-0 z-10 rounded-t-md">
               <span className="flex-1">Name</span>
               <span className="w-20 shrink-0">Version</span>
               <span className="w-28 shrink-0">Status</span>
