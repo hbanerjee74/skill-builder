@@ -32,7 +32,7 @@ In **rewrite mode** (`/rewrite` in the prompt), rewrite an existing skill for co
 
 ## Guards
 
-Check `decisions.md` and `clarifications.json` before doing any work. Block if either condition is true:
+Check `decisions.md` before doing any work. If `contradictory_inputs: revised`, skip reading `clarifications.json` entirely — treat `decisions.md` as the authoritative resolved source and proceed directly to skill generation. Otherwise check both `decisions.md` and `clarifications.json` and block if either condition is true:
 
 **Scope recommendation** — if `metadata.scope_recommendation` is `true` in `clarifications.json` or `scope_recommendation: true` in `decisions.md`, write this stub to `SKILL.md` and return:
 
