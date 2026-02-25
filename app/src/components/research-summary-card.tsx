@@ -294,21 +294,38 @@ export function ResearchSummaryCard({
     </div>
   );
 
+  if (editable) {
+    return (
+      <div className="flex h-full flex-col gap-3">
+        {/* Summary Card — fixed height, collapses when toggled */}
+        <div className="shrink-0">{summaryCard}</div>
+
+        {/* Clarifications editor — fills remaining space */}
+        <div className="flex-1 min-h-0 rounded-lg border shadow-sm overflow-hidden">
+          <ClarificationsEditor
+            data={clarificationsData}
+            onChange={onClarificationsChange ?? (() => {})}
+            onContinue={onClarificationsContinue}
+            onReset={onReset}
+            saveStatus={saveStatus}
+            evaluating={evaluating}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {/* Summary Card */}
       {summaryCard}
 
-      {/* Clarifications — editable or read-only */}
+      {/* Clarifications — read-only, fixed height */}
       <div className="rounded-lg border shadow-sm" style={{ height: "min(600px, 60vh)" }}>
         <ClarificationsEditor
           data={clarificationsData}
-          onChange={editable && onClarificationsChange ? onClarificationsChange : () => {}}
-          onContinue={editable ? onClarificationsContinue : undefined}
-          onReset={editable ? onReset : undefined}
-          readOnly={!editable}
-          saveStatus={editable ? saveStatus : undefined}
-          evaluating={editable ? evaluating : undefined}
+          onChange={() => {}}
+          readOnly
         />
       </div>
     </div>

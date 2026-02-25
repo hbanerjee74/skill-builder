@@ -273,9 +273,8 @@ export function WorkflowStepComplete({
         {clarificationsEditable ? (
           /* Editable mode: ResearchSummaryCard with collapsible plan + editable clarifications.
              The ClarificationsEditor's Continue button handles advancement — no StepActionBar. */
-          <div className="min-h-0 flex-1 overflow-auto">
-            <div className="pr-4">
-              <ResearchSummaryCard
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <ResearchSummaryCard
                 researchPlan={researchPlanContent!}
                 clarificationsData={controlledClarData ?? clarData}
                 duration={!reviewMode ? duration : undefined}
@@ -287,7 +286,6 @@ export function WorkflowStepComplete({
                 saveStatus={saveStatus}
                 evaluating={evaluating}
               />
-            </div>
           </div>
         ) : (
           /* Read-only mode (review): show research plan expanded, clarifications read-only */
@@ -333,15 +331,17 @@ export function WorkflowStepComplete({
             </div>
           )}
           {clarificationsEditable ? (
-            /* Editable mode: ClarificationsEditor with edit props. Continue button handles advancement. */
-            <ClarificationsEditor
-              data={controlledClarData ?? clarOnlyData}
-              onChange={onClarificationsChange ?? (() => {})}
-              onContinue={onClarificationsContinue}
-              onReset={onReset}
-              saveStatus={saveStatus}
-              evaluating={evaluating}
-            />
+            /* Editable mode: ClarificationsEditor fills remaining space. */
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ClarificationsEditor
+                data={controlledClarData ?? clarOnlyData}
+                onChange={onClarificationsChange ?? (() => {})}
+                onContinue={onClarificationsContinue}
+                onReset={onReset}
+                saveStatus={saveStatus}
+                evaluating={evaluating}
+              />
+            </div>
           ) : (
             /* Read-only mode (review) */
             <>

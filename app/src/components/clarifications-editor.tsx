@@ -195,11 +195,6 @@ export function ClarificationsEditor({
                 <>
                   <ArrowRight className="size-3.5" />
                   Continue
-                  {!canContinue && (
-                    <span className="ml-1 text-[10px] opacity-70">
-                      ({mustUnanswered} required)
-                    </span>
-                  )}
                 </>
               )}
             </Button>
