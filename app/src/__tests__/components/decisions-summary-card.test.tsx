@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DecisionsSummaryCard } from "@/components/decisions-summary-card";
+import { DecisionsSummaryCard, parseDecisions, serializeDecisions } from "@/components/decisions-summary-card";
 
 // ─── Test Data ────────────────────────────────────────────────────────────────
 
@@ -148,6 +148,129 @@ describe("DecisionsSummaryCard — Decision Cards", () => {
   it("shows needs-review badge for contradictory decisions", () => {
     render(<DecisionsSummaryCard decisionsContent={contradictoryDecisionsMd} />);
     expect(screen.getByText("needs-review")).toBeInTheDocument();
+  });
+});
+
+// ─── Serializer Round-trip ────────────────────────────────────────────────────
+
+describe("serializeDecisions — round-trip", () => {
+  it("parse → serialize → re-parse produces identical decisions", () => {
+    const decisions = parseDecisions(sampleDecisionsMd);
+    const rawFm = sampleDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+    const serialized = serializeDecisions(decisions, rawFm);
+    const reparsed = parseDecisions(serialized);
+
+    expect(reparsed).toHaveLength(decisions.length);
+    for (let i = 0; i < decisions.length; i++) {
+      expect(reparsed[i]).toMatchObject({
+        id: decisions[i].id,
+        title: decisions[i].title,
+        originalQuestion: decisions[i].originalQuestion,
+        decision: decisions[i].decision,
+        implication: decisions[i].implication,
+        status: decisions[i].status,
+      });
+    }
+  });
+
+  it("preserves frontmatter verbatim", () => {
+    const decisions = parseDecisions(sampleDecisionsMd);
+    const rawFm = sampleDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+    const serialized = serializeDecisions(decisions, rawFm);
+    expect(serialized).toContain("decision_count: 3");
+    expect(serialized).toContain("conflicts_resolved: 1");
+    expect(serialized).toContain("round: 1");
+  });
+
+  it("preserves contradictory_inputs flag", () => {
+    const decisions = parseDecisions(contradictoryDecisionsMd);
+    const rawFm = contradictoryDecisionsMd.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+    const serialized = serializeDecisions(decisions, rawFm);
+    expect(serialized).toContain("contradictory_inputs: true");
+  });
+});
+
+// ─── Inline Editing (allowEdit) ───────────────────────────────────────────────
+
+describe("DecisionsSummaryCard — inline editing", () => {
+  it("shows editing hint banner when allowEdit and needs-review cards exist", () => {
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisionsMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/need your review/)).toBeInTheDocument();
+  });
+
+  it("does not show editing hint when allowEdit=false", () => {
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisionsMd}
+        allowEdit={false}
+      />
+    );
+    expect(screen.queryByText(/need your review/)).not.toBeInTheDocument();
+  });
+
+  it("auto-expands needs-review cards and shows textareas for decision and implication", () => {
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisionsMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+    // Needs-review card should be auto-expanded — textareas visible without clicking
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    expect(textareas.length).toBeGreaterThanOrEqual(2);
+    const values = textareas.map((ta) => ta.value);
+    expect(values).toContain("Track MRR");
+    expect(values).toContain("Contradicts Q5 answer which said \"don't track revenue\"");
+  });
+
+  it("does not show textareas for resolved decisions even when allowEdit=true", async () => {
+    const user = userEvent.setup();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={sampleDecisionsMd}
+        allowEdit={true}
+        onDecisionsChange={vi.fn()}
+      />
+    );
+
+    // Expand a resolved card
+    await user.click(screen.getByRole("button", { name: /Customer Hierarchy/ }));
+
+    // No textarea for a resolved card
+    const textareas = screen.queryAllByRole("textbox") as HTMLTextAreaElement[];
+    const resolvedText = "Two levels — parent company and subsidiary";
+    expect(textareas.every((ta) => ta.value !== resolvedText)).toBe(true);
+  });
+
+  it("calls onDecisionsChange when editing decision text", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <DecisionsSummaryCard
+        decisionsContent={contradictoryDecisionsMd}
+        allowEdit={true}
+        onDecisionsChange={onChange}
+      />
+    );
+
+    const textareas = screen.getAllByRole("textbox") as HTMLTextAreaElement[];
+    const decisionTextarea = textareas.find((ta) => ta.value === "Track MRR");
+    expect(decisionTextarea).toBeDefined();
+
+    await user.clear(decisionTextarea!);
+    await user.type(decisionTextarea!, "Track ARR instead.");
+
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(lastCall).toContain("Track ARR instead.");
+    expect(lastCall).toContain("decision_count: 2");
   });
 });
 

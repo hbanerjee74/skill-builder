@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -10,7 +10,7 @@ interface DecisionFrontmatter {
   contradictory_inputs?: boolean;
 }
 
-interface Decision {
+export interface Decision {
   id: string;
   title: string;
   originalQuestion: string;
@@ -23,9 +23,11 @@ interface DecisionsSummaryCardProps {
   decisionsContent: string;
   duration?: number;
   cost?: number;
+  allowEdit?: boolean;
+  onDecisionsChange?: (serialized: string) => void;
 }
 
-// ─── Parsers ──────────────────────────────────────────────────────────────────
+// ─── Parsers & Serializers ────────────────────────────────────────────────────
 
 function parseFrontmatter(content: string): DecisionFrontmatter {
   const defaults: DecisionFrontmatter = { decision_count: 0, conflicts_resolved: 0, round: 1 };
@@ -45,11 +47,9 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
   return defaults;
 }
 
-function parseDecisions(content: string): Decision[] {
+export function parseDecisions(content: string): Decision[] {
   const decisions: Decision[] = [];
-  // Strip frontmatter
   const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  // Split on ### D{n}: headings
   const sections = body.split(/(?=^### D\d+)/m).filter((s) => s.trim());
 
   for (const section of sections) {
@@ -85,6 +85,25 @@ function parseDecisions(content: string): Decision[] {
   return decisions;
 }
 
+/** Serialize Decision[] back to decisions.md format, preserving the original frontmatter verbatim. */
+export function serializeDecisions(decisions: Decision[], rawFrontmatter: string): string {
+  const blocks = decisions.map((d) =>
+    [
+      `### ${d.id}: ${d.title}`,
+      `- **Original question:** ${d.originalQuestion}`,
+      `- **Decision:** ${d.decision}`,
+      `- **Implication:** ${d.implication}`,
+      `- **Status:** ${d.status}`,
+    ].join("\n")
+  );
+  return `${rawFrontmatter}\n\n${blocks.join("\n\n")}\n`;
+}
+
+function extractRawFrontmatter(content: string): string {
+  const match = content.match(/^(---[\s\S]*?---)/);
+  return match ? match[1] : "";
+}
+
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -95,12 +114,31 @@ function formatDuration(ms: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function DecisionsSummaryCard({ decisionsContent, duration, cost }: DecisionsSummaryCardProps) {
+export function DecisionsSummaryCard({
+  decisionsContent,
+  duration,
+  cost,
+  allowEdit,
+  onDecisionsChange,
+}: DecisionsSummaryCardProps) {
   const fm = parseFrontmatter(decisionsContent);
-  const decisions = parseDecisions(decisionsContent);
+  const rawFrontmatter = extractRawFrontmatter(decisionsContent);
+
+  const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+
+  useEffect(() => {
+    setDecisions(parseDecisions(decisionsContent));
+  }, [decisionsContent]);
+
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
   const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+
+  function handleDecisionChange(updated: Decision) {
+    const next = decisions.map((d) => (d.id === updated.id ? updated : d));
+    setDecisions(next);
+    onDecisionsChange?.(serializeDecisions(next, rawFrontmatter));
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -134,6 +172,14 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
           <div className="flex items-center gap-2 border-b bg-destructive/10 px-5 py-2 text-xs text-destructive font-medium">
             <AlertTriangle className="size-3.5" />
             Contradictory inputs detected — some answers are logically incompatible. Review decisions marked "needs-review" before generating the skill.
+          </div>
+        )}
+
+        {/* needs-review editing hint */}
+        {allowEdit && needsReviewCount > 0 && (
+          <div className="flex items-center gap-2 border-b bg-amber-50 dark:bg-amber-950/20 px-5 py-2 text-xs text-amber-600 dark:text-amber-400 font-medium">
+            <AlertTriangle className="size-3.5" />
+            {needsReviewCount} decision{needsReviewCount > 1 ? "s" : ""} need your review — edit the text below, changes save automatically.
           </div>
         )}
 
@@ -202,7 +248,12 @@ export function DecisionsSummaryCard({ decisionsContent, duration, cost }: Decis
 
       {/* Decision Cards */}
       {decisions.map((d) => (
-        <DecisionCard key={d.id} decision={d} />
+        <DecisionCard
+          key={d.id}
+          decision={d}
+          allowEdit={allowEdit}
+          onChange={handleDecisionChange}
+        />
       ))}
     </div>
   );
@@ -228,8 +279,52 @@ const statusColors: Record<Decision["status"], { border: string; badge: string; 
   },
 };
 
-function DecisionCard({ decision }: { decision: Decision }) {
-  const [expanded, setExpanded] = useState(false);
+function AutoResizeTextarea({
+  value,
+  onChange,
+  className,
+  style,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={className}
+      style={{ resize: "none", overflow: "hidden", ...style }}
+      rows={1}
+    />
+  );
+}
+
+function DecisionCard({
+  decision,
+  allowEdit,
+  onChange,
+}: {
+  decision: Decision;
+  allowEdit?: boolean;
+  onChange?: (updated: Decision) => void;
+}) {
+  const isEditable = allowEdit && decision.status === "needs-review";
+  const [expanded, setExpanded] = useState(isEditable ?? false);
   const colors = statusColors[decision.status];
 
   return (
@@ -290,13 +385,22 @@ function DecisionCard({ decision }: { decision: Decision }) {
             <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--color-pacific)" }}>
               Decision
             </span>
-            <p className="mt-0.5 text-sm text-foreground leading-relaxed">
-              {decision.decision}
-            </p>
+            {isEditable ? (
+              <AutoResizeTextarea
+                value={decision.decision}
+                onChange={(v) => onChange?.({ ...decision, decision: v })}
+                placeholder="Enter decision…"
+                className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm text-foreground leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
+              />
+            ) : (
+              <p className="mt-0.5 text-sm text-foreground leading-relaxed">
+                {decision.decision}
+              </p>
+            )}
           </div>
 
           {/* Implication */}
-          {decision.implication && (
+          {(decision.implication || isEditable) && (
             <div
               className="rounded-md border px-3 py-2"
               style={{
@@ -307,9 +411,19 @@ function DecisionCard({ decision }: { decision: Decision }) {
               <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--color-ocean)" }}>
                 Implication
               </span>
-              <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
-                {decision.implication}
-              </p>
+              {isEditable ? (
+                <AutoResizeTextarea
+                  value={decision.implication}
+                  onChange={(v) => onChange?.({ ...decision, implication: v })}
+                  placeholder="Enter implication…"
+                  className="mt-1 w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-offset-0"
+                  style={{ color: "var(--color-ocean)" }}
+                />
+              ) : (
+                <p className="mt-0.5 text-xs leading-relaxed" style={{ color: "var(--color-ocean)" }}>
+                  {decision.implication}
+                </p>
+              )}
             </div>
           )}
         </div>
