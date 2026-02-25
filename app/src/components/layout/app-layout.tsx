@@ -26,22 +26,6 @@ async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpda
   return results.filter((s): s is SkillUpdateInfo => s !== null);
 }
 
-/** Read previously notified versions from localStorage. */
-function readNotifiedVersions(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem("marketplace_notified_versions") ?? "{}");
-  } catch {
-    return {};
-  }
-}
-
-/** Persist notified versions to localStorage so toasts are not repeated on next launch. */
-function saveNotifiedVersions(notified: Record<string, string>): void {
-  try {
-    localStorage.setItem("marketplace_notified_versions", JSON.stringify(notified));
-  } catch { /* ignore */ }
-}
-
 /** Check the marketplace for updates and either auto-update or show notification toasts.
  *  Returns the registry name read from marketplace.json, or null on failure. */
 async function checkForMarketplaceUpdates(
@@ -121,21 +105,16 @@ async function handleAutoUpdate(
   }
 }
 
-/** Show persistent notification toasts for skill updates not yet seen by the user. */
+/** Show persistent notification toasts for available skill updates. */
 function showManualUpdateToasts(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
 ): void {
-  const notified = readNotifiedVersions();
-
-  const libNew = library.filter((s) => notified[`lib:${s.name}`] !== s.version);
-  const wsNew = workspace.filter((s) => notified[`ws:${s.name}`] !== s.version);
-
-  if (libNew.length > 0) {
-    const names = libNew.map((s) => s.name);
+  if (library.length > 0) {
+    const names = library.map((s) => s.name);
     toast.info(
-      `Skills Library: update available for ${libNew.length} skill${libNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {
@@ -148,10 +127,10 @@ function showManualUpdateToasts(
       }
     );
   }
-  if (wsNew.length > 0) {
-    const names = wsNew.map((s) => s.name);
+  if (workspace.length > 0) {
+    const names = workspace.map((s) => s.name);
     toast.info(
-      `Settings \u2192 Skills: update available for ${wsNew.length} skill${wsNew.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
         duration: Infinity,
         action: {
@@ -163,13 +142,6 @@ function showManualUpdateToasts(
         },
       }
     );
-  }
-
-  if (libNew.length > 0 || wsNew.length > 0) {
-    const updated = { ...notified };
-    for (const s of libNew) updated[`lib:${s.name}`] = s.version;
-    for (const s of wsNew) updated[`ws:${s.name}`] = s.version;
-    saveNotifiedVersions(updated);
   }
 }
 

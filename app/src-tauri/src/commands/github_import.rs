@@ -602,7 +602,12 @@ pub(crate) async fn list_github_skills_inner(
                 owner, repo, resolved_branch, skill.path
             );
             async move {
-                match client.get(&url).send().await {
+                match client.get(&url)
+                    .header("Cache-Control", "no-cache")
+                    .header("Pragma", "no-cache")
+                    .send()
+                    .await
+                {
                     Ok(resp) if resp.status().is_success() => resp.text().await.ok(),
                     _ => None,
                 }
