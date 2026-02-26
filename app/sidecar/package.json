@@ -16,5 +16,8 @@
     "esbuild": "^0.25",
     "typescript": "^5.8",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "rollup": "^4.59.0"
   }
 }
