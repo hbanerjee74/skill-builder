@@ -27,7 +27,7 @@
     "test:changed": "vitest run --changed HEAD~1",
     "test:agents": "vitest run --config vitest.config.agent.ts",
     "test:agents:structural": "vitest run --config vitest.config.agent.ts agent-tests/agent-structure.test.ts",
-    "test:agents:smoke": "vitest run --config vitest.config.agent.ts agent-tests/agent-smoke.test.ts",
+    "test:agents:smoke": "vitest run --config vitest.config.agent.ts --reporter=verbose agent-tests/agent-smoke.test.ts",
     "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e"
   },
   "dependencies": {

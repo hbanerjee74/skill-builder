@@ -19,6 +19,9 @@ export default defineConfig({
     // calls with a combined 270s window.
     testTimeout: 180_000,
     hookTimeout: 300_000,
+    // forks pool gives each test file a real child process with proper stdio
+    // inheritance — worker threads intercept output through Vitest's TUI.
+    pool: "forks",
   },
   resolve: {
     alias: {
