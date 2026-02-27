@@ -51,10 +51,13 @@ export function runAgent(
 
   const budgetArgs =
     budgetUsd != null ? ["--max-budget-usd", budgetUsd] : [];
+  const modelArgs = process.env.AGENTS_TEST_MODEL
+    ? ["--model", process.env.AGENTS_TEST_MODEL]
+    : [];
 
   const result = spawnSync(
     CLAUDE_BIN,
-    ["-p", "--dangerously-skip-permissions", ...budgetArgs],
+    ["-p", "--dangerously-skip-permissions", ...modelArgs, ...budgetArgs],
     {
       input: prompt,
       encoding: "utf8",
