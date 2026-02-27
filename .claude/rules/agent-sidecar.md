@@ -26,7 +26,7 @@ Node.js sidecar process that runs agents via `@anthropic-ai/claude-agent-sdk`. N
 
 ## Agent Logs
 
-Per-request JSONL transcripts at `{workspace}/{skill-name}/logs/{step_label}-{timestamp}.jsonl`. First line is config with `apiKey` redacted. Debug with `tail -f <log>`.
+Per-request JSONL transcripts at `{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`. First line is config with `apiKey` redacted. Debug with `tail -f <log>`.
 
 Every agent request must produce a transcript. Agent prompts are also logged at `debug` level in the app log (`sidecar_pool.rs`). Response payloads stay in transcripts only — do not duplicate them in the app log.
 

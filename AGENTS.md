@@ -1,24 +1,17 @@
 # Skill Builder
 
-Instructions for non-Claude agents (Codex, etc.). All authoritative details are in `CLAUDE.md` (imports `CLAUDE-APP.md` and `CLAUDE-PLUGIN.md`). This file provides a minimal onramp — refer to those docs for dev commands, testing, architecture, and code style.
+Instructions for non-Claude agents (Codex, etc.). All authoritative details are in `CLAUDE.md`. This file provides a minimal onramp — refer to that doc for dev commands, testing, architecture, and code style.
 
 ## Project Scope
 
-Multi-agent workflow for creating domain-specific skills. Two frontends share the same prompt assets:
+Multi-agent workflow for creating domain-specific skills. A Tauri desktop app orchestrates agents via a Node.js sidecar.
 
-- Claude Code plugin (CLI)
-- Tauri desktop app (GUI)
-
-See `CLAUDE.md` for model tiers, dev commands, testing strategy, shared components, and gotchas. For the full workflow definition, see `skills/generate-skill/SKILL.md`.
+See `CLAUDE.md` for model tiers, dev commands, testing strategy, shared components, and gotchas.
 
 ## Quick Start
 
 ```bash
-# Desktop app
 cd app && npm install && npm run sidecar:build && npm run dev
-
-# Plugin
-./scripts/validate.sh && claude --plugin-dir .
 ```
 
 ## Skills
@@ -39,5 +32,3 @@ Use these repo-local skills when requests match:
 ## Reference Docs
 
 - `CLAUDE.md` (primary dev guide — workflow, testing, shared components)
-- `CLAUDE-APP.md` (desktop app deep dive)
-- `CLAUDE-PLUGIN.md` (plugin deep dive)
