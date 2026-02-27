@@ -30,21 +30,6 @@ Source: `docs/user-guide/` (VitePress). Deployed via `docs.yml` on push to `main
 cd app && npm install && npm run sidecar:build
 npm run dev                              # Dev mode (hot reload)
 MOCK_AGENTS=true npm run dev             # Mock mode (no API calls, replays bundled templates)
-
-# Testing — app (run from app/)
-app/tests/run.sh                         # All levels (unit + integration + e2e + agents + eval)
-app/tests/run.sh unit                    # Level 1: stores, utils, hooks, rust, sidecar
-app/tests/run.sh integration             # Level 2: component + page tests
-app/tests/run.sh e2e                     # Level 3: Playwright
-app/tests/run.sh e2e --tag @workflow     # Level 3, filtered by tag
-cd app && npm run test:unit              # Unit tests only (frontend)
-cd app && npm run test:integration       # Integration tests only (frontend)
-cd app && npm run test:e2e               # All E2E tests
-cd app/src-tauri && cargo test           # Rust tests
-
-# Testing — agents (run from app/)
-cd app && npm run test:agents:structural # Agent structural checks (free, no API key)
-cd app && npm run test:agents:smoke      # Agent smoke tests (requires API key or FORCE_PLUGIN_TESTS=1)
 ```
 
 ## Testing
@@ -102,7 +87,7 @@ Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance 
 
 Update `app/tests/TEST_MANIFEST.md` only when adding new Rust commands (add the cargo test filter + E2E tag), new E2E spec files, new agent source patterns, or changing shared infrastructure files. Frontend test mappings are handled automatically by `vitest --changed` and naming conventions.
 
-## Docs
+## Design Docs
 
 Design notes live in `docs/design/`. Each topic gets its own subdirectory with a `README.md` (e.g. `docs/design/backend-design/README.md`). The index at `docs/design/README.md` must be updated when adding a new subdirectory.
 
@@ -120,7 +105,7 @@ Write design docs concisely — state the decision and the reason, not the reaso
 
 ## Logging
 
-Every new feature must include logging. Use `log` crate (Rust) and `console.*` (frontend, bridged via `attachConsole()`). Per-request JSONL transcripts at `{skill}/logs/{step}-{timestamp}.jsonl`. Layer-specific rules are in the relevant `.claude/rules/` file.
+Every new feature must include logging. Use `log` crate (Rust) and `console.*` (frontend, bridged via `attachConsole()`). Per-request JSONL transcripts at `{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`. Layer-specific rules are in the relevant `.claude/rules/` file.
 
 | Level | When to use |
 |---|---|
@@ -131,7 +116,7 @@ Every new feature must include logging. Use `log` crate (Rust) and `console.*` (
 
 ## Gotchas
 
-- **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
+- **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
 - **Parallel worktrees**: `npm run dev` auto-assigns a free port.
 
 ## Shared Components
@@ -161,7 +146,7 @@ Use the lightest option that fits:
 | Tier | Model | When |
 |---|---|---|
 | Reasoning | sonnet | Planning, architecture, requirements drafting |
-| Implementation | default | Coding, exploration, review, merge |
+| Implementation | sonnet (inherited) | Coding, exploration, review, merge |
 | Lightweight | haiku | Linear API calls, AC checkoffs, status updates |
 
 ### Sub-agent rules
@@ -177,7 +162,7 @@ Sub-agents must follow project conventions:
 
 When the user runs /create-linear-issue or asks to create a Linear issue, log a bug, file a ticket,
 track a feature idea, break down a large issue, or decompose an issue into smaller ones
-(e.g. "break down VD-123", "decompose VD-123", "split VD-123"),
+(e.g. "break down VU-123", "decompose VU-123", "split VU-123"),
 read and follow the skill at `.claude/skills/create-linear-issue/SKILL.md`.
 
 Default project: **Skill Builder** — use this project unless the user specifies otherwise.
