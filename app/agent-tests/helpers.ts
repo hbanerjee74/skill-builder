@@ -64,9 +64,9 @@ export function runAgent(
       cwd,
       env,
       timeout: timeoutMs,
-      // Inherit stderr so Claude's streaming output is visible in the terminal
-      // while stdout is still captured for assertion.
-      stdio: ["pipe", "pipe", "inherit"],
+      // Inherit stdout and stderr so all Claude output streams to the terminal
+      // in real time. Smoke tests check filesystem output, not stdout.
+      stdio: ["pipe", "inherit", "inherit"],
     }
   );
 
