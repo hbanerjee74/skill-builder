@@ -28,6 +28,8 @@ Node.js sidecar process that runs agents via `@anthropic-ai/claude-agent-sdk`. N
 
 Per-request JSONL transcripts at `{workspace}/{skill-name}/logs/{step_label}-{timestamp}.jsonl`. First line is config with `apiKey` redacted. Debug with `tail -f <log>`.
 
+Every agent request must produce a transcript. Agent prompts are also logged at `debug` level in the app log (`sidecar_pool.rs`). Response payloads stay in transcripts only — do not duplicate them in the app log.
+
 ## Testing
 
 Sidecar unit tests: `cd app/sidecar && npx vitest run`. When changing agent invocation logic, also run `npm run test:agents:structural` from `app/`.
