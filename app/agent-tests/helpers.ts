@@ -64,17 +64,18 @@ export function runAgent(
       cwd,
       env,
       timeout: timeoutMs,
+      // Inherit stderr so Claude's streaming output is visible in the terminal
+      // while stdout is still captured for assertion.
+      stdio: ["pipe", "pipe", "inherit"],
     }
   );
 
   if (result.error) {
-    throw new Error(
-      `runAgent: process error: ${result.error.message}\nstderr: ${result.stderr ?? ""}`
-    );
+    throw new Error(`runAgent: process error: ${result.error.message}`);
   }
   if (result.status !== 0) {
     throw new Error(
-      `runAgent: exited with status ${result.status}\nstdout: ${result.stdout ?? ""}\nstderr: ${result.stderr ?? ""}`
+      `runAgent: exited with status ${result.status}\nstdout: ${result.stdout ?? ""}`
     );
   }
   return (result.stdout ?? "").trim();
