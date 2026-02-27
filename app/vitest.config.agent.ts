@@ -15,8 +15,10 @@ export default defineConfig({
     },
     // Individual LLM tests can take up to 3 minutes (API latency + rate limits).
     // Structural tests are fast; LLM tests use per-test timeouts via describe/it options.
+    // hookTimeout must cover the longest beforeAll — confirm-decisions chains two runAgent
+    // calls with a combined 270s window.
     testTimeout: 180_000,
-    hookTimeout: 10_000,
+    hookTimeout: 300_000,
   },
   resolve: {
     alias: {
