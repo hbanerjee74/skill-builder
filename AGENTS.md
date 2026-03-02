@@ -12,7 +12,7 @@ React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@
 
 **Key directories:**
 
-- Workspace (`~/.vibedata/` default, configurable): agent prompts, skill context, logs
+- Workspace (`~/.vibedata/skill-builder/` default, configurable): agent prompts, skill context, logs
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
 - App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
@@ -67,7 +67,6 @@ Determine what you changed, then pick the right runner:
 | `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
-| Eval scripts | — | `app/tests/run.sh eval` |
 
 **Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural test:agents:smoke` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
@@ -128,6 +127,7 @@ The desktop app uses these files:
 
 - **PR title format**: `VU-XXX: short description`
 - **PR body link**: `Fixes VU-XXX`
+- **Linear project policy**: All Linear issues for this project must be created under `Warehouse Migration`.
 
 ## Skills
 

@@ -22,7 +22,7 @@ import type { AppSettings, MarketplaceRegistry } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useSettingsStore, type ModelInfo } from "@/stores/settings-store"
 import { useAuthStore } from "@/stores/auth-store"
-import { getDataDir, checkMarketplaceUrl } from "@/lib/tauri"
+import { getDataDir, checkMarketplaceUrl, parseGitHubUrl } from "@/lib/tauri"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
@@ -30,7 +30,7 @@ import { FeedbackDialog } from "@/components/feedback-dialog"
 import { SkillsLibraryTab } from "@/components/skills-library-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
-const DEFAULT_MARKETPLACE_URL = "https://github.com/hbanerjee74/skills"
+const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
 
 const sections = [
   { id: "general", label: "General" },
@@ -85,7 +85,7 @@ export default function SettingsPage() {
 
   const availableModels = useSettingsStore((s) => s.availableModels)
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
-  const { user, isLoggedIn, logout } = useAuthStore()
+  const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
 
   // Auto-navigate to the skills section when a pending upgrade targets settings-skills
   useEffect(() => {
@@ -277,6 +277,8 @@ export default function SettingsPage() {
       setClearing(false)
     }
   }
+
+  const githubStatusLabel = isAuthLoading ? "Checking" : isLoggedIn && user ? "Connected" : "Not connected"
 
 
   return (
@@ -547,13 +549,23 @@ export default function SettingsPage() {
           <div className="space-y-6 p-6">
             <Card>
               <CardHeader>
-                <CardTitle>GitHub Account</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  GitHub Account
+                  <Badge variant={isLoggedIn && !isAuthLoading ? "secondary" : "outline"}>
+                    {githubStatusLabel}
+                  </Badge>
+                </CardTitle>
                 <CardDescription>
                   Connect your GitHub account to submit feedback and report issues.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                {isLoggedIn && user ? (
+                {isAuthLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Checking GitHub connection...
+                  </div>
+                ) : isLoggedIn && user ? (
                   <>
                     <div className="flex items-center gap-3">
                       <Avatar>
@@ -564,6 +576,11 @@ export default function SettingsPage() {
                         <span className="text-sm font-medium">@{user.login}</span>
                         {user.email && (
                           <span className="text-sm text-muted-foreground">{user.email}</span>
+                        )}
+                        {lastCheckedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            Last checked {new Date(lastCheckedAt).toLocaleString()}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -690,10 +707,10 @@ export default function SettingsPage() {
                 ) : (
                   <div className="flex flex-col gap-3 rounded-md border p-4">
                     <div className="flex flex-col gap-1.5">
-                      <Label htmlFor="new-registry-url">GitHub URL</Label>
+                      <Label htmlFor="new-registry-url">GitHub repository</Label>
                       <Input
                         id="new-registry-url"
-                        placeholder="https://github.com/owner/skill-library"
+                        placeholder="owner/repo or owner/repo#branch"
                         value={newRegistryUrl}
                         onChange={(e) => setNewRegistryUrl(e.target.value)}
                       />
@@ -712,6 +729,31 @@ export default function SettingsPage() {
                         onClick={async () => {
                           const url = newRegistryUrl.trim()
                           setNewRegistryAdding(true)
+
+                          // Parse and normalize to canonical shorthand (owner/repo or owner/repo#branch)
+                          let info: Awaited<ReturnType<typeof parseGitHubUrl>>
+                          try {
+                            info = await parseGitHubUrl(url)
+                          } catch {
+                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.")
+                            setNewRegistryAdding(false)
+                            return
+                          }
+                          const canonicalUrl = info.branch === "main"
+                            ? `${info.owner}/${info.repo}`
+                            : `${info.owner}/${info.repo}#${info.branch}`
+
+                          // Block duplicates: same owner/repo regardless of format or branch
+                          const isDuplicate = marketplaceRegistries.some(r => {
+                            const m = r.source_url.match(/^([^/]+)\/([^/#]+)/)
+                            return m && m[1] === info.owner && m[2] === info.repo
+                          })
+                          if (isDuplicate) {
+                            toast.error(`${info.owner}/${info.repo} is already in your registries.`)
+                            setNewRegistryAdding(false)
+                            return
+                          }
+
                           let name: string
                           try {
                             name = await checkMarketplaceUrl(url)
@@ -721,10 +763,10 @@ export default function SettingsPage() {
                             toast.error("Could not reach marketplace.json — check it is a public GitHub repository with a .claude-plugin/marketplace.json file.", { duration: Infinity })
                             return
                           }
-                          console.log(`[settings] registry added: name=${name}, url=${url}`)
+                          console.log(`[settings] registry added: name=${name}, url=${canonicalUrl}`)
                           const entry: MarketplaceRegistry = {
                             name,
-                            source_url: url,
+                            source_url: canonicalUrl,
                             enabled: true,
                           }
                           autoSave({ marketplaceRegistries: [...marketplaceRegistries, entry] })

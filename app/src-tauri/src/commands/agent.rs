@@ -14,6 +14,7 @@ pub async fn start_agent(
     cwd: String,
     allowed_tools: Option<Vec<String>>,
     max_turns: Option<u32>,
+    permission_mode: Option<String>,
     session_id: Option<String>,
     skill_name: String,
     _step_label: String,
@@ -30,9 +31,10 @@ pub async fn start_agent(
             e.to_string()
         })?;
         let settings = crate::db::read_settings_hydrated(&conn)?;
-        let key = settings
-            .anthropic_api_key
-            .ok_or_else(|| "Anthropic API key not configured".to_string())?;
+        let key = match settings.anthropic_api_key {
+            Some(k) => k,
+            None => return Err("Anthropic API key not configured".to_string()),
+        };
 
         (key, settings.extended_thinking)
     };
@@ -50,7 +52,7 @@ pub async fn start_agent(
         cwd,
         allowed_tools,
         max_turns,
-        permission_mode: None,
+        permission_mode,
         session_id,
         betas: crate::commands::workflow::build_betas(thinking_budget, &model),
         max_thinking_tokens: thinking_budget,
