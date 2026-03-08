@@ -59,11 +59,22 @@ Examine answers holistically across first-round questions and refinements. For e
 - Dependencies — answers that imply other requirements
 - Ambiguities — note the ambiguity and its design implications
 
+Mandatory user-editable decisions:
+
+- Always include a decision for: `What should this skill enable Claude to do?`
+- Always include a decision for: `When should this skill trigger? (what user phrases/contexts)`
+- Mark both of these decisions with `- **Status:** needs-review` so the user can directly edit/confirm them.
+- If either question is missing from clarifications, infer a best-effort draft from user-context + answered questions in `clarifications.json` and still emit the decision as `needs-review`.
+- These decisions define the SKILL frontmatter description inputs (what the skill does and when it should trigger) when the skill is written. Keep them concise, editable, and grounded in user context.
+- For the trigger decision, include concrete, explicit trigger contexts so downstream description drafting can avoid undertriggering.
+- For the trigger decision, include an implication note that explicitly says this decision will be used to create the skill description and that the description should follow skill-writing best practices.
+
 Purpose-aware implication rules:
 
 - Keep decisions grounded in the selected purpose and user context.
 - If purpose is `platform`, include explicit Lakehouse compatibility implications when technical choices depend on endpoint behavior.
 - For other purposes, include Lakehouse implications only when they materially change architecture, risk, or validation outcomes.
+- Prefer implications that map to implementable artifacts (model grain, layer placement, tests, constraints), not conceptual restatements.
 
 **Writing `decisions.md`**: Write from scratch each time — clean snapshot, not a log. Use YAML frontmatter with `decision_count`, `conflicts_resolved`, and `round` fields. For contradictions, pick the most reasonable option and document reasoning in `**Implication**` — the user can override. Status values: `resolved`, `conflict-resolved`, `needs-review`.
 
@@ -127,6 +138,7 @@ If `decisions.md` is malformed, start fresh from current clarification answers. 
 ## Success Criteria
 
 - Every answered question (first-round and refinements) has at least one decision with an implication
+- The two mandatory decisions (capability + trigger) are always present and marked `needs-review`
 - Contradictions are resolved with documented reasoning
 - `decisions.md` has YAML frontmatter with correct counts and all decisions have status fields
 - Scope recommendation path: `decisions.md` written with `scope_recommendation: true` and `decision_count: 0`
