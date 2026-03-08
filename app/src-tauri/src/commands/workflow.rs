@@ -54,7 +54,11 @@ fn get_step_config(step_id: u32) -> Result<StepConfig, String> {
             name: "Confirm Decisions".to_string(),
             prompt_template: "confirm-decisions.md".to_string(),
             output_file: "context/decisions.md".to_string(),
-            allowed_tools: FULL_TOOLS.iter().map(|s| s.to_string()).collect(),
+            // Step 2 returns decisions payload; backend materializes decisions.md.
+            allowed_tools: CONTRACT_NO_WRITE_TOOLS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             max_turns: 100,
         }),
         3 => Ok(StepConfig {
@@ -614,7 +618,7 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "research_plan_markdown": { "type": "string", "minLength": 1 },
                     "clarifications_json": { "type": "object" }
                 },
-                "additionalProperties": false
+                "additionalProperties": true
             }
         })),
         "detailed-research" => Some(serde_json::json!({
@@ -632,6 +636,38 @@ fn workflow_output_format_for_agent(agent_name: &str) -> Option<serde_json::Valu
                     "refinement_count": { "type": "integer", "minimum": 0 },
                     "section_count": { "type": "integer", "minimum": 0 },
                     "clarifications_json": { "type": "object" }
+                },
+                "additionalProperties": true
+            }
+        })),
+        "confirm-decisions" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "decisions_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "decisions_complete" },
+                    "decisions_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "additionalProperties": false
+            }
+        })),
+        "generate-skill" => Some(serde_json::json!({
+            "type": "json_schema",
+            "schema": {
+                "type": "object",
+                "required": ["status", "evaluations_markdown"],
+                "properties": {
+                    "status": { "type": "string", "const": "generated" },
+                    "evaluations_markdown": { "type": "string", "minLength": 1 },
+                    "call_trace": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
                 },
                 "additionalProperties": false
             }
@@ -829,14 +865,6 @@ fn materialize_workflow_step_output_value(
         Ok(())
     };
 
-    let clarifications = payload
-        .get("clarifications_json")
-        .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
-    validate_clarifications_json(clarifications)
-        .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
-    let clarifications_pretty = serde_json::to_string_pretty(clarifications)
-        .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
-
     let context_dir = skill_root.join("context");
     std::fs::create_dir_all(&context_dir).map_err(|e| {
         format!(
@@ -851,6 +879,13 @@ fn materialize_workflow_step_output_value(
             require_const_status("research_complete")?;
             let _ = require_int("dimensions_selected")?;
             let _ = require_int("question_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let research_plan_markdown = payload
                 .get("research_plan_markdown")
@@ -886,6 +921,13 @@ fn materialize_workflow_step_output_value(
             require_const_status("detailed_research_complete")?;
             let _ = require_int("refinement_count")?;
             let _ = require_int("section_count")?;
+            let clarifications = payload
+                .get("clarifications_json")
+                .ok_or_else(|| "structured_output.clarifications_json is required".to_string())?;
+            validate_clarifications_json(clarifications)
+                .map_err(|e| format!("Invalid clarifications_json: {}", e))?;
+            let clarifications_pretty = serde_json::to_string_pretty(clarifications)
+                .map_err(|e| format!("Failed to serialize clarifications_json: {}", e))?;
 
             let clarifications_path = context_dir.join("clarifications.json");
             std::fs::write(&clarifications_path, clarifications_pretty).map_err(|e| {
@@ -897,8 +939,48 @@ fn materialize_workflow_step_output_value(
             })?;
             Ok(())
         }
+        2 => {
+            require_const_status("decisions_complete")?;
+            let decisions_markdown = payload
+                .get("decisions_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "structured_output.decisions_markdown must be a string".to_string())?;
+            if decisions_markdown.trim().is_empty() {
+                return Err("structured_output.decisions_markdown must not be empty".to_string());
+            }
+            let decisions_path = context_dir.join("decisions.md");
+            std::fs::write(&decisions_path, decisions_markdown).map_err(|e| {
+                format!(
+                    "Failed to write decisions '{}': {}",
+                    decisions_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
+        3 => {
+            require_const_status("generated")?;
+            let evaluations_markdown = payload
+                .get("evaluations_markdown")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    "structured_output.evaluations_markdown must be a string".to_string()
+                })?;
+            if evaluations_markdown.trim().is_empty() {
+                return Err("structured_output.evaluations_markdown must not be empty".to_string());
+            }
+            let evaluations_path = context_dir.join("evaluations.md");
+            std::fs::write(&evaluations_path, evaluations_markdown).map_err(|e| {
+                format!(
+                    "Failed to write evaluations '{}': {}",
+                    evaluations_path.display(),
+                    e
+                )
+            })?;
+            Ok(())
+        }
         _ => Err(format!(
-            "materialize_workflow_step_output supports only step 0 and 1; got {}",
+            "materialize_workflow_step_output supports only steps 0-3; got {}",
             step_id
         )),
     }
@@ -916,9 +998,9 @@ pub fn materialize_workflow_step_output(
         skill_name,
         step_id
     );
-    let skills_path = read_skills_path(&db)
-        .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
-    let skill_root = Path::new(&skills_path).join(&skill_name);
+    let workspace_path = read_workspace_path(&db)
+        .ok_or_else(|| "Workspace path not configured. Please set it in Settings.".to_string())?;
+    let skill_root = Path::new(&workspace_path).join(&skill_name);
     materialize_workflow_step_output_value(&skill_root, step_id, &structured_output)
 }
 
@@ -1326,7 +1408,7 @@ fn build_prompt(
     max_dimensions: u32,
 ) -> String {
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let context_dir = Path::new(skills_path).join(skill_name).join("context");
+    let context_dir = Path::new(workspace_path).join(skill_name).join("context");
     let skill_output_dir = Path::new(skills_path).join(skill_name);
     let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
     let context_str = context_dir.to_string_lossy().replace('\\', "/");
@@ -1370,6 +1452,15 @@ fn read_skills_path(db: &tauri::State<'_, Db>) -> Option<String> {
     crate::db::read_settings(&conn).ok()?.skills_path
 }
 
+fn read_workspace_path(db: &tauri::State<'_, Db>) -> Option<String> {
+    let conn = db.0.lock().ok()?;
+    crate::db::read_settings(&conn).ok()?.workspace_path
+}
+
+fn workspace_context_dir(workspace_path: &str, skill_name: &str) -> PathBuf {
+    Path::new(workspace_path).join(skill_name).join("context")
+}
+
 fn thinking_budget_for_step(step_id: u32) -> Option<u32> {
     match step_id {
         0 => Some(8_000),  // research
@@ -1410,11 +1501,10 @@ fn make_agent_id(skill_name: &str, label: &str) -> String {
 /// Returns Ok(()) if found, Err with a clear message if missing.
 fn validate_decisions_exist_inner(
     skill_name: &str,
-    _workspace_path: &str,
-    skills_path: &str,
+    workspace_path: &str,
+    _skills_path: &str,
 ) -> Result<(), String> {
-    // skills_path is required — no workspace fallback
-    let path = Path::new(skills_path)
+    let path = Path::new(workspace_path)
         .join(skill_name)
         .join("context")
         .join("decisions.md");
@@ -1693,7 +1783,7 @@ pub async fn run_workflow_step(
     );
 
     // Gate: reject disabled steps when guard conditions are active
-    let context_dir = Path::new(&settings.skills_path)
+    let context_dir = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context");
 
@@ -1723,7 +1813,7 @@ pub async fn run_workflow_step(
 
     // Step 0 fresh start — wipe the context directory and all artifacts so
     // the agent doesn't see stale files from a previous workflow run.
-    // Context lives in skills_path (not workspace_path).
+    // Context lives in workspace_path.
     if step_id == 0 && context_dir.is_dir() {
         log::debug!(
             "[run_workflow_step] step 0: wiping context dir {}",
@@ -2007,7 +2097,7 @@ pub fn get_step_output_files(step_id: u32) -> Vec<&'static str> {
 /// clarifications.json in-place and has no unique output file to check.
 #[tauri::command]
 pub fn verify_step_output(
-    _workspace_path: String,
+    workspace_path: String,
     skill_name: String,
     step_id: u32,
     db: tauri::State<'_, Db>,
@@ -2022,8 +2112,11 @@ pub fn verify_step_output(
     let skills_path = read_skills_path(&db)
         .ok_or_else(|| "Skills path not configured. Please set it in Settings.".to_string())?;
 
-    // skills_path is required — single code path, no workspace fallback
-    let target_dir = Path::new(&skills_path).join(&skill_name);
+    let target_dir = if step_id == 3 {
+        Path::new(&skills_path).join(&skill_name)
+    } else {
+        Path::new(&workspace_path).join(&skill_name)
+    };
     let has_output = if step_id == 3 {
         target_dir.join("SKILL.md").exists()
     } else {
@@ -2039,9 +2132,9 @@ pub fn get_disabled_steps(
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<u32>, String> {
     log::info!("[get_disabled_steps] skill={}", skill_name);
-    let skills_path =
-        read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
-    let context_dir = Path::new(&skills_path).join(&skill_name).join("context");
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
+    let context_dir = Path::new(&workspace_path).join(&skill_name).join("context");
     let clarifications_path = context_dir.join("clarifications.json");
     let decisions_path = context_dir.join("decisions.md");
 
@@ -2052,6 +2145,84 @@ pub fn get_disabled_steps(
     } else {
         Ok(vec![])
     }
+}
+
+#[tauri::command]
+pub fn get_clarifications_content(
+    skill_name: String,
+    workspace_path: String,
+) -> Result<String, String> {
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    std::fs::read_to_string(&path).map_err(|e| {
+        format!(
+            "Failed to read clarifications from '{}': {}",
+            path.display(),
+            e
+        )
+    })
+}
+
+#[tauri::command]
+pub fn save_clarifications_content(
+    skill_name: String,
+    workspace_path: String,
+    content: String,
+) -> Result<(), String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    validate_clarifications_json(&parsed)
+        .map_err(|e| format!("Invalid clarifications JSON: {}", e))?;
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("clarifications.json");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(&parsed).unwrap_or(content)).map_err(|e| {
+        format!(
+            "Failed to write clarifications to '{}': {}",
+            path.display(),
+            e
+        )
+    })
+}
+
+#[tauri::command]
+pub fn get_decisions_content(skill_name: String, workspace_path: String) -> Result<String, String> {
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.md");
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read decisions from '{}': {}", path.display(), e))
+}
+
+#[tauri::command]
+pub fn save_decisions_content(
+    skill_name: String,
+    workspace_path: String,
+    content: String,
+) -> Result<(), String> {
+    if content.trim().is_empty() {
+        return Err("decisions.md content cannot be empty".to_string());
+    }
+    let path = workspace_context_dir(&workspace_path, &skill_name).join("decisions.md");
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create context directory '{}': {}", parent.display(), e))?;
+    }
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write decisions to '{}': {}", path.display(), e))
+}
+
+#[tauri::command]
+pub fn get_context_file_content(
+    skill_name: String,
+    workspace_path: String,
+    file_name: String,
+) -> Result<String, String> {
+    if file_name.contains('/') || file_name.contains('\\') || file_name.contains("..") {
+        return Err("Invalid context file name".to_string());
+    }
+    let path = workspace_context_dir(&workspace_path, &skill_name).join(file_name);
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read context file '{}': {}", path.display(), e))
 }
 
 /// Run the answer-evaluator agent (Haiku) to assess clarification answer quality.
@@ -2071,7 +2242,7 @@ pub async fn run_answer_evaluator(
 
     // Read settings from DB — same pattern as read_workflow_settings but without
     // step-specific validation (this is a gate, not a workflow step).
-    let (api_key, skills_path, industry, function_role, intake_json, preferred_model) = {
+    let (api_key, workspace_path_from_settings, industry, function_role, intake_json, preferred_model) = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         let settings = crate::db::read_settings_hydrated(&conn).map_err(|e| {
             log::error!("run_answer_evaluator: failed to read settings: {}", e);
@@ -2084,9 +2255,9 @@ pub async fn run_answer_evaluator(
                 return Err("Anthropic API key not configured".to_string());
             }
         };
-        let sp = settings.skills_path.ok_or_else(|| {
-            log::error!("run_answer_evaluator: skills_path not configured");
-            "Skills path not configured".to_string()
+        let wp = settings.workspace_path.ok_or_else(|| {
+            log::error!("run_answer_evaluator: workspace_path not configured");
+            "Workspace path not configured".to_string()
         })?;
         let run_row = crate::db::get_workflow_run(&conn, &skill_name)
             .ok()
@@ -2096,7 +2267,7 @@ pub async fn run_answer_evaluator(
         let model = resolve_model_id("haiku");
         (
             key,
-            sp,
+            wp,
             settings.industry,
             settings.function_role,
             ij,
@@ -2121,7 +2292,7 @@ pub async fn run_answer_evaluator(
         None,
     );
 
-    let context_dir = std::path::Path::new(&skills_path)
+    let context_dir = std::path::Path::new(&workspace_path_from_settings)
         .join(&skill_name)
         .join("context");
     let workspace_dir = std::path::Path::new(&workspace_path).join(&skill_name);
@@ -2189,10 +2360,10 @@ pub fn autofill_clarifications(
 ) -> Result<u32, String> {
     log::info!("autofill_clarifications: skill={}", skill_name);
 
-    let skills_path =
-        read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
-    let clarifications_path = Path::new(&skills_path)
+    let clarifications_path = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context")
         .join("clarifications.json");
@@ -2246,10 +2417,10 @@ pub fn log_gate_decision(skill_name: String, verdict: String, decision: String) 
 pub fn autofill_refinements(skill_name: String, db: tauri::State<'_, Db>) -> Result<u32, String> {
     log::info!("autofill_refinements: skill={}", skill_name);
 
-    let skills_path =
-        read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
-    let clarifications_path = Path::new(&skills_path)
+    let clarifications_path = Path::new(&workspace_path)
         .join(&skill_name)
         .join("context")
         .join("clarifications.json");
@@ -2444,7 +2615,7 @@ pub fn reset_workflow_step(
 pub fn scan_legacy_clarifications(db: tauri::State<'_, Db>) -> Result<Vec<String>, String> {
     log::info!("scan_legacy_clarifications: checking for legacy clarifications.md files");
 
-    let skills_path = match read_skills_path(&db) {
+    let workspace_path = match read_workspace_path(&db) {
         Some(p) => p,
         None => return Ok(vec![]),
     };
@@ -2461,7 +2632,7 @@ pub fn scan_legacy_clarifications(db: tauri::State<'_, Db>) -> Result<Vec<String
 
     let mut legacy_skills = Vec::new();
     for name in &skill_names {
-        let md_path = Path::new(&skills_path)
+        let md_path = Path::new(&workspace_path)
             .join(name)
             .join("context")
             .join("clarifications.md");
@@ -2489,14 +2660,17 @@ pub fn reset_legacy_skills(
 
     let skills_path =
         read_skills_path(&db).ok_or_else(|| "Skills path not configured".to_string())?;
+    let workspace_path =
+        read_workspace_path(&db).ok_or_else(|| "Workspace path not configured".to_string())?;
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
 
     for name in &skill_names {
         let skill_root = Path::new(&skills_path).join(name);
+        let workspace_skill_root = Path::new(&workspace_path).join(name);
 
         // Delete context/ contents
-        let context_dir = skill_root.join("context");
+        let context_dir = workspace_skill_root.join("context");
         if context_dir.is_dir() {
             if let Err(e) = std::fs::remove_dir_all(&context_dir) {
                 log::warn!(
@@ -2542,7 +2716,7 @@ pub fn reset_legacy_skills(
 
 #[tauri::command]
 pub fn preview_step_reset(
-    _workspace_path: String,
+    workspace_path: String,
     skill_name: String,
     from_step_id: u32,
     db: tauri::State<'_, Db>,
@@ -2569,7 +2743,12 @@ pub fn preview_step_reset(
         let mut existing_files: Vec<String> = Vec::new();
 
         for file in get_step_output_files(step_id) {
-            if skill_output_dir.join(file).exists() {
+            let exists = if step_id == 3 {
+                skill_output_dir.join(file).exists()
+            } else {
+                Path::new(&workspace_path).join(&skill_name).join(file).exists()
+            };
+            if exists {
                 existing_files.push(file.to_string());
             }
         }
@@ -2658,6 +2837,8 @@ mod tests {
     fn test_workflow_output_format_is_set_for_json_contract_workflow_agents() {
         assert!(workflow_output_format_for_agent("research-orchestrator").is_some());
         assert!(workflow_output_format_for_agent("detailed-research").is_some());
+        assert!(workflow_output_format_for_agent("confirm-decisions").is_some());
+        assert!(workflow_output_format_for_agent("generate-skill").is_some());
     }
 
     #[test]
@@ -2680,9 +2861,8 @@ mod tests {
     }
 
     #[test]
-    fn test_workflow_output_format_is_unset_for_non_contract_workflow_agents() {
-        assert!(workflow_output_format_for_agent("confirm-decisions").is_none());
-        assert!(workflow_output_format_for_agent("generate-skill").is_none());
+    fn test_workflow_output_format_is_unset_for_unknown_agents() {
+        assert!(workflow_output_format_for_agent("unknown-agent").is_none());
     }
 
     #[test]
@@ -2852,6 +3032,191 @@ mod tests {
     }
 
     #[test]
+    fn test_materialize_step0_scope_recommendation_triggers_scope_guard_parser() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "research_complete",
+            "dimensions_selected": 0,
+            "question_count": 0,
+            "research_plan_markdown": "---\npurpose: domain\n---\n## Scope Recommendation Active\n",
+            "clarifications_json": {
+                "version": "1",
+                "metadata": {
+                    "question_count": 0,
+                    "section_count": 0,
+                    "refinement_count": 0,
+                    "must_answer_count": 0,
+                    "priority_questions": [],
+                    "scope_recommendation": true
+                },
+                "sections": [],
+                "notes": []
+            }
+        });
+
+        super::materialize_workflow_step_output_value(&skill_root, 0, &payload).unwrap();
+        assert!(parse_scope_recommendation(
+            &skill_root.join("context/clarifications.json")
+        ));
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 1\nconflicts_resolved: 0\nround: 1\n---\n### D1: Capability\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(skill_root.join("context/decisions.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step2_writes_scope_guard_stub_decisions() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\nscope_recommendation: true\ndecision_count: 0\n---\n## Scope Recommendation Active\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        let content = std::fs::read_to_string(skill_root.join("context/decisions.md")).unwrap();
+        assert!(content.contains("scope_recommendation: true"));
+        assert!(content.contains("## Scope Recommendation Active"));
+    }
+
+    #[test]
+    fn test_materialize_step2_conflict_decisions_trigger_conflict_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 0\nround: 1\ncontradictory_inputs: true\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(parse_decisions_guard(&skill_root.join("context/decisions.md")));
+    }
+
+    #[test]
+    fn test_materialize_step2_revised_conflict_decisions_do_not_trigger_guard() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "---\ndecision_count: 2\nconflicts_resolved: 1\nround: 2\ncontradictory_inputs: revised\n---\n### D1: Conflict\n- **Original question:** Q\n- **Decision:** A\n- **Implication:** I\n- **Status:** conflict-resolved\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap();
+        assert!(!parse_decisions_guard(&skill_root.join("context/decisions.md")));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_null_payload() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_workflow_step_output_value(&skill_root, 2, &serde_json::json!(null))
+            .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "decisions_markdown": "# decisions"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'decisions_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_step2_rejects_missing_or_invalid_decisions_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "decisions_complete"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.decisions_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": 42
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.decisions_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "decisions_complete",
+            "decisions_markdown": "  "
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 2, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.decisions_markdown must not be empty"));
+    }
+
+    #[test]
+    fn test_materialize_step3_writes_evaluations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap();
+        assert!(skill_root.join("context/evaluations.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_wrong_status() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "decisions_complete",
+            "evaluations_markdown": "## Scenario 1\n- input\n- expected output\n"
+        });
+        let err =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'generated'"));
+    }
+
+    #[test]
+    fn test_materialize_step3_rejects_missing_or_invalid_evaluations_markdown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+
+        let missing = serde_json::json!({
+            "status": "generated"
+        });
+        let err_missing =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &missing).unwrap_err();
+        assert!(err_missing.contains("structured_output.evaluations_markdown must be a string"));
+
+        let non_string = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ["not", "markdown"]
+        });
+        let err_non_string =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &non_string).unwrap_err();
+        assert!(err_non_string.contains("structured_output.evaluations_markdown must be a string"));
+
+        let empty = serde_json::json!({
+            "status": "generated",
+            "evaluations_markdown": ""
+        });
+        let err_empty =
+            super::materialize_workflow_step_output_value(&skill_root, 3, &empty).unwrap_err();
+        assert!(err_empty.contains("structured_output.evaluations_markdown must not be empty"));
+    }
+
+    #[test]
     fn test_build_prompt_all_three_paths() {
         let prompt = build_prompt(
             "my-skill",
@@ -2865,7 +3230,9 @@ mod tests {
         // 3 distinct paths in prompt
         assert!(prompt
             .contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/my-skills/my-skill/context"));
+        assert!(
+            prompt.contains("The context directory is: /home/user/.vibedata/skill-builder/my-skill/context")
+        );
         assert!(prompt.contains("The skill output directory (SKILL.md and references/) is: /home/user/my-skills/my-skill"));
     }
 
@@ -3065,15 +3432,16 @@ mod tests {
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-        // Context files live in skills_path/skill_name/
+        // Context files live in workspace_path/skill_name/context/
         let skill_dir = skills_tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+        std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
 
-        // Create output files for steps 0, 1, 2, 3 in skills_path/my-skill/
+        // Create output files for steps 0, 1, 2, 3
         // Steps 0 and 1 both use clarifications.json (unified artifact)
-        std::fs::write(skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
-        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/clarifications.json"), "step0+step1").unwrap();
+        std::fs::write(workspace_skill_dir.join("context/decisions.md"), "step2").unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "step3").unwrap();
         std::fs::write(skill_dir.join("references/ref.md"), "ref").unwrap();
 
@@ -3081,10 +3449,10 @@ mod tests {
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Steps 0, 1 output (unified clarifications.json) should still exist
-        assert!(skill_dir.join("context/clarifications.json").exists());
+        assert!(workspace_skill_dir.join("context/clarifications.json").exists());
 
         // Steps 2+ outputs should be deleted
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.md").exists());
         assert!(!skill_dir.join("SKILL.md").exists());
         assert!(!skill_dir.join("references").exists());
     }
@@ -3124,17 +3492,18 @@ mod tests {
         let skills_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_tmp.path().to_str().unwrap();
-        let skill_dir = skills_tmp.path().join("my-skill");
-        std::fs::create_dir_all(skill_dir.join("context")).unwrap();
+        let _skill_dir = skills_tmp.path().join("my-skill");
+        let workspace_skill_dir = workspace_tmp.path().join("my-skill");
+        std::fs::create_dir_all(workspace_skill_dir.join("context")).unwrap();
 
-        // Create files for step 2 (decisions) in skills_path
-        std::fs::write(skill_dir.join("context/decisions.md"), "step2").unwrap();
+        // Create files for step 2 (decisions) in workspace context
+        std::fs::write(workspace_skill_dir.join("context/decisions.md"), "step2").unwrap();
 
         // Reset from step 2 onwards should clean up step 2+3
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 2, skills_path);
 
         // Step 2 outputs should be deleted
-        assert!(!skill_dir.join("context/decisions.md").exists());
+        assert!(!workspace_skill_dir.join("context/decisions.md").exists());
     }
 
     #[test]
@@ -3367,18 +3736,18 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_decisions_found_in_skills_path() {
+    fn test_validate_decisions_found_in_workspace_context() {
         let tmp = tempfile::tempdir().unwrap();
-        let skills = tmp.path().join("skills");
-        std::fs::create_dir_all(skills.join("my-skill").join("context")).unwrap();
+        let workspace = tmp.path().join("workspace");
+        std::fs::create_dir_all(workspace.join("my-skill").join("context")).unwrap();
         std::fs::write(
-            skills.join("my-skill").join("context").join("decisions.md"),
+            workspace.join("my-skill").join("context").join("decisions.md"),
             "# Decisions\n\nD1: Use periodic recognition",
         )
         .unwrap();
 
         let result =
-            validate_decisions_exist_inner("my-skill", "/unused", skills.to_str().unwrap());
+            validate_decisions_exist_inner("my-skill", workspace.to_str().unwrap(), "/unused");
         assert!(result.is_ok());
     }
 
@@ -3677,15 +4046,15 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_cleans_skills_path_context_files() {
+    fn test_reset_cleans_workspace_context_files() {
         // 1. Create a temp workspace dir and a separate temp skills_path dir
         let workspace_tmp = tempfile::tempdir().unwrap();
         let skills_path_tmp = tempfile::tempdir().unwrap();
         let workspace = workspace_tmp.path().to_str().unwrap();
         let skills_path = skills_path_tmp.path().to_str().unwrap();
 
-        // 2-3. Create skills_path/my-skill/context/ with all context files
-        let context_dir = skills_path_tmp.path().join("my-skill").join("context");
+        // 2-3. Create workspace/my-skill/context/ with all context files
+        let context_dir = workspace_tmp.path().join("my-skill").join("context");
         std::fs::create_dir_all(&context_dir).unwrap();
 
         let context_files = ["clarifications.json", "decisions.md"];
@@ -3696,10 +4065,10 @@ mod tests {
         // 4. Working dir must exist in workspace
         std::fs::create_dir_all(workspace_tmp.path().join("my-skill")).unwrap();
 
-        // 5. Call delete_step_output_files from step 0 with skills_path
+        // 5. Call delete_step_output_files from step 0
         crate::cleanup::delete_step_output_files(workspace, "my-skill", 0, skills_path);
 
-        // 6. Assert ALL files in skills_path/my-skill/context/ are gone
+        // 6. Assert ALL files in workspace/my-skill/context/ are gone
         let mut remaining: Vec<String> = Vec::new();
         for file in &context_files {
             if context_dir.join(file).exists() {
@@ -3708,7 +4077,7 @@ mod tests {
         }
         assert!(
             remaining.is_empty(),
-            "Expected all context files in skills_path to be deleted, but these remain: {:?}",
+            "Expected all workspace context files to be deleted, but these remain: {:?}",
             remaining
         );
     }

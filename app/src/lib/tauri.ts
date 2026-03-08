@@ -462,6 +462,16 @@ export const sendRefineMessage = (
   command?: string,
 ) => invoke<string>("send_refine_message", { sessionId, userMessage, workspacePath, targetFiles: targetFiles ?? null, command: command ?? null })
 
+export const materializeRefineValidationOutput = (
+  skillName: string,
+  workspacePath: string,
+  structuredOutput: unknown,
+) => invoke<void>("materialize_refine_validation_output", {
+  skillName,
+  workspacePath,
+  structuredOutput,
+})
+
 // --- Answer Evaluation (Transition Gate) ---
 
 export type PerQuestionVerdict =
@@ -506,6 +516,34 @@ export const materializeAnswerEvaluationOutput = (
   workspacePath,
   structuredOutput,
 });
+
+export const getClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_clarifications_content", { skillName, workspacePath });
+
+export const saveClarificationsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_clarifications_content", { skillName, workspacePath, content });
+
+export const getDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+) => invoke<string>("get_decisions_content", { skillName, workspacePath });
+
+export const saveDecisionsContent = (
+  skillName: string,
+  workspacePath: string,
+  content: string,
+) => invoke<void>("save_decisions_content", { skillName, workspacePath, content });
+
+export const getContextFileContent = (
+  skillName: string,
+  workspacePath: string,
+  fileName: string,
+) => invoke<string>("get_context_file_content", { skillName, workspacePath, fileName });
 
 export const autofillClarifications = (
   skillName: string,
