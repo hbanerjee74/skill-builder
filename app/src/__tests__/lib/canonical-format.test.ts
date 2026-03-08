@@ -181,6 +181,10 @@ describe("Canonical format: clarifications.json structure", () => {
       it("has notes array", () => {
         expect(Array.isArray(data.notes)).toBe(true);
       });
+
+      it("has answer_evaluator_notes array", () => {
+        expect(Array.isArray(data.answer_evaluator_notes ?? [])).toBe(true);
+      });
     });
   }
 
@@ -376,6 +380,17 @@ describe("Canonical format: answer-evaluation.json structure", () => {
       for (const entry of data.per_question) {
         expect(entry.question_id).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
         expect(["clear", "needs_refinement", "not_answered", "vague", "contradictory"]).toContain(entry.verdict);
+        if (entry.verdict === "vague") {
+          expect(typeof entry.reason).toBe("string");
+          expect(entry.reason.trim().length).toBeGreaterThan(0);
+        } else if (entry.verdict === "contradictory") {
+          expect(typeof entry.reason).toBe("string");
+          expect(entry.reason.trim().length).toBeGreaterThan(0);
+          expect(typeof entry.contradicts).toBe("string");
+          expect(entry.contradicts).toMatch(/^(Q\d+|R\d+\.\d+[a-z]?)$/);
+        } else {
+          expect(entry.reason).toBeUndefined();
+        }
       }
     });
 
