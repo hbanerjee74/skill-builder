@@ -1,6 +1,6 @@
 # Bundled Skills
 
-Four bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`research`, `validate-skill`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
+Three bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`validate-skill`, `skill-creator`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
 
 Output file formats: [`../agent-specs/canonical-format.md`](../agent-specs/canonical-format.md).
 
@@ -12,7 +12,7 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 | Skill | Purpose |
 |---|---|
-| `research` | `research` |
+| `research` (plugin-owned) | `research` |
 | `skill-creator` | `skill-building` |
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
@@ -23,7 +23,9 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 ## Research Skill
 
-`research-orchestrator` runs at step 0. Invoked by:
+The research workflow is owned entirely by the `skill-content-researcher` **plugin** (wrapper + internal agent + Python tooling). There is no bundled workspace research skill — research is plugin-owned.
+
+`research-orchestrator` runs at step 0 as a **thin wrapper** that delegates to the plugin. It is invoked by:
 
 - **Tauri app** — `workflow.rs` step 0 via the sidecar
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:research-orchestrator")`
@@ -31,31 +33,22 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 ### Structure
 
 ```text
-agent-sources/workspace/skills/research/
-  SKILL.md
-  references/
-    dimension-sets.md             ← type-scoped dimension tables (5–6 per type)
-    scoring-rubric.md             ← scoring criteria (1–5) and selection rules
-    consolidation-handoff.md      ← clarifications.md format spec for consolidation
-    dimensions/
-      entities.md                 ← 18 dimension specs (focus, approach, output format)
-      metrics.md
-      data-quality.md
-      business-rules.md
-      segmentation-and-periods.md
-      modeling-patterns.md
-      pattern-interactions.md
-      load-merge-patterns.md
-      historization.md
-      layer-design.md
-      platform-behavioral-overrides.md
-      config-patterns.md
-      integration-orchestration.md
-      operational-failure-modes.md
-      extraction.md
-      field-semantics.md
-      lifecycle-and-state.md
-      reconciliation.md
+agent-sources/plugins/skill-content-researcher/
+  skills/
+    research/                   ← embedded research skill (internal-only, not user-invocable)
+      SKILL.md
+      references/
+        dimension-sets.md       ← type-scoped dimension tables (5–6 per type)
+        scoring-rubric.md       ← scoring criteria (1–5) and selection rules
+        schemas.md              ← canonical JSON schema for research_output
+        consolidation-handoff.md
+        dimensions/
+          entities.md
+          metrics.md
+          data-quality.md
+          … (18 dimension specs)
+    skill-content-researcher/   ← user-invocable wrapper skill
+      SKILL.md                  ← uses AskUserQuestion to collect inputs
 ```
 
 ### How It Works

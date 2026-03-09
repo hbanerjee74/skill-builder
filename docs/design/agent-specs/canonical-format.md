@@ -306,6 +306,10 @@ The research planner determined the skill scope is too broad. See `clarification
 }
 ```
 
+The precise field‑level schema for `research_output` is defined in `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` and enforced at runtime by the plugin’s Python normalizer. This document describes the **envelope** and where the canonical schema lives; if `schemas.md` and this example diverge, treat `schemas.md` as authoritative.
+
+Legacy `research-plan.md` markdown output is no longer part of the app ↔ agent contract; it may still be generated for human‑readable views but must be derived from `research_output.metadata.research_plan`.
+
 ---
 
 # Canonical `test-skill.md` Format
