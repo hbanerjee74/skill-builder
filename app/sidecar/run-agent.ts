@@ -6,63 +6,17 @@ import { createAbortState, linkExternalSignal } from "./shutdown.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-type PluginManifest = {
-  name?: unknown;
-};
-
-async function fileExists(p: string): Promise<boolean> {
+/**
+ * Discover all installed plugins under <cwd>/.claude/plugins/.
+ * Returns an absolute path for each subdirectory found there.
+ */
+async function discoverInstalledPlugins(cwd: string): Promise<string[]> {
+  const pluginsDir = path.join(cwd, ".claude", "plugins");
   try {
-    await fs.access(p);
-    return true;
+    const entries = await fs.readdir(pluginsDir);
+    return entries.map((entry) => path.join(pluginsDir, entry));
   } catch {
-    return false;
-  }
-}
-
-function inferPluginFromAgentName(agentName: string | undefined): string | null {
-  if (!agentName) return null;
-  const idx = agentName.indexOf(":");
-  if (idx <= 0) return null;
-  return agentName.slice(0, idx);
-}
-
-async function assertPluginInstalled(cwd: string, pluginName: string): Promise<void> {
-  const manifestPath = path.join(
-    cwd,
-    ".claude",
-    "plugins",
-    pluginName,
-    ".claude-plugin",
-    "plugin.json",
-  );
-  if (!(await fileExists(manifestPath))) {
-    throw new Error(`Required plugin '${pluginName}' not installed (missing ${manifestPath})`);
-  }
-
-  let parsed: PluginManifest;
-  try {
-    parsed = JSON.parse(await fs.readFile(manifestPath, "utf-8")) as PluginManifest;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Required plugin '${pluginName}' has invalid manifest JSON (${manifestPath}): ${msg}`);
-  }
-
-  if (parsed.name !== pluginName) {
-    throw new Error(
-      `Required plugin '${pluginName}' manifest name mismatch: expected '${pluginName}', got '${String(
-        parsed.name,
-      )}'`,
-    );
-  }
-}
-
-async function assertRequiredPlugins(config: SidecarConfig): Promise<void> {
-  const required = (config.requiredPlugins ?? []).filter((p) => p && p.trim().length > 0);
-  const inferred = inferPluginFromAgentName(config.agentName);
-  const all = inferred ? [...required, inferred] : required;
-  const unique = [...new Set(all)];
-  for (const pluginName of unique) {
-    await assertPluginInstalled(config.cwd, pluginName);
+    return [];
   }
 }
 
@@ -104,8 +58,8 @@ export async function runAgentRequest(
     linkExternalSignal(state, externalSignal);
   }
 
-  // Preflight: validate required plugins are installed in this project workspace.
-  await assertRequiredPlugins(config);
+  // Discover all installed plugins so every plugin agent is available to the SDK.
+  const pluginPaths = await discoverInstalledPlugins(config.cwd);
 
   // Route SDK subprocess stderr through onMessage so it gets wrapped with
   // request_id and written to the JSONL transcript (not the app log).
@@ -113,7 +67,16 @@ export async function runAgentRequest(
     onMessage({ type: "system", subtype: "sdk_stderr", data: data.trimEnd(), timestamp: Date.now() });
   };
 
-  const options = buildQueryOptions(config, state.abortController, stderrHandler);
+  const options = buildQueryOptions(config, state.abortController, pluginPaths, stderrHandler);
+
+  // Emit plugins passed to the SDK as a system event so it appears in the JSONL transcript.
+  const pluginsToLog = (options as Record<string, unknown>).plugins as unknown[] | undefined;
+  onMessage({
+    type: "system",
+    subtype: "sdk_plugins_debug",
+    plugins: pluginsToLog ?? [],
+    timestamp: Date.now(),
+  });
 
   // Notify the UI that we're about to initialize the SDK
   emitSystemEvent(onMessage, "init_start");
