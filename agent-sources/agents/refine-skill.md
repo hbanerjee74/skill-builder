@@ -20,7 +20,7 @@ Make targeted, minimal edits to skill files based on the user's refinement reque
 The coordinator provides:
 
 - **skill directory path** — where `SKILL.md` and `references/` live
-- **context directory path** — where `decisions.md` and `clarifications.json` live
+- **context directory path** — where `decisions.json` and `clarifications.json` live
 - **workspace directory path** — per-skill subdirectory containing `user-context.md`
 - **command** — `refine`, `rewrite`, or `validate`
 - **conversation history** — prior User/Assistant exchanges
@@ -39,10 +39,10 @@ The coordinator provides:
 
 ## Guards
 
-Check `{context_dir}/decisions.md` and `{context_dir}/clarifications.json` before doing any work:
+Check `{context_dir}/decisions.json` and `{context_dir}/clarifications.json` before doing any work:
 
-- `scope_recommendation: true` → return: "Scope recommendation active. Blocked until resolved."
-- `contradictory_inputs: true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.md."
+- `metadata.scope_recommendation == true` (in either `decisions.json` or `clarifications.json`) → return: "Scope recommendation active. Blocked until resolved."
+- `metadata.contradictory_inputs == true` → return: "Contradictory inputs detected. Blocked until resolved. See decisions.json."
 
 ## Step 1: Read Before Editing
 
@@ -106,7 +106,7 @@ Summarize: which files changed, what changed in each, how it addresses the reque
 2. Rewrite targeted files — preserve domain knowledge, improve clarity
 3. Update SKILL.md pointers if scope changed
 4. Update `modified` date
-5. Follow the vendored `plugins/skill-creator/SKILL.md` writing guidance
+5. Follow the vendored `skill-creator` skill writing guidance by locating and reading `skills/skill-creator/SKILL.md` from the installed plugin bundle (use relative plugin paths, not repository source paths)
 
 **`/validate`** — Spawn `validate-skill`. Pass: skill name, context directory, skill output directory, workspace directory. Mode: `bypassPermissions`.
 
