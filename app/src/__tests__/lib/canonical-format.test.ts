@@ -254,6 +254,105 @@ describe("Canonical format: clarifications.json structure", () => {
     expect(Array.isArray(minimal.notes)).toBe(true);
     expect(minimal.notes[0]?.type).toBe("blocked");
   });
+
+  it("accepts warning metadata shape for scope_guard_triggered", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Scope Guard",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_reason: "Topic spans too many unrelated domains.",
+        warning: {
+          code: "scope_guard_triggered",
+          message: "The requested skill scope is too broad to produce useful output.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.warning.code).toBe("scope_guard_triggered");
+    expect(typeof output.metadata.warning.message).toBe("string");
+    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
+    expect(output.metadata.question_count).toBe(0);
+    expect(output.metadata.section_count).toBe(0);
+  });
+
+  it("accepts warning metadata shape for all_dimensions_low_score", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Low Score Result",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        warning: {
+          code: "all_dimensions_low_score",
+          message: "No dimensions scored high enough to proceed.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.warning.code).toBe("all_dimensions_low_score");
+    expect(typeof output.metadata.warning.message).toBe("string");
+    expect(output.metadata.warning.message.length).toBeGreaterThan(0);
+  });
+
+  it("accepts error metadata shape for missing_user_context", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Error",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        error: {
+          code: "missing_user_context",
+          message: "No user context file was found.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.error.code).toBe("missing_user_context");
+    expect(typeof output.metadata.error.message).toBe("string");
+    expect(output.metadata.error.message.length).toBeGreaterThan(0);
+  });
+
+  it("accepts error metadata shape for invalid_research_output", () => {
+    const output = {
+      version: "1",
+      metadata: {
+        title: "Error",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        error: {
+          code: "invalid_research_output",
+          message: "The research agent produced output that could not be parsed.",
+        },
+      },
+      sections: [],
+      notes: [],
+    };
+
+    expect(output.metadata.error.code).toBe("invalid_research_output");
+    expect(typeof output.metadata.error.message).toBe("string");
+    expect(output.metadata.error.message.length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

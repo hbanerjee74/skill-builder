@@ -9,6 +9,16 @@ export interface ClarificationsFile {
   answer_evaluator_notes?: Note[]; // gate feedback notes from answer-evaluator
 }
 
+export interface ClarificationsWarning {
+  code: "scope_guard_triggered" | "all_dimensions_low_score";
+  message: string;
+}
+
+export interface ClarificationsError {
+  code: "missing_user_context" | "invalid_research_output";
+  message: string;
+}
+
 export interface ClarificationsMetadata {
   title: string;
   question_count: number;
@@ -21,6 +31,8 @@ export interface ClarificationsMetadata {
   scope_reason?: string;
   scope_next_action?: string;
   research_plan?: ClarificationsResearchPlan;
+  warning?: ClarificationsWarning;
+  error?: ClarificationsError;
 }
 
 export interface ClarificationsResearchPlanDimensionScore {
