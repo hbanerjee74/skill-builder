@@ -47,6 +47,7 @@ Use this map before reasoning about implementation location:
 - `app/e2e/` — Playwright E2E tests only.
 - `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
 - `agent-sources/agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
 - `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
 - `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
 - `scripts/` — developer/automation scripts.
@@ -96,8 +97,8 @@ Determine what you changed, then pick the right runner:
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
 | Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
 | Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
-| Agent prompt (`agent-sources/agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agent-sources/agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
+| Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
 | `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
@@ -108,7 +109,7 @@ When changed files match these patterns, run the mapped tests automatically befo
 
 | Changed files | Run |
 |---|---|
-| `agent-sources/agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agents/*.md` | `cd app && npm run test:agents:structural` |
 | `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
 | `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
 | `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
