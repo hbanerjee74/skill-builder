@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const REVIEW_CONTENT = readFileSync(
-  resolve(__dirname, "../fixtures/agent-responses/review-content.md"),
+  resolve(__dirname, "../fixtures/agent-responses/review-content.json"),
   "utf-8",
 );
 
@@ -78,18 +78,61 @@ const ERROR_STEP_OVERRIDES: Record<string, unknown> = {
 };
 
 /**
- * Step 0 completed, current step is human review (step 1), with steps
- * 2-5 disabled. The human review UI checks whether the next step after
- * review is disabled and shows "Scope Too Broad" when it is.
+ * Step 0 completed, with all downstream workflow steps disabled by
+ * scope recommendation (4-step workflow => steps 1,2,3 disabled).
  */
 const DISABLED_STEPS_OVERRIDES: Record<string, unknown> = {
   ...WORKFLOW_OVERRIDES,
   get_workflow_state: {
-    run: { current_step: 1, purpose: "domain" },
+    run: { current_step: 0, purpose: "domain" },
     steps: [{ step_id: 0, status: "completed" }],
   },
-  get_disabled_steps: [2, 3, 4, 5],
-  read_file: "# Scope Recommendation\n\nThis skill topic is too broad for a single skill.",
+  get_disabled_steps: [1, 2, 3],
+  read_file: {
+    "/tmp/test-skills/test-skill/context/research-plan.md": `---
+purpose: Business process knowledge
+domain: Pet Store Analytics
+topic_relevance: not_relevant
+dimensions_evaluated: 0
+dimensions_selected: 0
+---
+
+# Research Plan
+
+## Dimension Scores
+| Dimension | Score | Reason |
+|---|---:|---|
+| scope | 0 | Throwaway intent detected |
+
+## Selected Dimensions
+| Dimension | Reason |
+|---|---|
+| none | Scope recommendation triggered |
+`,
+    "/tmp/test-skills/test-skill/context/clarifications.json": JSON.stringify({
+      version: "1",
+      metadata: {
+        title: "Scope Recommendation",
+        question_count: 0,
+        section_count: 0,
+        refinement_count: 0,
+        must_answer_count: 0,
+        priority_questions: [],
+        scope_recommendation: true,
+        scope_reason: "Explicit throwaway/test intent detected.",
+        scope_next_action: "Provide a concrete production domain.",
+      },
+      sections: [],
+      notes: [
+        {
+          type: "blocked",
+          title: "Scope Recommendation Active",
+          body: "Narrow the scope and rerun research.",
+        },
+      ],
+    }),
+    "*": "",
+  },
 };
 
 test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
@@ -105,7 +148,18 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
 
     // Should show completion screen with output file names
     await expect(page.getByText("context/research-plan.md")).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText("context/clarifications.md")).toBeVisible();
+    await expect(page.getByText("context/clarifications.json")).toBeVisible();
+  });
+
+  test("research completion renders canonical research-plan sections", async ({ page }) => {
+    await navigateToWorkflow(page, DISABLED_STEPS_OVERRIDES);
+
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    await expect(page.getByText("Dimension Scores")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Selected Dimensions")).toBeVisible();
   });
 
   test("review mode hides action buttons on completed step", async ({ page }) => {
@@ -260,12 +314,12 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
         {
           step_id: 0,
           step_name: "Research",
-          files: ["context/research-plan.md", "context/clarifications.md"],
+          files: ["context/research-plan.md", "context/clarifications.json"],
         },
         {
           step_id: 1,
           step_name: "Review",
-          files: ["context/clarifications.md"],
+          files: ["context/clarifications.json"],
         },
       ],
     });
@@ -302,21 +356,16 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
     ).not.toBeVisible();
   });
 
-  test("disabled steps show Skipped label and scope-too-broad message", async ({ page }) => {
+  test("scope recommendation marks downstream steps as skipped", async ({ page }) => {
     await navigateToWorkflowUpdateMode(page, DISABLED_STEPS_OVERRIDES);
 
-    // Should be on step 2 (Review) — human review with disabled next steps
-    await expect(page.getByText("Step 2: Review")).toBeVisible({ timeout: 5_000 });
+    // Should remain on step 1 (Research) completion state in 4-step workflow.
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
 
     // Disabled steps in sidebar should show "Skipped" labels
     await expect(page.getByText("Skipped").first()).toBeVisible({ timeout: 5_000 });
-
-    // The human review step detects that the next step (2) is disabled
-    // and shows "Scope Too Broad" with "Return to Dashboard" button
-    await expect(page.getByText("Scope Too Broad")).toBeVisible({ timeout: 5_000 });
-    await expect(
-      page.getByRole("button", { name: "Return to Dashboard" }),
-    ).toBeVisible();
+    await expect(page.getByText("Skipped").nth(1)).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("Skipped").nth(2)).toBeVisible({ timeout: 5_000 });
   });
 
   test("error state shows Retry and Reset Step buttons", async ({ page }) => {
@@ -473,5 +522,118 @@ test.describe("Workflow Step Progression", { tag: "@workflow" }, () => {
 
     // Should be on dashboard (route "/")
     await expect(page).toHaveURL("/");
+  });
+
+  test("clicking step 0 from step 2 in update mode opens dialog and resets to runnable", async ({ page }) => {
+    // Bug 2 regression: clicking a prior step in update mode should open the ResetStepDialog,
+    // and after confirming the reset the step should show the "Ready to run" state (pending).
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 2, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      read_file: "# Research Results\n\nAnalysis complete.",
+      preview_step_reset: [
+        {
+          step_id: 0,
+          step_name: "Research",
+          files: ["context/research-plan.md", "context/clarifications.json"],
+        },
+        {
+          step_id: 1,
+          step_name: "Detailed Research",
+          files: ["context/clarifications.json"],
+        },
+      ],
+    });
+
+    // Click step 1 (Research, index 0) in the sidebar — it is completed
+    const step1Button = page.locator("button").filter({ hasText: "1. Research" });
+    await step1Button.click();
+    await page.waitForTimeout(300);
+
+    // ResetStepDialog should appear (update mode, clicking a prior completed step)
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).toBeVisible({ timeout: 5_000 });
+
+    // Wait for Reset button to be enabled (preview loaded)
+    await expect(
+      page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }),
+    ).toBeEnabled({ timeout: 5_000 });
+
+    // Confirm the reset
+    await page.getByRole("button", { name: /Delete.*Reset|^Reset$/ }).click();
+    await page.waitForTimeout(500);
+
+    // Dialog should close
+    await expect(
+      page.getByRole("heading", { name: "Reset to Earlier Step" }),
+    ).not.toBeVisible();
+
+    // Step 0 (Research) should now show the "Ready to run" pending state
+    // (not a completed view, not an error — just the Start Step UI)
+    await expect(page.getByRole("button", { name: "Start Step" })).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("resetting step 1 from step 2 via Reset Step button preserves step 0 content", async ({ page }) => {
+    // Bug 1 regression: the Reset Step button on the step-complete screen for step 1
+    // must call resetWorkflowStep with stepId=1, not stepId=0.
+    // We verify this by checking that after the reset, step 1 is the active pending step
+    // (not step 0 — which would happen if the wrong step ID was passed).
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 1, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+          { step_id: 1, status: "completed" },
+        ],
+      },
+      read_file: "# Research Results\n\nAnalysis complete.",
+    });
+
+    // Should be on step 2 (Detailed Research, index 1), completed
+    await expect(page.getByText("Step 2: Detailed Research")).toBeVisible({ timeout: 5_000 });
+
+    // The "Reset Step" button should be visible on the completion screen (update mode)
+    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
+
+    // Click Reset Step — resets step 1, preserves step 0 as completed
+    await page.getByRole("button", { name: "Reset Step" }).click();
+    await page.waitForTimeout(500);
+
+    // Step 2 (Detailed Research) should now be in the running/pending state — the page
+    // stays on step 1 (index 1) after reset_workflow_step is called with stepId=1.
+    // The agent auto-starts because we're in update mode.
+    await expect(page.getByTestId("agent-initializing-indicator")).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("missing-files error state shows Reset Step button", async ({ page }) => {
+    // When a completed step's output files are missing (e.g. manually deleted),
+    // WorkflowStepComplete renders a missing-files error state with a Reset Step button.
+    // Set up step 0 as completed but mock read_file to return NOT_FOUND.
+    await navigateToWorkflowUpdateMode(page, {
+      ...WORKFLOW_OVERRIDES,
+      get_workflow_state: {
+        run: { current_step: 0, purpose: "domain" },
+        steps: [
+          { step_id: 0, status: "completed" },
+        ],
+      },
+      // read_file returns empty string — simulates missing files
+      // (the component shows the missing-files error when content is absent)
+      read_file: null,
+    });
+
+    // Should be on step 1 (Research, index 0), completed
+    await expect(page.getByText("Step 1: Research")).toBeVisible({ timeout: 5_000 });
+
+    // The Reset Step button must be visible regardless of file availability
+    await expect(page.getByRole("button", { name: "Reset Step" })).toBeVisible({ timeout: 5_000 });
   });
 });

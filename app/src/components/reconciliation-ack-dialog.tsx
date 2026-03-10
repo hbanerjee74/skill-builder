@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react"
-import { Info, Plus, Trash2, Loader2 } from "lucide-react"
+import { CheckCircle2, Info, Plus, Trash2, Loader2 } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -18,7 +19,10 @@ interface ReconciliationAckDialogProps {
   notifications: string[]
   discoveredSkills: DiscoveredSkill[]
   open: boolean
-  onAcknowledge: () => void
+  requireApply: boolean
+  applying?: boolean
+  onApply: () => void
+  onCancel: () => void
 }
 
 type ResolutionState = "pending" | "resolving" | "resolved"
@@ -34,7 +38,10 @@ export default function ReconciliationAckDialog({
   notifications,
   discoveredSkills,
   open,
-  onAcknowledge,
+  requireApply,
+  applying = false,
+  onApply,
+  onCancel,
 }: ReconciliationAckDialogProps) {
   const [resolutions, setResolutions] = useState<Record<string, ResolutionState>>({})
 
@@ -137,9 +144,7 @@ export default function ReconciliationAckDialog({
                       </div>
 
                       {isResolved ? (
-                        <span className="text-xs text-muted-foreground">
-                          Resolved
-                        </span>
+                        <CheckCircle2 className="size-4 shrink-0" style={{ color: "var(--color-seafoam)" }} />
                       ) : (
                         <div className="flex items-center gap-2">
                           <Button
@@ -179,12 +184,23 @@ export default function ReconciliationAckDialog({
         </ScrollArea>
 
         <AlertDialogFooter>
-          <AlertDialogAction
-            onClick={onAcknowledge}
-            disabled={!allDiscoveriesResolved}
-          >
-            Acknowledge
-          </AlertDialogAction>
+          {requireApply ? (
+            <>
+              <AlertDialogCancel onClick={onCancel}>
+                Continue Without Applying
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onApply}
+                disabled={!allDiscoveriesResolved || applying}
+              >
+                {applying ? "Applying..." : "Apply Reconciliation"}
+              </AlertDialogAction>
+            </>
+          ) : (
+            <AlertDialogAction onClick={onApply} disabled={!allDiscoveriesResolved}>
+              Acknowledge
+            </AlertDialogAction>
+          )}
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight } from "lucide-react";
+import { CheckCircle2, Clock, DollarSign, GitBranch, Shield, AlertTriangle, ChevronRight, ChevronDown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -8,6 +9,7 @@ interface DecisionFrontmatter {
   conflicts_resolved: number;
   round: number;
   contradictory_inputs?: true | "revised";
+  scope_recommendation?: true;
 }
 
 export interface Decision {
@@ -45,18 +47,28 @@ function parseFrontmatter(content: string): DecisionFrontmatter {
         if (value === "true") defaults.contradictory_inputs = true;
         else if (value === "revised") defaults.contradictory_inputs = "revised";
         break;
+      case "scope_recommendation":
+        if (value === "true") defaults.scope_recommendation = true;
+        break;
     }
   }
   return defaults;
 }
 
-export function parseDecisions(content: string): Decision[] {
+interface DecisionsJsonFile {
+  version?: string;
+  metadata?: DecisionFrontmatter;
+  decisions?: Decision[];
+}
+
+function parseDecisionsFromMarkdown(content: string): Decision[] {
   const decisions: Decision[] = [];
   const body = content.replace(/^---[\s\S]*?---\n*/, "");
-  const sections = body.split(/(?=^### D\d+)/m).filter((s) => s.trim());
+  // Accept either ## or ### headings (both appear in generated decisions.md files).
+  const sections = body.split(/(?=^##+\s*D\d+\s*:)/m).filter((s) => s.trim());
 
   for (const section of sections) {
-    const headingMatch = section.match(/^### (D\d+):\s*(.+)/);
+    const headingMatch = section.match(/^##+\s*(D\d+):\s*(.+)/);
     if (!headingMatch) continue;
 
     const id = headingMatch[1];
@@ -88,15 +100,58 @@ export function parseDecisions(content: string): Decision[] {
   return decisions;
 }
 
-/** Serialize Decision[] back to decisions.md format.
+function parseDecisionsFile(content: string): {
+  metadata: DecisionFrontmatter;
+  decisions: Decision[];
+  format: "json" | "markdown";
+} {
+  const trimmed = content.trim();
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(content) as DecisionsJsonFile;
+      const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
+      const metadata = parsed.metadata ?? { decision_count: decisions.length, conflicts_resolved: 0, round: 1 };
+      return { metadata, decisions, format: "json" };
+    } catch {
+      // Fall through to legacy markdown parser
+    }
+  }
+  return {
+    metadata: parseFrontmatter(content),
+    decisions: parseDecisionsFromMarkdown(content),
+    format: "markdown",
+  };
+}
+
+export function parseDecisions(content: string): Decision[] {
+  return parseDecisionsFile(content).decisions;
+}
+
+/** Serialize Decision[] back to decisions content.
  *  Upgrades `contradictory_inputs: true` → `contradictory_inputs: revised`
  *  to signal the user has reviewed and accepted the flagged decisions.
  */
-export function serializeDecisions(decisions: Decision[], rawFrontmatter: string): string {
-  const updatedFm = rawFrontmatter.replace(
-    /contradictory_inputs:\s*true/,
-    "contradictory_inputs: revised"
-  );
+export function serializeDecisions(decisions: Decision[], rawContent: string): string {
+  const parsed = parseDecisionsFile(rawContent);
+  if (parsed.format === "json") {
+    const metadata: DecisionFrontmatter = {
+      ...parsed.metadata,
+      decision_count: decisions.length,
+      conflicts_resolved: decisions.filter((d) => d.status === "conflict-resolved").length,
+    };
+    if (metadata.contradictory_inputs === true) {
+      metadata.contradictory_inputs = "revised";
+    }
+    const payload: DecisionsJsonFile = {
+      version: "1",
+      metadata,
+      decisions,
+    };
+    return `${JSON.stringify(payload, null, 2)}\n`;
+  }
+
+  const rawFrontmatter = rawContent.match(/^(---[\s\S]*?---)/)?.[1] ?? "";
+  const updatedFm = rawFrontmatter.replace(/contradictory_inputs:\s*true/, "contradictory_inputs: revised");
   const blocks = decisions.map((d) =>
     [
       `### ${d.id}: ${d.title}`,
@@ -107,11 +162,6 @@ export function serializeDecisions(decisions: Decision[], rawFrontmatter: string
     ].join("\n")
   );
   return `${updatedFm}\n\n${blocks.join("\n\n")}\n`;
-}
-
-function extractRawFrontmatter(content: string): string {
-  const match = content.match(/^(---[\s\S]*?---)/);
-  return match ? match[1] : "";
 }
 
 function formatDuration(ms: number): string {
@@ -131,21 +181,26 @@ export function DecisionsSummaryCard({
   allowEdit,
   onDecisionsChange,
 }: DecisionsSummaryCardProps) {
-  const fm = parseFrontmatter(decisionsContent);
-  const rawFrontmatter = extractRawFrontmatter(decisionsContent);
+  const parsedFile = parseDecisionsFile(decisionsContent);
+  const fm = parsedFile.metadata;
 
-  const [decisions, setDecisions] = useState<Decision[]>(() => parseDecisions(decisionsContent));
+  const [decisions, setDecisions] = useState<Decision[]>(() => parsedFile.decisions);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   // Track whether the user has made any edit this session — used to show revised banner immediately
   const [wasEdited, setWasEdited] = useState(false);
 
   useEffect(() => {
-    setDecisions(parseDecisions(decisionsContent));
+    setDecisions(parseDecisionsFile(decisionsContent).decisions);
     setWasEdited(false);
   }, [decisionsContent]);
 
   const resolvedCount = decisions.filter((d) => d.status === "resolved").length;
   const conflictResolvedCount = decisions.filter((d) => d.status === "conflict-resolved").length;
   const needsReviewCount = decisions.filter((d) => d.status === "needs-review").length;
+  const visibleDecisions = showNeedsReviewOnly
+    ? decisions.filter((d) => d.status === "needs-review")
+    : decisions;
 
   // Effective contradictory state: upgrade true → "revised" once the user edits
   const effectiveContradictory = wasEdited && fm.contradictory_inputs === true
@@ -156,15 +211,24 @@ export function DecisionsSummaryCard({
     const next = decisions.map((d) => (d.id === updated.id ? updated : d));
     setDecisions(next);
     setWasEdited(true);
-    onDecisionsChange?.(serializeDecisions(next, rawFrontmatter));
+    onDecisionsChange?.(serializeDecisions(next, decisionsContent));
   }
 
   return (
     <div className="flex flex-col gap-4">
       {/* Summary Card */}
       <div className="rounded-lg border shadow-sm overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b bg-muted/30">
+        {/* Header — collapsible */}
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 px-5 py-3 border-b bg-muted/30 text-left cursor-pointer"
+          onClick={() => setSummaryExpanded((prev) => !prev)}
+        >
+          {summaryExpanded ? (
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
+          ) : (
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform duration-150" />
+          )}
           <CheckCircle2 className="size-5 shrink-0" style={{ color: "var(--color-seafoam)" }} />
           <span className="text-sm font-semibold tracking-tight text-foreground">
             Decisions Complete
@@ -184,7 +248,7 @@ export function DecisionsSummaryCard({
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         {/* Contradictory inputs banner */}
         {effectiveContradictory === true && (
@@ -214,8 +278,8 @@ export function DecisionsSummaryCard({
           </div>
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 divide-x">
+        {/* Stats Grid — collapsible */}
+        {summaryExpanded && <div className="grid grid-cols-2 divide-x">
           {/* Decisions Column */}
           <div className="p-4">
             <div className="flex items-center gap-1.5 mb-3">
@@ -279,11 +343,24 @@ export function DecisionsSummaryCard({
             )}
           </div>
 
-        </div>
+        </div>}
       </div>
 
+      {/* Decision filter */}
+      {needsReviewCount > 0 && (
+        <div className="flex items-center justify-end gap-2 px-1">
+          <span className="text-xs text-muted-foreground">Needs Review</span>
+          <Switch
+            size="sm"
+            aria-label="Needs Review"
+            checked={showNeedsReviewOnly}
+            onCheckedChange={setShowNeedsReviewOnly}
+          />
+        </div>
+      )}
+
       {/* Decision Cards */}
-      {decisions.map((d) => (
+      {visibleDecisions.map((d) => (
         <DecisionCard
           key={d.id}
           decision={d}
@@ -291,6 +368,11 @@ export function DecisionsSummaryCard({
           onChange={handleDecisionChange}
         />
       ))}
+      {showNeedsReviewOnly && visibleDecisions.length === 0 && (
+        <div className="rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+          No decisions need review.
+        </div>
+      )}
     </div>
   );
 }
@@ -330,12 +412,35 @@ function AutoResizeTextarea({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
+  const syncHeight = () => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
+  };
+
+  useEffect(() => {
+    syncHeight();
   }, [value]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    // Recalculate height when container width changes (pane resize/sidebar toggle).
+    if (typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(() => {
+        syncHeight();
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }
+
+    // Fallback for environments without ResizeObserver support.
+    const onResize = () => syncHeight();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   return (
     <textarea
@@ -381,10 +486,10 @@ function DecisionCard({
           {decision.title}
         </span>
         <span
-          className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+          className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium"
           style={{ background: colors.badgeBg, color: colors.badge, border: `1px solid ${colors.badge}40` }}
         >
-          {decision.status}
+          {decision.status === "conflict-resolved" ? "conflict" : decision.status}
         </span>
         <ChevronRight
           className="mt-0.5 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"

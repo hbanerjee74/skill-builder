@@ -2,10 +2,16 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/markdown-link";
-import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle } from "lucide-react";
+import { CheckCircle2, FileText, Clock, DollarSign, ArrowRight, Loader2, MessageSquare, AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { readFile, writeFile, listSkillFiles, getStepAgentRuns } from "@/lib/tauri";
+import {
+  readFile,
+  listSkillFiles,
+  getStepAgentRuns,
+  getContextFileContent,
+  saveDecisionsContent,
+} from "@/lib/tauri";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AgentStatsBar } from "@/components/agent-stats-bar";
 import { ClarificationsEditor } from "@/components/clarifications-editor";
@@ -36,6 +42,8 @@ interface WorkflowStepCompleteProps {
   onClarificationsChange?: (data: ClarificationsFile) => void;
   onClarificationsContinue?: () => void;
   onReset?: () => void;
+  /** Called when the user clicks "Reset Step" from the missing-files error state. */
+  onResetStep?: () => void;
   saveStatus?: "idle" | "dirty" | "saving" | "saved";
   evaluating?: boolean;
 }
@@ -104,6 +112,7 @@ export function WorkflowStepComplete({
   onClarificationsChange,
   onClarificationsContinue,
   onReset,
+  onResetStep,
   saveStatus,
   evaluating,
 }: WorkflowStepCompleteProps) {
@@ -172,7 +181,17 @@ export function WorkflowStepComplete({
             ? relativePath.slice("skill/".length)
             : relativePath;
 
-          if (skillsPath) {
+          if (relativePath.startsWith("context/") && workspacePath) {
+            try {
+              content = await getContextFileContent(
+                skillName,
+                workspacePath,
+                relativePath.slice("context/".length),
+              );
+            } catch {
+              // not found in workspace context
+            }
+          } else if (skillsPath) {
             try {
               content = await readFile(`${skillsPath}/${skillName}/${skillsRelative}`);
             } catch {
@@ -212,19 +231,19 @@ export function WorkflowStepComplete({
   const [decisionsSaveStatus, setDecisionsSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
-    if (!decisionsEditorDirty || !decisionsEditContent || !skillsPath || !skillName || reviewMode) return;
+    if (!decisionsEditorDirty || !decisionsEditContent || !workspacePath || !skillName || reviewMode) return;
     setDecisionsSaveStatus("saving");
     const timer = setTimeout(async () => {
       try {
-        await writeFile(`${skillsPath}/${skillName}/context/decisions.md`, decisionsEditContent);
+        await saveDecisionsContent(skillName, workspacePath, decisionsEditContent);
         setDecisionsEditorDirty(false);
         setDecisionsSaveStatus("saved");
       } catch (err) {
-        console.error("Failed to save decisions.md:", err);
+        console.error("Failed to save decisions.json:", err);
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [decisionsEditContent, decisionsEditorDirty, skillsPath, skillName, reviewMode]);
+  }, [decisionsEditContent, decisionsEditorDirty, workspacePath, skillName, reviewMode]);
 
   // Loading spinner — shown while files are being fetched (initial or re-fetch)
   if (loadingFiles) {
@@ -235,34 +254,35 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Check if this is a research step (has both research-plan.md and clarifications.json in output list)
+  // Step 0 (Research) now uses a single canonical artifact: clarifications.json
   const researchPlanContent = fileContents.get("context/research-plan.md");
   const clarificationsContent = fileContents.get("context/clarifications.json");
-  const isResearchStep = outputFiles.includes("context/research-plan.md")
+  const isResearchStep = stepId === 0
     && outputFiles.includes("context/clarifications.json");
 
   if (isResearchStep) {
     // Missing files = error
     const missingFiles: string[] = [];
-    if (!researchPlanContent || researchPlanContent === "__NOT_FOUND__") missingFiles.push("context/research-plan.md");
     if (!clarificationsContent || clarificationsContent === "__NOT_FOUND__") missingFiles.push("context/clarifications.json");
 
     if (missingFiles.length > 0) {
       return (
-        <div className="flex h-full flex-col gap-4 overflow-hidden">
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-            <AlertTriangle className="size-8 text-destructive/50" />
-            <div className="text-center">
-              <p className="font-medium text-destructive">Research step completed but output files are missing</p>
-              <div className="mt-2 text-sm">
-                {missingFiles.map((f) => (
-                  <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
-                ))}
-              </div>
-              <p className="mt-2 text-sm">The agent may not have written files to the correct path. Reset and re-run the step.</p>
+        <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+          <AlertTriangle className="size-8 text-destructive/50" />
+          <div className="text-center">
+            <p className="font-medium text-destructive">Research step completed but output files are missing</p>
+            <div className="mt-2 text-sm">
+              {missingFiles.map((f) => (
+                <p key={f}>Expected <code className="text-xs">{f}</code> but it was not found.</p>
+              ))}
             </div>
           </div>
-          <StepActionBar isLastStep={isLastStep} reviewMode={reviewMode} onRefine={onRefine} onClose={onClose} onNextStep={onNextStep} />
+          {onResetStep && (
+            <Button size="sm" variant="outline" onClick={onResetStep}>
+              <RotateCcw className="size-3.5" />
+              Reset Step
+            </Button>
+          )}
         </div>
       );
     }
@@ -295,7 +315,7 @@ export function WorkflowStepComplete({
              The ClarificationsEditor's Continue button handles advancement — no StepActionBar. */
           <div className="min-h-0 flex-1 overflow-hidden">
             <ResearchSummaryCard
-                researchPlan={researchPlanContent!}
+                researchPlan={researchPlanContent}
                 clarificationsData={controlledClarData ?? clarData}
                 duration={!reviewMode ? duration : undefined}
                 cost={displayCost}
@@ -313,7 +333,7 @@ export function WorkflowStepComplete({
             <ScrollArea className="min-h-0 flex-1">
               <div className="pr-4">
                 <ResearchSummaryCard
-                  researchPlan={researchPlanContent!}
+                  researchPlan={researchPlanContent}
                   clarificationsData={clarData}
                   duration={!reviewMode ? duration : undefined}
                   cost={displayCost}
@@ -333,10 +353,10 @@ export function WorkflowStepComplete({
     );
   }
 
-  // Detailed research step: only clarifications.json (no research-plan.md)
+  // Detailed research step (step 1): clarifications.json only.
   const isClarificationsOnlyStep = !isResearchStep
+    && stepId === 1
     && outputFiles.includes("context/clarifications.json")
-    && !outputFiles.includes("context/research-plan.md")
     && clarificationsContent && clarificationsContent !== "__NOT_FOUND__";
 
   if (isClarificationsOnlyStep) {
@@ -382,10 +402,29 @@ export function WorkflowStepComplete({
     }
   }
 
-  // Decisions step: show summary card when decisions.md is the output
-  const decisionsContent = fileContents.get("context/decisions.md");
-  const isDecisionsStep = outputFiles.includes("context/decisions.md")
+  // Decisions step: show summary card when decisions.json is the output
+  const decisionsContent = fileContents.get("context/decisions.json");
+  const isDecisionsStep = outputFiles.includes("context/decisions.json")
     && decisionsContent && decisionsContent !== "__NOT_FOUND__";
+
+  // Decisions step: missing output file — show re-run affordance instead of broken completion screen
+  if (outputFiles.includes("context/decisions.json") && (!decisionsContent || decisionsContent === "__NOT_FOUND__")) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
+        <AlertTriangle className="size-8 text-destructive/50" />
+        <div className="text-center">
+          <p className="font-medium text-destructive">{stepName} step completed but output files are missing</p>
+          <p className="mt-1 text-sm">Expected <code className="text-xs">context/decisions.json</code> but it was not found.</p>
+        </div>
+        {onResetStep && (
+          <Button size="sm" variant="outline" onClick={onResetStep}>
+            <RotateCcw className="size-3.5" />
+            Re-run Step
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   if (isDecisionsStep) {
     // In review mode, derive duration from DB agent runs
@@ -505,7 +544,15 @@ export function WorkflowStepComplete({
         <ScrollArea className="min-h-0 flex-1">
           <div className="pr-4">
             {activeNotFound && (
-              <p className="text-sm text-muted-foreground italic">File not found</p>
+              <div className="flex flex-col items-center gap-3 py-6">
+                <p className="text-sm text-muted-foreground italic">File not found</p>
+                {onResetStep && (
+                  <Button size="sm" variant="outline" onClick={onResetStep}>
+                    <RotateCcw className="size-3.5" />
+                    Re-run Step
+                  </Button>
+                )}
+              </div>
             )}
             {!activeNotFound && activeContent && (
               <FileContentRenderer file={activeFile} content={activeContent} />

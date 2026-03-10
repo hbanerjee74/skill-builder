@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, type CSSProperties } from "react";
 import { ChevronRight, AlertTriangle, Info, RotateCcw, Check, Loader2, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   type ClarificationsFile,
   type Section,
@@ -34,6 +35,66 @@ function resolveNoteIcon(type: string): typeof AlertTriangle {
   return Info;
 }
 
+type ReviewStatus = "not_answered" | "vague" | "contradictory" | "needs_refinement";
+
+interface ReviewFeedback {
+  status: ReviewStatus;
+  questionId: string;
+  reason: string;
+  contradicts?: string;
+}
+
+const REVIEW_STATUS_LABEL: Record<ReviewStatus, string> = {
+  not_answered: "Not answered",
+  vague: "Vague",
+  contradictory: "Contradictory",
+  needs_refinement: "Needs refinement",
+};
+
+function parseAnswerFeedback(note: Note): ReviewFeedback | null {
+  if (note.type !== "answer_feedback") return null;
+
+  const title = note.title.trim();
+  const reason = note.body.trim();
+  const contradictoryMatch = /^Contradictory answer:\s*(.+)$/i.exec(title);
+  if (contradictoryMatch) {
+    const contradictsMatch = /conflicts with\s+([A-Za-z]\d+(?:\.\d+[a-z]?)?)/i.exec(reason);
+    return {
+      status: "contradictory",
+      questionId: contradictoryMatch[1].trim(),
+      reason,
+      contradicts: contradictsMatch?.[1],
+    };
+  }
+
+  const vagueMatch = /^Vague answer:\s*(.+)$/i.exec(title);
+  if (vagueMatch) {
+    return { status: "vague", questionId: vagueMatch[1].trim(), reason };
+  }
+
+  const unansweredMatch = /^Not answered:\s*(.+)$/i.exec(title);
+  if (unansweredMatch) {
+    return { status: "not_answered", questionId: unansweredMatch[1].trim(), reason };
+  }
+
+  const needsRefinementMatch = /^Needs refinement:\s*(.+)$/i.exec(title);
+  if (needsRefinementMatch) {
+    return { status: "needs_refinement", questionId: needsRefinementMatch[1].trim(), reason };
+  }
+
+  return null;
+}
+
+function getReviewFeedbackMap(notes: Note[]): Map<string, ReviewFeedback> {
+  const map = new Map<string, ReviewFeedback>();
+  for (const note of notes) {
+    const feedback = parseAnswerFeedback(note);
+    if (!feedback) continue;
+    map.set(feedback.questionId, feedback);
+  }
+  return map;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved";
@@ -64,7 +125,15 @@ export function ClarificationsEditor({
   evaluating = false,
 }: ClarificationsEditorProps) {
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set(data.sections.map((section) => section.id)));
+  const [notesExpanded, setNotesExpanded] = useState(true);
+  const [showNeedsReviewOnly, setShowNeedsReviewOnly] = useState(false);
   const { answered, total, mustUnanswered } = getTotalCounts(data);
+  const reviewFeedbackByQuestion = useMemo(
+    () => getReviewFeedbackMap(data.answer_evaluator_notes ?? []),
+    [data.answer_evaluator_notes],
+  );
+  const needsReviewCount = reviewFeedbackByQuestion.size;
   const canContinue = mustUnanswered === 0;
   const progressPct = total > 0 ? Math.round((answered / total) * 100) : 0;
   const isComplete = answered === total;
@@ -77,6 +146,29 @@ export function ClarificationsEditor({
       return next;
     });
   }, []);
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const section of data.sections) {
+        if (!next.has(section.id)) {
+          next.add(section.id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data.sections]);
 
   const updateQuestion = useCallback(
     (questionId: string, updater: (q: Question) => Question) => {
@@ -100,6 +192,20 @@ export function ClarificationsEditor({
     },
     [data, onChange],
   );
+
+  const hasNeedsReviewInTree = (q: Question): boolean => {
+    if (reviewFeedbackByQuestion.has(q.id)) return true;
+    return q.refinements.some(hasNeedsReviewInTree);
+  };
+
+  const visibleSections = data.sections
+    .map((section) => ({
+      section,
+      visibleQuestions: showNeedsReviewOnly
+        ? section.questions.filter(hasNeedsReviewInTree)
+        : section.questions,
+    }))
+    .filter(({ visibleQuestions }) => visibleQuestions.length > 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -133,6 +239,15 @@ export function ClarificationsEditor({
         {filePath && (
           <span className="text-[11px] font-mono text-muted-foreground">{filePath}</span>
         )}
+        <div className="ml-1 flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Need Review</span>
+          <Switch
+            size="sm"
+            aria-label="Need Review"
+            checked={showNeedsReviewOnly}
+            onCheckedChange={setShowNeedsReviewOnly}
+          />
+        </div>
       </div>
 
       {/* ── Scrollable document ── */}
@@ -153,19 +268,42 @@ export function ClarificationsEditor({
           Questions marked <strong className="font-semibold">MUST ANSWER</strong> block skill generation.
           All others refine quality but have reasonable defaults.
         </div>
+        {needsReviewCount > 0 && (
+          <div
+            className="mx-6 mt-2 rounded-md border px-3 py-2 text-xs leading-relaxed"
+            style={{
+              borderColor: "color-mix(in oklch, var(--destructive), transparent 70%)",
+              background: "color-mix(in oklch, var(--destructive), transparent 93%)",
+              color: "var(--destructive)",
+            }}
+          >
+            {needsReviewCount} question{needsReviewCount === 1 ? "" : "s"} currently marked for review by the answer evaluator.
+          </div>
+        )}
 
-        {data.notes.length > 0 && <NotesBlock notes={data.notes} />}
+        {data.notes.length > 0 && (
+          <NotesBlock notes={data.notes} isExpanded={notesExpanded} onToggle={() => setNotesExpanded((prev) => !prev)} />
+        )}
 
-        {data.sections.map((section) => (
+        {visibleSections.map(({ section, visibleQuestions }) => (
           <SectionBlock
             key={section.id}
             section={section}
+            visibleQuestions={visibleQuestions}
+            isExpanded={expandedSections.has(section.id)}
+            toggleSection={toggleSection}
             expandedCards={expandedCards}
             toggleCard={toggleCard}
             updateQuestion={updateQuestion}
             readOnly={readOnly}
+            reviewFeedbackByQuestion={reviewFeedbackByQuestion}
           />
         ))}
+        {visibleSections.length === 0 && (
+          <div className="mx-6 mt-6 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground">
+            No questions currently need review.
+          </div>
+        )}
       </div>
 
       {/* ── Bottom bar ── */}
@@ -238,26 +376,39 @@ function MetadataBlock({ data }: { data: ClarificationsFile }) {
 // ─── Section Band ─────────────────────────────────────────────────────────────
 
 function SectionBlock({
-  section, expandedCards, toggleCard, updateQuestion, readOnly,
+  section, visibleQuestions, isExpanded, toggleSection, expandedCards, toggleCard, updateQuestion, readOnly, reviewFeedbackByQuestion,
 }: {
   section: Section;
+  visibleQuestions: Question[];
+  isExpanded: boolean;
+  toggleSection: (id: string) => void;
   expandedCards: Set<string>;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   const status = getSectionStatus(section);
   const { answered, total } = getSectionCounts(section);
 
   return (
     <div>
-      <div
-        className="sticky top-0 z-10 mt-6 flex items-center gap-3 px-6 py-2.5 backdrop-blur-sm"
+      <button
+        type="button"
+        className="sticky top-0 z-10 mt-6 flex w-full items-center gap-3 px-6 py-2.5 text-left backdrop-blur-sm transition-colors hover:bg-muted/50"
         style={{
           borderTop: "2px solid var(--color-pacific)",
           background: "color-mix(in oklch, var(--color-pacific), transparent 90%)",
         }}
+        onClick={() => toggleSection(section.id)}
+        aria-expanded={isExpanded}
+        aria-controls={`section-content-${section.id}`}
       >
+        <ChevronRight
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          aria-hidden="true"
+        />
         <span
           className="flex-1 text-sm font-semibold tracking-tight"
           style={{ color: "var(--color-pacific)" }}
@@ -265,24 +416,30 @@ function SectionBlock({
           {section.title}
         </span>
         <StatusChip status={status} answered={answered} total={total} />
-      </div>
+      </button>
 
-      {section.description && (
-        <div className="border-b bg-muted/30 px-6 py-2 text-xs text-muted-foreground italic leading-relaxed">
-          {section.description}
+      {isExpanded && (
+        <div id={`section-content-${section.id}`}>
+          {section.description && (
+            <div className="border-b bg-muted/30 px-6 py-2 text-xs text-muted-foreground italic leading-relaxed">
+              {section.description}
+            </div>
+          )}
+
+          {visibleQuestions.map((question) => (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              isExpanded={expandedCards.has(question.id)}
+              toggleCard={toggleCard}
+              updateQuestion={updateQuestion}
+              readOnly={readOnly}
+              reviewFeedback={reviewFeedbackByQuestion.get(question.id)}
+              reviewFeedbackByQuestion={reviewFeedbackByQuestion}
+            />
+          ))}
         </div>
       )}
-
-      {section.questions.map((question) => (
-        <QuestionCard
-          key={question.id}
-          question={question}
-          isExpanded={expandedCards.has(question.id)}
-          toggleCard={toggleCard}
-          updateQuestion={updateQuestion}
-          readOnly={readOnly}
-        />
-      ))}
     </div>
   );
 }
@@ -322,15 +479,26 @@ function StatusChip({ status, answered, total }: { status: SectionStatus; answer
 // ─── Question Card ────────────────────────────────────────────────────────────
 
 function QuestionCard({
-  question, isExpanded, toggleCard, updateQuestion, readOnly,
+  question, isExpanded, toggleCard, updateQuestion, readOnly, reviewFeedback, reviewFeedbackByQuestion,
 }: {
   question: Question;
   isExpanded: boolean;
   toggleCard: (id: string) => void;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedback?: ReviewFeedback;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   const answered = isQuestionAnswered(question);
+  const accentColorByStatus: Record<ReviewStatus, string> = {
+    not_answered: "var(--destructive)",
+    contradictory: "var(--destructive)",
+    vague: "oklch(0.769 0.188 70.08)",
+    needs_refinement: "var(--color-pacific)",
+  };
+  const cardAccentColor = reviewFeedback
+    ? accentColorByStatus[reviewFeedback.status]
+    : (answered ? "var(--color-pacific)" : "var(--border)");
   const refCount = question.refinements.length;
   const refUnanswered = refCount > 0
     ? question.refinements.filter((r) => !isQuestionAnswered(r)).length
@@ -341,7 +509,7 @@ function QuestionCard({
       className="mx-6 mt-3 overflow-hidden rounded-lg border shadow-sm transition-shadow duration-150 hover:shadow"
       style={{
         borderLeftWidth: "3px",
-        borderLeftColor: answered ? "var(--color-pacific)" : "var(--border)",
+        borderLeftColor: cardAccentColor,
       }}
     >
       {/* Header */}
@@ -356,6 +524,7 @@ function QuestionCard({
         <span className="flex-1 text-sm font-semibold leading-snug tracking-tight text-foreground">
           {question.title}
         </span>
+        {reviewFeedback && <ReviewStatusBadge status={reviewFeedback.status} />}
         {refCount > 0 && <RefinementBadge count={refCount} unanswered={refUnanswered} />}
         {question.must_answer && <MustBadge />}
         <ChevronRight
@@ -388,6 +557,7 @@ function QuestionCard({
           <p className="mb-3 text-sm leading-relaxed text-foreground/90">
             {question.text}
           </p>
+          {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} />}
 
           {question.choices.length > 0 && (
             <ChoiceList
@@ -427,6 +597,7 @@ function QuestionCard({
               refinements={question.refinements}
               updateQuestion={updateQuestion}
               readOnly={readOnly}
+              reviewFeedbackByQuestion={reviewFeedbackByQuestion}
             />
           )}
         </div>
@@ -579,11 +750,12 @@ function AnswerField({
 // ─── Refinements Block ────────────────────────────────────────────────────────
 
 function RefinementsBlock({
-  refinements, updateQuestion, readOnly,
+  refinements, updateQuestion, readOnly, reviewFeedbackByQuestion,
 }: {
   refinements: Question[];
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedbackByQuestion: Map<string, ReviewFeedback>;
 }) {
   return (
     <div
@@ -603,18 +775,25 @@ function RefinementsBlock({
         Refinements
       </div>
       {refinements.map((ref) => (
-        <RefinementItem key={ref.id} refinement={ref} updateQuestion={updateQuestion} readOnly={readOnly} />
+        <RefinementItem
+          key={ref.id}
+          refinement={ref}
+          updateQuestion={updateQuestion}
+          readOnly={readOnly}
+          reviewFeedback={reviewFeedbackByQuestion.get(ref.id)}
+        />
       ))}
     </div>
   );
 }
 
 function RefinementItem({
-  refinement, updateQuestion, readOnly,
+  refinement, updateQuestion, readOnly, reviewFeedback,
 }: {
   refinement: Question;
   updateQuestion: (id: string, updater: (q: Question) => Question) => void;
   readOnly: boolean;
+  reviewFeedback?: ReviewFeedback;
 }) {
   const answered = isQuestionAnswered(refinement);
 
@@ -641,6 +820,7 @@ function RefinementItem({
           </span>
         )}
       </div>
+      {reviewFeedback && <ReviewFeedbackCallout feedback={reviewFeedback} compact />}
       {refinement.choices.length > 0 && (
         <ChoiceList
           choices={refinement.choices}
@@ -671,18 +851,136 @@ function RefinementItem({
   );
 }
 
+function ReviewFeedbackCallout({ feedback, compact = false }: { feedback: ReviewFeedback; compact?: boolean }) {
+  const chipStyles: Record<ReviewStatus, { bg: string; text: string; border: string; className?: string }> = {
+    not_answered: {
+      bg: "var(--destructive)",
+      text: "var(--destructive)",
+      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
+    },
+    contradictory: {
+      bg: "var(--destructive)",
+      text: "var(--destructive)",
+      border: "color-mix(in oklch, var(--destructive), transparent 55%)",
+    },
+    vague: {
+      bg: "",
+      text: "",
+      border: "",
+      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    },
+    needs_refinement: {
+      bg: "var(--color-pacific)",
+      text: "var(--color-pacific)",
+      border: "color-mix(in oklch, var(--color-pacific), transparent 55%)",
+    },
+  };
+  const statusChip = chipStyles[feedback.status];
+
+  return (
+    <div
+      className={`mb-3 rounded-md border px-3 ${compact ? "py-2" : "py-2.5"} text-xs leading-relaxed`}
+      style={{
+        borderColor: feedback.status === "contradictory"
+          ? "color-mix(in oklch, var(--destructive), transparent 55%)"
+          : "color-mix(in oklch, var(--color-pacific), transparent 60%)",
+        background: feedback.status === "contradictory"
+          ? "color-mix(in oklch, var(--destructive), transparent 92%)"
+          : "color-mix(in oklch, var(--color-pacific), transparent 92%)",
+      }}
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <span
+          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+            statusChip.className ?? ""
+          }`}
+          style={statusChip.className
+            ? undefined
+            : {
+              color: statusChip.text,
+              background: `color-mix(in oklch, ${statusChip.bg}, transparent 88%)`,
+              border: `1px solid ${statusChip.border}`,
+            }}
+        >
+          Need Review: {REVIEW_STATUS_LABEL[feedback.status]}
+        </span>
+        {feedback.contradicts && (
+          <span className="rounded-full border px-2 py-0.5 text-[11px] font-medium text-destructive">
+            Conflicts with {feedback.contradicts}
+          </span>
+        )}
+      </div>
+      <p className="text-muted-foreground">Why flagged: {feedback.reason}</p>
+    </div>
+  );
+}
+
+function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
+  const statusStyles: Record<ReviewStatus, { className?: string; style?: CSSProperties }> = {
+    not_answered: {
+      style: {
+        color: "var(--destructive)",
+        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
+        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
+      },
+    },
+    contradictory: {
+      style: {
+        color: "var(--destructive)",
+        border: "1px solid color-mix(in oklch, var(--destructive), transparent 50%)",
+        background: "color-mix(in oklch, var(--destructive), transparent 88%)",
+      },
+    },
+    vague: {
+      className: "border-amber-500/40 bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    },
+    needs_refinement: {
+      style: {
+        color: "var(--color-pacific)",
+        border: "1px solid color-mix(in oklch, var(--color-pacific), transparent 50%)",
+        background: "color-mix(in oklch, var(--color-pacific), transparent 88%)",
+      },
+    },
+  };
+  const s = statusStyles[status];
+
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${s.className ?? ""}`}
+      style={s.style}
+    >
+      {REVIEW_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
 // ─── Research Notes ───────────────────────────────────────────────────────────
 
-function NotesBlock({ notes }: { notes: Note[] }) {
+function NotesBlock({
+  notes, isExpanded, onToggle,
+}: {
+  notes: Note[];
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
   return (
     <div>
-      <div
-        className="mt-6 flex items-center gap-2.5 px-6 py-2.5"
+      <button
+        type="button"
+        className="mt-6 flex w-full items-center gap-2.5 px-6 py-2.5 text-left transition-colors hover:bg-muted/40"
         style={{
           borderTop: "2px solid var(--color-ocean)",
           background: "color-mix(in oklch, var(--color-ocean), transparent 90%)",
         }}
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        aria-controls="research-notes-content"
       >
+        <ChevronRight
+          className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-150"
+          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          aria-hidden="true"
+        />
         <Info className="size-4" style={{ color: "var(--color-ocean)" }} />
         <span
           className="flex-1 text-sm font-semibold tracking-tight"
@@ -691,10 +989,14 @@ function NotesBlock({ notes }: { notes: Note[] }) {
           Research Notes
         </span>
         <span className="text-[11px] text-muted-foreground">{notes.length} {notes.length === 1 ? "note" : "notes"}</span>
-      </div>
-      {notes.map((note, i) => (
-        <NoteCard key={i} note={note} />
-      ))}
+      </button>
+      {isExpanded && (
+        <div id="research-notes-content">
+          {notes.map((note, i) => (
+            <NoteCard key={i} note={note} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

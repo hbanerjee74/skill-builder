@@ -1,6 +1,6 @@
 # Bundled Skills
 
-Four bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`research`, `validate-skill`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
+Three bundled skills are seeded into the workspace on startup by `seed_bundled_skills`. The orchestrating skills (`validate-skill`, `skill-creator`) follow the same pattern: receive inputs inline, spawn parallel sub-agents in one turn, return delimited sections. The calling orchestrator extracts each section and writes the files to disk.
 
 Output file formats: [`../agent-specs/canonical-format.md`](../agent-specs/canonical-format.md).
 
@@ -12,8 +12,8 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 | Skill | Purpose |
 |---|---|
-| `research` | `research` |
-| `skill-builder-practices` | `skill-building` |
+| `research` (plugin-owned) | `research` |
+| `skill-creator` | `skill-building` |
 | `skill-test` | `test-context` |
 | `validate-skill` | `validate` |
 
@@ -23,7 +23,9 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 
 ## Research Skill
 
-`research-orchestrator` runs at step 0. Invoked by:
+The research workflow is owned entirely by the `skill-content-researcher` **plugin** (wrapper + internal agent + Python tooling). There is no bundled workspace research skill — research is plugin-owned.
+
+`research-orchestrator` runs at step 0 as a **thin wrapper** that delegates to the plugin. It is invoked by:
 
 - **Tauri app** — `workflow.rs` step 0 via the sidecar
 - **Plugin workflow** — coordinator spawns it via `Task(subagent_type: "skill-builder:research-orchestrator")`
@@ -31,64 +33,78 @@ Each bundled skill has a **purpose** — a slot identifier that controls which s
 ### Structure
 
 ```text
-agent-sources/workspace/skills/research/
-  SKILL.md
-  references/
-    dimension-sets.md             ← type-scoped dimension tables (5–6 per type)
-    scoring-rubric.md             ← scoring criteria (1–5) and selection rules
-    consolidation-handoff.md      ← clarifications.md format spec for consolidation
-    dimensions/
-      entities.md                 ← 18 dimension specs (focus, approach, output format)
-      metrics.md
-      data-quality.md
-      business-rules.md
-      segmentation-and-periods.md
-      modeling-patterns.md
-      pattern-interactions.md
-      load-merge-patterns.md
-      historization.md
-      layer-design.md
-      platform-behavioral-overrides.md
-      config-patterns.md
-      integration-orchestration.md
-      operational-failure-modes.md
-      extraction.md
-      field-semantics.md
-      lifecycle-and-state.md
-      reconciliation.md
+agent-sources/plugins/skill-content-researcher/
+  skills/
+    research/                   ← embedded research skill (internal-only, not user-invocable)
+      SKILL.md
+      references/
+        dimension-sets.md       ← type-scoped dimension tables (5–6 per type)
+        scoring-rubric.md       ← scoring criteria (1–5) and selection rules
+        schemas.md              ← canonical JSON schema for research_output
+        consolidation-handoff.md
+        dimensions/
+          entities.md
+          metrics.md
+          data-quality.md
+          … (18 dimension specs)
+    skill-content-researcher/   ← user-invocable wrapper skill
+      SKILL.md                  ← uses AskUserQuestion to collect inputs
+```
+
+The `skill-content-researcher` plugin mirrors this schema and reference set under:
+
+```text
+agent-sources/plugins/skill-content-researcher/
+  skills/
+    research/                   ← embedded research skill (internal-only)
+      SKILL.md
+      references/
+        schemas.md              ← plugin-local copy; kept in sync by tests
+    skill-content-researcher/   ← user-invocable wrapper skill
+      SKILL.md                  ← uses AskUserQuestion to collect inputs
+      …
 ```
 
 ### How It Works
 
-**Step 1 — Select dimension set.** Read `dimension-sets.md`, identify the 5–6 candidate dimensions for the given `purpose`.
+At a high level:
 
-**Step 2 — Score and select.** Score each candidate against the domain using `scoring-rubric.md`. Select top 3–5 by score. Extended thinking is used here.
+1. The user invokes the `skill-content-researcher` wrapper skill. It collects `purpose`, `description`, `industry`, and `function_role` **interactively** via `AskUserQuestion`, with Skip/Other options for each.
+2. The wrapper constructs a markdown **User Context** block from the answers and passes it, along with `purpose` and an internal `skill_name` placeholder, to the plugin’s `research-agent`.
+3. `research-agent` runs the research flow using the reference material in `skills/research/references/`, then calls a Python tool (`normalize_research_output.py`) to:
+   - Parse and validate the `research_output` JSON against the minimal required shape.
+   - Derive `question_count` and `dimensions_selected` deterministically.
+4. The Python tool emits a **normalized envelope**:
 
-**Step 3 — Parallel dimension research.** Spawn one sub-agent per selected dimension with its spec content plus domain and tailored focus line embedded inline. All sub-agents launch in the same turn.
+   ```json
+   {
+     "research_output": { "...canonical clarifications object..." },
+     "dimensions_selected": 4,
+     "question_count": 26
+   }
+   ```
 
-**Step 4 — Consolidate.** Synthesize all dimension outputs into `clarifications.md` format per `consolidation-handoff.md`.
+5. `research-orchestrator` returns the app-facing envelope:
 
-### Return Format
+   ```json
+   {
+     "status": "research_complete",
+     "dimensions_selected": 4,
+     "question_count": 26,
+     "research_output": { "...canonical clarifications object..." }
+   }
+   ```
 
-```text
-=== RESEARCH PLAN ===
-[scored dimension table + selected dimensions]
-=== CLARIFICATIONS ===
-[complete clarifications.md content including YAML frontmatter]
-```
-
-Orchestrator writes:
-
-- `=== RESEARCH PLAN ===` → `{context_dir}/research-plan.md`
-- `=== CLARIFICATIONS ===` → `{context_dir}/clarifications.md`
-
-If `clarifications.md` contains `scope_recommendation: true`, the orchestrator surfaces this to the caller and stops — the domain scope is too broad for skill generation.
+The canonical shape of `research_output` (including `metadata.research_plan`) lives in `schemas.md` and is enforced by the Python normalizer, not by prompt text.
 
 ### Customization
 
-Replace by importing a custom skill into Settings→Skills and assigning purpose `research`. The app will use it instead of the bundled skill. Teams can customise: dimensions per skill type, scoring rubric and selection threshold, research approach per dimension, consolidation logic. The orchestrator and `clarifications.md` format contract are app-controlled.
+Teams customise research by editing the **reference inputs** and schema, not the envelope:
 
-Dimension catalog, per-type template mappings, focus line tailoring, and design guidelines: [`dimensions.md`](dimensions.md).
+- Dimension catalog, per‑type template mappings, focus line tailoring, and design guidelines: [`dimensions.md`](dimensions.md).
+- Scoring and selection behavior: `dimension-sets.md`, `scoring-rubric.md`, and the plugin’s internal research SKILL and agent.
+
+The app‑level contract is the JSON envelope (`status`, `dimensions_selected`, `question_count`, `research_output`) and the `research_output` schema defined in `schemas.md`.
 
 ---
 
@@ -102,7 +118,7 @@ Dimension catalog, per-type template mappings, focus line tailoring, and design 
 ### Structure
 
 ```text
-agent-sources/workspace/skills/validate-skill/
+agent-sources/skills/validate-skill/
   SKILL.md
   references/
     validate-quality-spec.md      ← quality checker: 4-pass assessment
@@ -162,7 +178,7 @@ Purpose slot: `test-context`. Replace by importing a custom skill into Settings�
 ### Structure
 
 ```text
-agent-sources/workspace/skills/skill-test/
+agent-sources/skills/skill-test/
   SKILL.md     ← two sections: Test Context + Evaluation Rubric
 ```
 

@@ -5,7 +5,18 @@ export interface ClarificationsFile {
   version: "1";
   metadata: ClarificationsMetadata;
   sections: Section[];
-  notes: Note[];
+  notes: Note[]; // research notes from research/detailed-research
+  answer_evaluator_notes?: Note[]; // gate feedback notes from answer-evaluator
+}
+
+export interface ClarificationsWarning {
+  code: "scope_guard_triggered" | "all_dimensions_low_score";
+  message: string;
+}
+
+export interface ClarificationsError {
+  code: "missing_user_context" | "invalid_research_output";
+  message: string;
 }
 
 export interface ClarificationsMetadata {
@@ -17,6 +28,34 @@ export interface ClarificationsMetadata {
   priority_questions: string[];
   duplicates_removed?: number;
   scope_recommendation?: boolean;
+  scope_reason?: string;
+  scope_next_action?: string;
+  research_plan?: ClarificationsResearchPlan;
+  warning?: ClarificationsWarning;
+  error?: ClarificationsError;
+}
+
+export interface ClarificationsResearchPlanDimensionScore {
+  name: string;
+  score: number;
+  reason: string;
+  focus: string;
+  companion_skill?: string | null;
+}
+
+export interface ClarificationsResearchPlanSelectedDimension {
+  name: string;
+  focus: string;
+}
+
+export interface ClarificationsResearchPlan {
+  purpose: string;
+  domain: string;
+  topic_relevance: string;
+  dimensions_evaluated: number;
+  dimensions_selected: number;
+  dimension_scores: ClarificationsResearchPlanDimensionScore[];
+  selected_dimensions: ClarificationsResearchPlanSelectedDimension[];
 }
 
 export interface Section {
@@ -56,6 +95,14 @@ export interface Note {
   type: string; // "inconsistency" | "blocked" | "deferred" | "critical_gap" | "flag" — agents may produce any type
   title: string;
   body: string;
+}
+
+interface LegacyDimension {
+  id?: string;
+  name?: string;
+  description?: string;
+  priority?: string;
+  questions?: string[];
 }
 
 // Derived helpers
@@ -115,7 +162,85 @@ function normalizeQuestion(q: Question): Question {
 export function parseClarifications(content: string | null): ClarificationsFile | null {
   if (!content) return null;
   try {
-    const raw = JSON.parse(content) as ClarificationsFile;
+    const raw = JSON.parse(content) as ClarificationsFile & {
+      dimensions?: LegacyDimension[];
+      clarifications?: { dimensions?: LegacyDimension[] };
+      metadata?: ClarificationsMetadata & {
+        domain?: string;
+        skill_name?: string;
+        scope_recommendation?: boolean;
+        scope_reason?: string;
+        scope_next_action?: string;
+      };
+      answer_evaluator_notes?: Note[];
+    };
+    const rawNotes = raw.notes ?? [];
+    const explicitEvaluatorNotes = Array.isArray(raw.answer_evaluator_notes)
+      ? raw.answer_evaluator_notes
+      : [];
+    const migratedEvaluatorNotes = explicitEvaluatorNotes.length > 0
+      ? explicitEvaluatorNotes
+      : rawNotes.filter((note) => note.type === "answer_feedback");
+    const researchNotes = rawNotes.filter((note) => note.type !== "answer_feedback");
+
+    const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
+    const rawQuestionCount = rawSections.reduce((count, section) => {
+      const sectionQuestions = (section as { questions?: unknown[] }).questions;
+      const questions = Array.isArray(sectionQuestions) ? sectionQuestions : [];
+      return count + questions.length;
+    }, 0);
+    const legacyDimensions = Array.isArray(raw.dimensions)
+      ? raw.dimensions
+      : (Array.isArray(raw.clarifications?.dimensions) ? raw.clarifications.dimensions : []);
+
+    // Back-compat: some older or non-canonical research flows write
+    // `dimensions[]` with string questions. Convert to canonical shape so
+    // Step 0/1 can still render and edit questions.
+    if (rawQuestionCount === 0 && legacyDimensions.length > 0) {
+      const convertedSections: Section[] = legacyDimensions.map((d, sectionIndex) => {
+        const sectionId = d.id || `S${sectionIndex + 1}`;
+        const sourceQuestions = Array.isArray(d.questions)
+          ? d.questions
+          : (Array.isArray((d as { clarifications_needed?: string[] }).clarifications_needed)
+              ? (d as { clarifications_needed?: string[] }).clarifications_needed ?? []
+              : []);
+        return {
+          id: sectionId,
+          title: d.name || `Section ${sectionIndex + 1}`,
+          description: d.description,
+          questions: sourceQuestions.map((questionText, questionIndex) => ({
+            id: `${sectionId}.Q${questionIndex + 1}`,
+            title: questionText,
+            must_answer: false,
+            text: questionText,
+            choices: [],
+            recommendation: null,
+            answer_choice: null,
+            answer_text: null,
+            refinements: [],
+          })),
+        };
+      });
+
+      const questionCount = convertedSections.reduce((count, section) => count + section.questions.length, 0);
+      return {
+        version: "1",
+        metadata: {
+          title: raw.metadata?.domain || raw.metadata?.skill_name || "Clarifications",
+          question_count: questionCount,
+          section_count: convertedSections.length,
+          refinement_count: 0,
+          must_answer_count: 0,
+          priority_questions: [],
+          scope_recommendation: !!raw.metadata?.scope_recommendation,
+          duplicates_removed: 0,
+        },
+        sections: convertedSections,
+        notes: researchNotes,
+        answer_evaluator_notes: migratedEvaluatorNotes,
+      };
+    }
+
     return {
       ...raw,
       metadata: {
@@ -126,7 +251,8 @@ export function parseClarifications(content: string | null): ClarificationsFile 
         ...s,
         questions: (s.questions ?? []).map(normalizeQuestion),
       })),
-      notes: raw.notes ?? [],
+      notes: researchNotes,
+      answer_evaluator_notes: migratedEvaluatorNotes,
     };
   } catch {
     return null;

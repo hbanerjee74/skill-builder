@@ -27,7 +27,7 @@ The reconciler infers step completion from files in `{skills_path}/{name}/`. Onl
 | Step | Evidence |
 |------|----------|
 | 0 | `context/clarifications.json` + `context/research-plan.md` |
-| 2 | `context/decisions.md` |
+| 2 | `context/decisions.json` |
 | 3 | `SKILL.md` |
 
 Step 1 edits `clarifications.json` in-place — no unique artifact, not independently detectable. `detect_furthest_step` checks steps `[0, 2, 3]` in order and stops at the first incomplete step. Partial output at a step is cleaned up defensively.
@@ -73,9 +73,21 @@ After reconciling step state: if disk shows step ≥ 3 and `workflow_runs.status
 
 ---
 
-## ACK Dialog
+## Confirmation Flow
 
-After all three passes, if there are any notifications or discovered skills, `ReconciliationAckDialog` is shown as a blocking modal — the dashboard does not mount until the user acknowledges all notifications and resolves all discovered skills (9b/9c). Each discovery has inline **Add to Library** / **Remove** buttons; the Acknowledge button stays disabled until all are resolved.
+Startup now runs in two phases:
+
+1. **Preview (read-only):** compute notifications + discoveries without mutating DB or disk.
+2. **Apply (explicit):** execute reconciliation only after user confirms.
+
+If preview returns notifications/discoveries, `ReconciliationAckDialog` blocks dashboard mount and shows the proposed changes before any automatic write/delete/reset is performed. The user can:
+
+- **Apply Reconciliation** — execute startup reconciliation and continue.
+- **Continue Without Applying** — skip automatic reconciliation for this launch.
+
+Each discovery still requires explicit user action (`Add to Library` / `Remove`) before Apply is enabled.
+
+Applied/preview/cancel actions are recorded in `reconciliation_events` for auditability.
 
 ---
 

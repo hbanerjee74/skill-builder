@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use crate::agents::sidecar::{self, SidecarConfig};
 use crate::agents::sidecar_pool::SidecarPool;
 use crate::commands::imported_skills::validate_skill_name;
-use crate::commands::workflow::resolve_model_id;
+use crate::commands::workflow::{resolve_model_id, write_skill_output_dir_file};
 use crate::db::{self, Db};
 use crate::types::{RefineFileDiff, RefineDiff, RefineSessionInfo, SkillFileContent};
 
@@ -53,6 +53,7 @@ impl RefineSessionManager {
 
 /// Build a SidecarConfig for the first refine message (stream_start).
 /// Extracted for testability — `send_refine_message` calls this then sends stream_start.
+#[allow(clippy::too_many_arguments)]
 fn build_refine_config(
     prompt: String,
     skill_name: &str,
@@ -60,11 +61,15 @@ fn build_refine_config(
     api_key: String,
     model: String,
     extended_thinking: bool,
+    interleaved_thinking_beta: bool,
+    sdk_effort: Option<String>,
+    fallback_model: Option<String>,
+    refine_prompt_suggestions: bool,
 ) -> (SidecarConfig, String) {
     let thinking_budget = extended_thinking.then_some(16_000u32);
 
     // CWD is the workspace root (.vibedata) so the sidecar can find
-    // .claude/agents/ and .claude/CLAUDE.md. Skill files are accessed via
+    // .claude/agents/ and workspace-root CLAUDE.md. Skill files are accessed via
     // absolute paths embedded in the prompt.
     let cwd = workspace_path.to_string();
     let agent_id = format!(
@@ -75,8 +80,12 @@ fn build_refine_config(
 
     let config = SidecarConfig {
         prompt,
-        betas: crate::commands::workflow::build_betas(thinking_budget, &model),
-        model: Some(model),
+        betas: crate::commands::workflow::build_betas(
+            thinking_budget,
+            &model,
+            interleaved_thinking_beta,
+        ),
+        model: None,
         api_key,
         cwd,
         allowed_tools: Some(REFINE_TOOLS.iter().map(|s| s.to_string()).collect()),
@@ -84,10 +93,19 @@ fn build_refine_config(
         // messages in this session (not per-message like the old one-shot mode).
         max_turns: Some(REFINE_STREAM_MAX_TURNS),
         permission_mode: None,
-        session_id: None,
-        max_thinking_tokens: thinking_budget,
+        thinking: thinking_budget.map(|budget| {
+            serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": budget
+            })
+        }),
+        fallback_model,
+        effort: sdk_effort,
+        output_format: None,
+        prompt_suggestions: Some(refine_prompt_suggestions),
         path_to_claude_code_executable: None,
         agent_name: Some(REFINE_AGENT_NAME.to_string()),
+        required_plugins: None,
         conversation_history: None,
     };
 
@@ -129,50 +147,37 @@ fn build_followup_prompt(
 }
 
 /// Build the refine agent prompt with all runtime fields.
-/// Matches the workflow pattern in `workflow.rs::build_prompt` — provides skill directory,
-/// context directory, workspace directory, command, and a pointer to user-context.md.
-/// User context (purpose, industry, intake fields) is NOT inlined — the agent reads
-/// user-context.md from the workspace directory at runtime.
+/// SDK calling protocol: only skill name, workspace_dir, and command. Agent reads
+/// user-context.md and .skill_output_dir first; derives context_dir and skill output path.
 fn build_refine_prompt(
     skill_name: &str,
     workspace_path: &str,
-    skills_path: &str,
+    _skills_path: &str,
     user_message: &str,
     target_files: Option<&[String]>,
     command: Option<&str>,
 ) -> String {
-    let skill_dir = Path::new(skills_path).join(skill_name);
-    let context_dir = Path::new(skills_path).join(skill_name).join("context");
     let workspace_dir = Path::new(workspace_path).join(skill_name);
-    let skill_dir_str = skill_dir.to_string_lossy().replace('\\', "/");
-    let context_dir_str = context_dir.to_string_lossy().replace('\\', "/");
-    let workspace_dir_str = workspace_dir.to_string_lossy().replace('\\', "/");
+    let workspace_str = workspace_dir.to_string_lossy().replace('\\', "/");
 
     let effective_command = command.unwrap_or("refine");
 
     let mut prompt = format!(
-        "The skill name is: {}. The command is: {}. \
-         The skill directory is: {}. The context directory is: {}. The workspace directory is: {}. \
+        "The skill name is: {}. The command is: {}. The workspace directory is: {}. \
+         Read user-context.md and .skill_output_dir from the workspace directory first. \
+         Derive context_dir as workspace_dir/context. The skill output directory (SKILL.md and references/) is the path in .skill_output_dir. \
          All directories already exist — never create directories with mkdir or any other method.",
         skill_name,
         effective_command,
-        skill_dir_str,
-        context_dir_str,
-        workspace_dir_str,
+        workspace_str,
     );
 
-    prompt.push_str(" Read user-context.md from the workspace directory for purpose, description, and all user context.");
-
-    // File constraint: restrict edits to specific files if @file targets were specified
+    // File constraint: restrict edits to specific files if @file targets were specified (paths relative to skill output dir)
     if let Some(files) = target_files {
         if !files.is_empty() {
-            let abs_files: Vec<String> = files
-                .iter()
-                .map(|f| format!("{}/{}", skill_dir_str, f))
-                .collect();
             prompt.push_str(&format!(
-                "\n\nIMPORTANT: Only edit these files: {}. Do not modify any other files.",
-                abs_files.join(", ")
+                "\n\nIMPORTANT: Only edit these files (relative to skill output directory): {}. Do not modify any other files.",
+                files.join(", ")
             ));
         }
     }
@@ -321,6 +326,8 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Collect per-file diffs using print() which provides a single mutable callback
     let mut file_map: HashMap<String, RefineFileDiff> = HashMap::new();
+    let mut insertions = 0usize;
+    let mut deletions = 0usize;
 
     diff.print(DiffFormat::Patch, |delta, _hunk, line| {
         let path = delta
@@ -344,6 +351,16 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
         // Append diff content: hunk headers, context, additions, deletions
         let origin = line.origin();
         if let Ok(s) = std::str::from_utf8(line.content()) {
+            // Exclude file header lines ("+++ b/path", "--- a/path") from stats.
+            // They can be emitted as '+'/'-' lines in patch format but are metadata.
+            let is_file_header_line = (origin == '+' && s.starts_with("++ "))
+                || (origin == '-' && s.starts_with("-- "));
+            if origin == '+' && !is_file_header_line {
+                insertions += 1;
+            } else if origin == '-' && !is_file_header_line {
+                deletions += 1;
+            }
+
             match origin {
                 '+' | '-' | ' ' => {
                     entry.diff.push(origin);
@@ -371,13 +388,6 @@ fn get_refine_diff_inner(skill_name: &str, skills_path: &str) -> Result<RefineDi
 
     // Build stat summary from line counts (single pass per file)
     let total_files = file_map.len();
-    let (insertions, deletions) = file_map.values().fold((0usize, 0usize), |(ins, del), f| {
-        f.diff.lines().fold((ins, del), |(i, d), line| match line.as_bytes().first() {
-            Some(b'+') => (i + 1, d),
-            Some(b'-') => (i, d + 1),
-            _ => (i, d),
-        })
-    });
 
     let stat = format!(
         "{} file(s) changed, {} insertion(s)(+), {} deletion(s)(-)",
@@ -512,7 +522,16 @@ pub async fn send_refine_message(
     if !stream_started {
         // ─── First message: start streaming session ───────────────────────
         // 2. Read settings, workflow run data, and write user-context.md
-        let (api_key, extended_thinking, model, skills_path) = {
+        let (
+            api_key,
+            extended_thinking,
+            interleaved_thinking_beta,
+            sdk_effort,
+            fallback_model,
+            refine_prompt_suggestions,
+            model,
+            skills_path,
+        ) = {
             let conn = db.0.lock().map_err(|e| {
                 log::error!("[send_refine_message] Failed to acquire DB lock: {}", e);
                 e.to_string()
@@ -555,7 +574,16 @@ pub async fn send_refine_message(
                 None, Some(purpose.as_str()), None, None, None, None, None,
             );
 
-            (key, settings.extended_thinking, model, skills_path)
+            (
+                key,
+                settings.extended_thinking,
+                settings.interleaved_thinking_beta,
+                settings.sdk_effort.clone(),
+                Some(model.clone()),
+                settings.refine_prompt_suggestions,
+                model,
+                skills_path,
+            )
         };
 
         // 3. Ensure the skill's workspace dir exists before building the prompt.
@@ -578,7 +606,11 @@ pub async fn send_refine_message(
             }
         }
 
-        // 4. Build prompt with paths and pointer to user-context.md (no inline context)
+        // 3b. Write .skill_output_dir so the agent derives paths (SDK calling protocol).
+        let skill_output_dir = Path::new(&skills_path).join(&skill_name);
+        write_skill_output_dir_file(&skill_workspace_dir, &skill_output_dir);
+
+        // 4. Build prompt: only skill name, workspace_dir, command (no inline paths).
         let prompt = build_refine_prompt(
             &skill_name,
             &workspace_path,
@@ -604,6 +636,10 @@ pub async fn send_refine_message(
             api_key,
             model,
             extended_thinking,
+            interleaved_thinking_beta,
+            sdk_effort,
+            fallback_model,
+            refine_prompt_suggestions,
         );
 
         // Resolve SDK cli.js path
@@ -733,6 +769,88 @@ pub async fn close_refine_session(
     }
 
     Ok(())
+}
+
+fn materialize_refine_validation_output_value(
+    skill_root: &Path,
+    structured_output: &serde_json::Value,
+) -> Result<(), String> {
+    let payload = structured_output
+        .as_object()
+        .ok_or_else(|| "structured_output must be a JSON object".to_string())?;
+
+    let status = payload
+        .get("status")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "structured_output.status must be a string".to_string())?;
+    if status != "validation_complete" {
+        return Err(format!(
+            "structured_output.status must be 'validation_complete' but got '{}'",
+            status
+        ));
+    }
+
+    let require_markdown = |field: &str| -> Result<&str, String> {
+        let value = payload
+            .get(field)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("structured_output.{} must be a string", field))?;
+        if value.trim().is_empty() {
+            return Err(format!("structured_output.{} must not be empty", field));
+        }
+        Ok(value)
+    };
+
+    let validation_log = require_markdown("validation_log_markdown")?;
+    let test_results = require_markdown("test_results_markdown")?;
+    let companion_skills = require_markdown("companion_skills_markdown")?;
+
+    let context_dir = skill_root.join("context");
+    std::fs::create_dir_all(&context_dir).map_err(|e| {
+        format!(
+            "Failed to create context directory '{}': {}",
+            context_dir.display(),
+            e
+        )
+    })?;
+
+    let validation_path = context_dir.join("agent-validation-log.md");
+    std::fs::write(&validation_path, validation_log).map_err(|e| {
+        format!(
+            "Failed to write validation log '{}': {}",
+            validation_path.display(),
+            e
+        )
+    })?;
+
+    let test_path = context_dir.join("test-skill.md");
+    std::fs::write(&test_path, test_results)
+        .map_err(|e| format!("Failed to write test results '{}': {}", test_path.display(), e))?;
+
+    let companion_path = context_dir.join("companion-skills.md");
+    std::fs::write(&companion_path, companion_skills).map_err(|e| {
+        format!(
+            "Failed to write companion skills '{}': {}",
+            companion_path.display(),
+            e
+        )
+    })?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn materialize_refine_validation_output(
+    skill_name: String,
+    workspace_path: String,
+    structured_output: serde_json::Value,
+) -> Result<(), String> {
+    log::info!(
+        "[materialize_refine_validation_output] skill={}",
+        skill_name
+    );
+    let skill_root = Path::new(&workspace_path).join(&skill_name);
+    materialize_refine_validation_output_value(&skill_root, &structured_output)
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -993,6 +1111,10 @@ mod tests {
             "sk-test-key".to_string(),
             "sonnet".to_string(),
             false,
+            true,
+            None,
+            None,
+            true,
         )
     }
 
@@ -1031,7 +1153,7 @@ mod tests {
     #[test]
     fn test_refine_config_cwd_points_to_workspace_root() {
         // cwd must be workspace_path (.vibedata), NOT skills_path.
-        // This matches workflow agents — the sidecar needs .claude/agents/ and CLAUDE.md
+        // This matches workflow agents — the sidecar needs .claude/agents/ and root CLAUDE.md
         // which are deployed to the workspace root.
         let (config, _) = build_refine_config(
             "test".to_string(),
@@ -1040,6 +1162,10 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             false,
+            true,
+            None,
+            None,
+            true,
         );
         assert_eq!(config.cwd, "/home/user/.vibedata/skill-builder");
     }
@@ -1059,11 +1185,10 @@ mod tests {
     }
 
     #[test]
-    fn test_refine_config_session_id_is_none() {
-        // session_id must NOT be passed to the sidecar — the SDK would interpret
-        // it as a "resume" ID and fail with "No conversation found".
+    fn test_refine_config_omits_model_for_named_agent() {
+        // Agent frontmatter is authoritative for named refine agent calls.
         let (config, _) = base_refine_config("test");
-        assert!(config.session_id.is_none());
+        assert!(config.model.is_none());
     }
 
     #[test]
@@ -1083,14 +1208,30 @@ mod tests {
             "sk-key".to_string(),
             "sonnet".to_string(),
             true, // extended_thinking enabled
+            true,
+            None,
+            None,
+            true,
         );
-        assert_eq!(config.max_thinking_tokens, Some(16_000));
+        assert_eq!(
+            config.thinking,
+            Some(serde_json::json!({
+                "type": "enabled",
+                "budgetTokens": 16_000
+            }))
+        );
     }
 
     #[test]
     fn test_refine_config_no_thinking_when_disabled() {
         let (config, _) = base_refine_config("test");
-        assert!(config.max_thinking_tokens.is_none());
+        assert!(config.thinking.is_none());
+    }
+
+    #[test]
+    fn test_refine_config_output_format_is_intentionally_unset_for_chat_flow() {
+        let (config, _) = base_refine_config("test");
+        assert!(config.output_format.is_none());
     }
 
     #[test]
@@ -1127,6 +1268,79 @@ mod tests {
         assert!(parsed.get("permissionMode").is_none());
     }
 
+    #[test]
+    fn test_materialize_refine_validation_output_writes_context_files() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "## Validation\nok",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+
+        super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap();
+        assert!(skill_root.join("context/agent-validation-log.md").exists());
+        assert!(skill_root.join("context/test-skill.md").exists());
+        assert!(skill_root.join("context/companion-skills.md").exists());
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_missing_payload_fields() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "## Validation\nok"
+        });
+
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.test_results_markdown must be a string"));
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_null_payload() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let err = super::materialize_refine_validation_output_value(
+            &skill_root,
+            &serde_json::json!(null),
+        )
+        .unwrap_err();
+        assert!(err.contains("structured_output must be a JSON object"));
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_wrong_status() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "generated",
+            "validation_log_markdown": "## Validation\nok",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.status must be 'validation_complete'"));
+    }
+
+    #[test]
+    fn test_materialize_refine_validation_output_rejects_empty_markdown_fields() {
+        let tmp = tempdir().unwrap();
+        let skill_root = tmp.path().join("my-skill");
+        let payload = serde_json::json!({
+            "status": "validation_complete",
+            "validation_log_markdown": "  ",
+            "test_results_markdown": "## Testing\nok",
+            "companion_skills_markdown": "---\ncompanions: []\n---\n## Companion\nok"
+        });
+        let err =
+            super::materialize_refine_validation_output_value(&skill_root, &payload).unwrap_err();
+        assert!(err.contains("structured_output.validation_log_markdown must not be empty"));
+    }
+
     // ===== build_refine_prompt tests =====
 
     #[test]
@@ -1134,9 +1348,9 @@ mod tests {
         let prompt = build_refine_prompt("my-skill", "/home/user/.vibedata/skill-builder", "/home/user/skills",
             "Add metrics section", None, None,
         );
-        assert!(prompt.contains("The skill directory is: /home/user/skills/my-skill"));
-        assert!(prompt.contains("The context directory is: /home/user/skills/my-skill/context"));
         assert!(prompt.contains("The workspace directory is: /home/user/.vibedata/skill-builder/my-skill"));
+        assert!(prompt.contains("Read user-context.md and .skill_output_dir"));
+        assert!(prompt.contains("Derive context_dir as workspace_dir/context"));
     }
 
     #[test]
@@ -1180,9 +1394,9 @@ mod tests {
         let prompt = build_refine_prompt("my-skill", "/ws", "/skills",
             "update these", Some(&files), None,
         );
-        assert!(prompt.contains("IMPORTANT: Only edit these files:"));
-        assert!(prompt.contains("/skills/my-skill/SKILL.md"));
-        assert!(prompt.contains("/skills/my-skill/references/metrics.md"));
+        assert!(prompt.contains("IMPORTANT: Only edit these files (relative to skill output directory):"));
+        assert!(prompt.contains("SKILL.md"));
+        assert!(prompt.contains("references/metrics.md"));
     }
 
     #[test]
@@ -1295,6 +1509,64 @@ mod tests {
         // 1 file changed, 2 insertions (new + extra), 1 deletion (old)
         assert!(result.stat.contains("1 file(s) changed"));
         assert!(result.stat.contains("2 insertion(s)(+)"));
+        assert!(result.stat.contains("1 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_counts_added_and_deleted_files() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("remove.md"), "gone-1\ngone-2\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::remove_file(skill_dir.join("remove.md")).unwrap();
+        std::fs::write(skill_dir.join("add.md"), "new-1\nnew-2\nnew-3\n").unwrap();
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("my-skill/add.md"))
+            .unwrap();
+        index
+            .remove_path(std::path::Path::new("my-skill/remove.md"))
+            .unwrap();
+        index.write().unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        assert!(result.stat.contains("2 file(s) changed"));
+        assert!(result.stat.contains("3 insertion(s)(+)"));
+        assert!(result.stat.contains("2 deletion(s)(-)"));
+    }
+
+    #[test]
+    fn test_get_refine_diff_stat_ignores_patch_file_header_lines() {
+        let dir = tempdir().unwrap();
+        crate::git::ensure_repo(dir.path()).unwrap();
+
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("old.md"), "line-a\n").unwrap();
+        crate::git::commit_all(dir.path(), "initial").unwrap();
+
+        std::fs::remove_file(skill_dir.join("old.md")).unwrap();
+        std::fs::write(skill_dir.join("new.md"), "line-b\n").unwrap();
+        let repo = git2::Repository::open(dir.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index
+            .add_path(std::path::Path::new("my-skill/new.md"))
+            .unwrap();
+        index
+            .remove_path(std::path::Path::new("my-skill/old.md"))
+            .unwrap();
+        index.write().unwrap();
+
+        let result = get_refine_diff_inner("my-skill", dir.path().to_str().unwrap()).unwrap();
+        // Added/deleted file diffs include patch file headers (---/+++ metadata).
+        // Those header lines must not affect insertion/deletion stats.
+        assert!(result.stat.contains("2 file(s) changed"));
+        assert!(result.stat.contains("1 insertion(s)(+)"));
         assert!(result.stat.contains("1 deletion(s)(-)"));
     }
 

@@ -26,8 +26,8 @@ import {
   cleanupSkillSidecar,
   prepareSkillTest,
   cleanupSkillTest,
-  hasRunningAgents,
 } from "@/lib/tauri";
+import { useWorkflowStore } from "@/stores/workflow-store";
 import type { SkillSummary } from "@/lib/types";
 import { cn, deriveModelLabel } from "@/lib/utils";
 
@@ -238,9 +238,10 @@ interface PlanPanelProps {
   badgeText: string;
   badgeClass: string;
   idlePlaceholder: string;
+  cost?: number;
 }
 
-function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder }: PlanPanelProps) {
+function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idlePlaceholder, cost }: PlanPanelProps) {
   return (
     <>
       <div className="flex shrink-0 items-center gap-2 border-b border-border bg-muted/30 px-4 py-1.5">
@@ -250,6 +251,11 @@ function PlanPanel({ scrollRef, text, phase, label, badgeText, badgeClass, idleP
         <Badge className={cn("text-xs px-1.5 py-0", badgeClass)}>
           {badgeText}
         </Badge>
+        {cost !== undefined && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            ${cost.toFixed(4)}
+          </span>
+        )}
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto p-4">
         {text ? (
@@ -325,7 +331,7 @@ export default function TestPage() {
       .catch((err) => {
         console.error("[test] Failed to load skills:", err);
         if (!cancelled) setIsLoadingSkills(false);
-        toast.error("Failed to load skills");
+        toast.error("Failed to load skills", { duration: Infinity });
       });
     return () => { cancelled = true; };
   }, []);
@@ -493,11 +499,20 @@ export default function TestPage() {
   const withStatus = useAgentStore((s) =>
     state.withAgentId ? s.runs[state.withAgentId]?.status : undefined,
   );
+  const withCost = useAgentStore((s) =>
+    state.withAgentId ? s.runs[state.withAgentId]?.totalCost : undefined,
+  );
   const withoutStatus = useAgentStore((s) =>
     state.withoutAgentId ? s.runs[state.withoutAgentId]?.status : undefined,
   );
+  const withoutCost = useAgentStore((s) =>
+    state.withoutAgentId ? s.runs[state.withoutAgentId]?.totalCost : undefined,
+  );
   const evalStatus = useAgentStore((s) =>
     state.evalAgentId ? s.runs[state.evalAgentId]?.status : undefined,
+  );
+  const evalCost = useAgentStore((s) =>
+    state.evalAgentId ? s.runs[state.evalAgentId]?.totalCost : undefined,
   );
 
   // Track when plan agents complete
@@ -577,7 +592,13 @@ export default function TestPage() {
     }
 
     const evalModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-    useAgentStore.getState().registerRun(evalId, evalModel, "__test_baseline__");
+    useAgentStore.getState().registerRun(
+      evalId,
+      evalModel,
+      state.selectedSkill.name,
+      "test",
+      `synthetic:test:${state.selectedSkill.name}:${state.testId ?? "unknown"}`,
+    );
     startAgent(
       evalId,
       evalPrompt,
@@ -586,7 +607,6 @@ export default function TestPage() {
       [],
       15,
       "plan",
-      undefined,
       "__test_baseline__",
       "test-eval",
       "test-evaluator",
@@ -659,17 +679,19 @@ export default function TestPage() {
   const handleRunTest = useCallback(async () => {
     const s = stateRef.current;
     if (!s.selectedSkill || !s.prompt.trim()) {
-      toast.error("Select a skill and enter a prompt");
+      toast.error("Select a skill and enter a prompt", { duration: Infinity });
       return;
     }
     if (s.phase === "running" || s.phase === "evaluating") return;
 
     console.log("[test] starting test: skill=%s", s.selectedSkill.name);
 
-    // Guard: don't clobber in-progress workflow runs
-    const agentsRunning = await hasRunningAgents().catch(() => false);
+    // Guard: don't clobber in-progress workflow or refine runs
+    const wf = useWorkflowStore.getState();
+    const agentsRunning =
+      wf.isRunning || wf.gateLoading || useRefineStore.getState().isRunning;
     if (agentsRunning) {
-      toast.error("Cannot start test while other agents are running");
+      toast.error("Cannot start test while other agents are running", { duration: Infinity });
       return;
     }
 
@@ -705,10 +727,16 @@ export default function TestPage() {
         transcriptLogDir: prepared.transcript_log_dir,
       }));
 
+      const syntheticTestSessionId = `synthetic:test:${skillName}:${prepared.test_id}`;
+
       // Register runs in agent store
       const testModel = useSettingsStore.getState().preferredModel ?? "sonnet";
-      useAgentStore.getState().registerRun(withId, testModel, skillName);
-      useAgentStore.getState().registerRun(withoutId, testModel, "__test_baseline__");
+      useAgentStore
+        .getState()
+        .registerRun(withId, testModel, skillName, "test", syntheticTestSessionId);
+      useAgentStore
+        .getState()
+        .registerRun(withoutId, testModel, skillName, "test", syntheticTestSessionId);
 
       // Wrap the prompt so plan agents know the domain context
       const wrappedPrompt = `You are a data engineer and the user is trying to do the following task:\n\n${s.prompt}`;
@@ -723,7 +751,6 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          undefined,
           skillName,
           "test-with",
           "test-plan-with",
@@ -737,7 +764,6 @@ export default function TestPage() {
           [],
           15,
           "plan",
-          undefined,
           "__test_baseline__",
           "test-without",
           "test-plan-without",
@@ -753,7 +779,7 @@ export default function TestPage() {
         phase: "error",
         errorMessage: `Failed to start test: ${String(err)}`,
       }));
-      toast.error("Failed to start test");
+      toast.error("Failed to start test", { duration: Infinity });
     }
   }, []);
 
@@ -895,8 +921,9 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="with skill"
-              badgeClass="bg-[#2D7A35]/15 text-[#5D9B62]"
+              badgeClass="bg-[color-mix(in_oklch,var(--color-seafoam),transparent_85%)] text-[var(--color-seafoam)]"
               idlePlaceholder="Run a test to see the with-skill plan"
+              cost={withCost}
             />
           </div>
 
@@ -919,8 +946,9 @@ export default function TestPage() {
               phase={state.phase}
               label="Agent Plan"
               badgeText="no skill"
-              badgeClass="bg-[#A85A33]/15 text-[#D4916E]"
+              badgeClass="bg-[color-mix(in_oklch,var(--color-ocean),transparent_85%)] text-[var(--color-ocean)]"
               idlePlaceholder="Run a test to see the no-skill plan"
+              cost={withoutCost}
             />
           </div>
         </div>
@@ -1043,7 +1071,15 @@ export default function TestPage() {
         <span className="text-muted-foreground/20">&middot;</span>
         <span className="text-xs text-muted-foreground/60">plan mode</span>
         <span className="text-muted-foreground/20">&middot;</span>
-        <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
+          <span className="text-xs text-muted-foreground/60">{modelLabel}</span>
+        {(withCost !== undefined || withoutCost !== undefined || evalCost !== undefined) && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs text-muted-foreground/60">
+              {`with ${withCost !== undefined ? `$${withCost.toFixed(4)}` : "—"} · without ${withoutCost !== undefined ? `$${withoutCost.toFixed(4)}` : "—"} · eval ${evalCost !== undefined ? `$${evalCost.toFixed(4)}` : "—"}`}
+            </span>
+          </>
+        )}
         {state.startTime && (
           <>
             <span className="text-muted-foreground/20">&middot;</span>

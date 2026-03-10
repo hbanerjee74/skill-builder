@@ -55,6 +55,35 @@ function makeClarifications(questions: Question[]): ClarificationsFile {
     },
     sections: [{ id: "S1", title: "Test Section", questions }],
     notes: [],
+    answer_evaluator_notes: [],
+  };
+}
+
+function makeClarificationsWithSections(): ClarificationsFile {
+  return {
+    version: "1",
+    metadata: {
+      title: "Test Clarifications",
+      question_count: 2,
+      section_count: 2,
+      refinement_count: 0,
+      must_answer_count: 0,
+      priority_questions: [],
+    },
+    sections: [
+      {
+        id: "S1",
+        title: "Section One",
+        questions: [makeQuestion({ id: "Q1", title: "Question One" })],
+      },
+      {
+        id: "S2",
+        title: "Section Two",
+        questions: [makeQuestion({ id: "Q2", title: "Question Two" })],
+      },
+    ],
+    notes: [],
+    answer_evaluator_notes: [],
   };
 }
 
@@ -267,5 +296,122 @@ describe("Main question answer field visibility", () => {
     await expandCard(user, "Test Question");
     expect(screen.getByRole("textbox")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Choice A")).toBeInTheDocument();
+  });
+});
+
+describe("Need Review filter toggle", () => {
+  it("shows only questions marked by evaluator feedback when enabled", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([
+      makeQuestion({ id: "Q1", title: "Answered Question", answer_choice: "A", answer_text: "Choice A" }),
+      makeQuestion({ id: "Q2", title: "Unanswered Question", answer_choice: null, answer_text: null }),
+    ]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Not answered: Q2",
+        body: "This question is still unanswered.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    expect(screen.getByText("Answered Question")).toBeInTheDocument();
+    expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: "Need Review" }));
+
+    expect(screen.queryByText("Answered Question")).not.toBeInTheDocument();
+    expect(screen.getByText("Unanswered Question")).toBeInTheDocument();
+  });
+});
+
+describe("Inline evaluator feedback", () => {
+  it("shows a status badge on collapsed flagged question cards", () => {
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Vague answer: Q1",
+        body: "Missing concrete thresholds.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    expect(screen.getByText("Vague")).toBeInTheDocument();
+  });
+
+  it("shows reason inline with the flagged question in context", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion({ id: "Q1", title: "Flagged Question" })]);
+    data.answer_evaluator_notes = [
+      {
+        type: "answer_feedback",
+        title: "Vague answer: Q1",
+        body: "Missing concrete thresholds.",
+      },
+    ];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+    await expandCard(user, "Flagged Question");
+
+    expect(screen.getByText("Need Review: Vague")).toBeInTheDocument();
+    expect(screen.getByText("Why flagged: Missing concrete thresholds.")).toBeInTheDocument();
+  });
+});
+
+describe("Collapsible research notes", () => {
+  it("toggles research notes visibility", async () => {
+    const user = userEvent.setup();
+    const data = makeClarifications([makeQuestion()]);
+    data.notes = [{ type: "general", title: "Context", body: "Helpful implementation context." }];
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    const notesToggle = screen.getByRole("button", { name: /Research Notes/i });
+    expect(notesToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+
+    await user.click(notesToggle);
+    expect(notesToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Helpful implementation context.")).not.toBeInTheDocument();
+
+    await user.click(notesToggle);
+    expect(notesToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Helpful implementation context.")).toBeInTheDocument();
+  });
+});
+
+describe("Collapsible sections", () => {
+  it("collapses sections independently", async () => {
+    const user = userEvent.setup();
+    const data = makeClarificationsWithSections();
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    expect(screen.getByText("Question One")).toBeInTheDocument();
+    expect(screen.getByText("Question Two")).toBeInTheDocument();
+
+    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
+    const sectionTwoToggle = screen.getByRole("button", { name: /Section Two/i });
+
+    await user.click(sectionOneToggle);
+    expect(sectionOneToggle).toHaveAttribute("aria-expanded", "false");
+    expect(sectionTwoToggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText("Question One")).not.toBeInTheDocument();
+    expect(screen.getByText("Question Two")).toBeInTheDocument();
+  });
+
+  it("supports keyboard toggle on section headers", async () => {
+    const user = userEvent.setup();
+    const data = makeClarificationsWithSections();
+
+    render(<ClarificationsEditor data={data} onChange={vi.fn()} />);
+
+    const sectionOneToggle = screen.getByRole("button", { name: /Section One/i });
+    sectionOneToggle.focus();
+    await user.keyboard("{Enter}");
+
+    expect(sectionOneToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Question One")).not.toBeInTheDocument();
   });
 });

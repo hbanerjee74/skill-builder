@@ -21,6 +21,7 @@ import {
   startRefineSession,
   sendRefineMessage,
   closeRefineSession,
+  materializeRefineValidationOutput,
   cleanupSkillSidecar,
   acquireLock,
   releaseLock,
@@ -82,6 +83,10 @@ export default function RefinePage() {
   const activeRunStatus = useAgentStore((s) =>
     activeAgentId ? s.runs[activeAgentId]?.status : undefined,
   );
+  const activeRunCost = useAgentStore((s) =>
+    activeAgentId ? s.runs[activeAgentId]?.totalCost : undefined,
+  );
+  const [lastTurnCost, setLastTurnCost] = useState<number | undefined>(undefined);
 
   // Track which skillParam was last auto-selected so navigating back with a
   // different skill (e.g. from the skill library) triggers a fresh selection.
@@ -90,6 +95,18 @@ export default function RefinePage() {
   // --- Scope recommendation guard ---
   // When scope recommendation is active (disabledSteps non-empty), block refine commands.
   const [scopeBlocked, setScopeBlocked] = useState(false);
+
+  const extractStructuredResultPayload = useCallback((agentId: string) => {
+    const run = useAgentStore.getState().runs[agentId];
+    if (!run) return null;
+    for (let i = run.messages.length - 1; i >= 0; i -= 1) {
+      const msg = run.messages[i];
+      if (msg.type !== "result") continue;
+      const raw = msg.raw as Record<string, unknown>;
+      if ("result" in raw) return raw.result ?? null;
+    }
+    return null;
+  }, []);
 
   useEffect(() => {
     if (!selectedSkill) {
@@ -192,7 +209,7 @@ export default function RefinePage() {
         console.log("[refine] acquireLock: %s", skill.name);
       } catch (err) {
         console.error("[refine] acquireLock failed: %s", skill.name, err);
-        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`);
+        toast.error(`Cannot select skill: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity });
         return;
       }
 
@@ -209,14 +226,14 @@ export default function RefinePage() {
       store.setLoadingFiles(true);
 
       if (workspacePath) {
-        // Start backend refine session — pass workspacePath (.vibedata/skill-builder),
+        // Start backend refine session — pass workspacePath (app-managed workspace dir),
         // Rust resolves skills_path from DB for file lookups.
         try {
           const session = await startRefineSession(skill.name, workspacePath);
           useRefineStore.setState({ sessionId: session.session_id });
         } catch (err) {
           console.error("[refine] Failed to start refine session:", err);
-          toast.error("Failed to start refine session");
+          toast.error("Failed to start refine session", { duration: Infinity });
           store.setLoadingFiles(false);
           return;
         }
@@ -229,7 +246,7 @@ export default function RefinePage() {
           }
         } else {
           store.setLoadingFiles(false);
-          toast.error("Could not load skill files");
+          toast.error("Could not load skill files", { duration: Infinity });
         }
       } else {
         store.setLoadingFiles(false);
@@ -266,6 +283,7 @@ export default function RefinePage() {
 
     // Check for session exhaustion — the SDK ran out of turns
     const agentRun = useAgentStore.getState().runs[activeAgentId];
+    setLastTurnCost(agentRun?.totalCost);
     if (agentRun) {
       const hasExhausted = agentRun.messages.some(
         (m) => (m.raw as Record<string, unknown>)?.type === "session_exhausted",
@@ -273,21 +291,47 @@ export default function RefinePage() {
       if (hasExhausted) {
         console.warn("[refine] session exhausted for agent %s", activeAgentId);
         useRefineStore.getState().setSessionExhausted(true);
-        toast.info("This refine session has reached its limit. Please start a new session to continue.");
+        toast.info("This refine session has reached its limit. Please start a new session to continue.", { duration: 5000 });
       }
     }
 
-    // Re-read skill files to capture any changes the agent made
-    const store = useRefineStore.getState();
-    if (workspacePath && selectedSkill) {
-      loadSkillFiles(workspacePath, selectedSkill.name).then((files) => {
-        if (files) store.updateSkillFiles(files);
-      });
-    }
+    const complete = async () => {
+      const store = useRefineStore.getState();
 
-    store.setRunning(false);
-    store.setActiveAgentId(null);
-  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill]);
+      // Backend-owned context writes for /validate and /rewrite validate pass.
+      if (activeRunStatus === "completed" && workspacePath && selectedSkill) {
+        const structuredOutput = extractStructuredResultPayload(activeAgentId);
+        const hasStructuredObject = !!structuredOutput
+          && typeof structuredOutput === "object"
+          && !Array.isArray(structuredOutput);
+        if (hasStructuredObject && (structuredOutput as Record<string, unknown>).status === "validation_complete") {
+          try {
+            await materializeRefineValidationOutput(
+              selectedSkill.name,
+              workspacePath,
+              structuredOutput,
+            );
+          } catch (err) {
+            toast.error(
+              `Validation output materialization failed: ${err instanceof Error ? err.message : String(err)}`,
+              { duration: Infinity },
+            );
+          }
+        }
+      }
+
+      // Re-read skill files to capture any changes the agent made
+      if (workspacePath && selectedSkill) {
+        const files = await loadSkillFiles(workspacePath, selectedSkill.name);
+        if (files) store.updateSkillFiles(files);
+      }
+
+      store.setRunning(false);
+      store.setActiveAgentId(null);
+    };
+
+    void complete();
+  }, [activeAgentId, activeRunStatus, workspacePath, selectedSkill, extractStructuredResultPayload]);
 
   // --- Safety-net cleanup on unmount ---
   // Catches cases where the component unmounts without going through the blocker dialog.
@@ -348,7 +392,13 @@ export default function RefinePage() {
 
         // Register run in agent store (events may have already started streaming —
         // addMessage auto-creates runs, registerRun merges with the correct model)
-        useAgentStore.getState().registerRun(agentId, model, selectedSkill.name);
+        useAgentStore.getState().registerRun(
+          agentId,
+          model,
+          selectedSkill.name,
+          "refine",
+          `synthetic:refine:${selectedSkill.name}:${sessionId}`,
+        );
 
         // Add agent turn to chat
         store.addAgentTurn(agentId);
@@ -357,7 +407,7 @@ export default function RefinePage() {
         console.error("[refine] Failed to send refine message:", err);
         store.setRunning(false);
         store.setActiveAgentId(null);
-        toast.error("Failed to start agent");
+        toast.error("Failed to start agent", { duration: Infinity });
       }
     },
     [selectedSkill, workspacePath, preferredModel, isRunning],
@@ -398,6 +448,7 @@ export default function RefinePage() {
       : undefined;
   const dotClass = isRunning ? "animate-pulse" : selectedSkill ? "" : "bg-zinc-500";
   const statusLabel = isRunning ? "running..." : selectedSkill ? "ready" : "no skill selected";
+  const statusCost = activeRunCost ?? (!isRunning ? lastTurnCost : undefined);
 
   return (
     <div className="-m-6 flex h-[calc(100%+3rem)] flex-col">
@@ -460,6 +511,12 @@ export default function RefinePage() {
           <>
             <span className="text-muted-foreground/20">&middot;</span>
             <span className="text-xs text-muted-foreground/60">{(elapsed / 1000).toFixed(1)}s</span>
+          </>
+        )}
+        {statusCost !== undefined && (
+          <>
+            <span className="text-muted-foreground/20">&middot;</span>
+            <span className="text-xs text-muted-foreground/60">${statusCost.toFixed(4)}</span>
           </>
         )}
       </div>

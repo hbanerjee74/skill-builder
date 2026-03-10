@@ -58,7 +58,7 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 
 | Source Pattern | npm script |
 |---|---|
-| `agents/*.md` | `test:agents:structural`, `test:agents:smoke` |
+| `agent-sources/agents/*.md` | `test:agents:structural`, `test:agents:smoke` (Promptfoo) |
 | `agent-sources/workspace/CLAUDE.md` | `test:agents:structural` |
 
 ## E2E Spec Files
@@ -82,10 +82,11 @@ Rust modules have inline `#[cfg(test)]` tests run via `cargo test`. When a Rust 
 | `e2e/workflow/workflow-navigation.spec.ts` | `@workflow` |
 | `e2e/refine/refine.spec.ts` | `@refine` |
 | `e2e/skill-tester/skill-tester.spec.ts` | `@skill-tester` |
+| `e2e/toast-lifecycle.spec.ts` | `@toast` |
 
 ## Cross-Boundary: Agent ↔ App Format Compliance
 
-Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/agent-specs/canonical-format.md`.
+Agent prompts define artifact formats (`clarifications.json`, `decisions.json`, etc.). The app parses those artifacts in Rust and TypeScript. Changes to either side can break the contract. The canonical format spec lives at `docs/design/agent-specs/canonical-format.md`.
 
 ### How to use this table
 
@@ -99,7 +100,7 @@ Agent prompts define artifact formats (`clarifications.md`, `decisions.md`, etc.
 
 | Source | What it validates | Compliance Test |
 |---|---|---|
-| `agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:agents:structural` |
+| `agent-sources/agents/*.md` (all agent prompts) | Anti-patterns: colon placement, checkboxes, labels | `npm run test:agents:structural` |
 | `app/sidecar/mock-templates/outputs/*/context/*.md` | Structure + anti-patterns for all markdown artifacts | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/sidecar/mock-templates/outputs/gate-*/context/*.json` | JSON schema (answer-evaluation.json) | `npm run test:unit` (`canonical-format.test.ts`) |
 | `app/e2e/fixtures/agent-responses/*.md` | E2E fixture structure + anti-patterns | `npm run test:unit` (`canonical-format.test.ts`) |
@@ -118,7 +119,7 @@ cargo test --manifest-path src-tauri/Cargo.toml commands::workflow
 
 # Agents
 npm run test:agents:structural                 # Quick structural check (free)
-npm run test:agents:smoke                      # Agent smoke tests (requires API key)
+npm run test:agents:smoke                      # Promptfoo behavior evals (requires API key)
 npm run test:agents                            # All agent tests (structural + smoke)
 
 # Full suite (shared infrastructure changes)

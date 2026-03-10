@@ -10,7 +10,7 @@ import OrphanResolutionDialog from "@/components/orphan-resolution-dialog";
 import ReconciliationAckDialog from "@/components/reconciliation-ack-dialog";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { getSettings, saveSettings, reconcileStartup, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
+import { getSettings, saveSettings, reconcileStartup, recordReconciliationCancel, parseGitHubUrl, checkMarketplaceUpdates, importGitHubSkills, importMarketplaceToLibrary, checkSkillCustomized } from "@/lib/tauri";
 import { invoke } from "@tauri-apps/api/core";
 import type { ModelInfo } from "@/stores/settings-store";
 import type { AppSettings, DiscoveredSkill, OrphanSkill, SkillUpdateInfo } from "@/lib/types";
@@ -27,33 +27,33 @@ async function filterNonCustomized(skills: SkillUpdateInfo[]): Promise<SkillUpda
 }
 
 /** Check the marketplace for updates and either auto-update or show notification toasts.
- *  Returns the registry name read from marketplace.json, or null on failure. */
+ *  Returns registry names read from marketplace.json keyed by source URL. */
 async function checkForMarketplaceUpdates(
-  sourceUrl: string,
   settings: AppSettings,
   cancelledRef: { current: boolean },
   router: ReturnType<typeof useRouter>,
-): Promise<string | null> {
+): Promise<Map<string, string>> {
   try {
-    const info = await parseGitHubUrl(sourceUrl);
-    const { library, workspace, registry_name } = await checkMarketplaceUpdates(
-      info.owner, info.repo, info.branch, info.subpath ?? undefined, sourceUrl
-    );
-    if (cancelledRef.current) return null;
+    const { library, workspace, registry_names } = await checkMarketplaceUpdates();
+    if (cancelledRef.current) return new Map();
 
     if (settings.auto_update) {
-      await handleAutoUpdate(library, workspace, sourceUrl, info, cancelledRef);
+      await handleAutoUpdate(library, workspace, cancelledRef);
     } else {
-      showManualUpdateToasts(library, workspace, router, registry_name ?? null);
+      showManualUpdateToasts(library, workspace, router);
     }
-    return registry_name ?? null;
+    const bySource = new Map<string, string>();
+    for (const entry of registry_names ?? []) {
+      bySource.set(entry.source_url, entry.registry_name);
+    }
+    return bySource;
   } catch (err) {
     console.error("[app-layout] Marketplace update check failed:", err);
     toast.error(
       `Marketplace update check failed: ${err instanceof Error ? err.message : String(err)}`,
-      { duration: 8000 }
+      { duration: Infinity }
     );
-    return null;
+    return new Map();
   }
 }
 
@@ -61,31 +61,45 @@ async function checkForMarketplaceUpdates(
 async function handleAutoUpdate(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
-  sourceUrl: string,
-  info: { owner: string; repo: string; branch: string },
   cancelledRef: { current: boolean },
 ): Promise<void> {
+  const groupBySource = (skills: SkillUpdateInfo[]): Map<string, SkillUpdateInfo[]> => {
+    const grouped = new Map<string, SkillUpdateInfo[]>();
+    for (const skill of skills) {
+      const sourceUrl = skill.source_url?.trim();
+      if (!sourceUrl) continue;
+      const existing = grouped.get(sourceUrl) ?? [];
+      existing.push(skill);
+      grouped.set(sourceUrl, existing);
+    }
+    return grouped;
+  };
+
   const [libFiltered, wsFiltered] = await Promise.all([
     filterNonCustomized(library),
     filterNonCustomized(workspace),
   ]);
   if (cancelledRef.current) return;
 
+  const libBySource = groupBySource(libFiltered);
+  const wsBySource = groupBySource(wsFiltered);
+
   await Promise.all([
-    libFiltered.length > 0
-      ? importMarketplaceToLibrary(libFiltered.map((s) => s.path), sourceUrl).catch((err) =>
+    ...Array.from(libBySource.entries()).map(async ([sourceUrl, scoped]) => {
+        await importMarketplaceToLibrary(scoped.map((s) => s.path), sourceUrl).catch((err) =>
           console.warn("[app-layout] Auto-update library failed:", err)
-        )
-      : Promise.resolve(),
-    wsFiltered.length > 0
-      ? importGitHubSkills(
+        );
+      }),
+    ...Array.from(wsBySource.entries()).map(async ([sourceUrl, scoped]) => {
+        const info = await parseGitHubUrl(sourceUrl);
+        await importGitHubSkills(
           info.owner, info.repo, info.branch,
-          wsFiltered.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version })),
+          scoped.map((s) => ({ path: s.path, purpose: null, metadata_override: null, version: s.version })),
           sourceUrl
         ).catch((err) =>
           console.warn("[app-layout] Auto-update workspace failed:", err)
-        )
-      : Promise.resolve(),
+        );
+      }),
   ]);
   if (cancelledRef.current) return;
 
@@ -95,7 +109,7 @@ async function handleAutoUpdate(
       <div className="space-y-1">
         <p className="font-medium">Auto-updated {total} skill{total !== 1 ? "s" : ""}</p>
         {libFiltered.length > 0 && (
-          <p>• Skills Library: {libFiltered.map((s) => s.name).join(", ")}</p>
+          <p>• Dashboard: {libFiltered.map((s) => s.name).join(", ")}</p>
         )}
         {wsFiltered.length > 0 && (
           <p>• Workspace: {wsFiltered.map((s) => s.name).join(", ")}</p>
@@ -111,19 +125,17 @@ function showManualUpdateToasts(
   library: SkillUpdateInfo[],
   workspace: SkillUpdateInfo[],
   router: ReturnType<typeof useRouter>,
-  registryName: string | null,
 ): void {
-  const qualify = (name: string) => registryName ? `${registryName}::${name}` : name;
   if (library.length > 0) {
-    const names = library.map((s) => qualify(s.name));
+    const names = library.map((s) => s.name);
     toast.info(
-      `Skills Library: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
+      `Dashboard: update available for ${library.length} skill${library.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: Infinity,
+        duration: 5000,
         action: {
           label: "Upgrade",
           onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "skill-library", skills: names });
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "dashboard-library", skills: names });
             router.navigate({ to: "/" });
           },
         },
@@ -131,15 +143,15 @@ function showManualUpdateToasts(
     );
   }
   if (workspace.length > 0) {
-    const names = workspace.map((s) => qualify(s.name));
+    const names = workspace.map((s) => s.name);
     toast.info(
       `Settings \u2192 Skills: update available for ${workspace.length} skill${workspace.length !== 1 ? "s" : ""}: ${names.join(", ")}`,
       {
-        duration: Infinity,
+        duration: 5000,
         action: {
           label: "Upgrade",
           onClick: () => {
-            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "settings-skills", skills: names });
+            useSettingsStore.getState().setPendingUpgradeOpen({ mode: "workspace-skills", skills: names });
             router.navigate({ to: "/settings" });
           },
         },
@@ -163,6 +175,8 @@ export function AppLayout() {
   const [reconNotifications, setReconNotifications] = useState<string[]>([]);
   const [reconDiscovered, setReconDiscovered] = useState<DiscoveredSkill[]>([]);
   const [ackDone, setAckDone] = useState(true);
+  const [reconRequiresApply, setReconRequiresApply] = useState(false);
+  const [reconApplying, setReconApplying] = useState(false);
 
   // Hydrate settings store from Tauri backend on app startup
   useEffect(() => {
@@ -195,16 +209,20 @@ export function AppLayout() {
       // Check for marketplace updates in the background, and refresh stored registry names
       // from marketplace.json if they have changed since the registry was added.
       const enabledRegistries = (s.marketplace_registries ?? []).filter(r => r.enabled);
-      for (const registry of enabledRegistries) {
-        checkForMarketplaceUpdates(registry.source_url, s, cancelledRef, router)
-          .then(async (resolvedName) => {
-            if (!resolvedName || resolvedName === registry.name) return;
+      if (enabledRegistries.length > 0) {
+        checkForMarketplaceUpdates(s, cancelledRef, router)
+          .then(async (resolvedNamesBySource) => {
+            if (resolvedNamesBySource.size === 0) return;
             const current = useSettingsStore.getState().marketplaceRegistries;
-            const updated = current.map(r =>
-              r.source_url === registry.source_url ? { ...r, name: resolvedName } : r
-            );
+            let changed = false;
+            const updated = current.map((registry) => {
+              const resolved = resolvedNamesBySource.get(registry.source_url);
+              if (!resolved || resolved === registry.name) return registry;
+              changed = true;
+              return { ...registry, name: resolved };
+            });
+            if (!changed) return;
             useSettingsStore.getState().setSettings({ marketplaceRegistries: updated });
-            // Re-fetch fresh settings before saving to avoid overwriting concurrent changes.
             const fresh = await getSettings().catch(() => null);
             if (!fresh) return;
             saveSettings({ ...fresh, marketplace_registries: updated })
@@ -228,22 +246,16 @@ export function AppLayout() {
 
     reconcileStartup()
       .then((result) => {
-        // Show toast for auto-cleaned skills (informational, not blocking)
-        if (result.auto_cleaned > 0) {
-          toast.info(
-            `Cleaned up ${result.auto_cleaned} incomplete skill${result.auto_cleaned !== 1 ? "s" : ""}`
-          );
-        }
-
-        // Block dashboard with ACK dialog if there are notifications or discovered skills
+        // Preview mode: block dashboard until user applies or skips.
         if (result.notifications.length > 0 || result.discovered_skills.length > 0) {
           console.warn(
-            "[app-layout] Reconciliation produced %d notifications, %d discovered skills",
+            "[app-layout] Reconciliation preview produced %d notifications, %d discovered skills",
             result.notifications.length,
             result.discovered_skills.length,
           );
           setReconNotifications(result.notifications);
           setReconDiscovered(result.discovered_skills);
+          setReconRequiresApply(true);
           setAckDone(false);
         }
 
@@ -315,11 +327,48 @@ export function AppLayout() {
         <ReconciliationAckDialog
           notifications={reconNotifications}
           discoveredSkills={reconDiscovered}
+          requireApply={reconRequiresApply}
+          applying={reconApplying}
           open
-          onAcknowledge={() => {
+          onApply={async () => {
+            if (!reconRequiresApply) {
+              setAckDone(true);
+              setReconNotifications([]);
+              setReconDiscovered([]);
+              return;
+            }
+            try {
+              setReconApplying(true);
+              const applied = await reconcileStartup(true);
+              if (applied.auto_cleaned > 0) {
+                toast.info(
+                  `Cleaned up ${applied.auto_cleaned} incomplete skill${applied.auto_cleaned !== 1 ? "s" : ""}`
+                );
+              }
+              if (applied.orphans.length > 0) {
+                setOrphans(applied.orphans);
+              }
+              setAckDone(true);
+              setReconNotifications([]);
+              setReconDiscovered([]);
+              setReconRequiresApply(false);
+            } catch (err) {
+              toast.error(
+                `Failed to apply startup reconciliation: ${err instanceof Error ? err.message : String(err)}`,
+                { duration: Infinity }
+              );
+            } finally {
+              setReconApplying(false);
+            }
+          }}
+          onCancel={() => {
+            recordReconciliationCancel(reconNotifications.length, reconDiscovered.length)
+              .catch(() => undefined);
+            toast.info("Startup reconciliation skipped. No automatic changes were applied.");
             setAckDone(true);
             setReconNotifications([]);
             setReconDiscovered([]);
+            setReconRequiresApply(false);
           }}
         />
       )}

@@ -3,7 +3,7 @@ name: implement-linear-issue
 description: |
   Implements a Linear issue end-to-end, from planning through PR creation.
   Triggers on "implement <issue-id>", "work on <issue-id>", "working on <issue-id>", "build <issue-id>", "fix <issue-id>", or "/implement-issue".
-  Also triggers when the user simply mentions a Linear issue identifier (e.g. "VD-123").
+  Also triggers when the user simply mentions a Linear issue identifier (e.g. "ABC-123").
 ---
 
 # Implement Linear Issue
@@ -75,6 +75,15 @@ Do not ask permission for non-destructive work. Only confirm with user:
 - XS/S + isolated changes: implement directly.
 - M+ or multi-component: create a short plan, then execute with parallelism where useful.
 - User can always override.
+
+## Branch Sync (required)
+
+Before running Quality Gates, rebase the working branch onto `origin/main`.
+
+1. Fetch latest `origin/main`.
+2. Rebase current branch onto `origin/main`.
+3. Resolve conflicts when mechanical; escalate to user when semantic judgment is required.
+4. Push with `--force-with-lease` if history changed.
 
 ## Quality Gates
 

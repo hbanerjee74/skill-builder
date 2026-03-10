@@ -8,12 +8,129 @@ mod logging;
 mod reconciliation;
 mod types;
 
+use std::fs;
+use std::io;
+use std::path::{Path, PathBuf};
 pub use types::*;
+
+const LEGACY_APP_DATA_DIR_NAME: &str = "com.skillbuilder.app";
 
 #[derive(Clone)]
 pub struct InstanceInfo {
     pub id: String,
     pub pid: u32,
+}
+
+#[derive(Clone)]
+pub struct DataDir(pub PathBuf);
+
+fn dir_is_empty(path: &Path) -> Result<bool, io::Error> {
+    Ok(fs::read_dir(path)?.next().is_none())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), io::Error> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else if file_type.is_file() {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// One-time migration from historical app-local dir to the current bundle identifier path.
+/// This runs before DB/workspace init so existing user state is preserved after identifier changes.
+fn migrate_legacy_app_data_dir(new_data_dir: &Path) {
+    let Some(parent) = new_data_dir.parent() else {
+        log::warn!(
+            "[startup] Could not resolve app data dir parent for migration: {}",
+            new_data_dir.display()
+        );
+        return;
+    };
+
+    let legacy_data_dir = parent.join(LEGACY_APP_DATA_DIR_NAME);
+    if !legacy_data_dir.exists() {
+        return;
+    }
+
+    if new_data_dir.exists() {
+        match dir_is_empty(new_data_dir) {
+            Ok(false) => {
+                log::info!(
+                    "[startup] Skipping legacy app-data migration; target already has data: {}",
+                    new_data_dir.display()
+                );
+                return;
+            }
+            Ok(true) => {
+                if let Err(e) = fs::remove_dir_all(new_data_dir) {
+                    log::warn!(
+                        "[startup] Failed to clear empty target dir before migration {}: {}",
+                        new_data_dir.display(),
+                        e
+                    );
+                    return;
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[startup] Failed to inspect target dir before migration {}: {}",
+                    new_data_dir.display(),
+                    e
+                );
+                return;
+            }
+        }
+    }
+
+    match fs::rename(&legacy_data_dir, new_data_dir) {
+        Ok(()) => {
+            log::info!(
+                "[startup] Migrated legacy app-local data directory from {} to {}",
+                legacy_data_dir.display(),
+                new_data_dir.display()
+            );
+        }
+        Err(rename_err) => {
+            log::warn!(
+                "[startup] Rename migration failed ({} -> {}): {}; trying copy+remove fallback",
+                legacy_data_dir.display(),
+                new_data_dir.display(),
+                rename_err
+            );
+            match copy_dir_recursive(&legacy_data_dir, new_data_dir) {
+                Ok(()) => match fs::remove_dir_all(&legacy_data_dir) {
+                    Ok(()) => {
+                        log::info!(
+                            "[startup] Migrated legacy app-local data directory via copy+remove fallback"
+                        );
+                    }
+                    Err(remove_err) => {
+                        log::warn!(
+                            "[startup] Copied legacy app-local data but failed to remove old dir {}: {}",
+                            legacy_data_dir.display(),
+                            remove_err
+                        );
+                    }
+                },
+                Err(copy_err) => {
+                    log::warn!(
+                        "[startup] Legacy app-local data migration failed during copy ({} -> {}): {}",
+                        legacy_data_dir.display(),
+                        new_data_dir.display(),
+                        copy_err
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -94,7 +211,15 @@ pub fn run() {
             // Uses app_log_dir() so the path always matches the log plugin's target.
             logging::truncate_log_file(app.handle());
 
-            let db = db::init_db(app).expect("failed to initialize database");
+            let data_dir = app
+                .path()
+                .app_local_data_dir()
+                .expect("failed to resolve app_local_data_dir");
+            migrate_legacy_app_data_dir(&data_dir);
+            std::fs::create_dir_all(&data_dir).expect("failed to create data directory");
+            app.manage(DataDir(data_dir.clone()));
+
+            let db = db::init_db(&data_dir).expect("failed to initialize database");
             app.manage(db);
 
             let instance_info = InstanceInfo {
@@ -127,7 +252,7 @@ pub fn run() {
             // Initialize workspace directory and deploy bundled prompts
             let db_state = app.state::<db::Db>();
             let handle = app.handle().clone();
-            let workspace_path = commands::workspace::init_workspace(&handle, &db_state)
+            let workspace_path = commands::workspace::init_workspace(&handle, &db_state, &data_dir)
                 .expect("failed to initialize workspace");
 
             // Prune old transcript files before any agents are spawned.
@@ -177,25 +302,38 @@ pub fn run() {
             commands::files::read_file_as_base64,
             commands::files::write_base64_to_temp_file,
             commands::workflow::run_workflow_step,
+            commands::workflow::materialize_workflow_step_output,
             commands::workflow::package_skill,
             commands::workflow::reset_workflow_step,
+            commands::workflow::navigate_back_to_step,
             commands::workflow::preview_step_reset,
             commands::workflow::get_workflow_state,
             commands::workflow::save_workflow_state,
             commands::workflow::verify_step_output,
             commands::workflow::get_disabled_steps,
+            commands::workflow::get_clarifications_content,
+            commands::workflow::save_clarifications_content,
+            commands::workflow::get_decisions_content,
+            commands::workflow::save_decisions_content,
+            commands::workflow::get_context_file_content,
             commands::workflow::run_answer_evaluator,
+            commands::workflow::materialize_answer_evaluation_output,
+            commands::workflow::get_clarifications_content,
+            commands::workflow::save_clarifications_content,
+            commands::workflow::get_decisions_content,
+            commands::workflow::save_decisions_content,
+            commands::workflow::get_context_file_content,
             commands::workflow::autofill_clarifications,
             commands::workflow::autofill_refinements,
             commands::workflow::log_gate_decision,
             commands::workflow::scan_legacy_clarifications,
             commands::workflow::reset_legacy_skills,
-            commands::lifecycle::has_running_agents,
             commands::sidecar_lifecycle::cleanup_skill_sidecar,
             commands::sidecar_lifecycle::graceful_shutdown,
             commands::workspace::get_workspace_path,
             commands::workspace::clear_workspace,
             commands::workspace::reconcile_startup,
+            commands::workspace::record_reconciliation_cancel,
             commands::workspace::resolve_orphan,
             commands::workspace::resolve_discovery,
             commands::workspace::create_workflow_session,
@@ -204,7 +342,7 @@ pub fn run() {
             commands::imported_skills::list_workspace_skills,
             commands::imported_skills::toggle_skill_active,
             commands::imported_skills::set_workspace_skill_purpose,
-            commands::imported_skills::delete_imported_skill,
+            commands::imported_skills::delete_workspace_skill,
             commands::imported_skills::get_skill_content,
             commands::imported_skills::export_skill,
             commands::feedback::create_github_issue,
@@ -229,6 +367,7 @@ pub fn run() {
             commands::usage::get_recent_workflow_sessions,
             commands::usage::get_session_agent_runs,
             commands::usage::get_step_agent_runs,
+            commands::usage::get_agent_runs,
             commands::usage::get_usage_by_day,
             commands::usage::get_workflow_skill_names,
             commands::git::get_skill_history,
@@ -240,6 +379,7 @@ pub fn run() {
             commands::refine::start_refine_session,
             commands::refine::send_refine_message,
             commands::refine::close_refine_session,
+            commands::refine::materialize_refine_validation_output,
             commands::skill_test::prepare_skill_test,
             commands::skill_test::cleanup_skill_test,
             commands::imported_skills::parse_skill_file,
@@ -308,4 +448,47 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_migrate_legacy_app_data_dir_moves_when_target_missing() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parent = tmp.path();
+        let legacy = parent.join(LEGACY_APP_DATA_DIR_NAME);
+        let new_dir = parent.join("com.vibedata.skill-builder");
+
+        fs::create_dir_all(&legacy).expect("create legacy dir");
+        fs::write(legacy.join("skill-builder.db"), "db").expect("write db");
+
+        migrate_legacy_app_data_dir(&new_dir);
+
+        assert!(new_dir.exists(), "new data dir should exist");
+        assert!(!legacy.exists(), "legacy dir should be moved away");
+        assert!(
+            new_dir.join("skill-builder.db").exists(),
+            "db should be present after migration"
+        );
+    }
+
+    #[test]
+    fn test_migrate_legacy_app_data_dir_skips_when_target_has_data() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let parent = tmp.path();
+        let legacy = parent.join(LEGACY_APP_DATA_DIR_NAME);
+        let new_dir = parent.join("com.vibedata.skill-builder");
+
+        fs::create_dir_all(&legacy).expect("create legacy dir");
+        fs::write(legacy.join("legacy.txt"), "legacy").expect("write legacy file");
+        fs::create_dir_all(&new_dir).expect("create new dir");
+        fs::write(new_dir.join("existing.txt"), "existing").expect("write existing file");
+
+        migrate_legacy_app_data_dir(&new_dir);
+
+        assert!(legacy.exists(), "legacy dir should remain when target is populated");
+        assert!(new_dir.join("existing.txt").exists(), "existing target content must be preserved");
+    }
 }

@@ -6,10 +6,17 @@ use std::io::Read;
 use std::path::Path;
 
 /// Validate that a skill name is safe for use in file paths.
-/// Rejects names containing path traversal characters or empty strings.
+/// Rejects empty names, names starting with a dot (including "."), and
+/// names containing path traversal characters.
 pub(crate) fn validate_skill_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Skill name cannot be empty".to_string());
+    }
+    if name.starts_with('.') {
+        return Err(format!(
+            "Invalid skill name '{}': must not start with '.'",
+            name
+        ));
     }
     if name.contains('/') || name.contains('\\') || name.contains("..") {
         return Err(format!(
@@ -36,9 +43,7 @@ pub(crate) struct Frontmatter {
 /// Extracts `name` and `description` fields from YAML between `---` markers.
 /// Multi-line YAML values (using `>` folded scalar) are joined into a single line.
 #[allow(dead_code)]
-pub(crate) fn parse_frontmatter(
-    content: &str,
-) -> (Option<String>, Option<String>) {
+pub(crate) fn parse_frontmatter(content: &str) -> (Option<String>, Option<String>) {
     let fm = parse_frontmatter_full(content);
     (fm.name, fm.description)
 }
@@ -75,7 +80,10 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
         let trimmed_line = line.trim();
 
         // Check if this is a continuation line (indented, part of a multi-line value)
-        if current_multiline.is_some() && (line.starts_with(' ') || line.starts_with('\t')) && !trimmed_line.is_empty() {
+        if current_multiline.is_some()
+            && (line.starts_with(' ') || line.starts_with('\t'))
+            && !trimmed_line.is_empty()
+        {
             if !multiline_buf.is_empty() {
                 multiline_buf.push(' ');
             }
@@ -142,7 +150,6 @@ pub(crate) fn parse_frontmatter_full(content: &str) -> Frontmatter {
     }
 }
 
-
 /// Find SKILL.md in the zip archive, either at the root or one level deep.
 /// Returns the path within the archive and the content.
 fn find_skill_md(archive: &mut zip::ZipArchive<std::fs::File>) -> Result<(String, String), String> {
@@ -180,10 +187,13 @@ fn find_skill_md(archive: &mut zip::ZipArchive<std::fs::File>) -> Result<(String
         Some((idx, name)) => {
             let mut content = String::new();
             let mut file = archive.by_index(idx).map_err(|e| e.to_string())?;
-            file.read_to_string(&mut content).map_err(|e| e.to_string())?;
+            file.read_to_string(&mut content)
+                .map_err(|e| e.to_string())?;
             Ok((name, content))
         }
-        None => Err("Invalid skill package: SKILL.md not found at root or one level deep".to_string()),
+        None => {
+            Err("Invalid skill package: SKILL.md not found at root or one level deep".to_string())
+        }
     }
 }
 
@@ -214,7 +224,12 @@ pub fn upload_skill(
     force_overwrite: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<WorkspaceSkill, String> {
-    log::info!("[upload_skill] file_path={} name={} force_overwrite={}", file_path, name, force_overwrite);
+    log::info!(
+        "[upload_skill] file_path={} name={} force_overwrite={}",
+        file_path,
+        name,
+        force_overwrite
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[upload_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -225,9 +240,18 @@ pub fn upload_skill(
         .ok_or_else(|| "Workspace path not initialized".to_string())?;
 
     let result = upload_skill_inner(
-        &file_path, &name, &description, &version,
-        model, argument_hint, user_invocable, disable_model_invocation,
-        purpose, force_overwrite, &workspace_path, &conn,
+        &file_path,
+        &name,
+        &description,
+        &version,
+        model,
+        argument_hint,
+        user_invocable,
+        disable_model_invocation,
+        purpose,
+        force_overwrite,
+        &workspace_path,
+        &conn,
     )?;
 
     // Regenerate CLAUDE.md with updated workspace skills
@@ -275,7 +299,8 @@ fn upload_skill_inner(
         conn.execute(
             "DELETE FROM workspace_skills WHERE skill_name = ?1",
             rusqlite::params![name],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     fs::create_dir_all(&skills_dir)
@@ -298,9 +323,17 @@ fn upload_skill_inner(
         disk_path: dest_dir.to_string_lossy().to_string(),
         imported_at,
         is_bundled: false,
-        description: if description.is_empty() { None } else { Some(description.to_string()) },
+        description: if description.is_empty() {
+            None
+        } else {
+            Some(description.to_string())
+        },
         purpose,
-        version: if version.is_empty() { None } else { Some(version.to_string()) },
+        version: if version.is_empty() {
+            None
+        } else {
+            Some(version.to_string())
+        },
         model,
         argument_hint,
         user_invocable,
@@ -309,8 +342,18 @@ fn upload_skill_inner(
     };
 
     crate::db::insert_workspace_skill(conn, &skill)?;
+    let imported_is_active = apply_import_purpose_conflict_policy(
+        conn,
+        workspace_path,
+        &skill.skill_id,
+        &skill.skill_name,
+        skill.purpose.as_deref(),
+    )?;
 
-    Ok(skill)
+    let mut persisted = crate::db::get_workspace_skill(conn, &skill.skill_id)?
+        .ok_or_else(|| format!("Uploaded skill '{}' not found after insert", skill.skill_name))?;
+    persisted.is_active = imported_is_active;
+    Ok(persisted)
 }
 
 /// Helper to generate a simple unique ID from inputs
@@ -332,7 +375,8 @@ fn extract_archive(
     // Ensure dest_dir exists and canonicalize it for reliable containment checks
     fs::create_dir_all(dest_dir)
         .map_err(|e| format!("Failed to create destination directory: {}", e))?;
-    let canonical_dest = dest_dir.canonicalize()
+    let canonical_dest = dest_dir
+        .canonicalize()
         .map_err(|e| format!("Failed to canonicalize destination: {}", e))?;
 
     for i in 0..archive.len() {
@@ -370,7 +414,8 @@ fn extract_archive(
             fs::create_dir_all(&out_path)
                 .map_err(|e| format!("Failed to create directory: {}", e))?;
             // Verify canonicalized path is still inside dest_dir (catches symlink tricks)
-            let canonical_out = out_path.canonicalize()
+            let canonical_out = out_path
+                .canonicalize()
                 .map_err(|e| format!("Failed to canonicalize directory: {}", e))?;
             if !canonical_out.starts_with(&canonical_dest) {
                 return Err(format!(
@@ -383,7 +428,8 @@ fn extract_archive(
                 fs::create_dir_all(parent)
                     .map_err(|e| format!("Failed to create parent directory: {}", e))?;
                 // Verify parent is still inside dest_dir after canonicalization
-                let canonical_parent = parent.canonicalize()
+                let canonical_parent = parent
+                    .canonicalize()
                     .map_err(|e| format!("Failed to canonicalize parent: {}", e))?;
                 if !canonical_parent.starts_with(&canonical_dest) {
                     return Err(format!(
@@ -403,14 +449,18 @@ fn extract_archive(
 
 #[tauri::command]
 pub fn list_workspace_skills(
+    source_url: Option<String>,
     db: tauri::State<'_, Db>,
 ) -> Result<Vec<WorkspaceSkill>, String> {
-    log::info!("[list_workspace_skills]");
+    log::info!("[list_workspace_skills] source_url={:?}", source_url);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[list_workspace_skills] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
-    crate::db::list_workspace_skills(&conn)
+    match source_url.as_deref() {
+        Some(url) => crate::db::list_workspace_skills_by_source(&conn, url),
+        None => crate::db::list_workspace_skills(&conn),
+    }
 }
 
 #[tauri::command]
@@ -419,7 +469,11 @@ pub fn toggle_skill_active(
     active: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<(), String> {
-    log::info!("[toggle_skill_active] skill_id={} active={}", skill_id, active);
+    log::info!(
+        "[toggle_skill_active] skill_id={} active={}",
+        skill_id,
+        active
+    );
     let conn = db.0.lock().map_err(|e| {
         log::error!("[toggle_skill_active] Failed to acquire DB lock: {}", e);
         e.to_string()
@@ -436,72 +490,14 @@ pub fn toggle_skill_active(
 
     toggle_skill_active_inner(&skill_id, skill_name, active, &workspace_path, &conn)?;
 
-    // When activating, auto-deactivate any other active skill with the same purpose
+    // When activating, auto-deactivate any other active skill with the same purpose.
     if active {
-        if let Some(ref purpose) = skill.purpose {
-            // Query siblings before the UPDATE so we can move them on disk afterward
-            let mut sibling_stmt = conn.prepare(
-                "SELECT skill_id, skill_name FROM workspace_skills WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1"
-            ).map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
-            let siblings: Vec<(String, String)> = sibling_stmt.query_map(rusqlite::params![purpose, skill_id], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| format!("Failed to query siblings: {}", e))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Failed to collect siblings: {}", e))?;
-            drop(sibling_stmt);
-
-            let rows_affected = conn.execute(
-                "UPDATE workspace_skills SET is_active = 0 WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
-                rusqlite::params![purpose, skill_id],
-            ).map_err(|e| {
-                log::error!("[toggle_skill_active] failed to deactivate conflicting purposes: {}", e);
-                format!("Failed to deactivate conflicting purpose skills: {}", e)
-            })?;
-            if rows_affected > 0 {
-                log::info!(
-                    "[toggle_skill_active] deactivated {} other skill(s) with purpose='{}'",
-                    rows_affected, purpose
-                );
-            }
-
-            // Move deactivated siblings' directories from active to inactive on disk
-            let skills_dir = Path::new(&workspace_path).join(".claude").join("skills");
-            let inactive_dir = skills_dir.join(".inactive");
-            for (sibling_id, sibling_name) in &siblings {
-                let src = skills_dir.join(sibling_name);
-                let dst = inactive_dir.join(sibling_name);
-                if src.exists() {
-                    if let Err(e) = fs::create_dir_all(&inactive_dir) {
-                        log::error!(
-                            "[toggle_skill_active] failed to create .inactive dir for sibling '{}': {}",
-                            sibling_name, e
-                        );
-                        continue;
-                    }
-                    if let Err(e) = fs::rename(&src, &dst) {
-                        log::error!(
-                            "[toggle_skill_active] failed to move sibling '{}' to inactive: {}",
-                            sibling_name, e
-                        );
-                        // Don't fail the whole activation — DB is already updated
-                        continue;
-                    }
-                    // Update disk_path in DB to reflect the new location
-                    let new_disk_path = dst.to_string_lossy().to_string();
-                    if let Err(e) = crate::db::update_workspace_skill_active(&conn, sibling_id, false, &new_disk_path) {
-                        log::error!(
-                            "[toggle_skill_active] failed to update disk_path for sibling '{}': {}",
-                            sibling_name, e
-                        );
-                    }
-                    log::debug!(
-                        "[toggle_skill_active] moved sibling '{}' to inactive on disk",
-                        sibling_name
-                    );
-                }
-            }
-        }
+        deactivate_conflicting_active_skills(
+            &conn,
+            &workspace_path,
+            &skill_id,
+            skill.purpose.as_deref(),
+        )?;
     }
 
     // Regenerate CLAUDE.md with updated active skills
@@ -543,9 +539,8 @@ fn toggle_skill_active_inner(
         // Ensure destination parent directory exists (skills_dir when activating, .inactive when deactivating)
         let dest_parent = if active { &skills_dir } else { &inactive_dir };
         if let Err(e) = fs::create_dir_all(dest_parent) {
-            let _ = crate::db::update_workspace_skill_active(
-                conn, skill_id, !active, &old_disk_path,
-            );
+            let _ =
+                crate::db::update_workspace_skill_active(conn, skill_id, !active, &old_disk_path);
             return Err(format!("Failed to create destination directory: {}", e));
         }
 
@@ -558,17 +553,22 @@ fn toggle_skill_active_inner(
             );
             if let Err(e) = fs::remove_dir_all(dst) {
                 let _ = crate::db::update_workspace_skill_active(
-                    conn, skill_id, !active, &old_disk_path,
+                    conn,
+                    skill_id,
+                    !active,
+                    &old_disk_path,
                 );
-                return Err(format!("Failed to clear stale destination for '{}': {}", skill_name, e));
+                return Err(format!(
+                    "Failed to clear stale destination for '{}': {}",
+                    skill_name, e
+                ));
             }
         }
 
         if let Err(move_err) = fs::rename(src, dst) {
             // Revert the DB update
-            let _ = crate::db::update_workspace_skill_active(
-                conn, skill_id, !active, &old_disk_path,
-            );
+            let _ =
+                crate::db::update_workspace_skill_active(conn, skill_id, !active, &old_disk_path);
             return Err(format!(
                 "Failed to {} skill '{}': {}",
                 if active { "activate" } else { "deactivate" },
@@ -588,6 +588,84 @@ fn toggle_skill_active_inner(
     Ok(())
 }
 
+pub(crate) fn deactivate_conflicting_active_skills(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    current_skill_id: &str,
+    purpose: Option<&str>,
+) -> Result<(), String> {
+    let purpose = match purpose {
+        Some(p) if !p.trim().is_empty() && p != "general-purpose" => p,
+        _ => return Ok(()),
+    };
+
+    let mut sibling_stmt = conn
+        .prepare(
+            "SELECT skill_id, skill_name FROM workspace_skills WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
+        )
+        .map_err(|e| format!("Failed to prepare sibling query: {}", e))?;
+    let siblings: Vec<(String, String)> = sibling_stmt
+        .query_map(rusqlite::params![purpose, current_skill_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Failed to query siblings: {}", e))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to collect siblings: {}", e))?;
+    drop(sibling_stmt);
+
+    for (sibling_id, sibling_name) in siblings {
+        toggle_skill_active_inner(&sibling_id, &sibling_name, false, workspace_path, conn)?;
+        log::info!(
+            "[deactivate_conflicting_active_skills] deactivated sibling '{}' (purpose='{}')",
+            sibling_name,
+            purpose
+        );
+    }
+
+    Ok(())
+}
+
+pub(crate) fn has_active_purpose_conflict(
+    conn: &rusqlite::Connection,
+    purpose: Option<&str>,
+    current_skill_id: &str,
+) -> Result<bool, String> {
+    let purpose = match purpose {
+        Some(p) if !p.trim().is_empty() && p != "general-purpose" => p,
+        _ => return Ok(false),
+    };
+
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(1) FROM workspace_skills
+             WHERE purpose = ?1 AND is_active = 1 AND skill_id != ?2",
+            rusqlite::params![purpose, current_skill_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("Failed to check active purpose conflicts: {}", e))?;
+
+    Ok(count > 0)
+}
+
+pub(crate) fn apply_import_purpose_conflict_policy(
+    conn: &rusqlite::Connection,
+    workspace_path: &str,
+    skill_id: &str,
+    skill_name: &str,
+    purpose: Option<&str>,
+) -> Result<bool, String> {
+    if has_active_purpose_conflict(conn, purpose, skill_id)? {
+        toggle_skill_active_inner(skill_id, skill_name, false, workspace_path, conn)?;
+        log::info!(
+            "[apply_import_purpose_conflict_policy] imported '{}' as inactive due to active purpose conflict ({:?})",
+            skill_name,
+            purpose
+        );
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 /// Set or clear the `purpose` tag on a workspace skill.
 /// Purpose tags allow callers to resolve skills by role (e.g. "test-context",
 /// "research", "validate", "skill-building") instead of by name.
@@ -599,41 +677,73 @@ pub fn set_workspace_skill_purpose(
 ) -> Result<(), String> {
     log::info!(
         "[set_workspace_skill_purpose] skill_id={} purpose={:?}",
-        skill_id, purpose
+        skill_id,
+        purpose
     );
     let conn = state.0.lock().map_err(|e| {
-        log::error!("[set_workspace_skill_purpose] Failed to acquire DB lock: {}", e);
+        log::error!(
+            "[set_workspace_skill_purpose] Failed to acquire DB lock: {}",
+            e
+        );
         e.to_string()
     })?;
-    do_set_workspace_skill_purpose(&conn, &skill_id, purpose.as_deref())
+    let settings = crate::db::read_settings(&conn)?;
+    let workspace_path = settings
+        .workspace_path
+        .ok_or_else(|| "Workspace path not initialized".to_string())?;
+
+    do_set_workspace_skill_purpose(&conn, &skill_id, purpose.as_deref(), &workspace_path)?;
+
+    if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
+        log::warn!(
+            "Failed to update CLAUDE.md after setting skill purpose: {}",
+            e
+        );
+    }
+
+    Ok(())
 }
 
 fn do_set_workspace_skill_purpose(
     conn: &rusqlite::Connection,
     skill_id: &str,
     purpose: Option<&str>,
+    workspace_path: &str,
 ) -> Result<(), String> {
-    let rows = conn.execute(
-        "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
-        rusqlite::params![purpose, skill_id],
-    ).map_err(|e| {
-        log::error!("[set_workspace_skill_purpose] DB update failed: {}", e);
-        format!("set_workspace_skill_purpose: {}", e)
-    })?;
+    let rows = conn
+        .execute(
+            "UPDATE workspace_skills SET purpose = ?1 WHERE skill_id = ?2",
+            rusqlite::params![purpose, skill_id],
+        )
+        .map_err(|e| {
+            log::error!("[set_workspace_skill_purpose] DB update failed: {}", e);
+            format!("set_workspace_skill_purpose: {}", e)
+        })?;
     if rows == 0 {
-        return Err(format!("set_workspace_skill_purpose: skill '{}' not found", skill_id));
+        return Err(format!(
+            "set_workspace_skill_purpose: skill '{}' not found",
+            skill_id
+        ));
     }
+
+    let updated_skill = crate::db::get_workspace_skill(conn, skill_id)?.ok_or_else(|| {
+        format!(
+            "set_workspace_skill_purpose: skill '{}' not found",
+            skill_id
+        )
+    })?;
+    if updated_skill.is_active {
+        deactivate_conflicting_active_skills(conn, workspace_path, skill_id, purpose)?;
+    }
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn delete_imported_skill(
-    skill_id: String,
-    db: tauri::State<'_, Db>,
-) -> Result<(), String> {
-    log::info!("[delete_imported_skill] skill_id={}", skill_id);
+pub fn delete_workspace_skill(skill_id: String, db: tauri::State<'_, Db>) -> Result<(), String> {
+    log::info!("[delete_workspace_skill] skill_id={}", skill_id);
     let conn = db.0.lock().map_err(|e| {
-        log::error!("[delete_imported_skill] Failed to acquire DB lock: {}", e);
+        log::error!("[delete_workspace_skill] Failed to acquire DB lock: {}", e);
         e.to_string()
     })?;
     let settings = crate::db::read_settings(&conn)?;
@@ -646,7 +756,7 @@ pub fn delete_imported_skill(
         .ok_or_else(|| format!("Workspace skill with id '{}' not found", skill_id))?;
     let skill_name = skill.skill_name.clone();
 
-    delete_imported_skill_inner(&skill_id, &skill_name, &workspace_path, &conn)?;
+    delete_workspace_skill_inner(&skill_id, &skill_name, &workspace_path, &conn)?;
 
     // Regenerate CLAUDE.md without the deleted skill
     if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
@@ -656,7 +766,7 @@ pub fn delete_imported_skill(
     Ok(())
 }
 
-fn delete_imported_skill_inner(
+fn delete_workspace_skill_inner(
     skill_id: &str,
     skill_name: &str,
     workspace_path: &str,
@@ -695,10 +805,7 @@ fn delete_imported_skill_inner(
 }
 
 #[tauri::command]
-pub fn export_skill(
-    skill_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
+pub fn export_skill(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[export_skill] skill_name={}", skill_name);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[export_skill] Failed to acquire DB lock: {}", e);
@@ -716,8 +823,8 @@ pub fn export_skill(
     let tmp_dir = std::env::temp_dir();
     let zip_path = tmp_dir.join(format!("{}.zip", skill_name));
 
-    let file = fs::File::create(&zip_path)
-        .map_err(|e| format!("Failed to create zip file: {}", e))?;
+    let file =
+        fs::File::create(&zip_path).map_err(|e| format!("Failed to create zip file: {}", e))?;
     let mut writer = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated);
@@ -747,8 +854,8 @@ fn add_dir_to_zip(
         if path.is_dir() {
             add_dir_to_zip(writer, &path, &name, options)?;
         } else {
-            let content = fs::read(&path)
-                .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+            let content =
+                fs::read(&path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
             writer
                 .start_file(&name, *options)
                 .map_err(|e| format!("Failed to add to zip: {}", e))?;
@@ -760,10 +867,7 @@ fn add_dir_to_zip(
 }
 
 #[tauri::command]
-pub fn get_skill_content(
-    skill_name: String,
-    db: tauri::State<'_, Db>,
-) -> Result<String, String> {
+pub fn get_skill_content(skill_name: String, db: tauri::State<'_, Db>) -> Result<String, String> {
     log::info!("[get_skill_content] skill_name={}", skill_name);
     let conn = db.0.lock().map_err(|e| {
         log::error!("[get_skill_content] Failed to acquire DB lock: {}", e);
@@ -773,8 +877,7 @@ pub fn get_skill_content(
         .ok_or_else(|| format!("Workspace skill '{}' not found", skill_name))?;
 
     let skill_md_path = Path::new(&skill.disk_path).join("SKILL.md");
-    fs::read_to_string(&skill_md_path)
-        .map_err(|e| format!("Failed to read SKILL.md: {}", e))
+    fs::read_to_string(&skill_md_path).map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
 
 /// Seed bundled skills from the app's bundled-skills directory into the workspace.
@@ -813,10 +916,7 @@ pub(crate) fn seed_bundled_skills(
             continue;
         }
 
-        let dir_name = entry
-            .file_name()
-            .to_string_lossy()
-            .to_string();
+        let dir_name = entry.file_name().to_string_lossy().to_string();
 
         log::debug!("seed_bundled_skills: processing {}", dir_name);
 
@@ -827,9 +927,20 @@ pub(crate) fn seed_bundled_skills(
 
         let skill_name = fm.name.unwrap_or_else(|| dir_name.clone());
 
+        // Research is plugin-owned and must not be seeded as a bundled workspace skill.
+        if skill_name == "research" {
+            log::debug!(
+                "seed_bundled_skills: skipping plugin-owned skill '{}'",
+                skill_name
+            );
+            continue;
+        }
+
         // Validate required frontmatter fields; skip and error-log if any are missing
         let mut missing_required: Vec<&str> = Vec::new();
-        if fm.description.is_none() { missing_required.push("description"); }
+        if fm.description.is_none() {
+            missing_required.push("description");
+        }
         if !missing_required.is_empty() {
             log::error!(
                 "seed_bundled_skills: skipping '{}' — missing required frontmatter fields: {}",
@@ -861,8 +972,12 @@ pub(crate) fn seed_bundled_skills(
                 .map_err(|e| format!("Failed to remove existing bundled skill dir: {}", e))?;
         }
         if inactive_path.exists() {
-            fs::remove_dir_all(&inactive_path)
-                .map_err(|e| format!("Failed to remove existing inactive bundled skill dir: {}", e))?;
+            fs::remove_dir_all(&inactive_path).map_err(|e| {
+                format!(
+                    "Failed to remove existing inactive bundled skill dir: {}",
+                    e
+                )
+            })?;
         }
 
         fs::create_dir_all(&dest_dir)
@@ -874,13 +989,13 @@ pub(crate) fn seed_bundled_skills(
         let skill = crate::types::WorkspaceSkill {
             skill_id: format!("bundled-{}", skill_name),
             skill_name: skill_name.clone(),
-                        is_active,
+            is_active,
             disk_path: dest_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
             // Store description from frontmatter in DB
             description: fm.description,
-                        version: fm.version,
+            version: fm.version,
             model: fm.model,
             argument_hint: fm.argument_hint,
             user_invocable: fm.user_invocable,
@@ -924,10 +1039,10 @@ pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 #[tauri::command]
 pub fn parse_skill_file(file_path: String) -> Result<crate::types::SkillFileMeta, String> {
     log::info!("[parse_skill_file] file_path={}", file_path);
-    let zip_file = std::fs::File::open(&file_path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-    let mut archive = zip::ZipArchive::new(zip_file)
-        .map_err(|_| "not a valid skill package".to_string())?;
+    let zip_file =
+        std::fs::File::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(zip_file).map_err(|_| "not a valid skill package".to_string())?;
     let (_, skill_md_content) = find_skill_md(&mut archive)?;
     let fm = parse_frontmatter_full(&skill_md_content);
     if fm.name.is_none() {
@@ -958,7 +1073,11 @@ pub fn import_skill_from_file(
     force_overwrite: bool,
     db: tauri::State<'_, Db>,
 ) -> Result<String, String> {
-    log::info!("[import_skill_from_file] name={} force_overwrite={}", name, force_overwrite);
+    log::info!(
+        "[import_skill_from_file] name={} force_overwrite={}",
+        name,
+        force_overwrite
+    );
 
     validate_skill_name(&name)?;
 
@@ -970,25 +1089,28 @@ pub fn import_skill_from_file(
         log::error!("[import_skill_from_file] failed to read settings: {}", e);
         e
     })?;
-    let skills_path = settings.skills_path.ok_or_else(|| {
-        "Skills path not configured. Set it in Settings.".to_string()
-    })?;
+    let skills_path = settings
+        .skills_path
+        .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
     let workspace_path = settings.workspace_path.unwrap_or_default();
 
     // Re-validate zip (prevent TOCTOU between parse and import)
-    let zip_file = std::fs::File::open(&file_path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-    let mut archive = zip::ZipArchive::new(zip_file)
-        .map_err(|_| "not a valid skill package".to_string())?;
+    let zip_file =
+        std::fs::File::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut archive =
+        zip::ZipArchive::new(zip_file).map_err(|_| "not a valid skill package".to_string())?;
     let (skill_md_path, _) = find_skill_md(&mut archive)?;
     let prefix = get_archive_prefix(&skill_md_path);
 
     // Conflict check
-    let existing_source: Option<String> = conn.query_row(
-        "SELECT skill_source FROM skills WHERE name = ?1",
-        rusqlite::params![&name],
-        |row| row.get::<_, String>(0),
-    ).optional().map_err(|e| e.to_string())?;
+    let existing_source: Option<String> = conn
+        .query_row(
+            "SELECT skill_source FROM skills WHERE name = ?1",
+            rusqlite::params![&name],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
 
     match existing_source.as_deref() {
         Some("skill-builder") | Some("marketplace") => {
@@ -1007,10 +1129,7 @@ pub fn import_skill_from_file(
                 })?;
             }
             crate::db::delete_imported_skill_by_name(&conn, &name)?;
-            conn.execute(
-                "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
-                rusqlite::params![&name],
-            ).map_err(|e| e.to_string())?;
+            crate::db::delete_skill(&conn, &name)?;
         }
         _ => {} // Not found — proceed normally
     }
@@ -1019,10 +1138,10 @@ pub fn import_skill_from_file(
     let dest_dir = std::path::Path::new(&skills_path).join(&name);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
     // Re-open archive (consumed during prefix scan)
-    let zip_file2 = std::fs::File::open(&file_path)
-        .map_err(|e| format!("Failed to re-open file: {}", e))?;
-    let mut archive2 = zip::ZipArchive::new(zip_file2)
-        .map_err(|_| "not a valid skill package".to_string())?;
+    let zip_file2 =
+        std::fs::File::open(&file_path).map_err(|e| format!("Failed to re-open file: {}", e))?;
+    let mut archive2 =
+        zip::ZipArchive::new(zip_file2).map_err(|_| "not a valid skill package".to_string())?;
     extract_archive(&mut archive2, &prefix, &dest_dir)?;
 
     // Write to skills master table
@@ -1032,7 +1151,8 @@ pub fn import_skill_from_file(
     conn.execute(
         "UPDATE skills SET description = ?2 WHERE name = ?1",
         rusqlite::params![&name, &description],
-    ).map_err(|e| e.to_string())?;
+    )
+    .map_err(|e| e.to_string())?;
 
     // Build ImportedSkill and upsert to imported_skills + mirror frontmatter to skills master
     let skill_id = generate_skill_id(&name);
@@ -1046,7 +1166,11 @@ pub fn import_skill_from_file(
         is_bundled: false,
         description: Some(description),
         purpose: Some("domain".to_string()),
-        version: if version.is_empty() { None } else { Some(version) },
+        version: if version.is_empty() {
+            None
+        } else {
+            Some(version)
+        },
         model,
         argument_hint,
         user_invocable,
@@ -1058,11 +1182,18 @@ pub fn import_skill_from_file(
     // Regenerate CLAUDE.md
     if !workspace_path.is_empty() {
         if let Err(e) = super::workflow::update_skills_section(&workspace_path, &conn) {
-            log::warn!("[import_skill_from_file] update_skills_section failed: {}", e);
+            log::warn!(
+                "[import_skill_from_file] update_skills_section failed: {}",
+                e
+            );
         }
     }
 
-    log::info!("[import_skill_from_file] imported '{}' to '{}'", name, dest_dir.display());
+    log::info!(
+        "[import_skill_from_file] imported '{}' to '{}'",
+        name,
+        dest_dir.display()
+    );
     Ok(name)
 }
 
@@ -1082,7 +1213,8 @@ mod tests {
             disk_path: "/tmp/test-skill".to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -1128,13 +1260,29 @@ mod tests {
         let skill = make_test_skill();
         crate::db::insert_imported_skill(&conn, &skill).unwrap();
 
-        crate::db::update_imported_skill_active(&conn, "my-test-skill", false, "/tmp/inactive/my-test-skill").unwrap();
-        let found = crate::db::get_imported_skill(&conn, "my-test-skill").unwrap().unwrap();
+        crate::db::update_imported_skill_active(
+            &conn,
+            "my-test-skill",
+            false,
+            "/tmp/inactive/my-test-skill",
+        )
+        .unwrap();
+        let found = crate::db::get_imported_skill(&conn, "my-test-skill")
+            .unwrap()
+            .unwrap();
         assert!(!found.is_active);
         assert_eq!(found.disk_path, "/tmp/inactive/my-test-skill");
 
-        crate::db::update_imported_skill_active(&conn, "my-test-skill", true, "/tmp/active/my-test-skill").unwrap();
-        let found = crate::db::get_imported_skill(&conn, "my-test-skill").unwrap().unwrap();
+        crate::db::update_imported_skill_active(
+            &conn,
+            "my-test-skill",
+            true,
+            "/tmp/active/my-test-skill",
+        )
+        .unwrap();
+        let found = crate::db::get_imported_skill(&conn, "my-test-skill")
+            .unwrap()
+            .unwrap();
         assert!(found.is_active);
         assert_eq!(found.disk_path, "/tmp/active/my-test-skill");
     }
@@ -1142,7 +1290,8 @@ mod tests {
     #[test]
     fn test_update_nonexistent_skill_errors() {
         let conn = create_test_db();
-        let result = crate::db::update_imported_skill_active(&conn, "no-such-skill", true, "/tmp/path");
+        let result =
+            crate::db::update_imported_skill_active(&conn, "no-such-skill", true, "/tmp/path");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
     }
@@ -1284,7 +1433,8 @@ description: A skill
         assert_eq!(fm.user_invocable, Some(true));
         assert_eq!(fm.disable_model_invocation, Some(true));
 
-        let content_one = "---\nname: s\ndescription: d\nuser-invocable: 1\ndisable-model-invocation: 1\n---\n";
+        let content_one =
+            "---\nname: s\ndescription: d\nuser-invocable: 1\ndisable-model-invocation: 1\n---\n";
         let fm = parse_frontmatter_full(content_one);
         assert_eq!(fm.user_invocable, Some(true));
         assert_eq!(fm.disable_model_invocation, Some(true));
@@ -1298,12 +1448,14 @@ description: A skill
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
 
-        let content_no = "---\nname: s\ndescription: d\nuser-invocable: no\ndisable-model-invocation: no\n---\n";
+        let content_no =
+            "---\nname: s\ndescription: d\nuser-invocable: no\ndisable-model-invocation: no\n---\n";
         let fm = parse_frontmatter_full(content_no);
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
 
-        let content_zero = "---\nname: s\ndescription: d\nuser-invocable: 0\ndisable-model-invocation: 0\n---\n";
+        let content_zero =
+            "---\nname: s\ndescription: d\nuser-invocable: 0\ndisable-model-invocation: 0\n---\n";
         let fm = parse_frontmatter_full(content_zero);
         assert_eq!(fm.user_invocable, Some(false));
         assert_eq!(fm.disable_model_invocation, Some(false));
@@ -1369,9 +1521,7 @@ description: A skill
 
     #[test]
     fn test_find_skill_md_missing() {
-        let zip_file = create_test_zip(&[
-            ("README.md", "# No skill here"),
-        ]);
+        let zip_file = create_test_zip(&[("README.md", "# No skill here")]);
 
         let file = fs::File::open(zip_file.path()).unwrap();
         let mut archive = zip::ZipArchive::new(file).unwrap();
@@ -1408,13 +1558,20 @@ description: A skill
             "analytics-skill",
             "Analytics domain skill",
             "1.0.0",
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             Some("research".to_string()),
             false,
             workspace_path,
             &conn,
         );
-        assert!(result.is_ok(), "upload_skill_inner failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "upload_skill_inner failed: {:?}",
+            result.err()
+        );
 
         let skill = result.unwrap();
         assert_eq!(skill.skill_name, "analytics-skill");
@@ -1423,12 +1580,18 @@ description: A skill
         assert_eq!(skill.purpose, Some("research".to_string()));
 
         // Verify files were extracted
-        let skill_dir = workspace.path().join(".claude").join("skills").join("analytics-skill");
+        let skill_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("analytics-skill");
         assert!(skill_dir.join("SKILL.md").exists());
         assert!(skill_dir.join("references").join("concepts.md").exists());
 
         // Verify DB record
-        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "analytics-skill").unwrap().unwrap();
+        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "analytics-skill")
+            .unwrap()
+            .unwrap();
         assert_eq!(db_skill.skill_name, "analytics-skill");
     }
 
@@ -1439,7 +1602,10 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         let zip_file = create_test_zip(&[
-            ("nested-skill/SKILL.md", "---\nname: nested-test\ndescription: A nested test skill\n---\n# Nested"),
+            (
+                "nested-skill/SKILL.md",
+                "---\nname: nested-test\ndescription: A nested test skill\n---\n# Nested",
+            ),
             ("nested-skill/references/data.md", "# Data"),
         ]);
 
@@ -1448,7 +1614,12 @@ description: A skill
             "nested-test",
             "A nested test skill",
             "1.0.0",
-            None, None, None, None, None, false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
             workspace_path,
             &conn,
         );
@@ -1457,7 +1628,11 @@ description: A skill
         assert_eq!(skill.skill_name, "nested-test");
 
         // Verify files extracted correctly (prefix stripped)
-        let skill_dir = workspace.path().join(".claude").join("skills").join("nested-test");
+        let skill_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("nested-test");
         assert!(skill_dir.join("SKILL.md").exists());
         assert!(skill_dir.join("references").join("data.md").exists());
     }
@@ -1468,30 +1643,51 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\ndescription: A duplicate skill\n---\n# Dup"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: dup-skill\ndescription: A duplicate skill\n---\n# Dup",
+        )]);
 
         // First upload succeeds
         upload_skill_inner(
             zip_file.path().to_str().unwrap(),
-            "dup-skill", "A duplicate skill", "1.0.0",
-            None, None, None, None, None, false,
-            workspace_path, &conn,
-        ).unwrap();
+            "dup-skill",
+            "A duplicate skill",
+            "1.0.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            workspace_path,
+            &conn,
+        )
+        .unwrap();
 
         // Second upload without force returns conflict signal
-        let zip_file2 = create_test_zip(&[
-            ("SKILL.md", "---\nname: dup-skill\ndescription: Updated skill\n---\n# Dup 2"),
-        ]);
+        let zip_file2 = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: dup-skill\ndescription: Updated skill\n---\n# Dup 2",
+        )]);
         let result = upload_skill_inner(
             zip_file2.path().to_str().unwrap(),
-            "dup-skill", "Updated skill", "2.0.0",
-            None, None, None, None, None, false,
-            workspace_path, &conn,
+            "dup-skill",
+            "Updated skill",
+            "2.0.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            workspace_path,
+            &conn,
         );
         assert!(result.is_err());
-        assert!(result.unwrap_err().starts_with("conflict_overwrite_required:"));
+        assert!(result
+            .unwrap_err()
+            .starts_with("conflict_overwrite_required:"));
     }
 
     #[test]
@@ -1500,25 +1696,44 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: overwrite-skill\ndescription: Original\n---\n# Original"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: overwrite-skill\ndescription: Original\n---\n# Original",
+        )]);
         upload_skill_inner(
             zip_file.path().to_str().unwrap(),
-            "overwrite-skill", "Original", "1.0.0",
-            None, None, None, None, None, false,
-            workspace_path, &conn,
-        ).unwrap();
+            "overwrite-skill",
+            "Original",
+            "1.0.0",
+            None,
+            None,
+            None,
+            None,
+            None,
+            false,
+            workspace_path,
+            &conn,
+        )
+        .unwrap();
 
         // Force overwrite replaces the skill
-        let zip_file2 = create_test_zip(&[
-            ("SKILL.md", "---\nname: overwrite-skill\ndescription: Updated\n---\n# Updated"),
-        ]);
+        let zip_file2 = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: overwrite-skill\ndescription: Updated\n---\n# Updated",
+        )]);
         let result = upload_skill_inner(
             zip_file2.path().to_str().unwrap(),
-            "overwrite-skill", "Updated", "2.0.0",
-            None, None, None, None, Some("research".to_string()), true,
-            workspace_path, &conn,
+            "overwrite-skill",
+            "Updated",
+            "2.0.0",
+            None,
+            None,
+            None,
+            None,
+            Some("research".to_string()),
+            true,
+            workspace_path,
+            &conn,
         );
         assert!(result.is_ok(), "force overwrite failed: {:?}", result.err());
         let skill = result.unwrap();
@@ -1533,21 +1748,101 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: purpose-test\ndescription: Purpose test skill\n---\n# Purpose Test"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: purpose-test\ndescription: Purpose test skill\n---\n# Purpose Test",
+        )]);
 
         let result = upload_skill_inner(
             zip_file.path().to_str().unwrap(),
-            "purpose-test", "Purpose test skill", "1.0.0",
-            None, None, None, None,
+            "purpose-test",
+            "Purpose test skill",
+            "1.0.0",
+            None,
+            None,
+            None,
+            None,
             Some("general-purpose".to_string()),
             false,
             workspace_path,
             &conn,
         );
-        assert!(result.is_ok(), "upload_skill_inner failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "upload_skill_inner failed: {:?}",
+            result.err()
+        );
         assert_eq!(result.unwrap().purpose, Some("general-purpose".to_string()));
+    }
+
+    #[test]
+    fn test_upload_skill_conflicting_purpose_imports_as_inactive() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+        let skills_dir = workspace.path().join(".claude").join("skills");
+
+        // Existing active research skill remains active.
+        let existing_dir = skills_dir.join("existing-research");
+        fs::create_dir_all(&existing_dir).unwrap();
+        fs::write(existing_dir.join("SKILL.md"), "# Existing").unwrap();
+        let existing = WorkspaceSkill {
+            skill_id: "id-existing".to_string(),
+            skill_name: "existing-research".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: existing_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &existing).unwrap();
+
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: incoming-research\ndescription: Incoming\n---\n# Incoming",
+        )]);
+        let imported = upload_skill_inner(
+            zip_file.path().to_str().unwrap(),
+            "incoming-research",
+            "Incoming",
+            "1.0.0",
+            None,
+            None,
+            None,
+            None,
+            Some("research".to_string()),
+            false,
+            workspace_path,
+            &conn,
+        )
+        .unwrap();
+
+        assert!(
+            !imported.is_active,
+            "newly imported conflicting-purpose skill should be inactive"
+        );
+
+        let existing_after = crate::db::get_workspace_skill_by_name(&conn, "existing-research")
+            .unwrap()
+            .unwrap();
+        assert!(existing_after.is_active, "existing active skill should stay active");
+
+        let imported_after = crate::db::get_workspace_skill_by_name(&conn, "incoming-research")
+            .unwrap()
+            .unwrap();
+        assert!(!imported_after.is_active);
+        assert!(
+            imported_after.disk_path.contains("/.inactive/"),
+            "imported conflicting skill should be moved to .inactive"
+        );
+        assert!(skills_dir.join(".inactive").join("incoming-research").exists());
     }
 
     // --- Toggle active/inactive tests ---
@@ -1567,16 +1862,18 @@ description: A skill
         // Insert DB record
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "my-skill".to_string(),            is_active: true,
+            skill_name: "my-skill".to_string(),
+            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
@@ -1591,7 +1888,9 @@ description: A skill
         assert!(inactive_path.join("SKILL.md").exists());
 
         // Verify DB updated
-        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert!(!db_skill.is_active);
     }
 
@@ -1610,16 +1909,18 @@ description: A skill
         // Insert DB record as inactive
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "my-skill".to_string(),            is_active: false,
+            skill_name: "my-skill".to_string(),
+            is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
@@ -1634,7 +1935,9 @@ description: A skill
         assert!(active_path.join("SKILL.md").exists());
 
         // Verify DB updated
-        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "my-skill").unwrap().unwrap();
+        let db_skill = crate::db::get_workspace_skill_by_name(&conn, "my-skill")
+            .unwrap()
+            .unwrap();
         assert!(db_skill.is_active);
     }
 
@@ -1654,26 +1957,30 @@ description: A skill
 
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "del-skill".to_string(),            is_active: true,
+            skill_name: "del-skill".to_string(),
+            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        delete_imported_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
+        delete_workspace_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
 
         // Directory gone
         assert!(!skill_dir.exists());
         // DB record gone
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "del-skill").unwrap().is_none());
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "del-skill")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -1690,24 +1997,28 @@ description: A skill
 
         let skill = WorkspaceSkill {
             skill_id: "id1".to_string(),
-            skill_name: "del-skill".to_string(),            is_active: false,
+            skill_name: "del-skill".to_string(),
+            is_active: false,
             disk_path: inactive_path.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        delete_imported_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
+        delete_workspace_skill_inner("id1", "del-skill", workspace_path, &conn).unwrap();
 
         assert!(!inactive_path.exists());
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "del-skill").unwrap().is_none());
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "del-skill")
+            .unwrap()
+            .is_none());
     }
 
     // --- Get skill content test ---
@@ -1767,9 +2078,12 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create a base CLAUDE.md with customization marker
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\nSome instructions.\n\n## Customization\n\nUser notes.\n").unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
+        fs::write(
+            &claude_md,
+            "# Base Content\n\nSome instructions.\n\n## Customization\n\nUser notes.\n",
+        )
+        .unwrap();
 
         // Create skill on disk with trigger in frontmatter
         let skill_tmp = tempdir().unwrap();
@@ -1788,24 +2102,31 @@ description: A skill
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("Analytics skill for data queries.".to_string()),            version: None,
+            description: Some("Analytics skill for data queries.".to_string()),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base Content"));
         assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /my-analytics"));
-        assert!(content.contains("Analytics skill for data queries."), "should include description");
-        assert!(!content.contains("When the user asks about analytics"), "trigger must not appear");
+        assert!(
+            content.contains("Analytics skill for data queries."),
+            "should include description"
+        );
+        assert!(
+            !content.contains("When the user asks about analytics"),
+            "trigger must not appear"
+        );
         // Customization preserved
         assert!(content.contains("## Customization"));
         assert!(content.contains("User notes."));
@@ -1818,14 +2139,17 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create a base CLAUDE.md with customization marker
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
-        fs::write(claude_dir.join("CLAUDE.md"), "# Base Content\n\n## Customization\n\nMy rules.\n").unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
+        fs::write(
+            &claude_md,
+            "# Base Content\n\n## Customization\n\nMy rules.\n",
+        )
+        .unwrap();
 
         // No skills inserted — section should not be present
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base Content"));
         assert!(!content.contains("## Custom Skills"));
         // Customization preserved
@@ -1840,40 +2164,49 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // Create CLAUDE.md with an existing imported skills section + customization
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Base\n\n## Custom Skills\n\n### /old-skill\nOld trigger text.\n\n## Customization\n\nKeep me.\n",
         ).unwrap();
 
         // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", None, Some("New skill description."));
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "new-skill",
+            None,
+            Some("New skill description."),
+        );
 
         // Insert a new active skill (description stored in DB)
         let skill = WorkspaceSkill {
             skill_id: "imp-new".to_string(),
-            skill_name: "new-skill".to_string(),            is_active: true,
+            skill_name: "new-skill".to_string(),
+            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("New skill description.".to_string()),            version: None,
+            description: Some("New skill description.".to_string()),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         assert!(content.contains("# Base"));
         assert!(content.contains("### /new-skill"));
-        assert!(content.contains("New skill description."), "should include description");
+        assert!(
+            content.contains("New skill description."),
+            "should include description"
+        );
         // Old section should be replaced
         assert!(!content.contains("### /old-skill"));
         assert!(!content.contains("Old trigger text."));
@@ -1889,43 +2222,52 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         // CLAUDE.md with imported skills in the middle and customization after
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Base Content\n\nSome text.\n\n## Custom Skills\n\n### /old-skill\nOld trigger.\n\n## Customization\n\nMy workspace rules.\n",
         ).unwrap();
 
         // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "new-skill", None, Some("New skill description."));
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "new-skill",
+            None,
+            Some("New skill description."),
+        );
 
         // Insert a new active skill (description stored in DB)
         let skill = WorkspaceSkill {
             skill_id: "imp-new".to_string(),
-            skill_name: "new-skill".to_string(),            is_active: true,
+            skill_name: "new-skill".to_string(),
+            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("New skill description.".to_string()),            version: None,
+            description: Some("New skill description.".to_string()),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         crate::commands::workflow::update_skills_section(workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         // Base content preserved
         assert!(content.contains("# Base Content"));
         assert!(content.contains("Some text."));
         // New imported skills section present
         assert!(content.contains("### /new-skill"));
-        assert!(content.contains("New skill description."), "should include description");
+        assert!(
+            content.contains("New skill description."),
+            "should include description"
+        );
         // Old skill removed
         assert!(!content.contains("### /old-skill"));
         // Customization section preserved with user content
@@ -1942,33 +2284,43 @@ description: A skill
         // Create a bundled base template with customization marker
         let base_dir = tempdir().unwrap();
         let base_path = base_dir.path().join("CLAUDE.md");
-        fs::write(&base_path, "# Agent Instructions\n\nBase content.\n\n## Customization\n\nDefault instructions.\n").unwrap();
+        fs::write(
+            &base_path,
+            "# Agent Instructions\n\nBase content.\n\n## Customization\n\nDefault instructions.\n",
+        )
+        .unwrap();
 
         // Create an existing workspace CLAUDE.md with user customization
-        let claude_dir = workspace.path().join(".claude");
-        fs::create_dir_all(&claude_dir).unwrap();
+        let claude_md = workspace.path().join("CLAUDE.md");
         fs::write(
-            claude_dir.join("CLAUDE.md"),
+            &claude_md,
             "# Old Base\n\n## Custom Skills\n\n### /stale-skill\nStale.\n\n## Customization\n\nMy custom instructions.\nDo not lose this.\n",
         ).unwrap();
 
         // Create skill on disk with description in frontmatter
         let skill_tmp = tempdir().unwrap();
-        let disk_path = create_skill_on_disk(skill_tmp.path(), "analytics", None, Some("Analytics skill description."));
+        let disk_path = create_skill_on_disk(
+            skill_tmp.path(),
+            "analytics",
+            None,
+            Some("Analytics skill description."),
+        );
 
         // Insert an active skill (description stored in DB, not read from disk at list time)
         let skill = WorkspaceSkill {
             skill_id: "imp-1".to_string(),
-            skill_name: "analytics".to_string(),            is_active: true,
+            skill_name: "analytics".to_string(),
+            is_active: true,
             disk_path,
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: Some("Analytics skill description.".to_string()),            version: None,
+            description: Some("Analytics skill description.".to_string()),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
@@ -1976,7 +2328,7 @@ description: A skill
         // Simulate startup: rebuild from bundled base
         crate::commands::workflow::rebuild_claude_md(&base_path, workspace_path, &conn).unwrap();
 
-        let content = fs::read_to_string(claude_dir.join("CLAUDE.md")).unwrap();
+        let content = fs::read_to_string(&claude_md).unwrap();
         // Base content from bundled template (not old base)
         assert!(content.contains("# Agent Instructions"));
         assert!(content.contains("Base content."));
@@ -1984,7 +2336,10 @@ description: A skill
         // Skills regenerated from DB (description read from disk)
         assert!(content.contains("## Custom Skills"));
         assert!(content.contains("### /analytics"));
-        assert!(content.contains("Analytics skill description."), "should include description");
+        assert!(
+            content.contains("Analytics skill description."),
+            "should include description"
+        );
         // Stale skill gone
         assert!(!content.contains("### /stale-skill"));
         // User customization preserved (not replaced with default)
@@ -2010,29 +2365,40 @@ description: A skill
 
         let skill = WorkspaceSkill {
             skill_id: "bundled-test-id".to_string(),
-            skill_name: "bundled-skill".to_string(),            is_active: true,
+            skill_name: "bundled-skill".to_string(),
+            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Attempt to delete — should fail
-        let result = delete_imported_skill_inner("bundled-test-id", "bundled-skill", workspace_path, &conn);
+        let result =
+            delete_workspace_skill_inner("bundled-test-id", "bundled-skill", workspace_path, &conn);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("Cannot delete bundled skill"), "Expected bundled guard error, got: {}", err);
+        assert!(
+            err.contains("Cannot delete bundled skill"),
+            "Expected bundled guard error, got: {}",
+            err
+        );
 
         // Verify skill still exists
         assert!(skill_dir.exists());
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "bundled-skill").unwrap().is_some());
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "bundled-skill")
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
@@ -2049,25 +2415,32 @@ description: A skill
 
         let skill = WorkspaceSkill {
             skill_id: "regular-test-id".to_string(),
-            skill_name: "regular-skill".to_string(),            is_active: true,
+            skill_name: "regular-skill".to_string(),
+            is_active: true,
             disk_path: skill_dir.to_string_lossy().to_string(),
             imported_at: "2025-01-01 00:00:00".to_string(),
             is_bundled: false,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Delete should succeed
-        let result = delete_imported_skill_inner("regular-test-id", "regular-skill", workspace_path, &conn);
+        let result =
+            delete_workspace_skill_inner("regular-test-id", "regular-skill", workspace_path, &conn);
         assert!(result.is_ok());
         assert!(!skill_dir.exists());
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "regular-skill").unwrap().is_none());
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "regular-skill")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -2083,19 +2456,26 @@ description: A skill
         fs::write(
             skill_src.join("SKILL.md"),
             "---\nname: test-bundled\ndescription: A test bundled skill\n---\n# Test",
-        ).unwrap();
+        )
+        .unwrap();
         fs::write(skill_src.join("references").join("ref.md"), "# Ref").unwrap();
 
         // Seed
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
         // Verify files copied
-        let dest = workspace.path().join(".claude").join("skills").join("test-bundled");
+        let dest = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("test-bundled");
         assert!(dest.join("SKILL.md").exists());
         assert!(dest.join("references").join("ref.md").exists());
 
         // Verify DB record (description stored in DB)
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "test-bundled").unwrap().unwrap();
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "test-bundled")
+            .unwrap()
+            .unwrap();
         assert!(skill.is_bundled);
         assert!(skill.is_active);
         assert_eq!(skill.imported_at, "2000-01-01T00:00:00Z");
@@ -2111,17 +2491,57 @@ description: A skill
         let workspace_path = workspace.path().to_str().unwrap();
 
         let bundled_dir = tempdir().unwrap();
-        let skill_src = bundled_dir.path().join("research");
+        let skill_src = bundled_dir.path().join("validate-skill");
         fs::create_dir_all(&skill_src).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\n---\n# Research",
-        ).unwrap();
+            "---\nname: validate-skill\ndescription: Validate skill\n---\n# Validate",
+        )
+        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().unwrap();
-        assert!(skill.purpose.is_none(), "purpose must be NULL after seeding — it is set by the user via the UI");
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+            .unwrap()
+            .unwrap();
+        assert!(
+            skill.purpose.is_none(),
+            "purpose must be NULL after seeding — it is set by the user via the UI"
+        );
+    }
+
+    #[test]
+    fn test_seed_bundled_skills_skips_plugin_owned_research() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+
+        let bundled_dir = tempdir().unwrap();
+        let research_src = bundled_dir.path().join("research");
+        fs::create_dir_all(&research_src).unwrap();
+        fs::write(
+            research_src.join("SKILL.md"),
+            "---\nname: research\ndescription: Research skill\n---\n# Research",
+        )
+        .unwrap();
+
+        seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
+
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "research")
+                .unwrap()
+                .is_none(),
+            "plugin-owned research should not be seeded as bundled workspace skill"
+        );
+        assert!(
+            !workspace
+                .path()
+                .join(".claude")
+                .join("skills")
+                .join("research")
+                .exists(),
+            "plugin-owned research should not be copied into .claude/skills"
+        );
     }
 
     #[test]
@@ -2137,21 +2557,31 @@ description: A skill
         // Has all required fields — accepted
         let ok_skill = bundled_dir.path().join("ok-skill");
         fs::create_dir_all(&ok_skill).unwrap();
-        fs::write(ok_skill.join("SKILL.md"),
+        fs::write(
+            ok_skill.join("SKILL.md"),
             "---\nname: ok-skill\ndescription: A skill\n---\n# OK",
-        ).unwrap();
+        )
+        .unwrap();
 
         // Missing description — rejected
         let no_desc = bundled_dir.path().join("no-description");
         fs::create_dir_all(&no_desc).unwrap();
-        fs::write(no_desc.join("SKILL.md"),
+        fs::write(
+            no_desc.join("SKILL.md"),
             "---\nname: no-description\n---\n# No Desc",
-        ).unwrap();
+        )
+        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "ok-skill").unwrap().is_some());
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "no-description").unwrap().is_none());
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "ok-skill")
+            .unwrap()
+            .is_some());
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "no-description")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -2163,16 +2593,18 @@ description: A skill
         // Pre-insert the skill as deactivated (in workspace_skills, since seed reads from there)
         let skill = WorkspaceSkill {
             skill_id: "bundled-test-bundled".to_string(),
-            skill_name: "test-bundled".to_string(),            is_active: false,
+            skill_name: "test-bundled".to_string(),
+            is_active: false,
             disk_path: "/old/path".to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
@@ -2190,17 +2622,34 @@ description: A skill
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
         // Verify is_active was preserved as false
-        let updated = crate::db::get_workspace_skill_by_name(&conn, "test-bundled").unwrap().unwrap();
+        let updated = crate::db::get_workspace_skill_by_name(&conn, "test-bundled")
+            .unwrap()
+            .unwrap();
         assert!(!updated.is_active, "is_active should be preserved as false");
         assert!(updated.is_bundled);
         // Description should be updated (stored in DB from frontmatter)
         assert_eq!(updated.description.as_deref(), Some("Updated"));
 
         // Verify files copied to .inactive/ (not active path)
-        let active_dest = workspace.path().join(".claude").join("skills").join("test-bundled");
-        let inactive_dest = workspace.path().join(".claude").join("skills").join(".inactive").join("test-bundled");
-        assert!(!active_dest.exists(), "inactive skill should not be in active path");
-        assert!(inactive_dest.join("SKILL.md").exists(), "inactive skill should be in .inactive/ path");
+        let active_dest = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("test-bundled");
+        let inactive_dest = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join(".inactive")
+            .join("test-bundled");
+        assert!(
+            !active_dest.exists(),
+            "inactive skill should not be in active path"
+        );
+        assert!(
+            inactive_dest.join("SKILL.md").exists(),
+            "inactive skill should be in .inactive/ path"
+        );
     }
 
     #[test]
@@ -2209,16 +2658,24 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Create two bundled skill dirs (simulating research + skill-builder-practices)
+        // Create two bundled skill dirs (simulating research + skill-creator)
         let bundled_dir = tempdir().unwrap();
 
         let skill_a = bundled_dir.path().join("skill-a");
         fs::create_dir_all(&skill_a).unwrap();
-        fs::write(skill_a.join("SKILL.md"), "---\nname: skill-a\ndescription: Skill A\n---\n# A").unwrap();
+        fs::write(
+            skill_a.join("SKILL.md"),
+            "---\nname: skill-a\ndescription: Skill A\n---\n# A",
+        )
+        .unwrap();
 
         let skill_b = bundled_dir.path().join("skill-b");
         fs::create_dir_all(&skill_b).unwrap();
-        fs::write(skill_b.join("SKILL.md"), "---\nname: skill-b\ndescription: Skill B\n---\n# B").unwrap();
+        fs::write(
+            skill_b.join("SKILL.md"),
+            "---\nname: skill-b\ndescription: Skill B\n---\n# B",
+        )
+        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
@@ -2238,72 +2695,129 @@ description: A skill
 
     #[test]
     fn test_seed_bundled_skills_copies_nested_dirs() {
-        // The research skill has references/dimensions/ nested structure.
+        // Verify seed_bundled_skills copies nested subdirectories recursively.
         // Verify seed_bundled_skills copies nested subdirectories recursively.
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
         let bundled_dir = tempdir().unwrap();
-        let skill_src = bundled_dir.path().join("research");
+        let skill_src = bundled_dir.path().join("nested-skill");
         fs::create_dir_all(skill_src.join("references").join("dimensions")).unwrap();
         fs::write(
             skill_src.join("SKILL.md"),
-            "---\nname: research\ndescription: Research skill\n---\n# Research",
-        ).unwrap();
-        fs::write(skill_src.join("references").join("dimension-sets.md"), "# Dimension Sets").unwrap();
-        fs::write(skill_src.join("references").join("dimensions").join("entities.md"), "# Entities").unwrap();
-        fs::write(skill_src.join("references").join("dimensions").join("metrics.md"), "# Metrics").unwrap();
+            "---\nname: nested-skill\ndescription: Nested skill\n---\n# Nested",
+        )
+        .unwrap();
+        fs::write(
+            skill_src.join("references").join("dimension-sets.md"),
+            "# Dimension Sets",
+        )
+        .unwrap();
+        fs::write(
+            skill_src
+                .join("references")
+                .join("dimensions")
+                .join("entities.md"),
+            "# Entities",
+        )
+        .unwrap();
+        fs::write(
+            skill_src
+                .join("references")
+                .join("dimensions")
+                .join("metrics.md"),
+            "# Metrics",
+        )
+        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().unwrap();
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "nested-skill")
+            .unwrap()
+            .unwrap();
         assert!(skill.is_bundled);
-        assert_eq!(skill.skill_id, "bundled-research");
-        assert_eq!(skill.description.as_deref(), Some("Research skill"));
+        assert_eq!(skill.skill_id, "bundled-nested-skill");
+        assert_eq!(skill.description.as_deref(), Some("Nested skill"));
 
-        let dest = workspace.path().join(".claude").join("skills").join("research");
+        let dest = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("nested-skill");
         assert!(dest.join("SKILL.md").exists());
         assert!(dest.join("references").join("dimension-sets.md").exists());
-        assert!(dest.join("references").join("dimensions").join("entities.md").exists());
-        assert!(dest.join("references").join("dimensions").join("metrics.md").exists());
+        assert!(dest
+            .join("references")
+            .join("dimensions")
+            .join("entities.md")
+            .exists());
+        assert!(dest
+            .join("references")
+            .join("dimensions")
+            .join("metrics.md")
+            .exists());
     }
 
     #[test]
-    fn test_delete_bundled_research_skill_blocked() {
+    fn test_delete_bundled_skill_blocked() {
         let conn = create_test_db();
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        // Seed the research skill as bundled
-        let skills_dir = workspace.path().join(".claude").join("skills").join("research");
+        // Seed a bundled skill
+        let skills_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("validate-skill");
         fs::create_dir_all(&skills_dir).unwrap();
-        fs::write(skills_dir.join("SKILL.md"), "---\nname: research\n---\n# Research").unwrap();
+        fs::write(
+            skills_dir.join("SKILL.md"),
+            "---\nname: validate-skill\n---\n# Validate Skill",
+        )
+        .unwrap();
 
         let skill = WorkspaceSkill {
-            skill_id: "bundled-research".to_string(),
-            skill_name: "research".to_string(),            is_active: true,
+            skill_id: "bundled-validate-skill".to_string(),
+            skill_name: "validate-skill".to_string(),
+            is_active: true,
             disk_path: skills_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Attempt to delete — should fail with bundled guard
-        let result = delete_imported_skill_inner("bundled-research", "research", workspace_path, &conn);
-        assert!(result.is_err(), "Deleting bundled research skill should fail");
+        let result = delete_workspace_skill_inner(
+            "bundled-validate-skill",
+            "validate-skill",
+            workspace_path,
+            &conn,
+        );
+        assert!(
+            result.is_err(),
+            "Deleting bundled skill should fail"
+        );
         let err = result.unwrap_err();
-        assert!(err.contains("Cannot delete bundled skill"), "Expected bundled guard error, got: {}", err);
+        assert!(
+            err.contains("Cannot delete bundled skill"),
+            "Expected bundled guard error, got: {}",
+            err
+        );
 
         // Skill still in DB
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "research").unwrap().is_some());
+        assert!(crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+            .unwrap()
+            .is_some());
     }
 
     #[test]
@@ -2320,22 +2834,53 @@ description: A skill
             skill_src.join("SKILL.md"),
             "---\nname: validate-skill\ndescription: Validates a completed skill\n---\n# Validate Skill",
         ).unwrap();
-        fs::write(skill_src.join("references").join("validate-quality-spec.md"), "# Quality Checker").unwrap();
-        fs::write(skill_src.join("references").join("test-skill-spec.md"), "# Test Evaluator").unwrap();
-        fs::write(skill_src.join("references").join("companion-recommender-spec.md"), "# Companion Recommender").unwrap();
+        fs::write(
+            skill_src
+                .join("references")
+                .join("validate-quality-spec.md"),
+            "# Quality Checker",
+        )
+        .unwrap();
+        fs::write(
+            skill_src.join("references").join("test-skill-spec.md"),
+            "# Test Evaluator",
+        )
+        .unwrap();
+        fs::write(
+            skill_src
+                .join("references")
+                .join("companion-recommender-spec.md"),
+            "# Companion Recommender",
+        )
+        .unwrap();
 
         seed_bundled_skills(workspace_path, &conn, bundled_dir.path()).unwrap();
 
-        let skill = crate::db::get_workspace_skill_by_name(&conn, "validate-skill").unwrap().unwrap();
+        let skill = crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+            .unwrap()
+            .unwrap();
         assert!(skill.is_bundled);
         assert_eq!(skill.skill_id, "bundled-validate-skill");
-        assert_eq!(skill.description.as_deref(), Some("Validates a completed skill"));
+        assert_eq!(
+            skill.description.as_deref(),
+            Some("Validates a completed skill")
+        );
 
-        let dest = workspace.path().join(".claude").join("skills").join("validate-skill");
+        let dest = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("validate-skill");
         assert!(dest.join("SKILL.md").exists());
-        assert!(dest.join("references").join("validate-quality-spec.md").exists());
+        assert!(dest
+            .join("references")
+            .join("validate-quality-spec.md")
+            .exists());
         assert!(dest.join("references").join("test-skill-spec.md").exists());
-        assert!(dest.join("references").join("companion-recommender-spec.md").exists());
+        assert!(dest
+            .join("references")
+            .join("companion-recommender-spec.md")
+            .exists());
     }
 
     #[test]
@@ -2344,32 +2889,58 @@ description: A skill
         let workspace = tempdir().unwrap();
         let workspace_path = workspace.path().to_str().unwrap();
 
-        let skills_dir = workspace.path().join(".claude").join("skills").join("validate-skill");
+        let skills_dir = workspace
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("validate-skill");
         fs::create_dir_all(&skills_dir).unwrap();
-        fs::write(skills_dir.join("SKILL.md"), "---\nname: validate-skill\n---\n# Validate Skill").unwrap();
+        fs::write(
+            skills_dir.join("SKILL.md"),
+            "---\nname: validate-skill\n---\n# Validate Skill",
+        )
+        .unwrap();
 
         let skill = WorkspaceSkill {
             skill_id: "bundled-validate-skill".to_string(),
-            skill_name: "validate-skill".to_string(),            is_active: true,
+            skill_name: "validate-skill".to_string(),
+            is_active: true,
             disk_path: skills_dir.to_string_lossy().to_string(),
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
             disable_model_invocation: None,
-        purpose: None,
+            purpose: None,
             marketplace_source_url: None,
         };
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
-        let result = delete_imported_skill_inner("bundled-validate-skill", "validate-skill", workspace_path, &conn);
-        assert!(result.is_err(), "Deleting bundled validate-skill should fail");
+        let result = delete_workspace_skill_inner(
+            "bundled-validate-skill",
+            "validate-skill",
+            workspace_path,
+            &conn,
+        );
+        assert!(
+            result.is_err(),
+            "Deleting bundled validate-skill should fail"
+        );
         let err = result.unwrap_err();
-        assert!(err.contains("Cannot delete bundled skill"), "Expected bundled guard error, got: {}", err);
+        assert!(
+            err.contains("Cannot delete bundled skill"),
+            "Expected bundled guard error, got: {}",
+            err
+        );
 
-        assert!(crate::db::get_workspace_skill_by_name(&conn, "validate-skill").unwrap().is_some());
+        assert!(
+            crate::db::get_workspace_skill_by_name(&conn, "validate-skill")
+                .unwrap()
+                .is_some()
+        );
     }
 
     // --- Export skill tests ---
@@ -2436,8 +3007,18 @@ description: A skill
 
         // Create skill dirs on disk so hydration works
         let skill_tmp = tempdir().unwrap();
-        let disk1 = create_skill_on_disk(skill_tmp.path(), "upsert-test", Some("Original trigger"), Some("Original"));
-        let disk2 = create_skill_on_disk(skill_tmp.path(), "upsert-test-v2", Some("Updated trigger"), Some("Updated"));
+        let disk1 = create_skill_on_disk(
+            skill_tmp.path(),
+            "upsert-test",
+            Some("Original trigger"),
+            Some("Original"),
+        );
+        let disk2 = create_skill_on_disk(
+            skill_tmp.path(),
+            "upsert-test-v2",
+            Some("Updated trigger"),
+            Some("Updated"),
+        );
 
         // First insert with is_active = true
         let skill = ImportedSkill {
@@ -2447,7 +3028,8 @@ description: A skill
             disk_path: disk1,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2457,11 +3039,14 @@ description: A skill
         };
         crate::db::upsert_imported_skill(&conn, &skill).unwrap();
 
-        let saved = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
+        let saved = crate::db::get_imported_skill(&conn, "upsert-test")
+            .unwrap()
+            .unwrap();
         assert!(saved.is_active);
 
         // Deactivate via DB
-        crate::db::update_imported_skill_active(&conn, "upsert-test", false, "/tmp/inactive").unwrap();
+        crate::db::update_imported_skill_active(&conn, "upsert-test", false, "/tmp/inactive")
+            .unwrap();
 
         // Re-upsert with is_active = true in the struct and a new disk_path
         let skill2 = ImportedSkill {
@@ -2471,7 +3056,8 @@ description: A skill
             disk_path: disk2,
             imported_at: "2000-01-01T00:00:00Z".to_string(),
             is_bundled: true,
-            description: None,            version: None,
+            description: None,
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2482,8 +3068,13 @@ description: A skill
         crate::db::upsert_imported_skill(&conn, &skill2).unwrap();
 
         // The upsert should NOT override is_active (ON CONFLICT doesn't touch it)
-        let updated = crate::db::get_imported_skill(&conn, "upsert-test").unwrap().unwrap();
-        assert!(!updated.is_active, "upsert should preserve is_active from existing row");
+        let updated = crate::db::get_imported_skill(&conn, "upsert-test")
+            .unwrap()
+            .unwrap();
+        assert!(
+            !updated.is_active,
+            "upsert should preserve is_active from existing row"
+        );
         // disk_path should be updated
         assert!(updated.disk_path.contains("upsert-test-v2"));
         // description is hydrated from the new disk_path's SKILL.md
@@ -2495,15 +3086,19 @@ description: A skill
     #[test]
     fn test_set_workspace_skill_purpose_persists() {
         let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
 
         // Insert a workspace skill with no purpose
         let skill = WorkspaceSkill {
             skill_id: "id-purpose-test".to_string(),
-            skill_name: "purpose-skill".to_string(),            description: None,
+            skill_name: "purpose-skill".to_string(),
+            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: "/tmp/purpose-skill".to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2514,20 +3109,37 @@ description: A skill
         crate::db::insert_workspace_skill(&conn, &skill).unwrap();
 
         // Set purpose to "research"
-        do_set_workspace_skill_purpose(&conn, "id-purpose-test", Some("research")).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", Some("research"), workspace_path)
+            .unwrap();
 
-        let updated = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
-        assert_eq!(updated.purpose.as_deref(), Some("research"), "purpose should be set to 'research'");
+        let updated = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            updated.purpose.as_deref(),
+            Some("research"),
+            "purpose should be set to 'research'"
+        );
 
         // Clear purpose (set to NULL)
-        do_set_workspace_skill_purpose(&conn, "id-purpose-test", None).unwrap();
+        do_set_workspace_skill_purpose(&conn, "id-purpose-test", None, workspace_path).unwrap();
 
-        let cleared = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill").unwrap().unwrap();
-        assert!(cleared.purpose.is_none(), "purpose should be NULL after clearing");
+        let cleared = crate::db::get_workspace_skill_by_name(&conn, "purpose-skill")
+            .unwrap()
+            .unwrap();
+        assert!(
+            cleared.purpose.is_none(),
+            "purpose should be NULL after clearing"
+        );
 
         // Verify zero-rows check: unknown skill_id should return an error
-        let err = do_set_workspace_skill_purpose(&conn, "nonexistent-id", Some("research"))
-            .unwrap_err();
+        let err = do_set_workspace_skill_purpose(
+            &conn,
+            "nonexistent-id",
+            Some("research"),
+            workspace_path,
+        )
+        .unwrap_err();
         assert!(
             err.contains("not found"),
             "expected 'not found' error for unknown skill, got: {err}"
@@ -2550,11 +3162,13 @@ description: A skill
         fs::write(skill_a_dir.join("SKILL.md"), "# Skill A").unwrap();
         let skill_a = WorkspaceSkill {
             skill_id: "id-a".to_string(),
-            skill_name: "skill-a".to_string(),            description: None,
+            skill_name: "skill-a".to_string(),
+            description: None,
             is_active: true,
             is_bundled: false,
             disk_path: skill_a_dir.to_string_lossy().to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2571,11 +3185,13 @@ description: A skill
         fs::write(skill_b_inactive.join("SKILL.md"), "# Skill B").unwrap();
         let skill_b = WorkspaceSkill {
             skill_id: "id-b".to_string(),
-            skill_name: "skill-b".to_string(),            description: None,
+            skill_name: "skill-b".to_string(),
+            description: None,
             is_active: false,
             is_bundled: false,
             disk_path: skill_b_inactive.to_string_lossy().to_string(),
-            imported_at: "2025-01-01 00:00:00".to_string(),            version: None,
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
             model: None,
             argument_hint: None,
             user_invocable: None,
@@ -2588,30 +3204,177 @@ description: A skill
         // Activate skill B — this triggers sibling deactivation of skill A
         toggle_skill_active_inner("id-b", "skill-b", true, workspace_path, &conn).unwrap();
 
-        // Deactivate siblings with the same purpose (mimics the body of toggle_skill_active)
-        let rows_affected = conn.execute(
-            "UPDATE workspace_skills SET is_active = 0 WHERE purpose = ?1 AND skill_id != ?2 AND is_active = 1",
-            rusqlite::params!["research", "id-b"],
-        ).unwrap();
-        assert_eq!(rows_affected, 1, "exactly one sibling (skill-a) should be deactivated");
+        deactivate_conflicting_active_skills(&conn, workspace_path, "id-b", Some("research"))
+            .unwrap();
 
         // Verify DB state
-        let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a").unwrap().unwrap();
-        assert!(!a.is_active, "skill-a should be deactivated as the same-purpose sibling");
+        let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a")
+            .unwrap()
+            .unwrap();
+        assert!(
+            !a.is_active,
+            "skill-a should be deactivated as the same-purpose sibling"
+        );
 
-        let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b").unwrap().unwrap();
+        let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b")
+            .unwrap()
+            .unwrap();
         assert!(b.is_active, "skill-b should now be active");
+    }
+
+    #[test]
+    fn test_apply_import_conflict_policy_disables_imported_skill_only() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+        let skills_dir = workspace.path().join(".claude").join("skills");
+
+        let incumbent_dir = skills_dir.join("incumbent");
+        fs::create_dir_all(&incumbent_dir).unwrap();
+        fs::write(incumbent_dir.join("SKILL.md"), "# Incumbent").unwrap();
+        let incumbent = WorkspaceSkill {
+            skill_id: "id-incumbent".to_string(),
+            skill_name: "incumbent".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: incumbent_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("review".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &incumbent).unwrap();
+
+        let incoming_dir = skills_dir.join("incoming");
+        fs::create_dir_all(&incoming_dir).unwrap();
+        fs::write(incoming_dir.join("SKILL.md"), "# Incoming").unwrap();
+        let incoming = WorkspaceSkill {
+            skill_id: "id-incoming".to_string(),
+            skill_name: "incoming".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: incoming_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-02 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("review".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &incoming).unwrap();
+
+        let is_active = apply_import_purpose_conflict_policy(
+            &conn,
+            workspace_path,
+            "id-incoming",
+            "incoming",
+            Some("review"),
+        )
+        .unwrap();
+        assert!(!is_active, "policy should disable incoming conflicting skill");
+
+        let incumbent_after = crate::db::get_workspace_skill(&conn, "id-incumbent")
+            .unwrap()
+            .unwrap();
+        assert!(incumbent_after.is_active, "incumbent should stay active");
+
+        let incoming_after = crate::db::get_workspace_skill(&conn, "id-incoming")
+            .unwrap()
+            .unwrap();
+        assert!(!incoming_after.is_active, "incoming should be inactive");
+        assert!(skills_dir.join(".inactive").join("incoming").exists());
+    }
+
+    #[test]
+    fn test_set_workspace_skill_purpose_deactivates_same_purpose_active_sibling() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let workspace_path = workspace.path().to_str().unwrap();
+        let skills_dir = workspace.path().join(".claude").join("skills");
+        let inactive_dir = skills_dir.join(".inactive");
+
+        let skill_a_dir = skills_dir.join("skill-a");
+        fs::create_dir_all(&skill_a_dir).unwrap();
+        fs::write(skill_a_dir.join("SKILL.md"), "# Skill A").unwrap();
+        let skill_a = WorkspaceSkill {
+            skill_id: "id-a".to_string(),
+            skill_name: "skill-a".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: skill_a_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: Some("research".to_string()),
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &skill_a).unwrap();
+
+        let skill_b_dir = skills_dir.join("skill-b");
+        fs::create_dir_all(&skill_b_dir).unwrap();
+        fs::write(skill_b_dir.join("SKILL.md"), "# Skill B").unwrap();
+        let skill_b = WorkspaceSkill {
+            skill_id: "id-b".to_string(),
+            skill_name: "skill-b".to_string(),
+            description: None,
+            is_active: true,
+            is_bundled: false,
+            disk_path: skill_b_dir.to_string_lossy().to_string(),
+            imported_at: "2025-01-01 00:00:00".to_string(),
+            version: None,
+            model: None,
+            argument_hint: None,
+            user_invocable: None,
+            disable_model_invocation: None,
+            purpose: None,
+            marketplace_source_url: None,
+        };
+        crate::db::insert_workspace_skill(&conn, &skill_b).unwrap();
+
+        do_set_workspace_skill_purpose(&conn, "id-b", Some("research"), workspace_path).unwrap();
+
+        let a = crate::db::get_workspace_skill_by_name(&conn, "skill-a")
+            .unwrap()
+            .unwrap();
+        assert!(!a.is_active, "skill-a should be auto-deactivated");
+        let b = crate::db::get_workspace_skill_by_name(&conn, "skill-b")
+            .unwrap()
+            .unwrap();
+        assert!(b.is_active, "skill-b should remain active");
+        assert_eq!(b.purpose.as_deref(), Some("research"));
+
+        assert!(
+            inactive_dir.join("skill-a").exists(),
+            "skill-a should be moved to .inactive on disk"
+        );
     }
 
     // --- parse_skill_file tests ---
 
     #[test]
     fn test_parse_skill_file_valid() {
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: my-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# My Skill"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: my-skill\ndescription: A test skill\nversion: 1.0.0\n---\n# My Skill",
+        )]);
         let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
-        assert!(result.is_ok(), "parse_skill_file failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "parse_skill_file failed: {:?}",
+            result.err()
+        );
         let meta = result.unwrap();
         assert_eq!(meta.name.as_deref(), Some("my-skill"));
         assert_eq!(meta.description.as_deref(), Some("A test skill"));
@@ -2621,7 +3384,8 @@ description: A skill
     #[test]
     fn test_parse_skill_file_invalid_zip() {
         let tmp = tempfile::NamedTempFile::new().unwrap();
-        std::io::Write::write_all(&mut tmp.as_file().try_clone().unwrap(), b"not a zip file").unwrap();
+        std::io::Write::write_all(&mut tmp.as_file().try_clone().unwrap(), b"not a zip file")
+            .unwrap();
         let result = parse_skill_file(tmp.path().to_str().unwrap().to_string());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not a valid skill package"));
@@ -2629,9 +3393,7 @@ description: A skill
 
     #[test]
     fn test_parse_skill_file_missing_skill_md() {
-        let zip_file = create_test_zip(&[
-            ("README.md", "# No SKILL.md here"),
-        ]);
+        let zip_file = create_test_zip(&[("README.md", "# No SKILL.md here")]);
         let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("SKILL.md not found"));
@@ -2639,9 +3401,10 @@ description: A skill
 
     #[test]
     fn test_parse_skill_file_missing_name() {
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\ndescription: A skill without a name\n---\n# No Name"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\ndescription: A skill without a name\n---\n# No Name",
+        )]);
         let result = parse_skill_file(zip_file.path().to_str().unwrap().to_string());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("missing name field"));
@@ -2664,14 +3427,19 @@ description: A skill
         let workspace = tempdir().unwrap();
         let skills_dir = workspace.path().join("skills");
         fs::create_dir_all(&skills_dir).unwrap();
-        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+        setup_settings(
+            &conn,
+            skills_dir.to_str().unwrap(),
+            workspace.path().to_str().unwrap(),
+        );
 
         // Pre-insert a skill-builder skill with the conflicting name
         crate::db::upsert_skill_with_source(&conn, "my-skill", "skill-builder", "domain").unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: my-skill\ndescription: A skill\n---\n# My Skill"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: my-skill\ndescription: A skill\n---\n# My Skill",
+        )]);
 
         // Use import_skill_from_file_inner to bypass tauri::State
         let result = import_skill_from_file_test(
@@ -2679,7 +3447,10 @@ description: A skill
             "my-skill".to_string(),
             "A skill".to_string(),
             String::new(),
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             false,
             &conn,
         );
@@ -2694,27 +3465,39 @@ description: A skill
         let workspace = tempdir().unwrap();
         let skills_dir = workspace.path().join("skills");
         fs::create_dir_all(&skills_dir).unwrap();
-        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+        setup_settings(
+            &conn,
+            skills_dir.to_str().unwrap(),
+            workspace.path().to_str().unwrap(),
+        );
 
         // Pre-insert an imported skill with the conflicting name
         crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: my-skill\ndescription: A skill\n---\n# My Skill"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: my-skill\ndescription: A skill\n---\n# My Skill",
+        )]);
 
         let result = import_skill_from_file_test(
             zip_file.path().to_str().unwrap().to_string(),
             "my-skill".to_string(),
             "A skill".to_string(),
             String::new(),
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             false, // force_overwrite=false
             &conn,
         );
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.starts_with("conflict_overwrite_required:"), "got: {}", err);
+        assert!(
+            err.starts_with("conflict_overwrite_required:"),
+            "got: {}",
+            err
+        );
     }
 
     #[test]
@@ -2723,7 +3506,11 @@ description: A skill
         let workspace = tempdir().unwrap();
         let skills_dir = workspace.path().join("skills");
         fs::create_dir_all(&skills_dir).unwrap();
-        setup_settings(&conn, skills_dir.to_str().unwrap(), workspace.path().to_str().unwrap());
+        setup_settings(
+            &conn,
+            skills_dir.to_str().unwrap(),
+            workspace.path().to_str().unwrap(),
+        );
 
         // Pre-insert an imported skill with the conflicting name
         crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
@@ -2732,16 +3519,20 @@ description: A skill
         fs::create_dir_all(&old_skill_dir).unwrap();
         fs::write(old_skill_dir.join("old-file.txt"), "old content").unwrap();
 
-        let zip_file = create_test_zip(&[
-            ("SKILL.md", "---\nname: my-skill\ndescription: Updated skill\n---\n# My Skill"),
-        ]);
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: my-skill\ndescription: Updated skill\n---\n# My Skill",
+        )]);
 
         let result = import_skill_from_file_test(
             zip_file.path().to_str().unwrap().to_string(),
             "my-skill".to_string(),
             "Updated skill".to_string(),
             String::new(),
-            None, None, None, None,
+            None,
+            None,
+            None,
+            None,
             true, // force_overwrite=true
             &conn,
         );
@@ -2755,6 +3546,116 @@ description: A skill
         // DB should have the updated record
         let imported = crate::db::get_imported_skill(&conn, "my-skill").unwrap();
         assert!(imported.is_some());
+    }
+
+    #[test]
+    fn test_import_skill_force_overwrite_preserves_skill_id_and_usage_rows() {
+        let conn = create_test_db();
+        let workspace = tempdir().unwrap();
+        let skills_dir = workspace.path().join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+        setup_settings(
+            &conn,
+            skills_dir.to_str().unwrap(),
+            workspace.path().to_str().unwrap(),
+        );
+
+        // Existing imported skill + usage row that must survive overwrite.
+        let initial_skill_id =
+            crate::db::upsert_skill_with_source(&conn, "my-skill", "imported", "domain").unwrap();
+        conn.execute(
+            "INSERT INTO workflow_sessions (session_id, skill_name, pid, skill_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![
+                "synthetic:refine:my-skill:agent-refine-1",
+                "my-skill",
+                12345_i64,
+                initial_skill_id
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO agent_runs
+             (agent_id, skill_name, step_id, model, status, input_tokens, output_tokens, total_cost, session_id, workflow_run_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, NULL)",
+            rusqlite::params![
+                "agent-refine-1",
+                "my-skill",
+                -10,
+                "sonnet",
+                "completed",
+                100_i64,
+                50_i64,
+                0.25_f64,
+                "sess-1"
+            ],
+        )
+        .unwrap();
+
+        let zip_file = create_test_zip(&[(
+            "SKILL.md",
+            "---\nname: my-skill\ndescription: Updated\n---\n# My Skill",
+        )]);
+
+        let result = import_skill_from_file_test(
+            zip_file.path().to_str().unwrap().to_string(),
+            "my-skill".to_string(),
+            "Updated".to_string(),
+            String::new(),
+            None,
+            None,
+            None,
+            None,
+            true, // force_overwrite=true
+            &conn,
+        );
+        assert!(result.is_ok(), "force overwrite failed: {:?}", result.err());
+
+        // The master row should be restored in-place (same id, not delete+reinsert).
+        let post_skill_id = crate::db::get_skill_master_id(&conn, "my-skill")
+            .unwrap()
+            .expect("skill id should exist after overwrite");
+        assert_eq!(post_skill_id, initial_skill_id);
+
+        let deleted_at: Option<String> = conn
+            .query_row(
+                "SELECT deleted_at FROM skills WHERE name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            deleted_at.is_none(),
+            "skill should be active after overwrite"
+        );
+
+        // Historical usage/cost rows must remain intact.
+        let usage_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runs WHERE skill_name = 'my-skill'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(usage_count, 1);
+
+        let total_cost: f64 = conn
+            .query_row(
+                "SELECT total_cost FROM agent_runs WHERE agent_id = 'agent-refine-1' AND model = 'sonnet'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(total_cost, 0.25);
+
+        let session_skill_id: i64 = conn
+            .query_row(
+                "SELECT skill_id FROM workflow_sessions WHERE session_id = 'synthetic:refine:my-skill:agent-refine-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(session_skill_id, initial_skill_id);
     }
 
     /// Testable inner function for import_skill_from_file (bypasses tauri::State).
@@ -2774,22 +3675,25 @@ description: A skill
         validate_skill_name(&name)?;
 
         let settings = crate::db::read_settings_hydrated(conn)?;
-        let skills_path = settings.skills_path.ok_or_else(|| {
-            "Skills path not configured. Set it in Settings.".to_string()
-        })?;
+        let skills_path = settings
+            .skills_path
+            .ok_or_else(|| "Skills path not configured. Set it in Settings.".to_string())?;
 
-        let zip_file = std::fs::File::open(&file_path)
-            .map_err(|e| format!("Failed to open file: {}", e))?;
-        let mut archive = zip::ZipArchive::new(zip_file)
-            .map_err(|_| "not a valid skill package".to_string())?;
+        let zip_file =
+            std::fs::File::open(&file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut archive =
+            zip::ZipArchive::new(zip_file).map_err(|_| "not a valid skill package".to_string())?;
         let (skill_md_path, _) = find_skill_md(&mut archive)?;
         let prefix = get_archive_prefix(&skill_md_path);
 
-        let existing_source: Option<String> = conn.query_row(
-            "SELECT skill_source FROM skills WHERE name = ?1",
-            rusqlite::params![&name],
-            |row| row.get::<_, String>(0),
-        ).optional().map_err(|e| e.to_string())?;
+        let existing_source: Option<String> = conn
+            .query_row(
+                "SELECT skill_source FROM skills WHERE name = ?1",
+                rusqlite::params![&name],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
 
         match existing_source.as_deref() {
             Some("skill-builder") | Some("marketplace") => {
@@ -2804,10 +3708,7 @@ description: A skill
                     std::fs::remove_dir_all(&dest).map_err(|e| e.to_string())?;
                 }
                 crate::db::delete_imported_skill_by_name(conn, &name)?;
-                conn.execute(
-                    "DELETE FROM skills WHERE name = ?1 AND skill_source = 'imported'",
-                    rusqlite::params![&name],
-                ).map_err(|e| e.to_string())?;
+                crate::db::delete_skill(conn, &name)?;
             }
             _ => {}
         }
@@ -2816,15 +3717,16 @@ description: A skill
         std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
         let zip_file2 = std::fs::File::open(&file_path)
             .map_err(|e| format!("Failed to re-open file: {}", e))?;
-        let mut archive2 = zip::ZipArchive::new(zip_file2)
-            .map_err(|_| "not a valid skill package".to_string())?;
+        let mut archive2 =
+            zip::ZipArchive::new(zip_file2).map_err(|_| "not a valid skill package".to_string())?;
         extract_archive(&mut archive2, &prefix, &dest_dir)?;
 
         crate::db::upsert_skill_with_source(conn, &name, "imported", "domain")?;
         conn.execute(
             "UPDATE skills SET description = ?2 WHERE name = ?1",
             rusqlite::params![&name, &description],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
 
         let skill_id = generate_skill_id(&name);
         let imported_at = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -2837,7 +3739,11 @@ description: A skill
             is_bundled: false,
             description: Some(description),
             purpose: Some("domain".to_string()),
-            version: if version.is_empty() { None } else { Some(version) },
+            version: if version.is_empty() {
+                None
+            } else {
+                Some(version)
+            },
             model,
             argument_hint,
             user_invocable,

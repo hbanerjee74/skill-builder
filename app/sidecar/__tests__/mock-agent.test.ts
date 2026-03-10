@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { parsePromptPaths, resolveStepTemplate } from "../mock-agent.js";
+import {
+  buildStructuredMockResult,
+  parsePromptPaths,
+  resolvePromptPathsAsync,
+  resolveStepTemplate,
+} from "../mock-agent.js";
+import * as os from "os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,7 +68,8 @@ describe("parsePromptPaths", () => {
       "/home/user/my-skills/my-skill/context",
     );
     expect(paths.skillOutputDir).toBe("/home/user/my-skills/my-skill");
-    expect(paths.skillDir).toBeNull(); // not present in this prompt
+    // When "The skill directory is" is absent, skillDir falls back to skillOutputDir for mock destRoot
+    expect(paths.skillDir).toBe("/home/user/my-skills/my-skill");
   });
 
   it("extracts workspace + context from answer-evaluator prompt", () => {
@@ -96,6 +103,44 @@ describe("parsePromptPaths", () => {
     expect(paths.skillOutputDir).toBeNull();
     expect(paths.skillDir).toBeNull();
   });
+
+  it("derives contextDir from workspaceDir when only workspace in prompt (SDK protocol)", () => {
+    const prompt =
+      "The skill name is: my-skill. The workspace directory is: /Users/john/workspace/my-skill. " +
+      "Read user-context.md and .skill_output_dir from the workspace directory first. " +
+      "Derive context_dir as workspace_dir/context.";
+    const paths = parsePromptPaths(prompt);
+    expect(paths.workspaceDir).toBe("/Users/john/workspace/my-skill");
+    expect(paths.contextDir).toBe("/Users/john/workspace/my-skill/context");
+    expect(paths.skillOutputDir).toBeNull();
+    expect(paths.skillDir).toBeNull();
+  });
+});
+
+describe("resolvePromptPathsAsync", () => {
+  it("resolves skillOutputDir from .skill_output_dir when not in prompt", async () => {
+    const prompt =
+      "The skill name is: x. The workspace directory is: /tmp/ws/x. " +
+      "Read user-context.md and .skill_output_dir first.";
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "mock-agent-"));
+    try {
+      const workspaceDir = path.join(tmp, "x");
+      await fs.mkdir(workspaceDir, { recursive: true });
+      const skillOutputPath = path.join(tmp, "skill-out", "x");
+      await fs.writeFile(
+        path.join(workspaceDir, ".skill_output_dir"),
+        skillOutputPath,
+      );
+      const promptWithTmp = prompt.replace("/tmp/ws/x", workspaceDir);
+      const paths = await resolvePromptPathsAsync(promptWithTmp);
+      expect(paths.workspaceDir).toBe(workspaceDir);
+      expect(paths.contextDir).toBe(path.join(workspaceDir, "context"));
+      expect(paths.skillOutputDir).toBe(skillOutputPath);
+      expect(paths.skillDir).toBe(skillOutputPath);
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -112,8 +157,8 @@ const AGENTS_WITHOUT_MOCK = new Set([
 ]);
 
 describe("mock-agent drift detection", () => {
-  it("every agent in agents/ has a mock template mapping or is explicitly excluded", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+  it("every agent in agent-sources/agents has a mock template mapping or is explicitly excluded", async () => {
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = files
       .filter((f) => f.endsWith(".md"))
@@ -138,7 +183,7 @@ describe("mock-agent drift detection", () => {
   });
 
   it("each mapped template resolves to a valid template name", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = files
       .filter((f) => f.endsWith(".md"))
@@ -172,7 +217,7 @@ describe("mock-agent drift detection", () => {
   });
 
   it("exclusion list only contains agents that actually exist", async () => {
-    const agentsDir = path.resolve(__dirname, "../../../agents");
+    const agentsDir = path.resolve(__dirname, "../../../agent-sources/agents");
     const files = await fs.readdir(agentsDir);
     const agentNames = new Set(
       files.filter((f) => f.endsWith(".md")).map((f) => f.replace(/\.md$/, "")),
@@ -181,9 +226,45 @@ describe("mock-agent drift detection", () => {
     for (const excluded of AGENTS_WITHOUT_MOCK) {
       expect(
         agentNames.has(excluded),
-        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agents/${excluded}.md exists. ` +
+        `AGENTS_WITHOUT_MOCK contains "${excluded}" but no agent-sources/agents/${excluded}.md exists. ` +
           `Remove it from the exclusion list.`,
       ).toBe(true);
     }
+  });
+});
+
+describe("buildStructuredMockResult", () => {
+  it("returns structured payload for step0-research", async () => {
+    const result = await buildStructuredMockResult("step0-research");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("research_complete");
+    expect(typeof payload.question_count).toBe("number");
+    expect(typeof payload.dimensions_selected).toBe("number");
+    expect(typeof payload.research_output).toBe("object");
+    const researchOutput = payload.research_output as Record<string, unknown>;
+    expect(researchOutput.version).toBe("1");
+    expect(typeof researchOutput.metadata).toBe("object");
+    expect(Array.isArray(researchOutput.sections)).toBe(true);
+    expect(Array.isArray(researchOutput.notes)).toBe(true);
+  });
+
+  it("returns structured payload for step2-confirm-decisions", async () => {
+    const result = await buildStructuredMockResult("step2-confirm-decisions");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(payload.status).toBe("confirm_decisions_complete");
+    expect(typeof payload.decision_count).toBe("number");
+    expect(typeof payload.conflicts_resolved).toBe("number");
+    expect(typeof payload.round).toBe("number");
+    expect(typeof payload.decisions_json).toBe("object");
+  });
+
+  it("returns structured payload for gate-answer-evaluator", async () => {
+    const result = await buildStructuredMockResult("gate-answer-evaluator");
+    expect(result).not.toBeNull();
+    const payload = result as Record<string, unknown>;
+    expect(typeof payload.verdict).toBe("string");
+    expect(Array.isArray(payload.per_question)).toBe(true);
   });
 });

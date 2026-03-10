@@ -2,20 +2,55 @@
 
 Multi-agent workflow for creating domain-specific Claude skills. Tauri desktop app (React + Rust) orchestrates agents via a Node.js sidecar.
 
+**Maintenance rule:** This file contains architecture, conventions, and guidelines — not product details. Do not add counts, feature descriptions, or any fact that can be discovered by reading code. If it will go stale when the code changes, it doesn't belong here — point to the source file instead.
+
+## Instruction Hierarchy
+
+Use this precedence when maintaining agent guidance:
+
+1. `AGENTS.md` (canonical, cross-agent source of truth)
+2. `.claude/rules/*.md` (shared detailed rules; agent-agnostic content)
+3. `.claude/skills/*/SKILL.md` (workflow playbooks)
+4. Agent-specific adapter files (for example `CLAUDE.md`) that reference canonical docs
+
+Adapter files must not duplicate canonical policy unless they are adding agent-specific behavior.
+
 ## Architecture
 
-React 19 (WebView) → Tauri IPC → Rust backend → spawns Node.js sidecar (`@anthropic-ai/claude-agent-sdk`)
-
-**Tech stack:** React 19, TypeScript, Vite 7, Tailwind CSS 4, shadcn/ui, Zustand, TanStack Router · Tauri 2, rusqlite, git2, reqwest · Node.js + `@anthropic-ai/claude-agent-sdk` (sidecar)
+| Layer | Technology |
+|---|---|
+| Desktop framework | Tauri v2 |
+| Frontend | React 19, TypeScript strict, Vite 7 |
+| Styling | Tailwind CSS 4, shadcn/ui |
+| State | Zustand, TanStack Router |
+| Icons | Lucide React |
+| Agent sidecar | Node.js + TypeScript + `@anthropic-ai/claude-agent-sdk` |
+| Database | SQLite (`rusqlite` bundled) |
+| Rust errors | `thiserror` |
 
 **Agent runtime:** No hot-reload — restart `npm run dev` after editing `app/sidecar/`. Requires Node.js 18–24 (Node 25+ crashes the SDK). See `.claude/rules/agent-sidecar.md` when working in `app/sidecar/`.
 
 **Key directories:**
 
-- Workspace (`~/.vibedata/skill-builder/` default, configurable): agent prompts, skill context, logs
+- Workspace (derived from Tauri `app_local_data_dir()` as `<app_local_data_dir>/workspace`, not user-configurable): agent prompts, per-skill scratch data, logs
 - Skill output (`~/skill-builder/` default): SKILL.md, references, git-managed
-- App database: `~/Library/Application Support/com.skillbuilder.app/skill-builder.db` (macOS)
+- App database: `~/Library/Application Support/com.vibedata.skill-builder/skill-builder.db` (macOS)
 - Full layout: [`docs/design/agent-specs/storage.md`](docs/design/agent-specs/storage.md)
+
+## Repository Folder Map
+
+Use this map before reasoning about implementation location:
+
+- `app/src/` — frontend runtime code (React/TypeScript surfaces, components, stores, hooks).
+- `app/src-tauri/src/` — Rust backend runtime code (Tauri commands, DB, logging, startup wiring).
+- `app/sidecar/` — Node/TypeScript sidecar runtime code.
+- `app/e2e/` — Playwright E2E tests only.
+- `app/src/__tests__/` and `app/sidecar/__tests__/` — unit/integration tests only.
+- `agent-sources/agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`).
+- `agent-sources/plugins/` — plugin definitions (skills, agents, MCP config, tooling).
+- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents (deployed to workspace `.claude/CLAUDE.md`).
+- `docs/` — documentation and design/reference material only; do not treat as executable source unless explicitly asked.
+- `scripts/` — developer/automation scripts.
 
 ## User Guide
 
@@ -61,14 +96,28 @@ Determine what you changed, then pick the right runner:
 |---|---|---|
 | Frontend (store/hook/component/page) | — | `npm run test:changed` |
 | Rust command | — | `cargo test <module>` + E2E tag from `app/tests/TEST_MANIFEST.md` |
-| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `cd app/sidecar && npx vitest run` |
+| Sidecar agent invocation (`app/sidecar/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `cd app/sidecar && npx vitest run` |
 | Agent prompt (`agents/`) | `cd app && npm run test:agents:structural` | `npm run test:unit` (canonical-format) |
-| Agent output format (`agents/`) | `cd app && npm run test:agents:structural test:agents:smoke` | `npm run test:unit` (canonical-format) |
+| Agent output format (`agents/`) | `cd app && npm run test:agents:structural` (tell user to run Promptfoo `test:agents:smoke` manually) | `npm run test:unit` (canonical-format) |
 | `agent-sources/workspace/CLAUDE.md` | `cd app && npm run test:agents:structural` | `npm run test:unit` |
 | Mock templates or E2E fixtures | — | `npm run test:unit` |
 | Shared infrastructure (`src/lib/tauri.ts`, test mocks) | — | `app/tests/run.sh` (all levels) |
 
-**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural test:agents:smoke` **and** `npm run test:unit`. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
+### Autonomous test triggers (coding agents)
+
+When changed files match these patterns, run the mapped tests automatically before reporting completion:
+
+| Changed files | Run |
+|---|---|
+| `agents/*.md` | `cd app && npm run test:agents:structural` |
+| `agent-sources/workspace/**` | `cd app && npm run test:agents:structural` |
+| `app/sidecar/**` | `cd app && npm run test:agents:structural` and `cd app/sidecar && npx vitest run` |
+| `app/sidecar/mock-templates/**` | `cd app && npm run test:unit` |
+| `app/e2e/fixtures/agent-responses/**` | `cd app && npm run test:unit` |
+
+`test:agents:smoke` (Promptfoo) is manual by default because it makes live API calls.
+
+**Artifact format changes** (agent output format + app parser + mock templates): run `cd app && npm run test:agents:structural` and `npm run test:unit`, then tell the user to run `cd app && npm run test:agents:smoke` (Promptfoo evals) manually. The `canonical-format.test.ts` suite is the canary for format drift across the boundary.
 
 **Unsure?** `app/tests/run.sh` runs everything.
 
@@ -76,7 +125,7 @@ Determine what you changed, then pick the right runner:
 
 **Only `test:agents:structural` may be run autonomously** — it makes no API calls and is free.
 
-`test:agents:smoke` makes real API calls and costs real money. **Do not run it. Tell the user to run it manually.**
+`test:agents:smoke` uses Promptfoo and makes real API calls. **Do not run it autonomously; tell the user to run it manually.**
 
 Rust → E2E tag mappings, E2E spec files, and cross-boundary format compliance details are in `app/tests/TEST_MANIFEST.md`.
 
@@ -90,44 +139,44 @@ Design notes live in `docs/design/`. Each topic gets its own subdirectory with a
 
 Write design docs concisely — state the decision and the reason, not the reasoning process. One sentence beats a paragraph. Avoid restating what the code already makes obvious.
 
+Research output schemas and envelopes are documented in:
+
+- `docs/design/agent-specs/canonical-format.md` — high-level artifact contracts
+- `agent-sources/plugins/skill-content-researcher/skills/research/references/schemas.md` — canonical `research_output` schema
+
 ## Code Style
 
 - Granular commits: one concern per commit, run tests before each
-- TypeScript strict mode, no `any`
-- Zustand stores: one file per store in `app/src/stores/`
-- Rust commands: one module per concern in `app/src-tauri/src/commands/`
-- Tailwind 4 + shadcn/ui for all UI — see `.claude/rules/frontend-design.md` (auto-loaded in `app/src/`)
-- **Error colors:** Always use `text-destructive` for error text — never hardcoded `text-red-*`
-- Verify before committing: `cd app && npx tsc --noEmit` (frontend) + `cargo check --manifest-path app/src-tauri/Cargo.toml` (backend)
+- Stage specific files — use `git add <file>` not `git add .`
+- All `.md` files must pass `markdownlint` before committing (`markdownlint <file>`)
+- When editing `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, or `.claude/skills/`, run `bash app/scripts/lint-agent-docs.sh`
+- Verify before committing: `cd app && npx tsc --noEmit` + `cargo check --manifest-path app/src-tauri/Cargo.toml`
+- Canonical naming and error-handling conventions live in `.claude/rules/coding-conventions.md`
 
-## Logging
+### Frontend (`app/src/`)
 
-Every new feature must include logging. Use `log` crate (Rust) and `console.*` (frontend, bridged via `attachConsole()`). Per-request JSONL transcripts at `{workspace}/{skill}/logs/{step}-{timestamp}.jsonl`. Layer-specific rules are in the relevant `.claude/rules/` file.
+For AD brand rules, component constraints, and state indicator conventions, see:
 
-| Level | When to use |
-|---|---|
-| **error** | Operation failed, user impact likely |
-| **warn** | Unexpected but recoverable |
-| **info** | Key lifecycle events (command invoked, skill created, agent started) |
-| **debug** | Internal details useful only when troubleshooting |
+- `.claude/rules/frontend-design.md`
 
-## Gotchas
+### Rust backend (`app/src-tauri/`)
 
-- **SDK has NO team tools**: `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in same turn run in parallel.
-- **Parallel worktrees**: `npm run dev` auto-assigns a free port.
+Command conventions, error types, and Rust-specific testing guidance live in `.claude/rules/rust-backend.md`.
 
-## Shared Components
+### Sidecar (`app/sidecar/`)
 
-The desktop app uses these files:
+Protocol and sidecar-specific constraints live in `.claude/rules/agent-sidecar.md`.
 
-- `agents/` — agent prompts (flat directory, validated by `./scripts/validate.sh`)
-- `agent-sources/workspace/CLAUDE.md` — agent instructions shared by all agents. The app deploys this to the workspace `.claude/CLAUDE.md` (auto-loaded by SDK).
+### Error handling
+
+See `.claude/rules/coding-conventions.md` for canonical error-handling policy.
 
 ## Issue Management
 
-- **PR title format**: `VU-XXX: short description`
-- **PR body link**: `Fixes VU-XXX`
-- **Linear project policy**: All Linear issues for this project must be created under `Warehouse Migration`.
+- **PR title format:** `VU-XXX: short description`
+- **PR body link:** `Fixes VU-XXX`
+- **Linear project:** All issues created for this repository must be created under **Skill Builder**.
+- **Worktrees:** `../worktrees/<branchName>` relative to repo root. Full rules: `.claude/rules/git-workflow.md`.
 
 ## Skills
 
@@ -138,3 +187,13 @@ Use these repo-local skills when requests match:
 - `.claude/skills/close-linear-issue/SKILL.md` — close/complete/ship/merge a Linear issue
 - `.claude/skills/tauri/SKILL.md` — Tauri-specific implementation or debugging
 - `.claude/skills/shadcn-ui/SKILL.md` — shadcn/ui component work
+- `.claude/skills/front-end-design/SKILL.md` — design-first UI workflow for screens and components
+
+## Logging
+
+Every new feature must include logging. Canonical logging conventions and log-level guidance live in `.claude/rules/logging-policy.md`.
+
+## Gotchas
+
+- **SDK has NO team tools:** `@anthropic-ai/claude-agent-sdk` does NOT support TeamCreate, TaskCreate, SendMessage. The "Teams" option in the Delegation Policy applies to the main Claude Code session only — agents running inside the SDK cannot form teams. Use the Task tool for sub-agents. Multiple Task calls in the same turn run in parallel.
+- **Parallel worktrees:** `npm run dev` auto-assigns a free port — safe to run multiple Tauri instances simultaneously.

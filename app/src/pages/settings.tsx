@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { getVersion } from "@tauri-apps/api/app"
 import { toast } from "sonner"
 import { open } from "@tauri-apps/plugin-dialog"
-import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, FileText, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
+import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, PlugZap, FolderOpen, FolderSearch, Trash2, Github, LogOut, Monitor, Sun, Moon, Info, ArrowLeft, Plus } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useNavigate } from "@tanstack/react-router"
 import { Button } from "@/components/ui/button"
@@ -27,7 +27,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { GitHubLoginDialog } from "@/components/github-login-dialog"
 import { AboutDialog } from "@/components/about-dialog"
 import { FeedbackDialog } from "@/components/feedback-dialog"
-import { SkillsLibraryTab } from "@/components/skills-library-tab"
+import { WorkspaceSkillsTab } from "@/components/workspace-skills-tab"
 
 /** Must match DEFAULT_MARKETPLACE_URL in app/src-tauri/src/commands/settings.rs */
 const DEFAULT_MARKETPLACE_URL = "hbanerjee74/skills"
@@ -61,6 +61,9 @@ export default function SettingsPage() {
   const [preferredModel, setPreferredModel] = useState<string>("sonnet")
   const [logLevel, setLogLevel] = useState("info")
   const [extendedThinking, setExtendedThinking] = useState(false)
+  const [interleavedThinkingBeta, setInterleavedThinkingBeta] = useState(true)
+  const [sdkEffort, setSdkEffort] = useState<string>("")
+  const [refinePromptSuggestions, setRefinePromptSuggestions] = useState(true)
   const [maxDimensions, setMaxDimensions] = useState(5)
   const [industry, setIndustry] = useState("")
   const [functionRole, setFunctionRole] = useState("")
@@ -69,10 +72,8 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [apiKeyValid, setApiKeyValid] = useState<boolean | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
-  const [clearing, setClearing] = useState(false)
   const [appVersion, setAppVersion] = useState<string>("dev")
   const [dataDir, setDataDir] = useState<string | null>(null)
-  const [logFilePath, setLogFilePath] = useState<string | null>(null)
   const [loginDialogOpen, setLoginDialogOpen] = useState(false)
   const [aboutDialogOpen, setAboutDialogOpen] = useState(false)
   const [autoUpdate, setAutoUpdate] = useState(false)
@@ -87,9 +88,9 @@ export default function SettingsPage() {
   const pendingUpgrade = useSettingsStore((s) => s.pendingUpgradeOpen)
   const { user, isLoggedIn, isLoading: isAuthLoading, lastCheckedAt, logout } = useAuthStore()
 
-  // Auto-navigate to the skills section when a pending upgrade targets settings-skills
+  // Auto-navigate to the skills section when a pending upgrade targets workspace-skills
   useEffect(() => {
-    if (pendingUpgrade?.mode === "settings-skills") {
+    if (pendingUpgrade?.mode === "workspace-skills") {
       setActiveSection("skills")
     }
   }, [pendingUpgrade])
@@ -108,6 +109,9 @@ export default function SettingsPage() {
             setPreferredModel(result.preferred_model || "sonnet")
             setLogLevel(result.log_level ?? "info")
             setExtendedThinking(result.extended_thinking ?? false)
+            setInterleavedThinkingBeta(result.interleaved_thinking_beta ?? true)
+            setSdkEffort(result.sdk_effort ?? "")
+            setRefinePromptSuggestions(result.refine_prompt_suggestions ?? true)
             setMaxDimensions(result.max_dimensions ?? 5)
             setIndustry(result.industry ?? "")
             setFunctionRole(result.function_role ?? "")
@@ -144,12 +148,6 @@ export default function SettingsPage() {
       .catch(() => setDataDir(null))
   }, [])
 
-  useEffect(() => {
-    invoke<string>("get_log_file_path")
-      .then(setLogFilePath)
-      .catch(() => setLogFilePath(null))
-  }, [])
-
   const fetchModels = async (key: string) => {
     try {
       const models = await invoke<ModelInfo[]>("list_models", { apiKey: key })
@@ -166,6 +164,9 @@ export default function SettingsPage() {
     preferredModel: string;
     logLevel: string;
     extendedThinking: boolean;
+    interleavedThinkingBeta: boolean;
+    sdkEffort: string | null;
+    refinePromptSuggestions: boolean;
     maxDimensions: number;
     marketplaceRegistries?: MarketplaceRegistry[];
     industry: string | null;
@@ -180,6 +181,11 @@ export default function SettingsPage() {
       log_level: overrides.logLevel !== undefined ? overrides.logLevel : logLevel,
       extended_context: false,
       extended_thinking: overrides.extendedThinking !== undefined ? overrides.extendedThinking : extendedThinking,
+      interleaved_thinking_beta: overrides.interleavedThinkingBeta !== undefined ? overrides.interleavedThinkingBeta : interleavedThinkingBeta,
+      sdk_effort: overrides.sdkEffort !== undefined ? overrides.sdkEffort : (sdkEffort || null),
+      // Fallback model follows the selected Skill Building model.
+      fallback_model: overrides.preferredModel !== undefined ? overrides.preferredModel : preferredModel,
+      refine_prompt_suggestions: overrides.refinePromptSuggestions !== undefined ? overrides.refinePromptSuggestions : refinePromptSuggestions,
       max_dimensions: overrides.maxDimensions !== undefined ? overrides.maxDimensions : maxDimensions,
       splash_shown: false,
       // Preserve OAuth fields — these are managed by the auth flow, not settings
@@ -204,6 +210,9 @@ export default function SettingsPage() {
         preferredModel: settings.preferred_model,
         logLevel: settings.log_level,
         extendedThinking: settings.extended_thinking,
+        interleavedThinkingBeta: settings.interleaved_thinking_beta,
+        sdkEffort: settings.sdk_effort,
+        refinePromptSuggestions: settings.refine_prompt_suggestions,
         maxDimensions: settings.max_dimensions,
         marketplaceRegistries: settings.marketplace_registries,
         industry: settings.industry,
@@ -259,22 +268,6 @@ export default function SettingsPage() {
       }
       setSkillsPath(normalized)
       autoSave({ skillsPath: normalized })
-    }
-  }
-
-  const handleClearWorkspace = async () => {
-    if (!window.confirm("This will reset the bundled agent files in your workspace. Your imported skills, CLAUDE.md, and workflow data will not be affected.\n\nAre you sure?")) {
-      return
-    }
-    setClearing(true)
-    try {
-      await invoke("clear_workspace")
-      toast.success("Workspace cleared", { duration: 1500 })
-    } catch (err) {
-      console.error("settings: clear workspace failed", err)
-      toast.error(`Failed to clear workspace: ${err instanceof Error ? err.message : String(err)}`, { duration: Infinity })
-    } finally {
-      setClearing(false)
     }
   }
 
@@ -504,6 +497,50 @@ export default function SettingsPage() {
                     onCheckedChange={(checked) => { setExtendedThinking(checked); autoSave({ extendedThinking: checked }); }}
                   />
                 </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="interleaved-thinking-beta">Interleaved thinking beta</Label>
+                    <span className="text-sm text-muted-foreground">Enable interleaved thinking beta when thinking is enabled on supported non-Opus models.</span>
+                  </div>
+                  <Switch
+                    id="interleaved-thinking-beta"
+                    checked={interleavedThinkingBeta}
+                    onCheckedChange={(checked) => { setInterleavedThinkingBeta(checked); autoSave({ interleavedThinkingBeta: checked }); }}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="sdk-effort">Reasoning effort</Label>
+                  <select
+                    id="sdk-effort"
+                    value={sdkEffort}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      setSdkEffort(value)
+                      autoSave({ sdkEffort: value || null })
+                    }}
+                    className="flex h-9 w-64 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">Default</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="max">Max</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-0.5">
+                    <Label htmlFor="refine-prompt-suggestions">Refine prompt suggestions</Label>
+                    <span className="text-sm text-muted-foreground">Enable SDK prompt suggestions during refine chat sessions.</span>
+                  </div>
+                  <Switch
+                    id="refine-prompt-suggestions"
+                    checked={refinePromptSuggestions}
+                    onCheckedChange={(checked) => { setRefinePromptSuggestions(checked); autoSave({ refinePromptSuggestions: checked }); }}
+                  />
+                </div>
               </CardContent>
             </Card>
 
@@ -541,7 +578,7 @@ export default function SettingsPage() {
 
           {activeSection === "skills" && (
           <div className="space-y-6 p-6">
-            <SkillsLibraryTab />
+            <WorkspaceSkillsTab />
           </div>
           )}
 
@@ -735,7 +772,7 @@ export default function SettingsPage() {
                           try {
                             info = await parseGitHubUrl(url)
                           } catch {
-                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.")
+                            toast.error("Invalid GitHub repository format — use owner/repo or owner/repo#branch.", { duration: Infinity })
                             setNewRegistryAdding(false)
                             return
                           }
@@ -749,7 +786,7 @@ export default function SettingsPage() {
                             return m && m[1] === info.owner && m[2] === info.repo
                           })
                           if (isDuplicate) {
-                            toast.error(`${info.owner}/${info.repo} is already in your registries.`)
+                            toast.error(`${info.owner}/${info.repo} is already in your registries.`, { duration: Infinity })
                             setNewRegistryAdding(false)
                             return
                           }
@@ -819,7 +856,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Logging</CardTitle>
                 <CardDescription>
-                  Configure application logging. Chat transcripts (JSONL) are always captured regardless of level.
+                  Configure application logging level. Chat transcripts (JSONL) are always captured regardless of level.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -846,12 +883,6 @@ export default function SettingsPage() {
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="size-4 text-muted-foreground" />
-                  <code className="text-sm text-muted-foreground flex-1">
-                    {logFilePath || "Not available"}
-                  </code>
-                </div>
               </CardContent>
             </Card>
 
@@ -873,29 +904,6 @@ export default function SettingsPage() {
                     <Button variant="outline" size="sm" onClick={handleBrowseSkillsPath}>
                       <FolderSearch className="size-4" />
                       Browse
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label>Workspace Folder</Label>
-                  <div className="flex items-center gap-2">
-                    <FolderOpen className="size-4 text-muted-foreground" />
-                    <code className="text-sm text-muted-foreground flex-1">
-                      {workspacePath || "Not initialized"}
-                    </code>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleClearWorkspace}
-                      disabled={clearing || !workspacePath}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      {clearing ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
-                      )}
-                      Clear
                     </Button>
                   </div>
                 </div>

@@ -72,17 +72,17 @@ interface GitHubImportDialogProps {
   /** The marketplace registries to browse (from settings). */
   registries: MarketplaceRegistry[]
   /**
-   * When set, only skills whose purpose is in this list are shown (skill-library mode only).
-   * In settings-skills mode this filter is ignored — all skills with a name are shown.
+   * When set, only skills whose purpose is in this list are shown (dashboard-library mode only).
+   * In workspace-skills mode this filter is ignored — all skills with a name are shown.
    */
   typeFilter?: string[]
   /**
-   * 'skill-library': calls importMarketplaceToLibrary (creates workflow_runs rows with source='marketplace')
-   * 'settings-skills': calls importGitHubSkills (creates imported_skills rows)
-   * Defaults to 'settings-skills' for backward compatibility.
+   * 'dashboard-library': calls importMarketplaceToLibrary (creates workflow_runs rows with source='marketplace')
+   * 'workspace-skills': calls importGitHubSkills (creates workspace_skills rows)
+   * Defaults to 'workspace-skills'.
    */
-  mode?: 'skill-library' | 'settings-skills'
-  /** Workspace path — required for skill-library mode to look up installed skill metadata. */
+  mode?: "dashboard-library" | "workspace-skills"
+  /** Workspace path — required for dashboard-library mode to look up installed skill metadata. */
   workspacePath?: string
 }
 
@@ -99,11 +99,11 @@ interface EditFormState {
   argument_hint: string
   user_invocable: boolean
   disable_model_invocation: boolean
-  /** settings-skills only — purpose slot to assign on import */
+  /** workspace-skills only — purpose slot to assign on import */
   settings_purpose: string | null
 }
 
-/** Renders a version upgrade banner when upgrading a settings-skills skill. */
+/** Renders a version upgrade banner when upgrading a workspace-skills skill. */
 function UpgradeBanner({
   editingSkill,
   editForm,
@@ -123,7 +123,7 @@ function UpgradeBanner({
   const newVersion = editingSkill.version
   if (!installedVersion || !newVersion || installedVersion === newVersion) return null
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+    <div className="rounded-md border border-amber-300 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
       Upgrading: <span className="font-mono">{installedVersion}</span> &rarr; <span className="font-mono">{newVersion}</span>
     </div>
   )
@@ -145,7 +145,7 @@ export default function GitHubImportDialog({
   onImported,
   registries,
   typeFilter,
-  mode = 'settings-skills',
+  mode = "workspace-skills",
   workspacePath,
 }: GitHubImportDialogProps) {
   const [tabStates, setTabStates] = useState<Record<string, TabState>>({})
@@ -157,12 +157,12 @@ export default function GitHubImportDialog({
   const [editingSkill, setEditingSkill] = useState<AvailableSkill | null>(null)
   const [editForm, setEditForm] = useState<EditFormState | null>(null)
 
-  // Workspace skills for version comparison and purpose conflict detection (settings-skills only)
+  // Workspace skills for version comparison and purpose conflict detection (workspace-skills only)
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([])
-  // Installed library skills for edit form pre-population fallback (skill-library only)
+  // Installed library skills for edit form pre-population fallback (dashboard-library only)
   const [installedLibrarySkills, setInstalledLibrarySkills] = useState<Map<string, SkillSummary>>(new Map())
 
-  // Customization warning state (settings-skills upgrade path)
+  // Customization warning state (workspace-skills upgrade path)
   const [pendingUpgradeSkill, setPendingUpgradeSkill] = useState<AvailableSkill | null>(null)
   const [showCustomizationWarning, setShowCustomizationWarning] = useState(false)
 
@@ -177,6 +177,11 @@ export default function GitHubImportDialog({
   const error = currentTab.error
   const skillStates = currentTab.skillStates
   const repoInfo = currentTab.repoInfo
+  const topLevelDescription = registries.length === 0
+    ? "No enabled registries. Configure registries in Settings → Marketplace."
+    : repoInfo
+      ? `${skills.length} skill${skills.length !== 1 ? "s" : ""} in ${repoInfo.owner}/${repoInfo.repo}`
+      : "Browse and import skills from your configured registries."
 
   function setSkillState(path: string, state: SkillState): void {
     const tabKey = activeTabRef.current
@@ -228,39 +233,41 @@ export default function GitHubImportDialog({
         info.branch,
         info.subpath ?? undefined,
       )
-      if (mode === 'skill-library' && typeFilter && typeFilter.length > 0) {
+      if (mode === "dashboard-library" && typeFilter && typeFilter.length > 0) {
         available = available.filter(
           (s) => s.purpose != null && typeFilter.includes(s.purpose)
         )
       }
-      if (mode === 'settings-skills') {
+      if (mode === "workspace-skills") {
         available = available.filter((s) => !!s.name)
       }
 
       const preStates = new Map<string, SkillState>()
+      const availableByName = new Map(available.map((s) => [s.name, s]))
 
-      if (mode === 'skill-library') {
-        const dashboardNames = await getDashboardSkillNames()
+      if (mode === "dashboard-library") {
+        const [dashboardNames, summaries] = await Promise.all([
+          getDashboardSkillNames(),
+          listSkills(workspacePath ?? '', registry.source_url),
+        ])
         const dashboardSet = new Set(dashboardNames)
-        const summaries = await listSkills(workspacePath ?? '')
         const newSummaryMap = new Map(summaries.map((s) => [s.name, s]))
         setInstalledLibrarySkills(newSummaryMap)
-        for (const skill of available) {
-          if (dashboardSet.has(skill.name)) {
-            const installedSummary = newSummaryMap.get(skill.name)
-            const isUpgrade = semverGt(skill.version, installedSummary?.version)
-            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
-          }
+        for (const [installedName, installedSummary] of newSummaryMap) {
+          if (!dashboardSet.has(installedName)) continue
+          const listed = availableByName.get(installedName)
+          if (!listed) continue
+          const isUpgrade = semverGt(listed.version, installedSummary?.version)
+          preStates.set(listed.path, isUpgrade ? "upgrade" : "same-version")
         }
       } else {
-        const installedSkills = await listWorkspaceSkills()
+        const installedSkills = await listWorkspaceSkills(registry.source_url)
         setWorkspaceSkills(installedSkills)
-        const installedVersionMap = new Map(installedSkills.map((s) => [s.skill_name, s.version]))
-        for (const skill of available) {
-          if (installedVersionMap.has(skill.name)) {
-            const isUpgrade = semverGt(skill.version, installedVersionMap.get(skill.name))
-            preStates.set(skill.path, isUpgrade ? "upgrade" : "same-version")
-          }
+        for (const installed of installedSkills) {
+          const listed = availableByName.get(installed.skill_name)
+          if (!listed) continue
+          const isUpgrade = semverGt(listed.version, installed.version)
+          preStates.set(listed.path, isUpgrade ? "upgrade" : "same-version")
         }
       }
 
@@ -301,12 +308,12 @@ export default function GitHubImportDialog({
     // Priority: remote skill frontmatter → existing installed version (for upgrade/exists)
     const state = skillStates.get(skill.path)
     const isUpgradeOrExists = state === 'upgrade' || state === 'exists'
-    // settings-skills mode: fall back to workspace_skills row
+    // workspace-skills mode: fall back to workspace_skills row
     const ws = isUpgradeOrExists
       ? workspaceSkills.find((w) => w.skill_name === skill.name)
       : undefined
-    // skill-library mode: fall back to installed SkillSummary for description/domain
-    const lib = mode === 'skill-library' && isUpgradeOrExists
+    // dashboard-library mode: fall back to installed SkillSummary for description/domain
+    const lib = mode === "dashboard-library" && isUpgradeOrExists
       ? installedLibrarySkills.get(skill.name)
       : undefined
     setEditForm({
@@ -338,7 +345,7 @@ export default function GitHubImportDialog({
     return false
   }
 
-  /** skill-library: edit metadata then import immediately via importMarketplaceToLibrary */
+  /** dashboard-library: edit metadata then import immediately via importMarketplaceToLibrary */
   const handleImportWithMetadata = useCallback(async (skill: AvailableSkill, form: EditFormState) => {
     const skillName = form.name || skill.name
     console.log(`[github-import] importing "${skillName}" from marketplace (path=${skill.path})`)
@@ -369,7 +376,7 @@ export default function GitHubImportDialog({
     }
   }, [onImported])
 
-  /** settings-skills: import with all metadata + purpose via importGitHubSkills */
+  /** workspace-skills: import with all metadata + purpose via importGitHubSkills */
   const handleSettingsImport = useCallback(async () => {
     if (!editingSkill || !editForm || !repoInfo) return
     const skillPath = editingSkill.path
@@ -406,22 +413,9 @@ export default function GitHubImportDialog({
     }
   }, [editingSkill, editForm, repoInfo, onImported])
 
-  /** Check if a purpose is already occupied by another active workspace skill */
-  function getPurposeConflict(purpose: string | null, excludeSkillName?: string | null): WorkspaceSkill | null {
-    if (!purpose) return null
-    return workspaceSkills.find(
-      (w) => w.is_active && w.purpose === purpose && w.skill_name !== excludeSkillName
-    ) ?? null
-  }
-
   const isMandatoryMissing = editForm
     ? !editForm.name.trim() || !editForm.description.trim() || !editForm.version.trim()
     : false
-
-  // settings-skills: purpose conflict blocks import
-  const purposeConflict = editForm && mode === 'settings-skills' && editingSkill
-    ? getPurposeConflict(editForm.settings_purpose, editingSkill.name)
-    : null
 
   function renderSkillList() {
     if (loading) {
@@ -449,13 +443,7 @@ export default function GitHubImportDialog({
     if (skills.length > 0 && repoInfo) {
       return (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Browse Marketplace</DialogTitle>
-            <DialogDescription>
-              {skills.length} skill{skills.length !== 1 ? "s" : ""} in {repoInfo.owner}/{repoInfo.repo}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-y-auto rounded-md border mt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto rounded-md border">
             <table className="w-full text-sm table-fixed border-separate border-spacing-0">
               <colgroup>
                 <col style={{ width: "76%" }} />
@@ -490,7 +478,7 @@ export default function GitHubImportDialog({
                               {skill.plugin_name ? `${skill.plugin_name}:${skill.name}` : skill.name}
                             </div>
                             {state === "imported" && (
-                              <Badge variant="outline" className="shrink-0 text-xs text-emerald-600 border-emerald-300 dark:text-emerald-400">Imported</Badge>
+                              <Badge variant="outline" className="shrink-0 text-xs" style={{ color: "var(--color-seafoam)", borderColor: "var(--color-seafoam)" }}>Imported</Badge>
                             )}
                             {isSameVersion && (
                               <Badge variant="secondary" className="shrink-0 text-xs text-muted-foreground">Up to date</Badge>
@@ -519,17 +507,18 @@ export default function GitHubImportDialog({
                       <td className="pr-4 py-2.5 border-b">
                         <div className="flex items-center justify-end">
                           {state === "imported" ? (
-                            <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <CheckCircle2 className="size-3.5" style={{ color: "var(--color-seafoam)" }} />
                           ) : isDisabled ? (
                             <CheckCheck className="size-3.5 text-muted-foreground" />
                           ) : (
-                            <button
-                              type="button"
-                              className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="text-muted-foreground hover:text-foreground"
                               disabled={isImporting}
                               aria-label={isUpgrade ? `Update ${skill.name}` : `Install ${skill.name}`}
                               onClick={async () => {
-                                if (isUpgrade && mode === 'settings-skills') {
+                                if (isUpgrade && mode === "workspace-skills") {
                                   // Check for customization before opening edit form
                                   try {
                                     const isCustomized = await checkSkillCustomized(skill.name)
@@ -552,7 +541,7 @@ export default function GitHubImportDialog({
                               ) : (
                                 <Download className="size-3.5" />
                               )}
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </td>
@@ -573,6 +562,10 @@ export default function GitHubImportDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Browse Marketplace</DialogTitle>
+            <DialogDescription>{topLevelDescription}</DialogDescription>
+          </DialogHeader>
           {registries.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
               No enabled registries. Configure registries in Settings → Marketplace.
@@ -596,8 +589,8 @@ export default function GitHubImportDialog({
         </DialogContent>
       </Dialog>
 
-      {/* skill-library: edit & import dialog */}
-      <Dialog open={mode === 'skill-library' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
+      {/* dashboard-library: edit & import dialog */}
+      <Dialog open={mode === "dashboard-library" && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit &amp; Import Skill</DialogTitle>
@@ -727,8 +720,8 @@ export default function GitHubImportDialog({
         </DialogContent>
       </Dialog>
 
-      {/* settings-skills: dedicated import dialog with all metadata + purpose */}
-      <Dialog open={mode === 'settings-skills' && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
+      {/* workspace-skills: dedicated import dialog with all metadata + purpose */}
+      <Dialog open={mode === "workspace-skills" && editingSkill !== null} onOpenChange={(isOpen) => { if (!isOpen) closeEditForm() }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
@@ -789,18 +782,13 @@ export default function GitHubImportDialog({
                     <SelectTrigger id="si-purpose">
                       <SelectValue placeholder="General Purpose" />
                     </SelectTrigger>
-                    <SelectContent>
+                  <SelectContent>
                       <SelectItem value="__none__">General Purpose</SelectItem>
                       {PURPOSE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {purposeConflict && (
-                    <p className="text-xs text-destructive">
-                      A skill with purpose {PURPOSE_OPTIONS.find(o => o.value === editForm.settings_purpose)?.label ?? editForm.settings_purpose} already exists: &ldquo;{purposeConflict.skill_name}&rdquo;
-                    </p>
-                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -876,7 +864,7 @@ export default function GitHubImportDialog({
           <DialogFooter>
             <Button variant="outline" onClick={closeEditForm}>Cancel</Button>
             <Button
-              disabled={isMandatoryMissing || !!purposeConflict || editForm === null}
+              disabled={isMandatoryMissing || editForm === null}
               onClick={handleSettingsImport}
             >
               Confirm Import
