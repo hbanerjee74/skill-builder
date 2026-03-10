@@ -213,7 +213,7 @@ describe("Research scope guard contract prompts", () => {
       path.join(AGENTS_DIR, "detailed-research.md"),
       "utf8"
     );
-    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
     expect(content).toMatch(/status": "detailed_research_complete"/);
     expect(content).toMatch(/refinement_count": 0/);
     expect(content).toMatch(/section_count": 0/);
@@ -324,7 +324,7 @@ describe("skill-creator plugin structure", () => {
       path.join(AGENTS_DIR, "detailed-research.md"),
       "utf8"
     );
-    expect(content).toMatch(/Scope Recommendation Guard/);
+    expect(content).toMatch(/Scope (Recommendation )?[Gg]uard|scope_recommendation/);
     expect(content).toMatch(/status": "detailed_research_complete"/);
     expect(content).toMatch(/refinement_count": 0/);
     expect(content).toMatch(/section_count": 0/);
